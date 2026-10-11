@@ -115,7 +115,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _camera = new OverviewCamera(_screens);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource);
+            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows);
         _wm.Previews.Changed += OnPreviewChanged;
         _wm.AutomaticParkingChanged += OnPreviewChanged;
 
@@ -216,7 +216,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     public void ReleaseInertia()
     {
-        if (!_inertia.Release() && CurrentMode != OverviewMode.Hidden)
+        bool active = _inertia.Release();
+        if (_passes.Count > 0 && _passes[0].Grid is { } grid) grid.FrameTicksRequired = active;
+        if (!active && CurrentMode != OverviewMode.Hidden)
         {
             TransitionTo(OverviewMode.Hidden);
         }
@@ -225,6 +227,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     public void CancelInertia()
     {
         _inertia.Cancel();
+        if (_passes.Count > 0 && _passes[0].Grid is { } grid) grid.FrameTicksRequired = false;
         lock (_inertiaQueueLock)
         {
             _pendingInertiaDx = 0;
@@ -240,6 +243,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         if (stopped)
         {
+            if (_passes.Count > 0 && _passes[0].Grid is { } grid) grid.FrameTicksRequired = false;
             if (_passes.Count > 0 && _passes[0].IsHandleCreated)
                 _passes[0].BeginInvoke(() => { if (!_disposed && CurrentMode != OverviewMode.Hidden) TransitionTo(OverviewMode.Hidden); });
             return;
@@ -318,9 +322,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         _camera.SyncFrom(_mainCanvas);
 
-        _wm.SuspendGreedyDraw = true;
         _wm.SuspendReconcile = true;
-        _wm.UnclipAll();
 
         _thumbnails.Show();
 
@@ -360,8 +362,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _mainCanvas.SetCamera(vx, vy);
         }
 
-        _wm.SuspendGreedyDraw = false;
-        _wm.ReclipAll();
+        _wm.SetLivePreviewWindows(Array.Empty<IntPtr>());
         _mainCanvas.Commit();
         _wm.SuspendReconcile = false;
         _wm.SuspendProjection = false;

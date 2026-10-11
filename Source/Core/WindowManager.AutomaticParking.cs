@@ -42,6 +42,7 @@ internal sealed partial class WindowManager
     private void ProcessAutomaticParking(bool allowNewParking = true)
     {
         if (_disposed) return;
+        if (_parking.Count == 0 && !_config.EnableAutomaticMinimization) return;
         long now = _clock.TickCount64;
         foreach (var (handle, record) in new List<KeyValuePair<IntPtr, ParkingRecord>>(_parking))
         {

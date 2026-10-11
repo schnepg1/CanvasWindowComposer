@@ -14,6 +14,10 @@ internal sealed class Win32WindowApi : IWindowApi
     private readonly IScreens _screens;
     private readonly PerformanceDiagnostics _diagnostics;
     private readonly WindowBatchMover _moves;
+    private readonly object _screenGate = new();
+    private long _screenVersion = -1;
+    private IReadOnlyList<(int x, int y, int w, int h)>? _workingAreas;
+    public long ScreenTopologyVersion => _screens.TopologyVersion;
 
     public Win32WindowApi(IScreens? screens = null, PerformanceDiagnostics? diagnostics = null)
     {
@@ -262,13 +266,19 @@ internal sealed class Win32WindowApi : IWindowApi
 
     public IReadOnlyList<(int x, int y, int w, int h)> GetScreenWorkingAreas()
     {
-        var src = _screens.AllWorkingAreas;
-        var areas = new (int, int, int, int)[src.Count];
-        for (int i = 0; i < src.Count; i++)
+        lock (_screenGate)
         {
-            var s = src[i];
-            areas[i] = (s.X, s.Y, s.Width, s.Height);
+            long version = _screens.TopologyVersion;
+            if (version >= 0 && version == _screenVersion && _workingAreas != null) return _workingAreas;
+            var src = _screens.AllWorkingAreas;
+            var areas = new (int, int, int, int)[src.Count];
+            for (int i = 0; i < src.Count; i++)
+            {
+                var s = src[i];
+                areas[i] = (s.X, s.Y, s.Width, s.Height);
+            }
+            _screenVersion = version;
+            return _workingAreas = Array.AsReadOnly(areas);
         }
-        return areas;
     }
 }

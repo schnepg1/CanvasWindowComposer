@@ -9,12 +9,16 @@ internal sealed record WorkspaceItemView(Guid Id, string Title, string Executabl
 
 internal sealed record WorkspaceLinkCandidate(Guid Token, string Description);
 
-internal interface IWorkspaceCommands
+internal interface IWorkspaceNavigationCommands
 {
     IReadOnlyList<WorkspaceItemView> Items { get; }
     string? Status { get; }
     event Action? Changed;
     void Open(Guid id);
+}
+
+internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
+{
     void FocusItem(Guid id);
     void CloseToPlaceholder(Guid id);
     void Forget(Guid id);

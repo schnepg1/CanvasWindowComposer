@@ -19,6 +19,8 @@ internal readonly record struct ScreenRect(int X, int Y, int Width, int Height)
 /// </summary>
 internal interface IScreens
 {
+    // Negative means the provider does not advertise cache invalidation.
+    long TopologyVersion => -1;
     IReadOnlyList<ScreenRect> AllBounds { get; }
     IReadOnlyList<ScreenRect> AllWorkingAreas { get; }
     ScreenRect VirtualScreen { get; }
@@ -30,60 +32,36 @@ internal sealed class WinFormsScreens : IScreens
 {
     public static readonly WinFormsScreens Instance = new();
 
-    public IReadOnlyList<ScreenRect> AllBounds
+    private readonly CachedScreens _cache = new(new LiveScreens());
+    private WinFormsScreens()
     {
-        get
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => _cache.Invalidate();
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += (_, _) => _cache.Invalidate();
+    }
+    public long TopologyVersion => _cache.TopologyVersion;
+    public IReadOnlyList<ScreenRect> AllBounds => _cache.AllBounds;
+    public IReadOnlyList<ScreenRect> AllWorkingAreas => _cache.AllWorkingAreas;
+    public ScreenRect VirtualScreen => _cache.VirtualScreen;
+    public ScreenRect PrimaryBounds => _cache.PrimaryBounds;
+    public ScreenRect PrimaryWorkingArea => _cache.PrimaryWorkingArea;
+
+    private sealed class LiveScreens : IScreens
+    {
+        public IReadOnlyList<ScreenRect> AllBounds => ReadRects(working: false);
+        public IReadOnlyList<ScreenRect> AllWorkingAreas => ReadRects(working: true);
+        public ScreenRect VirtualScreen => ToRect(SystemInformation.VirtualScreen);
+        public ScreenRect PrimaryBounds => ToRect(Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen);
+        public ScreenRect PrimaryWorkingArea => ToRect(Screen.PrimaryScreen?.WorkingArea ?? SystemInformation.VirtualScreen);
+
+        private static IReadOnlyList<ScreenRect> ReadRects(bool working)
         {
             var screens = Screen.AllScreens;
-            var list = new ScreenRect[screens.Length];
+            var result = new ScreenRect[screens.Length];
             for (int i = 0; i < screens.Length; i++)
-            {
-                var b = screens[i].Bounds;
-                list[i] = new ScreenRect(b.X, b.Y, b.Width, b.Height);
-            }
-            return list;
+                result[i] = ToRect(working ? screens[i].WorkingArea : screens[i].Bounds);
+            return result;
         }
-    }
-
-    public IReadOnlyList<ScreenRect> AllWorkingAreas
-    {
-        get
-        {
-            var screens = Screen.AllScreens;
-            var list = new ScreenRect[screens.Length];
-            for (int i = 0; i < screens.Length; i++)
-            {
-                var w = screens[i].WorkingArea;
-                list[i] = new ScreenRect(w.X, w.Y, w.Width, w.Height);
-            }
-            return list;
-        }
-    }
-
-    public ScreenRect VirtualScreen
-    {
-        get
-        {
-            var vs = SystemInformation.VirtualScreen;
-            return new ScreenRect(vs.X, vs.Y, vs.Width, vs.Height);
-        }
-    }
-
-    public ScreenRect PrimaryBounds
-    {
-        get
-        {
-            var b = Screen.PrimaryScreen!.Bounds;
-            return new ScreenRect(b.X, b.Y, b.Width, b.Height);
-        }
-    }
-
-    public ScreenRect PrimaryWorkingArea
-    {
-        get
-        {
-            var w = Screen.PrimaryScreen!.WorkingArea;
-            return new ScreenRect(w.X, w.Y, w.Width, w.Height);
-        }
+        private static ScreenRect ToRect(System.Drawing.Rectangle rect)
+            => new(rect.X, rect.Y, rect.Width, rect.Height);
     }
 }

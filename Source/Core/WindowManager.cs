@@ -59,11 +59,15 @@ internal sealed partial class WindowManager : IDisposable
 
     // Windows with clipped (empty) region to prevent them from fighting off-screen
     private readonly HashSet<IntPtr> _clippedWindows = new();
+    private readonly HashSet<IntPtr> _livePreviewWindows = new();
+    private readonly HashSet<IntPtr> _previewUnclipped = new();
+    private bool _allPreviewsVisible;
     // Clipping can succeed before a move is failed, cancelled or superseded.
     // Keep retrying edge placement until a native move has been accepted.
     private readonly HashSet<IntPtr> _unconfirmedMoves = new();
 
     private long _lastReprojectTick;
+    private long _lastScreenTopologyVersion = -1;
 
     public event Action<IntPtr>? WindowRemoving;
 
@@ -170,6 +174,9 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Background tick for window discovery + stale removal.</summary>
     public void Tick()
     {
+        long topology = _win32.ScreenTopologyVersion;
+        if (topology >= 0 && topology != _lastScreenTopologyVersion)
+            ReprojectForDisplayChange();
         DiscoverNewWindows();
         RemoveStale();
         UpdateRuntimeVisibility();
@@ -406,8 +413,11 @@ internal sealed partial class WindowManager : IDisposable
         var batch = new List<BatchMoveItem>();
         // One geometry/camera/config snapshot for the entire decision pass. Do not
         // rebuild monitor arrays for every window or consult a moving camera midway.
+        long topology = _win32.ScreenTopologyVersion;
         var screens = _win32.GetScreenWorkingAreas();
         var camera = _canvas.Camera;
+        repositionClipped |= topology >= 0 && topology != _lastScreenTopologyVersion;
+        _lastScreenTopologyVersion = topology;
         bool clipOffScreen = ClipOffScreen;
         UpdateRuntimeVisibility(screens, refreshIdentity: false);
         ProcessAutomaticParking(allowNewParking: false);
@@ -420,6 +430,7 @@ internal sealed partial class WindowManager : IDisposable
             if (!ApplyRegionChange(hWnd, plan.RegionChange)) continue;
             if (!plan.ShouldMove) continue;
             var r = plan.TargetRect;
+            if (CanSkipMove(hWnd, r, posOnly: true)) continue;
             batch.Add(TrackMove(hWnd, r, posOnly: true));
         }
 
@@ -450,6 +461,7 @@ internal sealed partial class WindowManager : IDisposable
         if (!ApplyRegionChange(hWnd, plan.RegionChange)) return false;
         if (!plan.ShouldMove) return true;
         var r = plan.TargetRect;
+        if (CanSkipMove(hWnd, r, posOnly: false)) return true;
 
         var move = TrackMove(hWnd, r, posOnly: false);
         var result = _win32.SetWindowPosition(hWnd, r.X, r.Y, r.W, r.H,
@@ -533,12 +545,13 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Remove windows from canvas that no longer exist.</summary>
     public void RemoveStale()
     {
-        var stale = new List<IntPtr>();
+        List<IntPtr>? stale = null;
         foreach (var hWnd in _canvas.Windows.Keys)
         {
             if (!_win32.IsWindowVisible(hWnd))
-                stale.Add(hWnd);
+                (stale ??= new()).Add(hWnd);
         }
+        if (stale == null) return;
         foreach (var hWnd in stale)
             RemoveWindow(hWnd);
     }
@@ -555,6 +568,8 @@ internal sealed partial class WindowManager : IDisposable
         _pendingMoves.Remove(hWnd);
         _unconfirmedMoves.Remove(hWnd);
         _clippedWindows.Remove(hWnd);
+        _livePreviewWindows.Remove(hWnd);
+        _previewUnclipped.Remove(hWnd);
         _sessionWindows.Remove(hWnd);
         _visibility.Remove(hWnd);
         Previews.Remove(hWnd);
@@ -563,15 +578,38 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Restore regions on all clipped windows (for overview thumbnails).</summary>
     public void UnclipAll()
     {
-        foreach (var hWnd in _clippedWindows)
-            _win32.UnclipWindow(hWnd);
+        _allPreviewsVisible = true;
+        ReconcilePreviewRegions();
     }
 
     /// <summary>Re-clip windows that should be off-screen.</summary>
     public void ReclipAll()
     {
-        foreach (var hWnd in _clippedWindows)
-            _win32.ClipWindow(hWnd);
+        _allPreviewsVisible = false;
+        ReconcilePreviewRegions();
+    }
+
+    /// <summary>Only visible live overview sources need their compatibility region removed.</summary>
+    public void SetLivePreviewWindows(IEnumerable<IntPtr> handles)
+    {
+        _livePreviewWindows.Clear();
+        foreach (var handle in handles)
+            if (!UsesCachedPreview(handle)) _livePreviewWindows.Add(handle);
+        ReconcilePreviewRegions();
+    }
+
+    private void ReconcilePreviewRegions()
+    {
+        _previewUnclipped.RemoveWhere(handle =>
+        {
+            if (!_clippedWindows.Contains(handle)) return true;
+            if (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) return false;
+            return _win32.ClipWindow(handle).Accepted;
+        });
+        foreach (var handle in _clippedWindows)
+            if ((_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
+                && _win32.UnclipWindow(handle).Accepted)
+                _previewUnclipped.Add(handle);
     }
 
     /// <summary>
@@ -583,6 +621,7 @@ internal sealed partial class WindowManager : IDisposable
     public unsafe void RefreshAllWindows()
     {
         _clippedWindows.Clear();
+        _previewUnclipped.Clear();
         _win32.EnumWindows(hWnd =>
         {
             if (_win32.IsWindowVisible(hWnd))
@@ -690,6 +729,8 @@ internal sealed partial class WindowManager : IDisposable
         _unconfirmedMoves.Clear();
         _visibility.Clear();
         Previews.Clear();
+        _previewUnclipped.Clear();
+        _livePreviewWindows.Clear();
     }
 
     // ==================== PRIVATE ====================
@@ -700,7 +741,7 @@ internal sealed partial class WindowManager : IDisposable
         if (_disposed) return;
         screens ??= _win32.GetScreenWorkingAreas();
         // Inspect each process once per pass; never cache identity across process reuse.
-        var processes = new Dictionary<uint, WorkspaceProcessIdentity?>();
+        Dictionary<uint, WorkspaceProcessIdentity?>? processes = null;
         foreach (var (handle, world) in _canvas.Windows)
         {
             uint pid = _win32.GetWindowProcessId(handle);
@@ -710,6 +751,7 @@ internal sealed partial class WindowManager : IDisposable
             // expensive for every animation frame. A PID change invalidates it now.
             if (refreshIdentity || snapshot == null || (identity.HasValue && identity.Value.ProcessId != pid))
             {
+                processes ??= new();
                 if (!processes.TryGetValue(pid, out var process))
                     processes[pid] = process = pid == 0 ? null : _inspectProcess(pid);
                 identity = process is { } p && p.ProcessId == pid
@@ -749,17 +791,18 @@ internal sealed partial class WindowManager : IDisposable
     public void DiscoverNewWindows()
     {
         uint ownPid = (uint)Environment.ProcessId;
-        var toAdd = new List<IntPtr>();
+        List<IntPtr>? toAdd = null;
 
         _win32.EnumWindows(hWnd =>
         {
             if (_canvas.HasWindow(hWnd)) return true;
             if (!_win32.IsManageable(hWnd, ownPid)) return true;
             if (_vds != null && !_vds.IsOnCurrentDesktop(hWnd)) return true;
-            toAdd.Add(hWnd);
+            (toAdd ??= new()).Add(hWnd);
             return true;
         });
 
+        if (toAdd == null) return;
         foreach (var hWnd in toAdd)
             RegisterWindow(hWnd);
     }
@@ -828,6 +871,12 @@ internal sealed partial class WindowManager : IDisposable
         return item;
     }
 
+    private bool CanSkipMove(IntPtr handle, WindowRect target, bool posOnly)
+        => !_pendingMoves.ContainsKey(handle) && !_unconfirmedMoves.Contains(handle)
+            && _lastScreen.TryGetValue(handle, out var last)
+            && last.x == target.X && last.y == target.Y
+            && (posOnly || (last.w == target.W && last.h == target.H));
+
     private void ApplyMoveResult(BatchMoveItem item, NativeOperationResult result)
     {
         // Identical rectangles can belong to different requests. Compare revisions
@@ -838,7 +887,8 @@ internal sealed partial class WindowManager : IDisposable
         {
             var expected = pending.Expected;
             _lastScreen[item.HWnd] = (expected.X, expected.Y, expected.W, expected.H);
-            _unconfirmedMoves.Remove(item.HWnd);
+            if (result.Status == NativeOperationStatus.Queued) _unconfirmedMoves.Add(item.HWnd);
+            else _unconfirmedMoves.Remove(item.HWnd);
         }
         else
         {
@@ -850,13 +900,15 @@ internal sealed partial class WindowManager : IDisposable
     {
         if (change == WindowRegionChange.Clip)
         {
-            if (!_win32.ClipWindow(hWnd).Accepted) return false;
+            if (_allPreviewsVisible || _livePreviewWindows.Contains(hWnd)) _previewUnclipped.Add(hWnd);
+            else if (!_win32.ClipWindow(hWnd).Accepted) return false;
             _clippedWindows.Add(hWnd);
         }
         else if (change == WindowRegionChange.Unclip)
         {
             if (!_win32.UnclipWindow(hWnd).Accepted) return false;
             _clippedWindows.Remove(hWnd);
+            _previewUnclipped.Remove(hWnd);
         }
         return true;
     }

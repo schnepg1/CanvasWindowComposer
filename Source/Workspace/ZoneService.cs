@@ -5,7 +5,7 @@ using System.Linq;
 namespace CanvasDesktop;
 
 /// <summary>UI-independent zone commands. Views are detached and scoped to the active desktop.</summary>
-internal sealed class ZoneService : IZoneCommands
+internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
 {
     public const int MaximumZones = 256;
     private readonly WorkspaceDocument _document;
@@ -15,6 +15,8 @@ internal sealed class ZoneService : IZoneCommands
     public Guid DesktopId => _desktop();
     public IReadOnlyList<ZoneView> Items => _document.Zones.Where(z => z.DesktopId == _desktop())
         .Select(z => new ZoneView(z.Id, z.Name, z.Color, z.Bounds, z.ItemIds.Count)).ToArray();
+    public IReadOnlyList<ZoneNavigationArea> NavigationAreas => _document.Zones.Where(z => z.DesktopId == _desktop())
+        .Select(z => new ZoneNavigationArea(new(z.Id, z.Name, z.Color, z.Bounds, z.ItemIds.Count), z.ItemIds.ToArray())).ToArray();
 
     public ZoneService(WorkspaceDocument document, Func<Guid> desktop, Func<bool> save)
     { _document = document; _desktop = desktop; _save = save; }

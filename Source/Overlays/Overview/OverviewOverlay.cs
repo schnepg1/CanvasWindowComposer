@@ -142,6 +142,12 @@ internal sealed class OverviewOverlay : Form
             SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED);
     }
 
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        Grid?.RequestFrame();
+    }
+
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == (int)PInvoke.WM_DPICHANGED)

@@ -24,6 +24,9 @@ internal sealed class FakeWindowApi : IWindowApi
     public Action<IntPtr>? BeforeSetPosition;
     public List<(int x, int y, int w, int h)> ScreenAreas = new() { (0, 0, 1920, 1080) };
     public int ScreenAreaQueryCount;
+    public long ScreenTopologyVersion { get; set; } = -1;
+    public readonly List<IntPtr> ClipCalls = new();
+    public readonly List<IntPtr> UnclipCalls = new();
     public HashSet<IntPtr> FailedClips = new();
     public HashSet<IntPtr> FailedUnclips = new();
     public HashSet<IntPtr> FailedMoves = new();
@@ -122,6 +125,7 @@ internal sealed class FakeWindowApi : IWindowApi
 
     public NativeOperationResult ClipWindow(IntPtr hWnd)
     {
+        ClipCalls.Add(hWnd);
         if (FailedClips.Contains(hWnd)) return new("ClipWindow", hWnd.ToInt64(), NativeOperationStatus.Failed, null, 0);
         ClippedWindows.Add(hWnd);
         return NativeOperationResult.Success("ClipWindow", hWnd);
@@ -135,6 +139,7 @@ internal sealed class FakeWindowApi : IWindowApi
 
     public NativeOperationResult UnclipWindow(IntPtr hWnd)
     {
+        UnclipCalls.Add(hWnd);
         if (FailedUnclips.Contains(hWnd)) return new("UnclipWindow", hWnd.ToInt64(), NativeOperationStatus.Failed, null, 0);
         ClippedWindows.Remove(hWnd);
         return NativeOperationResult.Success("UnclipWindow", hWnd);

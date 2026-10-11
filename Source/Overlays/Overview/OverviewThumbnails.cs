@@ -32,6 +32,8 @@ internal sealed class OverviewThumbnails
     private readonly OverviewState _state;
     private readonly IWindowApi _win32;
     private readonly IScreens _screens;
+    private readonly Action<IEnumerable<IntPtr>>? _prepareLiveSources;
+    private readonly HashSet<IntPtr> _liveSources = new();
 
     // Shell HWND caches — stable across overview opens, invalidated on
     // display topology change via InvalidateShellCache. Self-healing via
@@ -99,7 +101,8 @@ internal sealed class OverviewThumbnails
         IScreens screens,
         Func<IntPtr, bool>? useCached = null,
         Func<IntPtr, IntPtr>? cachedSource = null,
-        IDwmThumbnailApi? dwm = null)
+        IDwmThumbnailApi? dwm = null,
+        Action<IEnumerable<IntPtr>>? prepareLiveSources = null)
     {
         _passes = passes;
         _windows = windows;
@@ -110,6 +113,7 @@ internal sealed class OverviewThumbnails
         _dwm = dwm ?? new DwmThumbnailApi();
         _useCached = useCached ?? (_ => false);
         _cachedSource = cachedSource ?? (_ => IntPtr.Zero);
+        _prepareLiveSources = prepareLiveSources;
     }
 
     /// <summary>Register desktop + taskbar thumbnails on every pass. Window thumbnails are registered lazily by <see cref="Reconcile"/>.</summary>
@@ -125,6 +129,8 @@ internal sealed class OverviewThumbnails
     /// <summary>Unregister everything. Call when the overview closes.</summary>
     public void Hide()
     {
+        _liveSources.Clear();
+        _prepareLiveSources?.Invoke(_liveSources);
         foreach (var kv in _windowsByPass)
         {
             foreach (var entry in kv.Value)
@@ -149,6 +155,11 @@ internal sealed class OverviewThumbnails
         UpdateDesktop();
 
         ComputeTarget();
+        _liveSources.Clear();
+        foreach (var target in _scratchTargetByPass.Values)
+            foreach (var entry in target)
+                if (!_useCached(entry.HWnd)) _liveSources.Add(entry.HWnd);
+        _prepareLiveSources?.Invoke(_liveSources);
         bool appended = RebuildWindows();
 
         // Taskbars must sit on top of window thumbnails. DWM stacks in

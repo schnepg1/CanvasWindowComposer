@@ -18,6 +18,11 @@ Ctrl+Shift+Z also redoes. The preview uses the production history and replay pol
 The pinned music-player card stays fixed. The preview reuses the production
 gesture controller and layout planner, and its data stays in memory.
 
+Press **P** on the test canvas or choose **Navigator** in the manager to open the
+compact project panel. Search and expand its sample area. Jump updates the test
+canvas title; member focus/reopen actions only simulate a state change in memory
+and display a preview message. They never launch or focus real applications.
+
 This preview does not exercise the main application's camera, native group window
 placement, or global keyboard shortcuts. Its Jump callback returns to the manager;
 camera fitting and workspace coordination are covered separately by automated tests.
@@ -27,8 +32,12 @@ Generate a manager layout preview without opening a desktop window:
 ```powershell
 dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Release -- --render Tools/ZonePreview/zone-manager-preview.png
 dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Release -- --render-members Tools/ZonePreview/zone-members-preview.png
+
+dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Release -- --render-navigator Tools/ZonePreview/zone-navigator-preview.png
 ```
 
 ![Project area manager](zone-manager-preview.png)
 
 ![Membership editor](zone-members-preview.png)
+
+![Project navigator](zone-navigator-preview.png)

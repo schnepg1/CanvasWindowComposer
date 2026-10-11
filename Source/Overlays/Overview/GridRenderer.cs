@@ -263,7 +263,8 @@ float4 PSMain(VSOut input) : SV_Target
     // === Nebula background (screen-fixed, fades in at max zoom-out) ===
     float nebulaBlend = smoothstep(0.7, 0.05, zoom);
     float2 nebulaUV = input.uv * float2(screenW / screenH, 1.0) - float2(panAccumX, panAccumY) * 0.000002;
-    float3 color = lerp(float3(0.04, 0.045, 0.05), nebula(nebulaUV, time), nebulaBlend);
+    float3 color = float3(0.04, 0.045, 0.05);
+    if (nebulaBlend > 0.0) color = lerp(color, nebula(nebulaUV, time), nebulaBlend);
 
     // === Grid lines (exclusive priority chain — no overlaps) ===
     float3 gridGlow = float3(0, 0, 0);
@@ -415,7 +416,18 @@ float4 PSMain(VSOut input) : SV_Target
         _monitorSrv = _device.CreateShaderResourceView(_monitorBuffer, srvDesc);
     }
 
-    public volatile bool DrawGrid = true;
+    private volatile bool _drawGrid = true;
+    public bool DrawGrid
+    {
+        get => _drawGrid;
+        set { if (_drawGrid == value) return; _drawGrid = value; RequestFrame(); }
+    }
+    private volatile bool _frameTicksRequired;
+    public bool FrameTicksRequired
+    {
+        get => _frameTicksRequired;
+        set { _frameTicksRequired = value; RequestFrame(); }
+    }
 
     /// <summary>
     /// Fired on the render thread after each Present. Use for vsync-paced ticks.
@@ -425,8 +437,9 @@ float4 PSMain(VSOut input) : SV_Target
     private float _dpiScale = 1.0f;
     private volatile bool _running;
     private volatile bool _alive = true;
-    private volatile bool _renderThreadIdle = true;
-    private readonly System.Threading.ManualResetEventSlim _wakeEvent = new(false);
+    private readonly System.Threading.AutoResetEvent _wakeEvent = new(false);
+    private readonly object _renderLock = new();
+    private readonly GridFrameSchedule _frames = new();
     private System.Threading.Thread? _renderThread;
 
     private volatile float _renderCamX, _renderCamY, _renderZoom;
@@ -438,8 +451,9 @@ float4 PSMain(VSOut input) : SV_Target
     private volatile int _monitorCount;
     private readonly object _monitorsLock = new();
 
-    public void SetDpiScale(float scale) => _dpiScale = scale;
-    public void ResetClock() => _clock.Restart();
+    public void RequestFrame() { _frames.Invalidate(); _wakeEvent.Set(); }
+    public void SetDpiScale(float scale) { _dpiScale = scale; RequestFrame(); }
+    public void ResetClock() { _clock.Restart(); RequestFrame(); }
 
     public void SetScreenLayout(int passOffX, int passOffY, bool isPrimary, System.Drawing.Rectangle[] monitors)
     {
@@ -458,12 +472,14 @@ float4 PSMain(VSOut input) : SV_Target
             }
             _monitorCount = count;
         }
+        RequestFrame();
     }
 
     public void AccumulatePan(double dx, double dy)
     {
         _panAccumX += (float)dx;
         _panAccumY += (float)dy;
+        RequestFrame();
     }
 
     /// <summary>Render a single frame synchronously (legacy API).</summary>
@@ -472,7 +488,7 @@ float4 PSMain(VSOut input) : SV_Target
         _renderCamX = (float)camX;
         _renderCamY = (float)camY;
         _renderZoom = (float)zoom;
-        RenderFrame();
+        lock (_renderLock) RenderFrame();
     }
 
     /// <summary>Start the render loop (wakes the suspended thread).</summary>
@@ -482,21 +498,25 @@ float4 PSMain(VSOut input) : SV_Target
         _renderCamY = (float)camY;
         _renderZoom = (float)zoom;
         _running = true;
-        _wakeEvent.Set();
+        _clock.Restart();
+        RequestFrame();
     }
 
     /// <summary>Update camera for next frame (call from any thread).</summary>
     public void UpdateCamera(double camX, double camY, double zoom)
     {
+        if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom) return;
         _renderCamX = (float)camX;
         _renderCamY = (float)camY;
         _renderZoom = (float)zoom;
+        RequestFrame();
     }
 
     /// <summary>Stop rendering and go back to sleep.</summary>
     public void Stop()
     {
         _running = false;
+        _wakeEvent.Set();
     }
 
     /// <summary>Start the background thread (call once after Initialize).</summary>
@@ -514,20 +534,21 @@ float4 PSMain(VSOut input) : SV_Target
     {
         while (_alive)
         {
-            _renderThreadIdle = true;
-            _wakeEvent.Wait(); // sleep until Start() signals
-            _renderThreadIdle = false;
-            _clock.Restart(); // reset time for fade-in blend
+            _wakeEvent.WaitOne();
 
             while (_running && _alive)
             {
-                RenderFrame();
+                long revision = _frames.Revision;
+                if (!_frames.ShouldRender(DrawGrid, _renderZoom, _frameTicksRequired)) break;
+                lock (_renderLock)
+                {
+                    if (!_running || !_alive) break;
+                    RenderFrame();
+                }
+                _frames.Presented(revision);
                 // Present(1) inside RenderFrame waits for VSync
             }
-
-            _wakeEvent.Reset(); // go back to sleep
         }
-        _renderThreadIdle = true;
     }
 
     /// <summary>Resize swap chain. Pauses render thread, resizes, resumes if was running.</summary>
@@ -537,21 +558,20 @@ float4 PSMain(VSOut input) : SV_Target
 
         bool wasRunning = _running;
         _running = false;
-        _wakeEvent.Reset();
-        // Spin until render thread finishes the current frame and goes idle
-        while (!_renderThreadIdle) System.Threading.Thread.Yield();
-
-        _width = width;
-        _height = height;
-        _rtv?.Dispose();
-        _rtv = null;
-        _swapChain.ResizeBuffers(1, (uint)width, (uint)height, Format.R8G8B8A8_UNorm, 0);
-        CreateRenderTarget();
+        lock (_renderLock)
+        {
+            _width = width;
+            _height = height;
+            _rtv?.Dispose();
+            _rtv = null;
+            _swapChain.ResizeBuffers(1, (uint)width, (uint)height, Format.R8G8B8A8_UNorm, 0);
+            CreateRenderTarget();
+        }
 
         if (wasRunning)
         {
             _running = true;
-            _wakeEvent.Set();
+            RequestFrame();
         }
     }
 

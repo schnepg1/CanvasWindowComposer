@@ -24,7 +24,7 @@ internal sealed class ZoneWindow : Window
     private static SolidColorBrush Brush(string hex) => ZoneTheme.Brush(hex);
 
     public ZoneWindow(IZoneCommands zones, Action draw, Action<ZoneView> jump, Func<string?> status,
-        IZoneLayoutCommands? history = null, Action<bool>? replay = null)
+        IZoneLayoutCommands? history = null, Action<bool>? replay = null, Action? navigate = null)
     {
         _zones = zones; _draw = draw; _jump = jump; _status = status;
         _history = history;
@@ -44,7 +44,16 @@ internal sealed class ZoneWindow : Window
         Content = root;
 
         var header = new StackPanel();
-        header.Children.Add(new TextBlock { Text = "Project areas", FontSize = 28, FontWeight = FontWeights.SemiBold });
+        var heading = new DockPanel();
+        if (navigate != null)
+        {
+            var navigatorButton = Button("Navigator", navigate);
+            navigatorButton.FontSize = 12; navigatorButton.Padding = new Thickness(8, 4, 8, 4);
+            navigatorButton.Margin = new Thickness(8, 0, 0, 0); navigatorButton.VerticalAlignment = VerticalAlignment.Center;
+            DockPanel.SetDock(navigatorButton, Dock.Right); heading.Children.Add(navigatorButton);
+        }
+        heading.Children.Add(new TextBlock { Text = "Project areas", FontSize = 28, FontWeight = FontWeights.SemiBold });
+        header.Children.Add(heading);
         header.Children.Add(new TextBlock { Text = "Give each project a place on your canvas.",
             Foreground = Brush("#A7B3C9"), Margin = new Thickness(0, 6, 0, 16), TextWrapping = TextWrapping.Wrap });
         var drawButton = Button("+  Draw an area", () => { Hide(); _draw(); });

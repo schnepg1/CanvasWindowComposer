@@ -23,11 +23,38 @@ internal static class Program
         zones.SetMembership(id, document.Items.Take(2).Select(i => i.Id).ToArray());
         using var layout = new PreviewLayoutCommands(zones);
         void Replay(bool redo) { if (redo) layout.RedoZoneLayout(); else layout.UndoZoneLayout(); }
-        if (args.Length == 2 && (args[0] == "--render" || args[0] == "--render-members"))
+        var navigationWorkspace = new PreviewNavigationWorkspace(document);
+        ZoneNavigatorWindow? navigator = null;
+        Action<ZoneView> jump = _ => { };
+        Action<Guid?> manage = _ => { };
+        using var navigation = new ZoneNavigation(zones, navigationWorkspace, area => jump(area), () => { });
+        void ShowNavigator()
         {
-            System.Windows.Window window = args[0] == "--render-members"
-                ? new ZoneMembersWindow(zones, zones.Items[0], () => null)
-                : new ZoneWindow(zones, () => { }, _ => { }, () => null, layout, Replay);
+            if (navigator == null)
+            {
+                navigator = new ZoneNavigatorWindow(navigation, areaId => manage(areaId)) { Topmost = true };
+                navigator.Closed += (_, _) => navigator = null;
+                System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(navigator);
+            }
+            navigator.Show(); navigator.Activate(); navigator.FocusSearch();
+        }
+        if (args.Length == 2 && (args[0] == "--render" || args[0] == "--render-members" || args[0] == "--render-navigator"))
+        {
+            System.Windows.Window window = args[0] switch
+            {
+                "--render-members" => new ZoneMembersWindow(zones, zones.Items[0], () => null),
+                "--render-navigator" => new ZoneNavigatorWindow(navigation, _ => { }),
+                _ => new ZoneWindow(zones, () => { }, _ => { }, () => null, layout, Replay, ShowNavigator)
+            };
+            if (window is ZoneNavigatorWindow)
+            {
+                var grid = (System.Windows.Controls.Grid)window.Content;
+                var body = grid.Children.OfType<System.Windows.Controls.Grid>().Single();
+                var tree = body.Children.OfType<System.Windows.Controls.TreeView>().Single();
+                var area = (System.Windows.Controls.TreeViewItem)tree.Items[0];
+                area.IsExpanded = true;
+                if (area.Items.Count > 0) ((System.Windows.Controls.TreeViewItem)area.Items[0]).IsSelected = true;
+            }
             double width = window.Width, height = window.Height - 40;
             double contentWidth = width - 48, contentHeight = height - 48;
             var content = (System.Windows.FrameworkElement)window.Content;
@@ -86,6 +113,12 @@ internal static class Program
         {
             manager!.Show(); manager.Activate();
         }
+        manage = areaId => { ShowManager(); if (areaId is { } selected) manager!.Select(selected); };
+        jump = area =>
+        {
+            // The preview has no camera handoff: report selection and keep the navigator visible.
+            host.Text = "Canvas project area preview · " + area.Name;
+        };
         host.Shown += (_, _) =>
         {
             source.Show();
@@ -98,7 +131,7 @@ internal static class Program
             });
             annotation = new ZoneAnnotationWindow(host.Handle);
             manager = new ZoneWindow(zones, () => { gesture.Arm(); Refresh(); host.Activate(); },
-                _ => ShowManager(), () => null, layout, Replay) { Topmost = true };
+                _ => ShowManager(), () => null, layout, Replay, ShowNavigator) { Topmost = true };
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(manager);
             manager.Show();
             Refresh();
@@ -169,6 +202,7 @@ internal static class Program
         host.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Escape) { gesture.Cancel(); host.Capture = false; Refresh(); }
+            else if (e.KeyCode == Keys.P && !e.Control && !e.Alt) ShowNavigator();
             else if (e.Control && (e.KeyCode == Keys.Z || e.KeyCode == Keys.Y))
             {
                 gesture.Cancel(); host.Capture = false;
@@ -177,7 +211,7 @@ internal static class Program
         };
         host.FormClosed += (_, _) =>
         {
-            annotation?.Close(); manager?.Close();
+            annotation?.Close(); manager?.Close(); navigator?.Close();
             if (thumbnail != IntPtr.Zero) dwm.Unregister(thumbnail);
             source.Close(); app.Shutdown();
         };

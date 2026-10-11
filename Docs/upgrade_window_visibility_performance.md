@@ -11,7 +11,7 @@ Updated 11 October 2026.
 | 3. Runtime visibility and automatic-parking state | Implemented and verified locally; native automatic minimization remains disabled |
 | 4. Cached previews | Implemented and verified locally; best-effort native capture, automatic parking remains disabled |
 | 5. Opt-in automatic minimization | Implemented; unit/native smoke checks pass; disabled by default, real-app matrix pending |
-| 6. Remaining Canvas overhead | Pending; per-batch monitor snapshot included in step 1 |
+| 6. Remaining Canvas overhead | Implemented and verified locally; paired synthetic measurements below |
 | 7. Rendering modernization and UI upgrade | Pending |
 
 ## Implementation order
@@ -580,3 +580,108 @@ Step 6: measure and reduce remaining Canvas overhead, including monitor-geometry
 caching, unchanged moves, repeated scans/allocation, stationary overview redraws
 and selective unclipping. Keep the step 5 compatibility matrix outstanding while
 making these optimizations.
+
+## Implemented: step 6 - reduce remaining Canvas overhead
+
+Implemented on 11 October 2026. The automatic-minimization option remains
+disabled by default; the step 5 real-application compatibility matrix is still
+outstanding.
+
+### Geometry, projection and preview work
+
+- [CachedScreens](../Source/System/CachedScreens.cs) retains immutable monitor
+  bounds, working areas, virtual-screen bounds and primary-screen geometry.
+  `WinFormsScreens` invalidates this shared snapshot on display-settings and user
+  preference notifications (including work-area changes). `Win32WindowApi` also
+  reuses the converted working-area tuples for that topology version. Providers
+  that do not advertise invalidation retain fresh reads. A changed version forces
+  clipped-window edge placement to be reconsidered on the next projection or
+  background tick, including monitor removal and taskbar/work-area changes.
+- Projection skips native moves when the last observed or successfully applied
+  placement already matches. Batch projection compares position only, preserving
+  its existing `SWP_NOSIZE` behavior; individual projection also compares size.
+  Pending, failed, cancelled and merely queued requests remain retryable. Explicit
+  saved-layout placement and region changes keep their existing behavior. Cached
+  native acknowledgements still depend on move events/reconciliation to detect an
+  application's later geometry changes; they are not an atomic native guarantee.
+- Idle discovery/stale-removal passes allocate change lists only when changes are
+  found. Camera-only visibility passes no longer allocate an unused process
+  dictionary, and disabled automatic parking avoids copying its empty ownership
+  map on every camera frame. Existing one-inspection-per-process tick behavior is
+  retained. Full scans remain for discovery, visibility and thumbnail culling;
+  these measurements do not justify adding a spatial index yet.
+- Overview now requests unclipping for the union of **visible live thumbnail
+  sources** after per-monitor culling. Cached sources and off-view windows retain
+  compatibility clipping. The same source on multiple monitors is requested once.
+  Temporary region ownership tracks successful operations, retries failures, and
+  re-clips sources when they leave view or overview closes. Alt-Tab still requests
+  all live sources, with independent ownership so ending it preserves overview's
+  requested regions. Overview no longer globally suspends clipping.
+
+### Stationary rendering
+
+[GridFrameSchedule](../Source/Overlays/Overview/GridFrameSchedule.cs) and
+[GridRenderer](../Source/Overlays/Overview/GridRenderer.cs) now present on demand
+when the visible background is static. Camera/pan, DPI, layout, mode, resize,
+exposure/paint and reopening request frames. A revision arriving during `Present`
+remains pending for the next frame. The render thread sleeps on an event between
+requests; resize synchronizes with drawing rather than spinning for an idle flag.
+
+The animated nebula remains continuous below **0.7 zoom**, where it contributes
+to the image. Its shader work is skipped when its blend is zero. Inertia explicitly
+wakes the first pass and retains vsync-paced ticks until stopping; secondary passes
+receive camera invalidations as before. DWM continues to own live application
+thumbnails separately from the grid swap chain. This does not establish that every
+GPU/video application's thumbnails stay live under all occlusion conditions.
+
+### Paired measurement and validation
+
+Ran the existing owned-window performance harness immediately before and after
+the implementation, using the same **eight-window cooperative workload**, **two
+rotated repeats**, and **two seconds per phase**. The harness manipulates only its
+owned helper windows. Raw exports are preserved separately from the step 2 baseline:
+
+- [Before](Performance/overhead-before-2026-10-11.json)
+- [After](Performance/overhead-after-2026-10-11.json)
+
+```powershell
+dotnet run --project Tools/PerformanceHarness/CanvasDesktop.PerformanceHarness.csproj --no-restore -c Release -- --count=8 --repeats=2 --seconds=2 --output=Docs/Performance/overhead-after-2026-10-11.json
+```
+
+| Observation per measured phase | Before | After |
+| --- | --- | --- |
+| Stationary overview grid presentations, after preparation | 122 / 123 | 0 / 0 |
+| Stationary overview preparation presentations | 18 / 19 | 2 / 2 |
+| Panning grid presentations | 123 / 123 | 123 / 123 |
+| Active overview thumbnails | 10 / 10 | 10 / 10 |
+| Failed native operations, all phases and preparation | 0 | 0 |
+
+Stationary Canvas harness CPU was **2.34 / 3.89%** of one core before and
+**2.34 / 0.78%** after. Short sampling intervals and unrelated desktop activity
+make these noisy observations, not a general CPU-saving percentage. Panning
+continued to issue changed native placements (80 measured `SetWindowPos` calls per
+phase in both runs); those should not be eliminated. The stationary phase does
+not repeatedly request native placement, so it does not measure move suppression.
+The existing 100-window unit scenario now submits zero items on its unchanged
+second projection, replacing its previous repeated visible-window move.
+
+The Release suite passes **495 tests**, including existing native parking,
+placement and preview smoke checks, with zero warnings/errors. Added **15 cases**
+across `WindowOverheadTests`, `ScreenTopologyCacheTests`, `GridFrameScheduleTests`
+and preview integration coverage. They verify geometry invalidation/immutability,
+accepted-move suppression with resize/failure handling, selective source culling
+and region retries, Alt-Tab overlap, stationary/animated scheduling, and retained
+invalidations during presentation. Updated placement/ownership assertions for
+the changed behavior. The app and performance harness Release builds pass.
+
+No isolated allocation benchmark, actual monitor hot-plug/mixed-DPI exercise,
+first-correct-frame measurement, broad application matrix or DWM resource-saving
+claim is included. Keep the raw synthetic results and these limits when assessing
+the change.
+
+### Next implementation checkpoint
+
+Step 7: evaluate rendering/composition modernization behind the existing
+interfaces, then upgrade the UI shell. Use the measured rendering and restoration
+costs to choose the work; preserve the visibility, parking, preview and recovery
+policy and keep the outstanding real-application matrix visible.

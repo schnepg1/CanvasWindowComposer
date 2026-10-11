@@ -81,7 +81,7 @@ internal sealed class ZoneAnnotationWindow : Window
 
             // Fixed-size hint remains readable at every zoom level.
             string hint = _drawing ? "Drag to mark a project area  ·  Esc to cancel"
-                : "Drag name: move group   Corners: resize   Ctrl+Z/Y: undo/redo   Z: areas";
+                : "Drag name: move group   Corners: resize   Ctrl+Z/Y: undo/redo   Z: areas   P: projects";
             var text = Text(hint, 13, Brushes.White, dpi);
             dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(240, 23, 29, 41)), null,
                 new Rect(20, 20, text.Width + 28, 36), 10, 10);

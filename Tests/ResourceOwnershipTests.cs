@@ -115,10 +115,10 @@ public class ResourceOwnershipTests : IDisposable
             using var form = new OverviewOverlay(Screen.PrimaryScreen!);
             var renderer = new GridRenderer(); // No GPU initialization needed for ownership testing.
             typeof(OverviewOverlay).GetProperty("Grid")!.SetValue(form, renderer);
-            var wake = Field<ManualResetEventSlim>(renderer, "_wakeEvent");
+            var wake = Field<AutoResetEvent>(renderer, "_wakeEvent");
             form.Dispose(); form.Dispose();
             Assert.Null(form.Grid);
-            Assert.Throws<ObjectDisposedException>(() => wake.Wait(0));
+            Assert.Throws<ObjectDisposedException>(() => wake.WaitOne(0));
         });
     }
 

@@ -17,6 +17,7 @@ internal readonly record struct BatchMoveItem(IntPtr HWnd, WindowRect Rect, bool
 /// </summary>
 internal interface IWindowApi
 {
+    long ScreenTopologyVersion => -1;
     // Query
     bool IsWindowVisible(IntPtr hWnd);
     int GetWindowStyle(IntPtr hWnd);

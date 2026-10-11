@@ -20,6 +20,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Off-screen hiding** — Windows hidden when panned out of view
 - **System tray** — Toggle, reset, exit
 - **Project areas** — Draw named, colored zones, assign saved places, move groups, resize boundaries, undo/redo layouts, and jump back to projects. Areas save per virtual desktop. See [project areas](Docs/project-areas.md).
+- **Project navigator** — Keep a compact panel beside the canvas: search areas, members, or paths, expand member lists, jump to areas, focus open members, or reopen closed ones. Open it with **P** in the overview or from the tray.
 
 ## Controls
 
@@ -35,6 +36,9 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) in overview | Undo / redo an area move or resize |
 | N in overview | Draw the next project area with a normal left-drag |
 | Z in overview | Open the project area manager |
+| P in overview | Open the compact project navigator |
+| Enter in navigator search / member tree | Jump to the selected area / jump or focus/reopen the selected row |
+| Ctrl+F / Esc in navigator | Focus search / clear search, then hide the panel |
 | Drag an area's name in overview | Move the area and its assigned, unpinned places |
 | Tray menu > Enabled | Toggle the canvas on/off |
 | Tray menu > Refresh | Unclip and redraw all windows |

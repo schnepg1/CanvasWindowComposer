@@ -325,6 +325,41 @@ public class WindowPreviewTests
             finally { Assert.True(dwm.Unregister(thumbnail).Succeeded); }
         });
 
+    [Fact]
+    public void OverviewPreparesOnlyVisibleLiveSourcesAndReleasesThemOnHide()
+        => OnSta(() =>
+        {
+            using var pass = new OverviewOverlay(Screen.PrimaryScreen!);
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var screens = new FakeScreens();
+            var b = pass.Screen.Bounds;
+            for (int i = 1; i <= 3; i++)
+            {
+                int x = b.X + (i == 3 ? b.Width + 100 : i * 100);
+                api.AddWindow((IntPtr)i, x, b.Y + 100, 100, 100);
+                canvas.SetWindow((IntPtr)i, x, b.Y + 100, 100, 100);
+            }
+            var windows = new OverviewWindowList(canvas, api); windows.Refresh();
+            bool cached = true;
+            var wanted = new System.Collections.Generic.HashSet<IntPtr>();
+            var camera = new OverviewCamera(screens);
+            var dwm = new Dwm();
+            var thumbnails = new OverviewThumbnails([pass], windows, camera, new(), api, screens,
+                handle => cached && handle == (IntPtr)2, _ => (IntPtr)987, dwm,
+                sources => { wanted.Clear(); wanted.UnionWith(sources); });
+            try
+            {
+                thumbnails.Reconcile(); Assert.Equal(new[] { (IntPtr)1 }, wanted);
+                int updates = dwm.Updates.Count;
+                thumbnails.Reconcile(); Assert.Equal(updates, dwm.Updates.Count);
+                cached = false; thumbnails.Reconcile(); Assert.Equal(2, wanted.Count);
+                camera.SetTo(b.Width + 50, 0, 1);
+                thumbnails.Reconcile(); Assert.DoesNotContain((IntPtr)1, wanted);
+                Assert.Contains((IntPtr)3, wanted);
+            }
+            finally { thumbnails.Hide(); }
+            Assert.Empty(wanted);
+        });
+
     private sealed class PaintedWindow : Form
     {
         private readonly bool _black;

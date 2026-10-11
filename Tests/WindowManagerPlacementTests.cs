@@ -20,7 +20,7 @@ public class WindowManagerPlacementTests
         Assert.Equal(100, api.LastBatch.Count);
         wm.ReprojectSync();
         Assert.Equal(2, api.ScreenAreaQueryCount);
-        Assert.Single(api.LastBatch); // Only the visible window is repeatedly moved.
+        Assert.Empty(api.LastBatch); // Visible and clipped placements are already accepted.
     }
 
     [Theory]
