@@ -80,6 +80,49 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
     private bool _draggingWindow;
     private int _dragIndex = -1;
     private int _dragStartVx, _dragStartVy;
+    private ZoneService? _zones;
+    private bool _zoneArmed;
+    private (double X, double Y)? _zoneStart;
+    private WorldRect? _zonePreview;
+    public event Action? ZonePanelRequested;
+    public event Action<WorldRect>? ZoneDrawn;
+
+    public void AttachZones(ZoneService zones)
+    {
+        _zones = zones;
+        zones.Changed += RefreshZoneAnnotations;
+    }
+
+    public void BeginZone()
+    {
+        TransitionTo(OverviewMode.Zooming);
+        _zoneArmed = true;
+        RefreshZoneAnnotations();
+        if (_passes.Count > 0) _passes[0].Activate();
+    }
+
+    public void JumpToZone(ZoneView zone)
+    {
+        TransitionTo(OverviewMode.Zooming);
+        var fit = ZoneGeometry.Fit(zone.Bounds, _screens.PrimaryWorkingArea);
+        _camera.SetTo(fit.X, fit.Y, fit.Zoom);
+        foreach (var p in _passes) p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
+        ReconcileVisuals();
+    }
+
+    private void RefreshZoneAnnotations()
+    {
+        if (_zones == null || CurrentMode != OverviewMode.Zooming) return;
+        var zones = _zones.Items;
+        foreach (var p in _passes)
+            if (p.Visible) p.ShowZones(zones, _camera, _zonePreview, _zoneArmed || _zoneStart.HasValue);
+    }
+
+    private void ReconcileVisuals()
+    {
+        _thumbnails.Reconcile();
+        RefreshZoneAnnotations();
+    }
 
     public OverviewManager(Canvas mainCanvas, WindowManager wm, IWindowApi win32, IInputRouter input, IAppConfig appConfig, IScreens? screens = null)
     {
@@ -252,7 +295,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
         foreach (var p in _passes)
             p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-        _thumbnails.Reconcile();
+        ReconcileVisuals();
     }
 
     /// <summary>Single entry point for every mode change.</summary>
@@ -298,6 +341,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
             p.Show();
         }
         if (_passes.Count > 0) _passes[0].Activate();
+        RefreshZoneAnnotations();
         if (ShouldShowScreenFixedWindowsDuringPan)
             RaiseMyDockFinderWindowsAboveOverview();
 
@@ -311,6 +355,8 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        CancelZoneDrawing();
+        foreach (var p in _passes) p.HideZones();
         foreach (var p in _passes)
         {
             if (p.Grid != null) p.Grid.OnFrameTick = null;
@@ -350,6 +396,11 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
         // foreground (click lands on an underlying window on drag release);
         // layered compositing seems to keep DWM driving the overlay. Zooming
         // holds foreground itself so it doesn't need the layered cost.
+        if (CurrentMode != OverviewMode.Zooming)
+        {
+            CancelZoneDrawing();
+            foreach (var p in _passes) p.HideZones();
+        }
         bool wantLayered = (CurrentMode == OverviewMode.Panning);
         bool wantNoActivate = (CurrentMode == OverviewMode.Panning);
         foreach (var p in _passes)
@@ -358,7 +409,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
             p.SetModeStyle(wantLayered, wantNoActivate);
             p.SetClickThrough(!_cfg.InputEnabled);
         }
-        _thumbnails.Reconcile();
+        ReconcileVisuals();
         if (ShouldShowScreenFixedWindowsDuringPan && AnyPassVisible())
             RaiseMyDockFinderWindowsAboveOverview();
         else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible())
@@ -494,7 +545,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
             SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
 
         _thumbnails.BringToFront(hWnd);
-        _thumbnails.Reconcile();
+        ReconcileVisuals();
     }
 
     // ==================== INPUT ====================
@@ -510,6 +561,14 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
+        if (_zones != null && e.KeyCode == Keys.N)
+        {
+            BeginZone(); e.Handled = true; return;
+        }
+        if (_zones != null && e.KeyCode == Keys.Z)
+        {
+            ZonePanelRequested?.Invoke(); e.Handled = true; return;
+        }
         if (_windows.Count == 0) return;
 
         if (e.KeyCode == Keys.Right || e.KeyCode == Keys.Down)
@@ -542,7 +601,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
         foreach (var p in _passes)
             p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-        _thumbnails.Reconcile();
+        ReconcileVisuals();
     }
 
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
@@ -556,6 +615,16 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
+        if (e.Button == MouseButtons.Left && _zones != null && (_zoneArmed || (Control.ModifierKeys & Keys.Shift) != 0))
+        {
+            _zoneArmed = false;
+            var start = _camera.WorldFromVirtual(vx, vy);
+            _zoneStart = start;
+            _zonePreview = ZoneGeometry.FromPoints(start.x, start.y, start.x, start.y);
+            pass.Capture = true;
+            RefreshZoneAnnotations();
+            return;
+        }
         if (e.Button == MouseButtons.Left)
         {
             var (wx, wy) = _camera.WorldFromVirtual(vx, vy);
@@ -589,6 +658,13 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
+        if (_zoneStart is { } start)
+        {
+            var end = _camera.WorldFromVirtual(vx, vy);
+            _zonePreview = ZoneGeometry.FromPoints(start.X, start.Y, end.x, end.y);
+            RefreshZoneAnnotations();
+            return;
+        }
         if (_draggingWindow && _dragIndex >= 0 && _dragIndex < _windows.Count)
         {
             double dx = (vx - _dragStartVx) / _camera.Zoom;
@@ -601,7 +677,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
             _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
 
             _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
-            _thumbnails.Reconcile();
+            ReconcileVisuals();
         }
         else if (_panning)
         {
@@ -619,12 +695,23 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
                 p.Grid?.AccumulatePan(worldDx, worldDy);
                 p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
             }
-            _thumbnails.Reconcile();
+            ReconcileVisuals();
         }
     }
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (e.Button == MouseButtons.Left && _zoneStart.HasValue)
+        {
+            var end = _camera.WorldFromVirtual(e.X + pass.OriginX, e.Y + pass.OriginY);
+            var start = _zoneStart.Value;
+            var bounds = ZoneGeometry.FromPoints(start.X, start.Y, end.x, end.y);
+            CancelZoneDrawing();
+            RefreshZoneAnnotations();
+            if (bounds.W * _camera.Zoom >= 12 && bounds.H * _camera.Zoom >= 12)
+                ZoneDrawn?.Invoke(bounds);
+            return;
+        }
         if (_draggingWindow)
         {
             _wm.Reproject(true);
@@ -636,7 +723,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseWheel(OverviewOverlay pass, MouseEventArgs e)
     {
-        if (!_cfg.InputEnabled) return;
+        if (!_cfg.InputEnabled || _zoneStart.HasValue) return;
 
         double notches = e.Delta / MouseWheelDeltaPerNotch;
         int vx = e.X + pass.OriginX;
@@ -647,13 +734,13 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
         foreach (var p in _passes)
             p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
 
-        _thumbnails.Reconcile();
+        ReconcileVisuals();
     }
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
         if (!_cfg.InputEnabled) return;
-        if (e.Button != MouseButtons.Left) return;
+        if (e.Button != MouseButtons.Left || _zoneArmed || _zoneStart.HasValue || (Control.ModifierKeys & Keys.Shift) != 0) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -665,6 +752,12 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
             var entry = _windows.Windows[hit];
             GoToWindow(entry.HWnd, entry.World);
         }
+    }
+
+    private void CancelZoneDrawing()
+    {
+        _zoneArmed = false; _zoneStart = null; _zonePreview = null;
+        foreach (var p in _passes) p.Capture = false;
     }
 
     // ==================== HELPERS ====================
@@ -685,6 +778,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
         if (_disposed) return;
         _disposed = true;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        if (_zones != null) _zones.Changed -= RefreshZoneAnnotations;
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(() =>

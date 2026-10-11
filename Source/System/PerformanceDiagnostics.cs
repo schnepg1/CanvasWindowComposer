@@ -20,7 +20,7 @@ internal sealed record WindowBatchResult(NativeOperationResult Summary, IReadOnl
 internal sealed record OperationStatistics(string Operation, long Calls, long Succeeded, long Queued,
     long Failed, long Cancelled, double TotalMs, double MaxMs);
 internal sealed record PerformanceSnapshot(int SchemaVersion, DateTime CapturedUtc, int ProcessId,
-    double UptimeSeconds, int ActiveThumbnails, int PeakThumbnails,
+    double CollectionSeconds, int ActiveThumbnails, int PeakThumbnails,
     OperationStatistics[] Operations, NativeOperationResult[] RecentOperations, NativeOperationResult[] RecentFailures);
 
 /// <summary>Bounded, thread-safe in-memory diagnostics. No per-call disk I/O or window titles/paths.</summary>

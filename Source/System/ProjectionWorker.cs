@@ -62,8 +62,8 @@ internal sealed class ProjectionWorker : IDisposable
 
     /// <summary>
     /// Drop any queued batch and cancel the in-flight one if any. The
-    /// in-flight BatchMove exits between items and finalizes the queued prefix. This shortens the
-    /// remaining work but cannot interrupt an in-flight USER32 call.
+    /// in-flight BatchMove exits between items and finalizes the queued prefix.
+    /// This shortens the remaining work but cannot interrupt an in-flight USER32 call.
     /// </summary>
     public void ClearPending()
     {

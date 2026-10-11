@@ -31,6 +31,7 @@ internal sealed class WorkspaceService : IWorkspaceCommands, IDisposable
     private bool _switching, _disposed, _started;
     private string? _status;
     public WorkspaceDocument Document => _persistence.Document;
+    public ZoneService Zones { get; }
     public IReadOnlyList<WorkspaceItemView> Items => Document.Items.Select(View).ToArray();
     public string? Status => _persistence.LastError ?? _status ?? _persistence.LoadWarning
         ?? (_ambiguous.Count > 0 ? "Some saved places need linking. Use 'Link window…' to choose the correct open window." : null);
@@ -47,6 +48,7 @@ internal sealed class WorkspaceService : IWorkspaceCommands, IDisposable
         _launcher = launcher; _identity = identity; _clock = clock;
         _placeholderFactory = placeholders; _windowActions = windowActions;
         _persistence = new WorkspacePersistence(store);
+        Zones = new ZoneService(Document, () => _desktop, Save);
         _wm.WindowRemoving += OnRemoving;
         _cache.BeforeStateSaved += BeforeSwitch;
         _cache.AfterStateLoaded += AfterSwitch;
@@ -128,10 +130,13 @@ internal sealed class WorkspaceService : IWorkspaceCommands, IDisposable
             // Initial desktop detection may complete after startup.
             foreach (var item in Document.Items.Where(i => i.DesktopId == Guid.Empty))
                 item.DesktopId = _desktops.CurrentDesktopId;
+            foreach (var zone in Document.Zones.Where(i => i.DesktopId == Guid.Empty))
+                zone.DesktopId = _desktops.CurrentDesktopId;
             if (Document.Cameras.Remove(Guid.Empty, out var camera))
                 Document.Cameras[_desktops.CurrentDesktopId] = camera;
         }
         _desktop = _desktops.CurrentDesktopId;
+        Zones.NotifyDesktopChanged();
         _switching = false;
         RestoreCamera();
         Capture();

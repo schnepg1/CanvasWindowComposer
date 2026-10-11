@@ -17,6 +17,16 @@ internal sealed class OverviewOverlay : Form
     public int OriginY { get { return Screen.Bounds.Y; } }
 
     public GridRenderer? Grid { get; private set; }
+    private ZoneAnnotationWindow? _annotations;
+
+    public void ShowZones(System.Collections.Generic.IReadOnlyList<ZoneView> zones, OverviewCamera camera,
+        WorldRect? preview, bool drawing)
+    {
+        if (_annotations == null) _annotations = new ZoneAnnotationWindow(Handle);
+        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing);
+    }
+
+    public void HideZones() => _annotations?.Hide();
 
     // Input forwarding callbacks (set by OverviewOverlay coordinator)
     public Action<OverviewOverlay, KeyEventArgs>? OnKey;
@@ -170,6 +180,8 @@ internal sealed class OverviewOverlay : Form
     {
         if (disposing)
         {
+            _annotations?.Close();
+            _annotations = null;
             var grid = Grid;
             Grid = null;
             try { grid?.Dispose(); }

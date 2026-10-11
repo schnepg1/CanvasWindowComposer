@@ -133,7 +133,7 @@ internal static class Program
                 double duration = Stopwatch.GetElapsedTime(started).TotalSeconds;
                 var after = processes.Select(Capture).ToArray();
                 results.Add(new { Repeat = repeat + 1, Phase = phase, DurationSeconds = duration,
-                    Processes = after.Select((sample, i) => new { sample.Pid, sample.Name, sample.Error,
+                    Processes = after.Select((sample, i) => new { Role = i == 0 ? "CanvasHarness" : i == 1 ? "Workload" : "DWM", sample.Pid, sample.Name, sample.Error,
                         CpuOneCorePercent = sample.CpuMs.HasValue && baseline[i].CpuMs.HasValue
                             ? (sample.CpuMs - baseline[i].CpuMs) / (duration * 10) : null,
                         sample.WorkingSetBytes, sample.PrivateBytes }),

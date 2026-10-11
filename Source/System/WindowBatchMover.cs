@@ -93,7 +93,11 @@ internal sealed class WindowBatchMover(IWindowPositionNative native, Performance
             var end = diagnostics.Complete("EndDeferWindowPos", IntPtr.Zero, callStarted, ok, error,
                 queued: isAsync, itemCount: queued);
             for (int i = 0; i < queued; i++)
-                outcomes.Add(new("BatchMoveItem", items[i].HWnd.ToInt64(), end.Status, end.ErrorCode, 0));
+            {
+                var itemResult = new NativeOperationResult("BatchMoveItem", items[i].HWnd.ToInt64(), end.Status, end.ErrorCode, 0);
+                outcomes.Add(itemResult);
+                if (!ok) diagnostics.Record(itemResult); // Preserve affected HWNDs in exported failure history.
+            }
         }
         return Finish(ct.IsCancellationRequested);
 

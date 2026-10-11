@@ -29,6 +29,7 @@ internal sealed class WorkspaceDocument
     public int Version { get; set; } = 1;
     public List<WorkspaceItem> Items { get; set; } = new();
     public Dictionary<Guid, WorkspaceCamera> Cameras { get; set; } = new();
+    public List<WorkspaceZone> Zones { get; set; } = new();
 }
 
 internal static class WorkspaceGeometry

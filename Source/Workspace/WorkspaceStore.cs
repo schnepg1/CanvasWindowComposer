@@ -60,7 +60,8 @@ internal sealed class WorkspaceStore : IWorkspaceStore
 
     private static void Validate(WorkspaceDocument doc)
     {
-        if (doc.Version != 1 || doc.Items == null || doc.Cameras == null || doc.Items.Count > 2000)
+        if (doc.Version != 1 || doc.Items == null || doc.Cameras == null || doc.Items.Count > 2000
+            || doc.Zones == null || doc.Zones.Count > ZoneService.MaximumZones)
             throw new InvalidDataException("Unsupported or invalid workspace format.");
         var ids = new HashSet<Guid>();
         foreach (var i in doc.Items)
@@ -70,6 +71,12 @@ internal sealed class WorkspaceStore : IWorkspaceStore
                 || i.ExecutablePath == null || i.Target == null || !WorkspaceGeometry.ValidBounds(i.Bounds))
                 throw new InvalidDataException("Invalid workspace item.");
         }
+        var zoneIds = new HashSet<Guid>();
+        foreach (var zone in doc.Zones)
+            if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
+                || !ZoneService.ValidName(zone.Name) || !ZoneService.ValidColor(zone.Color)
+                || !WorkspaceGeometry.ValidBounds(zone.Bounds))
+                throw new InvalidDataException("Invalid workspace zone.");
         foreach (var c in doc.Cameras.Values)
             if (c == null || !double.IsFinite(c.X) || !double.IsFinite(c.Y)
                 || !double.IsFinite(c.Zoom) || c.Zoom < 0.01 || c.Zoom > 10)

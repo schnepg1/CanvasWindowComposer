@@ -1,0 +1,5162 @@
+{
+  "SchemaVersion": 1,
+  "Description": "Condensed local baseline: all phase/process samples and operation aggregates retained; bounded operation histories, process IDs and zero-utilization GPU engine entries omitted. Raw reports remain in the ignored Tools/PerformanceHarness/results directory. API sub-call and batch failures may count the same underlying failure; not an incident count.",
+  "Runs": [
+    {
+      "CapturedUtc": "2026-10-11T15:41:59.4052452Z",
+      "OS": "Microsoft Windows 10.0.22631",
+      "Framework": ".NET 10.0.12",
+      "LogicalProcessors": 12,
+      "WindowCount": 8,
+      "Repeats": 2,
+      "SecondsPerPhase": 3,
+      "Workload": "cooperative-minimize",
+      "Monitors": [
+        {
+          "Bounds": {
+            "Location": {
+              "IsEmpty": true,
+              "X": 0,
+              "Y": 0
+            },
+            "Size": {
+              "IsEmpty": false,
+              "Width": 1920,
+              "Height": 1080
+            },
+            "X": 0,
+            "Y": 0,
+            "Width": 1920,
+            "Height": 1080,
+            "Left": 0,
+            "Top": 0,
+            "Right": 1920,
+            "Bottom": 1080,
+            "IsEmpty": false
+          },
+          "WorkingArea": {
+            "Location": {
+              "IsEmpty": true,
+              "X": 0,
+              "Y": 0
+            },
+            "Size": {
+              "IsEmpty": false,
+              "Width": 1920,
+              "Height": 1032
+            },
+            "X": 0,
+            "Y": 0,
+            "Width": 1920,
+            "Height": 1032,
+            "Left": 0,
+            "Top": 0,
+            "Right": 1920,
+            "Bottom": 1032,
+            "IsEmpty": false
+          }
+        }
+      ],
+      "Interrupted": false,
+      "Limits": "Synthetic GDI/timer workload; DWM includes unrelated desktop activity. CPU is percent of one core. GPU values are separate engine counters, not an overall sum. Restore timing is API acknowledgement, not first painted frame.",
+      "Command": "CanvasDesktop.PerformanceHarness.exe --count=8 --repeats=2 --seconds=3",
+      "Samples": [
+        {
+          "Repeat": 1,
+          "Phase": "Visible",
+          "DurationSeconds": 3.0009561,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 2.0826695865361042,
+              "WorkingSetBytes": 89681920,
+              "PrivateBytes": 81256448,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 21.34736326199507,
+              "WorkingSetBytes": 47603712,
+              "PrivateBytes": 14258176,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.9749678295278374
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.020188474861862947
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.365555,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1.3151,
+                "MaxMs": 1.3151
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 183.93769999999998,
+                "MaxMs": 39.6404
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 273.1497,
+                "MaxMs": 37.3626
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 580.1019000000001,
+                "MaxMs": 78.358
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.8786207,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "OffScreenDefault",
+          "DurationSeconds": 3.0011433,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 10040,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 10380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 10720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 11060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 10040,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 10380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 10720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 11060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.5206349193655632,
+              "WorkingSetBytes": 90902528,
+              "PrivateBytes": 81678336,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 24.469841210181468,
+              "WorkingSetBytes": 48287744,
+              "PrivateBytes": 14446592,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.183004863318089
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.006230566780231317
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.3033039,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 71.2549,
+                "MaxMs": 71.2549
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.3164,
+                "MaxMs": 0.3164
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.6440999999999999,
+                "MaxMs": 0.623
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 69.9083,
+                "MaxMs": 69.9083
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 200.90140000000002,
+                "MaxMs": 36.0176
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 155.8263,
+                "MaxMs": 32.5975
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 560.5907000000001,
+                "MaxMs": 67.9785
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0515432,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Clipped",
+          "DurationSeconds": 3.0128258,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 92725248,
+              "PrivateBytes": 83230720,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 21.78187666874069,
+              "WorkingSetBytes": 48361472,
+              "PrivateBytes": 14446592,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.39512947714057345
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.01841810260981088
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.6262887,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 99.6643,
+                "MaxMs": 99.6643
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0212,
+                "MaxMs": 0.0212
+              },
+              {
+                "Operation": "ClipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 317.4328,
+                "MaxMs": 65.4531
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0231,
+                "MaxMs": 0.0061
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 99.5819,
+                "MaxMs": 99.5819
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 230.9812,
+                "MaxMs": 43.1361
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 170.299,
+                "MaxMs": 34.8708
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 492.88800000000003,
+                "MaxMs": 64.6876
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0670949,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Minimized",
+          "DurationSeconds": 3.0089801,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1773510,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1640740,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 9833886,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4130256,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2492494,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 789126,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 7539178,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.5192789410604609,
+              "WorkingSetBytes": 93421568,
+              "PrivateBytes": 83562496,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 48447488,
+              "PrivateBytes": 14512128,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.5719810190060941
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.005974374769261019
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 2.4298522,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 209.8891,
+                "MaxMs": 209.8891
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.012,
+                "MaxMs": 0.012
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0172,
+                "MaxMs": 0.0044
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 209.8393,
+                "MaxMs": 209.8393
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 722.1108,
+                "MaxMs": 127.6047
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 157.19019999999998,
+                "MaxMs": 35.8646
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1028.4667,
+                "MaxMs": 65.8531
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0618917,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "StationaryOverview",
+          "DurationSeconds": 3.0123323,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 5.705711816720884,
+              "WorkingSetBytes": 93229056,
+              "PrivateBytes": 81625088,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 24.897651563872948,
+              "WorkingSetBytes": 48508928,
+              "PrivateBytes": 14577664,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.31625172310575883
+            },
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.00933896391360365
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 1.3772996913017066
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.015322298710400393
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.7619844,
+            "ActiveThumbnails": 10,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0017,
+                "MaxMs": 0.0017
+              },
+              {
+                "Operation": "DwmRegisterThumbnail",
+                "Calls": 11,
+                "Succeeded": 11,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 2.2622999999999993,
+                "MaxMs": 1.4417
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0578,
+                "MaxMs": 0.0578
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 21,
+                "Succeeded": 21,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.8186999999999999,
+                "MaxMs": 0.2009
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 19,
+                "Succeeded": 19,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 298.9873,
+                "MaxMs": 20.2833
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 365.66580000000005,
+                "MaxMs": 82.9227
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 179.75359999999998,
+                "MaxMs": 50.6046
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 859.2167000000001,
+                "MaxMs": 106.6755
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.066288,
+            "ActiveThumbnails": 10,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 3,
+                "Succeeded": 0,
+                "Queued": 3,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 2.0466,
+                "MaxMs": 0.8846
+              },
+              {
+                "Operation": "DwmRegisterThumbnail",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.5418000000000001,
+                "MaxMs": 0.1507
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.3262,
+                "MaxMs": 0.0647
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 92,
+                "Succeeded": 92,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 2.1972000000000005,
+                "MaxMs": 0.091
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 184,
+                "Succeeded": 184,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3064.238099999999,
+                "MaxMs": 19.8984
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 24,
+                "Succeeded": 0,
+                "Queued": 24,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1.6909,
+                "MaxMs": 0.2597
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Panning",
+          "DurationSeconds": 3.0075266,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 9.871068139513712,
+              "WorkingSetBytes": 93405184,
+              "PrivateBytes": 81629184,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 54.031109816285586,
+              "WorkingSetBytes": 48549888,
+              "PrivateBytes": 14557184,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.9818866812466347
+            },
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.007513396132261985
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.30083106076890587
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.00812653597207093
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 2.6989347,
+            "ActiveThumbnails": 10,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 495.28009999999995,
+                "MaxMs": 325.8939
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.22190000000000001,
+                "MaxMs": 0.2058
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 16,
+                "Succeeded": 0,
+                "Queued": 16,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0643,
+                "MaxMs": 0.0125
+              },
+              {
+                "Operation": "DwmRegisterThumbnail",
+                "Calls": 11,
+                "Succeeded": 11,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.6244999999999998,
+                "MaxMs": 0.1587
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 11,
+                "Succeeded": 11,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.26930000000000004,
+                "MaxMs": 0.0508
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 21,
+                "Succeeded": 21,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.6518999999999999,
+                "MaxMs": 0.0726
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 494.95889999999997,
+                "MaxMs": 325.6343
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 20,
+                "Succeeded": 20,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 304.7395,
+                "MaxMs": 20.8194
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 253.9225,
+                "MaxMs": 66.5002
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 344.67990000000003,
+                "MaxMs": 72.0225
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1265.8305000000003,
+                "MaxMs": 185.9623
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0854225,
+            "ActiveThumbnails": 10,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 15,
+                "Succeeded": 0,
+                "Queued": 15,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3.8829999999999996,
+                "MaxMs": 0.6859
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 1536,
+                "Succeeded": 1536,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 61.71730000000006,
+                "MaxMs": 0.3828
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 184,
+                "Succeeded": 184,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3101.0861999999993,
+                "MaxMs": 33.9532
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 120,
+                "Succeeded": 0,
+                "Queued": 120,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3.565900000000002,
+                "MaxMs": 0.2763
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Restoration",
+          "DurationSeconds": 3.2065071,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1773510,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1640740,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 9833886,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4130256,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2492494,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 789126,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 7539178,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [
+            1066.4443,
+            943.6249
+          ],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 2.4364518014009695,
+              "WorkingSetBytes": 96129024,
+              "PrivateBytes": 84451328,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 38.49593846213532,
+              "WorkingSetBytes": 48750592,
+              "PrivateBytes": 14639104,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.5185749848523704
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.007871646351307927
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x0001801D_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.3498236913740586
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 3.637189,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 628.654,
+                "MaxMs": 424.6678
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0509,
+                "MaxMs": 0.0267
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 16,
+                "Succeeded": 0,
+                "Queued": 16,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.11270000000000001,
+                "MaxMs": 0.021
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 10,
+                "Succeeded": 10,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.8517,
+                "MaxMs": 0.3091
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 628.4501,
+                "MaxMs": 424.5934
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 15.0313,
+                "MaxMs": 15.0313
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1251.6595000000002,
+                "MaxMs": 304.7625
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 124.40419999999997,
+                "MaxMs": 51.321
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1319.0426000000002,
+                "MaxMs": 186.9417
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.2626056,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 32,
+                "Succeeded": 32,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1663.1979999999999,
+                "MaxMs": 166.912
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 399.54760000000005,
+                "MaxMs": 54.1624
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1062.9718,
+                "MaxMs": 122.2636
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "OffScreenDefault",
+          "DurationSeconds": 3.014636,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 10040,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 10380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 10720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 11060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 10040,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 10380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 10720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 11060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 1.036609394965097,
+              "WorkingSetBytes": 96620544,
+              "PrivateBytes": 84811776,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 49.757250958324654,
+              "WorkingSetBytes": 49954816,
+              "PrivateBytes": 15765504,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.12522041655867036
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.00408889631417713
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.1817362,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0014,
+                "MaxMs": 0.0014
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 328.51750000000004,
+                "MaxMs": 71.5442
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 39.769600000000004,
+                "MaxMs": 38.008
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 505.34590000000003,
+                "MaxMs": 72.4395
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.076434,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Clipped",
+          "DurationSeconds": 3.0079388,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 1.0389174141441975,
+              "WorkingSetBytes": 92471296,
+              "PrivateBytes": 81219584,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 46.23182492941679,
+              "WorkingSetBytes": 49946624,
+              "PrivateBytes": 15708160,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.6104784842720385
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.004068597001492872
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.5207396,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 140.4984,
+                "MaxMs": 140.4984
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0185,
+                "MaxMs": 0.0185
+              },
+              {
+                "Operation": "ClipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 290.4939,
+                "MaxMs": 60.8047
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0238,
+                "MaxMs": 0.0081
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 140.441,
+                "MaxMs": 140.441
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 176.26619999999997,
+                "MaxMs": 33.0662
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 187.182,
+                "MaxMs": 33.0397
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 422.0204,
+                "MaxMs": 62.8239
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0712854,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Minimized",
+          "DurationSeconds": 3.0047591,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1773510,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1640740,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 9833886,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4130256,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2492494,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 789126,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 7539178,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 93249536,
+              "PrivateBytes": 81506304,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 50024448,
+              "PrivateBytes": 15773696,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.724003072067716
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.04643579727364136
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 2.935448,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 208.0253,
+                "MaxMs": 208.0253
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0252,
+                "MaxMs": 0.0252
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0282,
+                "MaxMs": 0.0068
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 207.954,
+                "MaxMs": 207.954
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 987.2464000000001,
+                "MaxMs": 214.2226
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 223.10919999999996,
+                "MaxMs": 53.4109
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1201.4344,
+                "MaxMs": 106.6822
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0575329,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "StationaryOverview",
+          "DurationSeconds": 3.0000802,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 3.1249164605666206,
+              "WorkingSetBytes": 94662656,
+              "PrivateBytes": 82771968,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 35.93653929651614,
+              "WorkingSetBytes": 50085888,
+              "PrivateBytes": 15839232,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.4222742285286382
+            },
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.030051650865009747
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 2.1263543369690563
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.014422431307760025
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.7574537,
+            "ActiveThumbnails": 9,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0043,
+                "MaxMs": 0.0043
+              },
+              {
+                "Operation": "DwmRegisterThumbnail",
+                "Calls": 11,
+                "Succeeded": 11,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.3996,
+                "MaxMs": 0.0488
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0935,
+                "MaxMs": 0.0639
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 42,
+                "Succeeded": 42,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.7726,
+                "MaxMs": 0.0459
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 21,
+                "Succeeded": 21,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 303.1452,
+                "MaxMs": 18.4911
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 339.8535,
+                "MaxMs": 99.5465
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 205.2664,
+                "MaxMs": 49.3385
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 891.7352000000001,
+                "MaxMs": 109.9784
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0526208,
+            "ActiveThumbnails": 9,
+            "PeakThumbnails": 9,
+            "Operations": [
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 56,
+                "Succeeded": 56,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1.5438999999999998,
+                "MaxMs": 0.0664
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 181,
+                "Succeeded": 181,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3049.3332999999975,
+                "MaxMs": 44.9874
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Panning",
+          "DurationSeconds": 3.0105569,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 4.152055720986373,
+              "WorkingSetBytes": 94306304,
+              "PrivateBytes": 82190336,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 33.21644576789098,
+              "WorkingSetBytes": 50155520,
+              "PrivateBytes": 15872000,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.11489657991007063
+            },
+            {
+              "Role": "CanvasHarness",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.014263718831441502
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 2.817957459523406
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.009815857568297674
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.9668745,
+            "ActiveThumbnails": 10,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 253.75639999999999,
+                "MaxMs": 162.6488
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.11019999999999999,
+                "MaxMs": 0.1017
+              },
+              {
+                "Operation": "ClipWindow",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 57.3251,
+                "MaxMs": 57.3251
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 16,
+                "Succeeded": 0,
+                "Queued": 16,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.07009999999999997,
+                "MaxMs": 0.0339
+              },
+              {
+                "Operation": "DwmRegisterThumbnail",
+                "Calls": 11,
+                "Succeeded": 11,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.5800000000000001,
+                "MaxMs": 0.1926
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 10,
+                "Succeeded": 10,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.32139999999999996,
+                "MaxMs": 0.0565
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 21,
+                "Succeeded": 21,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.5622,
+                "MaxMs": 0.0802
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 253.5397,
+                "MaxMs": 162.6117
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 21,
+                "Succeeded": 21,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 313.69340000000005,
+                "MaxMs": 24.7654
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 181.7835,
+                "MaxMs": 34.4912
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 200.4715,
+                "MaxMs": 42.8691
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 17,
+                "Succeeded": 17,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 952.2682,
+                "MaxMs": 78.8475
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0783513,
+            "ActiveThumbnails": 10,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 15,
+                "Succeeded": 0,
+                "Queued": 15,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3.5187000000000004,
+                "MaxMs": 0.615
+              },
+              {
+                "Operation": "DwmUpdateThumbnailProperties",
+                "Calls": 1536,
+                "Succeeded": 1536,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 56.70760000000007,
+                "MaxMs": 0.24
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 185,
+                "Succeeded": 185,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3082.474199999999,
+                "MaxMs": 25.6743
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 120,
+                "Succeeded": 0,
+                "Queued": 120,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 3.2812,
+                "MaxMs": 0.3333
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Restoration",
+          "DurationSeconds": 3.0295145,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1773510,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 1640740,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 9833886,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4130256,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2492494,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 789126,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 7539178,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [
+            889.4681,
+            1288.6481
+          ],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 2.063036833129533,
+              "WorkingSetBytes": 94416896,
+              "PrivateBytes": 82386944,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 26.303719622401545,
+              "WorkingSetBytes": 50225152,
+              "PrivateBytes": 15958016,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 1.1491659687410427
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.009554403079340315
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x0001801D_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.2619755683044925
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 2.4815767,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 10,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 368.05319999999995,
+                "MaxMs": 201.6717
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.1577,
+                "MaxMs": 0.1491
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 16,
+                "Succeeded": 0,
+                "Queued": 16,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0903,
+                "MaxMs": 0.0145
+              },
+              {
+                "Operation": "DwmUnregisterThumbnail",
+                "Calls": 10,
+                "Succeeded": 10,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.3489999999999999,
+                "MaxMs": 0.0758
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 2,
+                "Succeeded": 2,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 367.7792,
+                "MaxMs": 201.631
+              },
+              {
+                "Operation": "GridFrameIncludingPresent",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 13.6401,
+                "MaxMs": 13.6401
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 863.3822,
+                "MaxMs": 120.2559
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 242.57670000000002,
+                "MaxMs": 50.15
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 692.9891000000001,
+                "MaxMs": 84.0706
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0835939,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1449.2588,
+                "MaxMs": 156.314
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 328.3389,
+                "MaxMs": 59.9374
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1184.6487,
+                "MaxMs": 141.3068
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Visible",
+          "DurationSeconds": 3.0150732,
+          "NativeWindows": [
+            {
+              "Handle": 3411426,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1773510,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 1640740,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 9833886,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4130256,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2492494,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 789126,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 7539178,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 94158848,
+              "PrivateBytes": 82399232,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 16.583345306508647,
+              "WorkingSetBytes": 50311168,
+              "PrivateBytes": 16039936,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.19138498164281498
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.0062113170392395535
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.6577416,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 145.4038,
+                "MaxMs": 145.4038
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0105,
+                "MaxMs": 0.0105
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0224,
+                "MaxMs": 0.0059
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 145.358,
+                "MaxMs": 145.358
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 212.45409999999998,
+                "MaxMs": 41.5307
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 199.43540000000002,
+                "MaxMs": 38.9795
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 788.8418999999999,
+                "MaxMs": 83.4155
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0637665,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "CapturedUtc": "2026-10-11T15:43:51.4550031Z",
+      "OS": "Microsoft Windows 10.0.22631",
+      "Framework": ".NET 10.0.12",
+      "LogicalProcessors": 12,
+      "WindowCount": 8,
+      "Repeats": 2,
+      "SecondsPerPhase": 3,
+      "Workload": "always-work",
+      "Monitors": [
+        {
+          "Bounds": {
+            "Location": {
+              "IsEmpty": true,
+              "X": 0,
+              "Y": 0
+            },
+            "Size": {
+              "IsEmpty": false,
+              "Width": 1920,
+              "Height": 1080
+            },
+            "X": 0,
+            "Y": 0,
+            "Width": 1920,
+            "Height": 1080,
+            "Left": 0,
+            "Top": 0,
+            "Right": 1920,
+            "Bottom": 1080,
+            "IsEmpty": false
+          },
+          "WorkingArea": {
+            "Location": {
+              "IsEmpty": true,
+              "X": 0,
+              "Y": 0
+            },
+            "Size": {
+              "IsEmpty": false,
+              "Width": 1920,
+              "Height": 1032
+            },
+            "X": 0,
+            "Y": 0,
+            "Width": 1920,
+            "Height": 1032,
+            "Left": 0,
+            "Top": 0,
+            "Right": 1920,
+            "Bottom": 1032,
+            "IsEmpty": false
+          }
+        }
+      ],
+      "Interrupted": false,
+      "Limits": "Synthetic GDI/timer workload; DWM includes unrelated desktop activity. CPU is percent of one core. GPU values are separate engine counters, not an overall sum. Restore timing is API acknowledgement, not first painted frame.",
+      "Command": "CanvasDesktop.PerformanceHarness.exe --count=8 --repeats=2 --seconds=3 --always-work --skip-overview",
+      "Samples": [
+        {
+          "Repeat": 1,
+          "Phase": "Visible",
+          "DurationSeconds": 3.0057859,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 13370094,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 10489332,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3279276,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2625474,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4197366,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3476962,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2099356,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 1.039661540763765,
+              "WorkingSetBytes": 56508416,
+              "PrivateBytes": 22544384,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 20.7932308152753,
+              "WorkingSetBytes": 47235072,
+              "PrivateBytes": 14069760,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.22904393040411955
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.007614315107474173
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 3.0436224,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 2.4903,
+                "MaxMs": 2.4903
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 435.4778,
+                "MaxMs": 78.8038
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 473.58299999999997,
+                "MaxMs": 90.4452
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1803.4836,
+                "MaxMs": 158.9647
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.9503073,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "OffScreenDefault",
+          "DurationSeconds": 3.0047691,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": 10040,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 13370094,
+              "X": 10380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 10489332,
+              "X": 10720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3279276,
+              "X": 11060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2625474,
+              "X": 10040,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4197366,
+              "X": 10380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3476962,
+              "X": 10720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2099356,
+              "X": 11060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 2.6000333935808912,
+              "WorkingSetBytes": 57929728,
+              "PrivateBytes": 23552000,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 43.68056101215897,
+              "WorkingSetBytes": 47484928,
+              "PrivateBytes": 14082048,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.10297879713698475
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.002301165752317251
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 3.3074806,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 222.7015,
+                "MaxMs": 222.7015
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.6759,
+                "MaxMs": 0.6759
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.9955999999999999,
+                "MaxMs": 0.9497
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 220.5045,
+                "MaxMs": 220.5045
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 584.6765,
+                "MaxMs": 136.2807
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 393.6019,
+                "MaxMs": 78.4327
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1796.2958000000003,
+                "MaxMs": 146.9271
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0710797,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Clipped",
+          "DurationSeconds": 3.0099839,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 13370094,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 10489332,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3279276,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2625474,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4197366,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3476962,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2099356,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 60174336,
+              "PrivateBytes": 24760320,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 14.015855699427496,
+              "WorkingSetBytes": 48058368,
+              "PrivateBytes": 14249984,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.21535988327676822
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.005098726754065842
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.6727912,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 166.3139,
+                "MaxMs": 166.3139
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0188,
+                "MaxMs": 0.0188
+              },
+              {
+                "Operation": "ClipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 360.90749999999997,
+                "MaxMs": 65.7114
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0265,
+                "MaxMs": 0.0068
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 166.2479,
+                "MaxMs": 166.2479
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 217.50990000000002,
+                "MaxMs": 31.4993
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 153.9435,
+                "MaxMs": 31.8658
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 453.8824,
+                "MaxMs": 67.1591
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0599017,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Minimized",
+          "DurationSeconds": 3.0078297,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 13370094,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 10489332,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3279276,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2625474,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4197366,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3476962,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2099356,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.5194775488785153,
+              "WorkingSetBytes": 60739584,
+              "PrivateBytes": 25092096,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 8.83111833093476,
+              "WorkingSetBytes": 48394240,
+              "PrivateBytes": 14581760,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.28714454005323425
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.005910126459054297
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 2.6474131,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 253.3698,
+                "MaxMs": 253.3698
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0062,
+                "MaxMs": 0.0062
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.018,
+                "MaxMs": 0.0044
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 253.3253,
+                "MaxMs": 253.3253
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 709.1729999999999,
+                "MaxMs": 126.9441
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 54.1455,
+                "MaxMs": 34.4972
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1321.2067,
+                "MaxMs": 81.1592
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0611617,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 1,
+          "Phase": "Restoration",
+          "DurationSeconds": 3.6569885,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 13370094,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 10489332,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3279276,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2625474,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4197366,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3476962,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2099356,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [
+            847.079,
+            913.956,
+            765.296
+          ],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.854528254600746,
+              "WorkingSetBytes": 59801600,
+              "PrivateBytes": 24231936,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 15.8087727101138,
+              "WorkingSetBytes": 49721344,
+              "PrivateBytes": 15626240,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 1.045307776531204
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.013200760711020953
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x0001801D_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.3633915759953399
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.0352629,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.002,
+                "MaxMs": 0.002
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 216.44029999999998,
+                "MaxMs": 20.5433
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 42.92830000000001,
+                "MaxMs": 8.3301
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 457.62479999999994,
+                "MaxMs": 50.4994
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.7113848,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 40,
+                "Succeeded": 40,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1752.3366999999998,
+                "MaxMs": 123.3675
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 468.8055999999999,
+                "MaxMs": 44.5239
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1320.0979000000002,
+                "MaxMs": 83.4063
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "OffScreenDefault",
+          "DurationSeconds": 3.0079814,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": 10040,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 13370094,
+              "X": 10380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 10489332,
+              "X": 10720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3279276,
+              "X": 11060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2625474,
+              "X": 10040,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4197366,
+              "X": 10380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3476962,
+              "X": 10720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2099356,
+              "X": 11060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.5194513503308232,
+              "WorkingSetBytes": 60280832,
+              "PrivateBytes": 24518656,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 17.141894560917166,
+              "WorkingSetBytes": 49717248,
+              "PrivateBytes": 15601664,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.21809184492794106
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.005844667712641839
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.790772,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 94.5215,
+                "MaxMs": 94.5215
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0085,
+                "MaxMs": 0.0085
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.023399999999999997,
+                "MaxMs": 0.0072
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 94.4627,
+                "MaxMs": 94.4627
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 248.32029999999997,
+                "MaxMs": 41.502
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 202.8027,
+                "MaxMs": 39.4574
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 933.9051,
+                "MaxMs": 75.728
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0582135,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Clipped",
+          "DurationSeconds": 3.0113956,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 13370094,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 10489332,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3279276,
+              "X": 1919,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2625474,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4197366,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3476962,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2099356,
+              "X": 1919,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.5188624171463888,
+              "WorkingSetBytes": 56213504,
+              "PrivateBytes": 20328448,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 21.79222152014833,
+              "WorkingSetBytes": 49803264,
+              "PrivateBytes": 15708160,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.1958384308961694
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.0064086288598243285
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.7050388,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 94.8773,
+                "MaxMs": 94.8773
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0088,
+                "MaxMs": 0.0088
+              },
+              {
+                "Operation": "ClipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 433.5253,
+                "MaxMs": 75.4335
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0235,
+                "MaxMs": 0.0061
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 94.8053,
+                "MaxMs": 94.8053
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 213.02560000000003,
+                "MaxMs": 40.2854
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 177.4971,
+                "MaxMs": 35.152
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 468.12299999999993,
+                "MaxMs": 75.4571
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0669826,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Minimized",
+          "DurationSeconds": 3.003268,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 13370094,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 10489332,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3279276,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2625474,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4197366,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3476962,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2099356,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0,
+              "WorkingSetBytes": 56012800,
+              "PrivateBytes": 20148224,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 35.37812809246461,
+              "WorkingSetBytes": 50188288,
+              "PrivateBytes": 16056320,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.1731609823919994
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.0044184057712222695
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 2.7439679,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 256.1217,
+                "MaxMs": 256.1217
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0218,
+                "MaxMs": 0.0218
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.04390000000000001,
+                "MaxMs": 0.0181
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 256.0357,
+                "MaxMs": 256.0357
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 815.4073000000001,
+                "MaxMs": 119.5591
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 23.971000000000004,
+                "MaxMs": 6.0469
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1327.6233000000002,
+                "MaxMs": 86.5944
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0621324,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Restoration",
+          "DurationSeconds": 3.7539507,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 13370094,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 10489332,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3279276,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2625474,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 4197366,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 3476962,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            },
+            {
+              "Handle": 2099356,
+              "X": -32000,
+              "Y": -32000,
+              "Width": 160,
+              "Height": 28,
+              "Style": 919535616
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [
+            762.3932,
+            956.1156,
+            849.1717
+          ],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 1.6649126478938576,
+              "WorkingSetBytes": 56614912,
+              "PrivateBytes": 20742144,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 27.47105869024865,
+              "WorkingSetBytes": 50356224,
+              "PrivateBytes": 16232448,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.38620221752098216
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.006127530346220409
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x0001801D_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.34055644268257773
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.0496479,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0022,
+                "MaxMs": 0.0022
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 257.96500000000003,
+                "MaxMs": 33.9649
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 36.2129,
+                "MaxMs": 7.0439
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 435.10720000000003,
+                "MaxMs": 50.4233
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.8169162,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 40,
+                "Succeeded": 40,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1832.677,
+                "MaxMs": 124.7514
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 431.5735999999999,
+                "MaxMs": 50.021
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 24,
+                "Succeeded": 24,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1371.4702,
+                "MaxMs": 99.7023
+              }
+            ],
+            "FailureCount": 0
+          }
+        },
+        {
+          "Repeat": 2,
+          "Phase": "Visible",
+          "DurationSeconds": 3.0146157,
+          "NativeWindows": [
+            {
+              "Handle": 920194,
+              "X": 40,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 13370094,
+              "X": 380,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 10489332,
+              "X": 720,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3279276,
+              "X": 1060,
+              "Y": 40,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2625474,
+              "X": 40,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 4197366,
+              "X": 380,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 3476962,
+              "X": 720,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            },
+            {
+              "Handle": 2099356,
+              "X": 1060,
+              "Y": 280,
+              "Width": 320,
+              "Height": 220,
+              "Style": 382664704
+            }
+          ],
+          "RestoreBatchApiLatencyMs": [],
+          "Processes": [
+            {
+              "Role": "CanvasHarness",
+              "CpuOneCorePercent": 0.5183081876738054,
+              "WorkingSetBytes": 56852480,
+              "PrivateBytes": 20783104,
+              "Error": null
+            },
+            {
+              "Role": "Workload",
+              "CpuOneCorePercent": 24.36048482066885,
+              "WorkingSetBytes": 50458624,
+              "PrivateBytes": 16334848,
+              "Error": null
+            },
+            {
+              "Role": "DWM",
+              "CpuOneCorePercent": null,
+              "WorkingSetBytes": null,
+              "PrivateBytes": null,
+              "Error": "Win32Exception"
+            }
+          ],
+          "GpuUnavailableReason": null,
+          "GpuEngines": [
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_0_engtype_3D",
+              "UtilizationPercent": 0.10980658336933481
+            },
+            {
+              "Role": "DWM",
+              "Instance": "0x00000000_0x00016541_phys_0_eng_4_engtype_Copy",
+              "UtilizationPercent": 0.010943406966548695
+            }
+          ],
+          "Preparation": {
+            "CollectionSeconds": 1.9733181,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [
+              {
+                "Operation": "BatchMove",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 130.3643,
+                "MaxMs": 130.3643
+              },
+              {
+                "Operation": "BeginDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.0201,
+                "MaxMs": 0.0201
+              },
+              {
+                "Operation": "DeferWindowPos",
+                "Calls": 8,
+                "Succeeded": 0,
+                "Queued": 8,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 0.019299999999999998,
+                "MaxMs": 0.0057
+              },
+              {
+                "Operation": "EndDeferWindowPos",
+                "Calls": 1,
+                "Succeeded": 1,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 130.3052,
+                "MaxMs": 130.3052
+              },
+              {
+                "Operation": "RestoreNativeState",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 243.7785,
+                "MaxMs": 56.7669
+              },
+              {
+                "Operation": "SetWindowPos",
+                "Calls": 8,
+                "Succeeded": 8,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 277.3152,
+                "MaxMs": 47.5823
+              },
+              {
+                "Operation": "UnclipWindow",
+                "Calls": 16,
+                "Succeeded": 16,
+                "Queued": 0,
+                "Failed": 0,
+                "Cancelled": 0,
+                "TotalMs": 1009.15,
+                "MaxMs": 110.475
+              }
+            ],
+            "FailureCount": 0
+          },
+          "Measurement": {
+            "CollectionSeconds": 3.0618711,
+            "ActiveThumbnails": 0,
+            "PeakThumbnails": 0,
+            "Operations": [],
+            "FailureCount": 0
+          }
+        }
+      ]
+    }
+  ]
+}

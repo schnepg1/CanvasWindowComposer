@@ -28,8 +28,10 @@ public class NativeOperationTests
     public void EndFailure_IsReportedForEveryQueuedWindow()
     {
         var native = new Native { FailEnd = true };
-        var result = new WindowBatchMover(native, new()).Execute(Items, false, false, default);
+        var diagnostics = new PerformanceDiagnostics();
+        var result = new WindowBatchMover(native, diagnostics).Execute(Items, false, false, default);
         Assert.Equal(NativeOperationStatus.Failed, result.Summary.Status);
+        Assert.Equal(new long[] { 1, 2, 3 }, diagnostics.Snapshot().RecentFailures.Where(r => r.Operation == "BatchMoveItem").Select(r => r.Window));
         Assert.All(result.Items, r => { Assert.Equal(NativeOperationStatus.Failed, r.Status); Assert.Equal(5, r.ErrorCode); });
     }
 
@@ -174,7 +176,7 @@ public class NativeOperationTests
         var api = new FakeWindowApi(); var canvas = new Canvas();
         using var wm = new WindowManager(canvas, api, new FakeAppConfig(), new FakeInputRouter(), useAsyncProjection: true);
         using var entered = new ManualResetEventSlim();
-        api.BeforeBatchMove = ct => { entered.Set(); Assert.True(ct.WaitHandle.WaitOne(5000)); };
+        api.BeforeBatchMove = ct => { entered.Set(); Assert.True(SpinWait.SpinUntil(() => ct.IsCancellationRequested, TimeSpan.FromSeconds(5))); };
         api.AddWindow((IntPtr)1, 100, 100, 800, 600);
         canvas.SetWindow((IntPtr)1, 5000, 5000, 800, 600);
         wm.Reproject();
