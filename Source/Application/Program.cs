@@ -51,7 +51,7 @@ internal static class Program
         if (Has("--enable-startup"))
         {
             try { WorkspaceStartup.SetEnabled(true); }
-            catch (Exception ex) { Environment.ExitCode = 1; MessageBox.Show(ex.Message, "Canvas startup"); }
+            catch (Exception ex) { Environment.ExitCode = 1; ApplicationErrorDialog.ShowError(ex, "Enable startup"); }
             return;
         }
         if (ProcessPrivileges.IsElevated())
@@ -60,7 +60,7 @@ internal static class Program
             // Migrate only matching current-user tasks, then exit. A subsequent
             // ordinary launch runs unelevated; no workspace is loaded here.
             try { if (WorkspaceStartup.MigrateLegacyTasks() > 0) return; }
-            catch (Exception ex) { MessageBox.Show(ex.Message, "Canvas startup migration"); Environment.ExitCode = 1; return; }
+            catch (Exception ex) { ApplicationErrorDialog.ShowError(ex, "Startup migration"); Environment.ExitCode = 1; return; }
             MessageBox.Show("Start Canvas normally, not with Run as administrator. Elevated Canvas sessions are disabled to keep workspace launches unelevated.",
                 "Canvas security", MessageBoxButtons.OK, MessageBoxIcon.Information);
             Environment.ExitCode = 1;
@@ -92,9 +92,7 @@ internal static class Program
         catch (Exception ex)
         {
             Environment.ExitCode = 1;
-            TrayApp.Log("Application startup/run failed: " + ex);
-            MessageBox.Show("Canvas stopped after an error and attempted desktop recovery.\n\n" + ex.Message,
-                "Canvas Desktop", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ApplicationErrorDialog.ShowError(ex, "Application startup/run", recoveryAttempted: true);
         }
         finally { ShutdownSignal = null; }
     }

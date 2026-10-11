@@ -41,3 +41,12 @@ dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Relea
 ![Membership editor](zone-members-preview.png)
 
 ![Project navigator](zone-navigator-preview.png)
+
+Render the production placeholder cards and overview title labels at 25% and 10%
+zoom without showing windows or touching the saved workspace:
+
+```powershell
+dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Release -- --render-placeholders Tools/ZonePreview/placeholder-cards-preview.png
+```
+
+![Placeholder cards and zoom-aware titles](placeholder-cards-preview.png)

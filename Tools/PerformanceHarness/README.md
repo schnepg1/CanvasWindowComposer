@@ -45,6 +45,14 @@ skips that work while minimized. Both invalidate/draw animated GDI content while
 normal. These two modes deliberately test different application responses to
 minimization; they do not simulate every application's rendering pipeline.
 
+`--flip-rendering` requests the experimental two-buffer flip-discard backend for
+overview. Without it, the compatibility backend remains selected. Reports include
+`FlipRenderingRequested` and the actual per-monitor `RenderingBackends`; inspect
+preparation diagnostics for failed initialization/fallback. This flag changes only
+the owned harness, not the user's config. API acceptance and frame counts do not
+prove correct DWM thumbnail composition; visually validate live/cached previews,
+Panning/Zooming transitions and layered-window behavior before enabling it in the app.
+
 For large counts the grid extends beyond the primary screen, so the Visible phase
 does not promise all windows fit. Inspect `NativeWindows` and monitor geometry,
 or choose a window count that fits the display. OffScreenDefault likewise needs

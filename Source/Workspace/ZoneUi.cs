@@ -23,6 +23,7 @@ internal sealed class ZoneUi : IDisposable
         _navigation = new ZoneNavigation(workspace.Zones, workspace, overview.JumpToZone,
             () => overview.TransitionTo(OverviewMode.Hidden));
         _overview.AttachZones(workspace.Zones);
+        _overview.AttachPlaceholderWorkspace(workspace);
         _overview.ZonePanelRequested += Show;
         _overview.ZoneNavigatorRequested += ShowNavigator;
         _overview.ZoneDrawn += OnZoneDrawn;

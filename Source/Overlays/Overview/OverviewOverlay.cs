@@ -20,11 +20,14 @@ internal sealed class OverviewOverlay : Form
     private ZoneAnnotationWindow? _annotations;
 
     public void ShowZones(System.Collections.Generic.IReadOnlyList<ZoneView> zones, OverviewCamera camera,
-        WorldRect? preview, bool drawing, System.Collections.Generic.IReadOnlyList<WorldRect>? ghosts = null)
+        WorldRect? preview, bool drawing, System.Collections.Generic.IReadOnlyList<WorldRect>? ghosts = null,
+        System.Collections.Generic.IReadOnlyList<PlaceholderAnnotation>? placeholders = null)
     {
         if (_annotations == null) _annotations = new ZoneAnnotationWindow(Handle);
-        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts);
+        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts, placeholders);
     }
+
+    public IntPtr HitPlaceholderLabel(int x, int y) => _annotations?.HitPlaceholderLabel(x, y) ?? IntPtr.Zero;
 
     public void HideZones() => _annotations?.Hide();
 
@@ -76,7 +79,7 @@ internal sealed class OverviewOverlay : Form
     }
 
     /// <summary>Ensure HWND and swap chain are created, sized to the monitor.</summary>
-    public void Warmup()
+    public void Warmup(bool preferFlip = false)
     {
         var b = Screen.Bounds;
         Location = new Point(b.X, b.Y);
@@ -86,8 +89,12 @@ internal sealed class OverviewOverlay : Form
 
         if (Grid == null)
         {
-            Grid = new GridRenderer();
-            Grid.Initialize(Handle, b.Width, b.Height);
+            Grid = new GridRenderer(preferFlip);
+            if (!Grid.Initialize(Handle, b.Width, b.Height))
+            {
+                Grid.Dispose(); Grid = null;
+                return;
+            }
             using (var g = CreateGraphics())
                 Grid.SetDpiScale(g.DpiX / StandardDpi);
             Grid.StartThread();

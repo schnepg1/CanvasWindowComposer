@@ -742,8 +742,14 @@ internal sealed partial class WindowManager : IDisposable
         screens ??= _win32.GetScreenWorkingAreas();
         // Inspect each process once per pass; never cache identity across process reuse.
         Dictionary<uint, WorkspaceProcessIdentity?>? processes = null;
-        foreach (var (handle, world) in _canvas.Windows)
+        // Native/COM queries can dispatch window events on this same UI thread.
+        // Those events may enroll or remove windows while this pass is running.
+        // New windows are observed on the next pass; never enumerate the live map
+        // across a native call or republish state for a window removed by one.
+        foreach (var handle in new List<IntPtr>(_canvas.Windows.Keys))
         {
+            if (_disposed) return;
+            if (!_canvas.Windows.TryGetValue(handle, out var world)) continue;
             uint pid = _win32.GetWindowProcessId(handle);
             var snapshot = _visibility.Get(handle);
             WorkspaceWindowIdentity? identity = snapshot?.Identity;
@@ -782,6 +788,7 @@ internal sealed partial class WindowManager : IDisposable
             && (_vds == null || _vds.IsOnCurrentDesktop(handle));
         var projected = world.PinnedToScreen
             ? _win32.GetWindowRect(handle) : default;
+        if (_disposed || !_canvas.Windows.TryGetValue(handle, out var current) || !current.Equals(world)) return;
         _visibility.Observe(handle, identity, world.PinnedToScreen
             ? new WindowRect(projected.x, projected.y, projected.w, projected.h) : _canvas.Camera.Project(world),
             screens, minimized ?? (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0, eligible, _clock.TickCount64);

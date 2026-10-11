@@ -15,13 +15,19 @@ internal sealed class GridRenderer : IDisposable
 {
     private const int FullscreenTriangleVertexCount = 3;
     private const int VsyncInterval = 1;
-    private const int RenderThreadJoinTimeoutMs = 1000;
     private const int CbAlignmentMask = 15; // 16-byte alignment
 
-    private ID3D11Device? _device;
-    private ID3D11DeviceContext? _context;
-    private IDXGISwapChain? _swapChain;
-    private ID3D11RenderTargetView? _rtv;
+    private D3DRenderSurface? _surface;
+    private ID3D11Device? _device => _surface?.Device;
+    private ID3D11DeviceContext? _context => _surface?.Context;
+    private IDXGISwapChain? _swapChain => _surface?.SwapChain;
+    private ID3D11RenderTargetView? _rtv => _surface?.Target;
+    private readonly bool _preferFlip;
+    private readonly RenderFramePump _pump;
+    internal bool UsesFlipModel => _surface?.UsesFlipModel == true;
+    internal string RenderingBackend => _surface is not { } surface ? "Unavailable" :
+        surface.UsesFlipModel ? "FlipDiscard" : "CompatibilityDiscard";
+
     private ID3D11PixelShader? _pixelShader;
     private ID3D11VertexShader? _vertexShader;
     private ID3D11Buffer? _constantBuffer;
@@ -49,23 +55,33 @@ internal sealed class GridRenderer : IDisposable
 
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
 
+    private static readonly object ShaderLock = new();
     private static byte[]? _vsBytecode;
     private static byte[]? _psBytecode;
 
     public static bool CompileShaders()
     {
-        Compiler.Compile(ShaderSource, "VSMain", "", "vs_5_0", out var vsBlob, out var vsErr);
-        if (vsBlob == null) { vsErr?.Dispose(); return false; }
-
-        Compiler.Compile(ShaderSource, "PSMain", "", "ps_5_0", out var psBlob, out var psErr);
-        if (psBlob == null) { vsBlob.Dispose(); psErr?.Dispose(); return false; }
-
-        _vsBytecode = vsBlob.AsSpan().ToArray();
-        _psBytecode = psBlob.AsSpan().ToArray();
-
-        vsBlob.Dispose();
-        psBlob.Dispose();
-        return true;
+        lock (ShaderLock)
+        {
+            if (_vsBytecode != null && _psBytecode != null) return true;
+            Compiler.Compile(ShaderSource, "VSMain", "", "vs_5_0", out var vsBlob, out var vsErr);
+            using (vsBlob)
+            using (vsErr)
+            {
+                if (vsBlob == null) return false;
+                Compiler.Compile(ShaderSource, "PSMain", "", "ps_5_0", out var psBlob, out var psErr);
+                using (psBlob)
+                using (psErr)
+                {
+                    if (psBlob == null) return false;
+                    var vertex = vsBlob.AsSpan().ToArray();
+                    var pixel = psBlob.AsSpan().ToArray();
+                    _vsBytecode = vertex;
+                    _psBytecode = pixel;
+                    return true;
+                }
+            }
+        }
     }
 
     private const string ShaderSource = @"
@@ -346,34 +362,16 @@ float4 PSMain(VSOut input) : SV_Target
         _width = width;
         _height = height;
 
-        var swapDesc = new SwapChainDescription
+        _surface = D3DRenderSurface.Create(hwnd, width, height, _preferFlip);
+        if (_surface == null) return false;
+        try
         {
-            BufferCount = 1,
-            BufferDescription = new ModeDescription((uint)width, (uint)height, Format.R8G8B8A8_UNorm),
-            BufferUsage = Usage.RenderTargetOutput,
-            OutputWindow = hwnd,
-            SampleDescription = new SampleDescription(1, 0),
-            Windowed = true,
-            SwapEffect = SwapEffect.Discard
-        };
-
-        var hr = D3D11.D3D11CreateDeviceAndSwapChain(
-            null!, DriverType.Hardware, DeviceCreationFlags.None, null!,
-            swapDesc, out _swapChain, out _device, out _, out _context);
-
-        if (hr.Failure) return false;
-
-        CreateRenderTarget();
-        if (!CreateShaders()) return false;
-        CreateConstantBuffer();
-        CreateMonitorBuffer();
-        return true;
-    }
-
-    private void CreateRenderTarget()
-    {
-        using var backBuffer = _swapChain!.GetBuffer<ID3D11Texture2D>(0);
-        _rtv = _device!.CreateRenderTargetView(backBuffer);
+            if (!CreateShaders()) { ReleaseResources(); return false; }
+            CreateConstantBuffer();
+            CreateMonitorBuffer();
+            return true;
+        }
+        catch { ReleaseResources(); return false; }
     }
 
     private bool CreateShaders()
@@ -435,12 +433,12 @@ float4 PSMain(VSOut input) : SV_Target
     public Action? OnFrameTick;
 
     private float _dpiScale = 1.0f;
-    private volatile bool _running;
-    private volatile bool _alive = true;
-    private readonly System.Threading.AutoResetEvent _wakeEvent = new(false);
-    private readonly object _renderLock = new();
-    private readonly GridFrameSchedule _frames = new();
-    private System.Threading.Thread? _renderThread;
+    public GridRenderer(bool preferFlip = false)
+    {
+        _preferFlip = preferFlip;
+        _pump = new RenderFramePump("GridRenderer", RenderFrame,
+            () => _frameTicksRequired || (DrawGrid && _renderZoom < 0.7f), ReleaseResources);
+    }
 
     private volatile float _renderCamX, _renderCamY, _renderZoom;
     private float _panAccumX, _panAccumY;
@@ -449,20 +447,20 @@ float4 PSMain(VSOut input) : SV_Target
     private volatile int _isPrimary;
     private readonly float[] _monitors = new float[MonitorBufferCapacity * 4];
     private volatile int _monitorCount;
-    private readonly object _monitorsLock = new();
+    private readonly object _snapshotLock = new();
 
-    public void RequestFrame() { _frames.Invalidate(); _wakeEvent.Set(); }
-    public void SetDpiScale(float scale) { _dpiScale = scale; RequestFrame(); }
-    public void ResetClock() { _clock.Restart(); RequestFrame(); }
+    public void RequestFrame() => _pump.Invalidate();
+    public void SetDpiScale(float scale) { lock (_snapshotLock) _dpiScale = scale; RequestFrame(); }
+    public void ResetClock() { lock (_snapshotLock) _clock.Restart(); RequestFrame(); }
 
     public void SetScreenLayout(int passOffX, int passOffY, bool isPrimary, System.Drawing.Rectangle[] monitors)
     {
-        _passOffX = passOffX;
-        _passOffY = passOffY;
-        _isPrimary = isPrimary ? 1 : 0;
         int count = Math.Min(monitors.Length, MonitorBufferCapacity);
-        lock (_monitorsLock)
+        lock (_snapshotLock)
         {
+            _passOffX = passOffX;
+            _passOffY = passOffY;
+            _isPrimary = isPrimary ? 1 : 0;
             for (int i = 0; i < count; i++)
             {
                 _monitors[i * 4 + 0] = monitors[i].X;
@@ -477,133 +475,98 @@ float4 PSMain(VSOut input) : SV_Target
 
     public void AccumulatePan(double dx, double dy)
     {
-        _panAccumX += (float)dx;
-        _panAccumY += (float)dy;
+        lock (_snapshotLock)
+        {
+            _panAccumX += (float)dx;
+            _panAccumY += (float)dy;
+        }
         RequestFrame();
     }
 
     /// <summary>Render a single frame synchronously (legacy API).</summary>
     public void Render(double camX, double camY, double zoom)
     {
-        _renderCamX = (float)camX;
-        _renderCamY = (float)camY;
-        _renderZoom = (float)zoom;
-        lock (_renderLock) RenderFrame();
+        lock (_snapshotLock)
+        {
+            _renderCamX = (float)camX;
+            _renderCamY = (float)camY;
+            _renderZoom = (float)zoom;
+        }
+        _pump.Synchronize(() => RenderFrame());
     }
 
     /// <summary>Start the render loop (wakes the suspended thread).</summary>
     public void Start(double camX, double camY, double zoom)
     {
-        _renderCamX = (float)camX;
-        _renderCamY = (float)camY;
-        _renderZoom = (float)zoom;
-        _running = true;
-        _clock.Restart();
-        RequestFrame();
+        lock (_snapshotLock)
+        {
+            _renderCamX = (float)camX;
+            _renderCamY = (float)camY;
+            _renderZoom = (float)zoom;
+        }
+        lock (_snapshotLock) _clock.Restart();
+        _pump.Start();
     }
 
     /// <summary>Update camera for next frame (call from any thread).</summary>
     public void UpdateCamera(double camX, double camY, double zoom)
     {
-        if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom) return;
-        _renderCamX = (float)camX;
-        _renderCamY = (float)camY;
-        _renderZoom = (float)zoom;
+        lock (_snapshotLock)
+        {
+            if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom) return;
+            _renderCamX = (float)camX;
+            _renderCamY = (float)camY;
+            _renderZoom = (float)zoom;
+        }
         RequestFrame();
     }
 
     /// <summary>Stop rendering and go back to sleep.</summary>
-    public void Stop()
-    {
-        _running = false;
-        _wakeEvent.Set();
-    }
+    public void Stop() => _pump.Stop();
 
-    /// <summary>Start the background thread (call once after Initialize).</summary>
-    public void StartThread()
-    {
-        _renderThread = new System.Threading.Thread(RenderLoop)
-        {
-            IsBackground = true,
-            Name = "GridRenderer"
-        };
-        _renderThread.Start();
-    }
+    public void StartThread() => _pump.StartThread();
 
-    private void RenderLoop()
-    {
-        while (_alive)
-        {
-            _wakeEvent.WaitOne();
-
-            while (_running && _alive)
-            {
-                long revision = _frames.Revision;
-                if (!_frames.ShouldRender(DrawGrid, _renderZoom, _frameTicksRequired)) break;
-                lock (_renderLock)
-                {
-                    if (!_running || !_alive) break;
-                    RenderFrame();
-                }
-                _frames.Presented(revision);
-                // Present(1) inside RenderFrame waits for VSync
-            }
-        }
-    }
-
-    /// <summary>Resize swap chain. Pauses render thread, resizes, resumes if was running.</summary>
     public void Resize(int width, int height)
     {
-        if (_swapChain == null || (_width == width && _height == height)) return;
-
-        bool wasRunning = _running;
-        _running = false;
-        lock (_renderLock)
+        if (width <= 0 || height <= 0) return;
+        _pump.Synchronize(() =>
         {
-            _width = width;
-            _height = height;
-            _rtv?.Dispose();
-            _rtv = null;
-            _swapChain.ResizeBuffers(1, (uint)width, (uint)height, Format.R8G8B8A8_UNorm, 0);
-            CreateRenderTarget();
-        }
-
-        if (wasRunning)
-        {
-            _running = true;
-            RequestFrame();
-        }
+            if (_surface == null || (_width == width && _height == height)) return;
+            _surface.Resize(width, height);
+            _width = width; _height = height;
+        });
+        RequestFrame();
     }
 
-    private void RenderFrame()
+    private bool RenderFrame()
     {
-        if (_context == null || _swapChain == null) return;
+        if (_context == null || _swapChain == null) return false;
         long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
-        var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
-        var constants = new GridConstants
+        lock (_snapshotLock)
         {
-            CamX = _renderCamX, CamY = _renderCamY,
-            Zoom = _renderZoom,
-            ScreenW = _width, ScreenH = _height,
-            Time = (float)_clock.Elapsed.TotalSeconds,
-            DpiScale = _dpiScale,
-            PanAccumX = _panAccumX, PanAccumY = _panAccumY,
-            PassOffX = _passOffX, PassOffY = _passOffY,
-            MonitorCount = _monitorCount,
-            IsPrimary = _isPrimary
-        };
-        Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
-        _context.Unmap(_constantBuffer!);
-
-        if (_monitorCount > 0)
-        {
-            var mapped = _context.Map(_monitorBuffer!, MapMode.WriteDiscard);
-            lock (_monitorsLock)
+            var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
+            var constants = new GridConstants
             {
+                CamX = _renderCamX, CamY = _renderCamY,
+                Zoom = _renderZoom,
+                ScreenW = _width, ScreenH = _height,
+                Time = (float)_clock.Elapsed.TotalSeconds,
+                DpiScale = _dpiScale,
+                PanAccumX = _panAccumX, PanAccumY = _panAccumY,
+                PassOffX = _passOffX, PassOffY = _passOffY,
+                MonitorCount = _monitorCount,
+                IsPrimary = _isPrimary
+            };
+            Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
+            _context.Unmap(_constantBuffer!);
+
+            if (_monitorCount > 0)
+            {
+                var mapped = _context.Map(_monitorBuffer!, MapMode.WriteDiscard);
                 Marshal.Copy(_monitors, 0, mapped.DataPointer, _monitorCount * 4);
+                _context.Unmap(_monitorBuffer!);
             }
-            _context.Unmap(_monitorBuffer!);
         }
 
         _context.OMSetRenderTargets(_rtv!);
@@ -625,25 +588,21 @@ float4 PSMain(VSOut input) : SV_Target
 
         var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
         PerformanceDiagnostics.Shared.Complete("GridFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
+        present.CheckError();
         OnFrameTick?.Invoke();
+        return present.Code == 0;
     }
 
-    public void Dispose()
-    {
-        _alive = false;
-        _running = false;
-        _wakeEvent.Set(); // wake to exit
-        _renderThread?.Join(RenderThreadJoinTimeoutMs);
-        _wakeEvent.Dispose();
+    public void Dispose() => _pump.Dispose();
 
-        _rtv?.Dispose();
-        _constantBuffer?.Dispose();
-        _monitorSrv?.Dispose();
-        _monitorBuffer?.Dispose();
-        _pixelShader?.Dispose();
-        _vertexShader?.Dispose();
-        _swapChain?.Dispose();
-        _context?.Dispose();
-        _device?.Dispose();
+    private void ReleaseResources()
+    {
+        _constantBuffer?.Dispose(); _constantBuffer = null;
+        _monitorSrv?.Dispose(); _monitorSrv = null;
+        _monitorBuffer?.Dispose(); _monitorBuffer = null;
+        _pixelShader?.Dispose(); _pixelShader = null;
+        _vertexShader?.Dispose(); _vertexShader = null;
+        _surface?.Dispose();
+        _surface = null;
     }
 }

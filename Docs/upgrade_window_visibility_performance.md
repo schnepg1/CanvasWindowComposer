@@ -2,7 +2,7 @@
 
 ## Implementation status
 
-Updated 11 October 2026.
+Updated 12 October 2026.
 
 | Step | Status |
 | --- | --- |
@@ -12,7 +12,7 @@ Updated 11 October 2026.
 | 4. Cached previews | Implemented and verified locally; best-effort native capture, automatic parking remains disabled |
 | 5. Opt-in automatic minimization | Implemented; unit/native smoke checks pass; disabled by default, real-app matrix pending |
 | 6. Remaining Canvas overhead | Implemented and verified locally; paired synthetic measurements below |
-| 7. Rendering modernization and UI upgrade | Pending |
+| 7. Rendering modernization and UI upgrade | First checkpoint implemented and verified; opt-in flip backend, shared scheduling, WPF workspace/settings; composition/shared-device rollout and remaining UI migration pending |
 
 ## Implementation order
 
@@ -685,3 +685,126 @@ Step 7: evaluate rendering/composition modernization behind the existing
 interfaces, then upgrade the UI shell. Use the measured rendering and restoration
 costs to choose the work; preserve the visibility, parking, preview and recovery
 policy and keep the outstanding real-application matrix visible.
+
+## Implemented checkpoint: step 7 - rendering boundary and WPF shell
+
+Implemented on 12 October 2026. This is the first step 7 checkpoint, not a complete
+replacement of every native UI host. Automatic minimization and the new
+`EnableFlipRendering` option both remain **disabled by default**. The user's live
+configuration and installed/running application were not changed.
+
+### Rendering evaluation and implementation
+
+[D3DRenderSurface](../Source/Overlays/D3DRenderSurface.cs) now owns device,
+immediate context, render target and swap-chain creation/resizing/release behind
+the existing grid and minimap entry points. It supports the current one-buffer
+discard backend and an experimental **two-buffer flip-discard** backend. Set
+`EnableFlipRendering=true` in config.ini, or use Settings, then restart Canvas to
+request flip presentation. Failed flip initialization releases its partial resources
+before attempting compatibility presentation. Both attempts are recorded in the
+existing bounded diagnostics. Alt+Enter fullscreen association is disabled.
+
+| Option | Decision at this checkpoint |
+| --- | --- |
+| HWND flip-discard | Implemented as opt-in for evaluation; retain compatibility presentation by default |
+| DirectComposition | Defer adoption until a separate rendering-host prototype proves live/cached DWM composition, opacity, input and z-order behavior |
+| Shared D3D11 device/context | Retain separate devices for now; sharing an immediate context needs explicit synchronization and coordination of per-monitor presentation |
+| Shared shader resources | Reuse successfully compiled shader bytecode across instances; serialize compilation and avoid repeated startup compilation. Device-owned shaders/buffers remain per renderer |
+| Frame scheduling | Share a single scheduling implementation between grid and minimap, retaining separate render threads and existing inertia callbacks |
+
+Microsoft documents that [flip presentation](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model)
+changes same-HWND layering with other rendering APIs. Overview is also a DWM
+thumbnail destination, while minimap uses layered-window opacity. The existing
+overview host already records an unsuccessful `WS_EX_NOREDIRECTIONBITMAP`
+experiment. These are reasons to verify final composition before rollout; they
+do not establish that flip rendering always fails. A successful swap-chain or
+thumbnail call is insufficient evidence of visual parity.
+
+Microsoft's [D3D11 threading guidance](https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-render-multi-thread-intro)
+requires serialized immediate-context access and recommends coordinating DXGI
+operations with it. Simply pooling the current contexts could serialize vsync waits
+across monitors. No shared-device or GPU-memory-saving claim is made here; measure
+a coordinated submission/presentation prototype before changing that ownership.
+
+### Scheduling and resource lifetime
+
+- [RenderFramePump](../Source/Overlays/RenderFramePump.cs) coalesces invalidations,
+  retains changes arriving during presentation, sleeps for static content and
+  supports the existing continuous nebula/inertia work. Occluded presentation
+  retains the pending revision and backs off for 100 ms, preventing an unpaced loop.
+  Native presentation failures/exceptions are recorded and stop/release the failed
+  renderer rather than terminating the tray process. Automatic device recreation
+  is not implemented; display-host recreation or an application restart is needed
+  after a terminal renderer failure.
+- Minimap now presents changed snapshots and paint/resize/reopening invalidations.
+  Its two-second hold and half-second opacity fade use an owned UI timer instead
+  of submitting unchanged GPU frames to obtain fade ticks. New canvas activity
+  resets the hold and opacity, including activity during an existing fade.
+- Camera/layout constants and monitor data, and minimap viewport/window rectangles,
+  are uploaded from coherent locked snapshots. Resize unbinds the render target
+  and releases retained back-buffer references before resizing either swap chain;
+  zero-sized requests are ignored.
+- Shutdown requests render-thread exit and waits up to one second. If a native
+  presentation is still blocked, that thread retains and eventually releases its
+  resources in its exit path. UI disposal no longer frees resources underneath an
+  in-flight draw. Late frame requests are harmless.
+
+### UI shell checkpoint
+
+- Added tray **Settings…**, using the existing WPF Fluent/dark theme and keyboard
+  interop. Interaction, clipping, automatic minimization and experimental rendering
+  settings edit a detached snapshot. Save persists all supported flags through the
+  existing config file, preserving comments, unknown options and duplicate-key
+  semantics. Cancel/closing does not change running policy. Search/overview shortcut
+  registration and rendering backend changes require restart, as stated in the UI.
+- Replaced the WinForms workspace manager with
+  [WorkspaceWindow](../Source/Workspace/WorkspaceWindow.cs): searchable saved places,
+  startup checkboxes, preserved selection IDs, empty-state/status text and the same
+  command-based actions. Model notifications coalesce through the dispatcher, and
+  closing detaches subscriptions even if an update is already queued.
+- Naming and linking dialogs now use WPF. Linking continues to pass opaque candidate
+  tokens to the existing service, handles stale candidates and clears their selection.
+  File/folder pickers remain native Windows dialogs. Shutdown closes shell windows
+  before the existing WPF application owner shuts down.
+- Native overview/minimap/search hosts and placeholder windows remain in place.
+  The resource controller, identity/parking/recovery policy, bounded preview cache,
+  live/cached source selection, saved coordinates and workspace format are unchanged.
+  Existing unrelated placeholder-card edits in the working tree were preserved.
+
+### Verification and remaining work
+
+```powershell
+dotnet test Tests/CanvasDesktop.Tests.csproj --no-restore -c Release --verbosity minimal
+dotnet build Tools/PerformanceHarness/CanvasDesktop.PerformanceHarness.csproj --no-restore -c Release --verbosity minimal
+dotnet build Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj --no-restore -c Release --verbosity minimal
+```
+
+The Release suite passes **534 tests**, including the existing working-tree
+placeholder tests, with zero warnings/errors. Both tool builds also pass.
+New coverage checks scheduling/coalescing, retained invalidations, occlusion retry,
+continuous ticks, restart, blocked-presentation disposal, background failure,
+configuration round-trip/failure/defaults, detached settings and WPF command/lifetime
+behavior. Existing workspace/ownership tests were migrated to the new UI boundary.
+WPF shell view tests run serially because parallel visible Fluent windows can block
+the test host. Rendered settings/workspace/link previews were visually inspected;
+compact settings were also rendered at 150% output scale with scrolling. This is
+layout QA, not an actual monitor-DPI transition test.
+
+Six `Category=NativeRendering` smoke cases use test-owned, unshown destinations.
+They exercise both backends, GPU pixel readback, bound-target resize, production
+grid/minimap initialization and DWM registration/update/release with live and cached
+sources. They prove native acceptance and the sampled render-target pixels, **not**
+the final composited overview image, focus/input behavior or restoration latency.
+
+The performance harness now accepts `--flip-rendering` and exports the requested
+option plus actual per-monitor backend names, so fallback cannot be mistaken for a
+successful flip measurement. It was built, not run for a new paired benchmark in
+this checkpoint. The step 6 measurements remain the last comparative results.
+
+Remaining step 7 work: visual/live-app comparison of both backends across
+Panning/Zooming, live/cached previews, layered opacity, multiple monitors and DPI;
+paired CPU/GPU/memory/presentation measurements; DirectComposition/shared-device
+prototypes; device-loss recovery; and the remaining search/placeholder/native-host
+UI migration after compatibility is demonstrated. The step 5 real-application
+parking/capture/recovery matrix remains outstanding. No default change, full-shell
+migration, measured rendering speedup or resource-saving percentage is claimed.

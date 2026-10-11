@@ -95,13 +95,13 @@ public class ResourceOwnershipTests : IDisposable
             var baseline = names.ToDictionary(name => name, name => Subscribers(canvas, name));
             using var map = new MinimapOverlay(canvas, input, cache, new FakeScreens());
             var renderer = Field<MinimapRenderer>(map, "_renderer");
-            var wake = Field<ManualResetEventSlim>(renderer, "_wakeEvent");
+            var wake = Field<AutoResetEvent>(Field<RenderFramePump>(renderer, "_pump"), "_wake");
             map.Dispose(); map.Dispose();
             Assert.Equal(0, Subscribers(input, "DragStarted"));
             Assert.Equal(0, Subscribers(cache, "AfterStateLoaded"));
             foreach (string name in names)
                 Assert.Equal(baseline[name], Subscribers(canvas, name));
-            Assert.Throws<ObjectDisposedException>(() => wake.Wait(0));
+            Assert.Throws<ObjectDisposedException>(() => wake.WaitOne(0));
             input.RaiseDragStarted(); canvas.SetCamera(100, 200); map.NotifyCanvasChanged();
             Assert.False(map.Visible);
         });
@@ -115,7 +115,7 @@ public class ResourceOwnershipTests : IDisposable
             using var form = new OverviewOverlay(Screen.PrimaryScreen!);
             var renderer = new GridRenderer(); // No GPU initialization needed for ownership testing.
             typeof(OverviewOverlay).GetProperty("Grid")!.SetValue(form, renderer);
-            var wake = Field<AutoResetEvent>(renderer, "_wakeEvent");
+            var wake = Field<AutoResetEvent>(Field<RenderFramePump>(renderer, "_pump"), "_wake");
             form.Dispose(); form.Dispose();
             Assert.Null(form.Grid);
             Assert.Throws<ObjectDisposedException>(() => wake.WaitOne(0));

@@ -35,7 +35,7 @@ internal static class Program
         var target = workload.Process;
         string handlesPath = workload.HandlesPath;
         var diagnostics = PerformanceDiagnostics.Shared;
-        var config = new BenchmarkConfig();
+        var config = new BenchmarkConfig { EnableFlipRendering = args.Contains("--flip-rendering") };
         var input = new BenchmarkInput();
         var canvas = new Canvas();
         var api = new Win32WindowApi(diagnostics: diagnostics);
@@ -146,6 +146,7 @@ internal static class Program
                 OS = RuntimeInformation.OSDescription, Framework = RuntimeInformation.FrameworkDescription,
                 LogicalProcessors = Environment.ProcessorCount, WindowCount = count, Repeats = repeats, SecondsPerPhase = seconds,
                 Workload = args.Contains("--always-work") ? "always-work" : "cooperative-minimize",
+                FlipRenderingRequested = config.EnableFlipRendering, RenderingBackends = overview.RenderingBackends,
                 Monitors = Screen.AllScreens.Select(s => new { s.Bounds, s.WorkingArea }), Interrupted = interrupted, Results = results,
                 Limits = "Synthetic GDI/timer workload; DWM includes unrelated desktop activity. CPU is percent of one core. GPU values are separate engine counters, not an overall sum. Restore timing is API acknowledgement, not first painted frame." }, Json));
             Console.WriteLine(output);
@@ -261,6 +262,7 @@ internal static class Program
 
 internal sealed class BenchmarkConfig : IAppConfig
 {
+    public bool EnableFlipRendering { get; init; }
     public bool DisableGreedyDraw { get; set; } = true;
     public bool DisableSearch => true;
     public bool DisableAltPan => true;

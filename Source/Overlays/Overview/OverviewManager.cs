@@ -48,6 +48,17 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     // Per-monitor passes
     private readonly List<OverviewOverlay> _passes = new();
 
+    internal IReadOnlyList<string> RenderingBackends
+    {
+        get
+        {
+            var backends = new string[_passes.Count];
+            for (int i = 0; i < backends.Length; i++)
+                backends[i] = _passes[i].Grid?.RenderingBackend ?? "Unavailable";
+            return backends;
+        }
+    }
+
     // MMCSS registration for the UI thread while the overview is open —
     // keeps WM_PAINT / mouse-message dispatch on near-realtime scheduling.
     // Released on Hide.
@@ -182,7 +193,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         foreach (var p in _passes)
         {
-            p.Warmup();
+            p.Warmup(_appConfig.EnableFlipRendering);
             p.Grid?.SetScreenLayout(p.OriginX, p.OriginY, p.Screen.Primary, monitors);
         }
     }
@@ -333,7 +344,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             p.Show();
         }
         if (_passes.Count > 0) _passes[0].Activate();
-        RefreshZoneAnnotations();
+        RefreshPlaceholderTitles();
         if (ShouldShowScreenFixedWindowsDuringPan)
             RaiseMyDockFinderWindowsAboveOverview();
 
@@ -609,7 +620,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (e.Button == MouseButtons.Left)
         {
             var (wx, wy) = _camera.WorldFromVirtual(vx, vy);
-            int hit = _windows.HitTest(wx, wy);
+            int hit = HitOverviewWindow(pass, e.X, e.Y, wx, wy);
             if (hit >= 0)
             {
                 BringWindowToFront(hit);
@@ -645,6 +656,15 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _zoneGesture.Update(end.x, end.y);
             RefreshZoneAnnotations();
             return;
+        }
+        var hoverWorld = _camera.WorldFromVirtual(vx, vy);
+        int hoverIndex = HitOverviewWindow(pass, e.X, e.Y, hoverWorld.x, hoverWorld.y);
+        var hovered = hoverIndex >= 0 && _placeholderTitles.ContainsKey(_windows.Windows[hoverIndex].HWnd)
+            ? _windows.Windows[hoverIndex].HWnd : IntPtr.Zero;
+        if (_hoveredPlaceholder != hovered)
+        {
+            _hoveredPlaceholder = hovered;
+            RefreshZoneAnnotations();
         }
         var corner = HitZoneCorner(pass, e.X, e.Y);
         pass.Cursor = corner is { } c
@@ -721,7 +741,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         int vy = e.Y + pass.OriginY;
         var (wx, wy) = _camera.WorldFromVirtual(vx, vy);
 
-        int hit = _windows.HitTest(wx, wy);
+        int hit = HitOverviewWindow(pass, e.X, e.Y, wx, wy);
         if (hit >= 0)
         {
             var entry = _windows.Windows[hit];
@@ -750,6 +770,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _wm.AutomaticParkingChanged -= OnPreviewChanged;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         if (_zones != null) _zones.Changed -= RefreshZoneAnnotations;
+        if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(() =>

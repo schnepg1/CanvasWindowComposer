@@ -10,6 +10,33 @@ internal sealed partial class OverviewManager
     private ZoneService? _zones;
     private Guid _zoneDesktop;
     private readonly OverviewZoneInteraction _zoneGesture = new();
+    private WorkspaceService? _placeholderWorkspace;
+    private IReadOnlyDictionary<IntPtr, string> _placeholderTitles = new Dictionary<IntPtr, string>();
+    private IntPtr _hoveredPlaceholder;
+
+    public void AttachPlaceholderWorkspace(WorkspaceService workspace)
+    {
+        if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+        _placeholderWorkspace = workspace;
+        workspace.Changed += RefreshPlaceholderTitles;
+        RefreshPlaceholderTitles();
+    }
+
+    private void RefreshPlaceholderTitles()
+    {
+        if (_disposed) return;
+        _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
+        RefreshZoneAnnotations();
+    }
+
+    private int HitOverviewWindow(OverviewOverlay pass, int x, int y, double wx, double wy)
+    {
+        var handle = pass.HitPlaceholderLabel(x, y);
+        if (handle != IntPtr.Zero)
+            for (int i = 0; i < _windows.Count; i++)
+                if (_windows.Windows[i].HWnd == handle) return i;
+        return _windows.HitTest(wx, wy);
+    }
     public event Action? ZonePanelRequested;
     public event Action? ZoneNavigatorRequested;
     public event Action<WorldRect>? ZoneDrawn;
@@ -52,23 +79,30 @@ internal sealed partial class OverviewManager
 
     private void RefreshZoneAnnotations()
     {
-        if (_zones == null) return;
-        if (_zoneDesktop != _zones.DesktopId)
+        if (_zones != null && _zoneDesktop != _zones.DesktopId)
         {
             _zoneDesktop = _zones.DesktopId;
             CancelZoneDrawing();
         }
         if (CurrentMode != OverviewMode.Zooming) return;
-        var zones = new List<ZoneView>(_zones.Items);
+        var zones = _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
         if (_zoneGesture.MovingId is { } movingId && _zoneGesture.Preview is { } moved)
         {
             for (int i = 0; i < zones.Count; i++)
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
         }
+        var cards = new List<PlaceholderAnnotation>();
+        for (int i = 0; i < _windows.Count; i++)
+        {
+            var entry = _windows.Windows[i];
+            if (!entry.ScreenFixed && _placeholderTitles.TryGetValue(entry.HWnd, out var title))
+                cards.Add(new(entry.HWnd, title, entry.World,
+                    i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder || (_draggingWindow && i == _dragIndex)));
+        }
         foreach (var p in _passes)
             if (p.Visible) p.ShowZones(zones, _camera,
                 _zoneGesture.Kind == ZoneGestureKind.Draw ? _zoneGesture.Preview : null,
-                _zoneGesture.Armed || _zoneGesture.Kind == ZoneGestureKind.Draw, _zoneGesture.Ghosts);
+                _zoneGesture.Armed || _zoneGesture.Kind == ZoneGestureKind.Draw, _zoneGesture.Ghosts, cards);
     }
 
     private ZoneView? HitZoneHeader(OverviewOverlay pass, int x, int y)

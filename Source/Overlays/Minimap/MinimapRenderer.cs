@@ -10,7 +10,7 @@ namespace CanvasDesktop;
 
 /// <summary>
 /// D3D11 minimap renderer. UI thread pushes a projected snapshot
-/// (<see cref="UpdateSnapshot"/>) and the render thread draws at vsync.
+/// (<see cref="UpdateSnapshot"/>) and the render thread presents changes at vsync.
 /// No paint work on the UI thread; mirrors <see cref="GridRenderer"/>'s
 /// thread + swap-chain structure.
 /// </summary>
@@ -18,7 +18,6 @@ internal sealed class MinimapRenderer : IDisposable
 {
     private const int FullscreenTriangleVertexCount = 3;
     private const int VsyncInterval = 1;
-    private const int RenderThreadJoinTimeoutMs = 1000;
     private const int CbAlignmentMask = 15;
 
     // Up to 256 windows shown. Anything past that is dropped silently — a
@@ -26,10 +25,15 @@ internal sealed class MinimapRenderer : IDisposable
     private const int WindowBufferCapacity = 32700;
     private const int WindowStructBytes = 16; // two float2 = (min, max)
 
-    private ID3D11Device? _device;
-    private ID3D11DeviceContext? _context;
-    private IDXGISwapChain? _swapChain;
-    private ID3D11RenderTargetView? _rtv;
+    private D3DRenderSurface? _surface;
+    private ID3D11Device? _device => _surface?.Device;
+    private ID3D11DeviceContext? _context => _surface?.Context;
+    private IDXGISwapChain? _swapChain => _surface?.SwapChain;
+    private ID3D11RenderTargetView? _rtv => _surface?.Target;
+    private readonly bool _preferFlip;
+    private readonly RenderFramePump _pump;
+    internal bool UsesFlipModel => _surface?.UsesFlipModel == true;
+
     private ID3D11PixelShader? _pixelShader;
     private ID3D11VertexShader? _vertexShader;
     private ID3D11Buffer? _constantBuffer;
@@ -48,23 +52,33 @@ internal sealed class MinimapRenderer : IDisposable
         public float ViewportMinX, ViewportMinY, ViewportMaxX, ViewportMaxY;
     }
 
+    private static readonly object ShaderLock = new();
     private static byte[]? _vsBytecode;
     private static byte[]? _psBytecode;
 
     public static bool CompileShaders()
     {
-        Compiler.Compile(ShaderSource, "VSMain", "", "vs_5_0", out var vsBlob, out var vsErr);
-        if (vsBlob == null) { vsErr?.Dispose(); return false; }
-
-        Compiler.Compile(ShaderSource, "PSMain", "", "ps_5_0", out var psBlob, out var psErr);
-        if (psBlob == null) { vsBlob.Dispose(); psErr?.Dispose(); return false; }
-
-        _vsBytecode = vsBlob.AsSpan().ToArray();
-        _psBytecode = psBlob.AsSpan().ToArray();
-
-        vsBlob.Dispose();
-        psBlob.Dispose();
-        return true;
+        lock (ShaderLock)
+        {
+            if (_vsBytecode != null && _psBytecode != null) return true;
+            Compiler.Compile(ShaderSource, "VSMain", "", "vs_5_0", out var vsBlob, out var vsErr);
+            using (vsBlob)
+            using (vsErr)
+            {
+                if (vsBlob == null) return false;
+                Compiler.Compile(ShaderSource, "PSMain", "", "ps_5_0", out var psBlob, out var psErr);
+                using (psBlob)
+                using (psErr)
+                {
+                    if (psBlob == null) return false;
+                    var vertex = vsBlob.AsSpan().ToArray();
+                    var pixel = psBlob.AsSpan().ToArray();
+                    _vsBytecode = vertex;
+                    _psBytecode = pixel;
+                    return true;
+                }
+            }
+        }
     }
 
     private const string ShaderSource = @"
@@ -177,34 +191,16 @@ float4 PSMain(VSOut input) : SV_Target
         _mapW = mapW;
         _mapH = mapH;
 
-        var swapDesc = new SwapChainDescription
+        _surface = D3DRenderSurface.Create(hwnd, width, height, _preferFlip);
+        if (_surface == null) return false;
+        try
         {
-            BufferCount = 1,
-            BufferDescription = new ModeDescription((uint)width, (uint)height, Format.R8G8B8A8_UNorm),
-            BufferUsage = Usage.RenderTargetOutput,
-            OutputWindow = hwnd,
-            SampleDescription = new SampleDescription(1, 0),
-            Windowed = true,
-            SwapEffect = SwapEffect.Discard
-        };
-
-        var hr = D3D11.D3D11CreateDeviceAndSwapChain(
-            null!, DriverType.Hardware, DeviceCreationFlags.None, null!,
-            swapDesc, out _swapChain, out _device, out _, out _context);
-
-        if (hr.Failure) return false;
-
-        CreateRenderTarget();
-        if (!CreateShaders()) return false;
-        CreateConstantBuffer();
-        CreateWindowsBuffer();
-        return true;
-    }
-
-    private void CreateRenderTarget()
-    {
-        using var backBuffer = _swapChain!.GetBuffer<ID3D11Texture2D>(0);
-        _rtv = _device!.CreateRenderTargetView(backBuffer);
+            if (!CreateShaders()) { ReleaseResources(); return false; }
+            CreateConstantBuffer();
+            CreateWindowsBuffer();
+            return true;
+        }
+        catch { ReleaseResources(); return false; }
     }
 
     private bool CreateShaders()
@@ -249,11 +245,13 @@ float4 PSMain(VSOut input) : SV_Target
 
     public Action? OnFrameTick;
 
-    private volatile bool _running;
-    private volatile bool _alive = true;
-    private volatile bool _renderThreadIdle = true;
-    private readonly System.Threading.ManualResetEventSlim _wakeEvent = new(false);
-    private System.Threading.Thread? _renderThread;
+    public MinimapRenderer(bool preferFlip = false)
+    {
+        _preferFlip = preferFlip;
+        _pump = new RenderFramePump("MinimapRenderer", RenderFrame, () => false, ReleaseResources);
+    }
+
+    public void RequestFrame() => _pump.Invalidate();
 
     // Fixed from Initialize. Set once before any render, so no volatile.
     private int _mapOriginX, _mapOriginY, _mapW, _mapH;
@@ -277,44 +275,46 @@ float4 PSMain(VSOut input) : SV_Target
         double extentsPadding = 0.10,
         int minRectSizePx = 2)
     {
-        // Frame = extents ∪ viewport, padded. If there are no windows yet,
-        // viewport alone defines the frame.
-        double minX = viewport.x;
-        double minY = viewport.y;
-        double maxX = viewport.x + viewport.w;
-        double maxY = viewport.y + viewport.h;
-        if (extents is var (eMinX, eMinY, eMaxX, eMaxY))
-        {
-            minX = Math.Min(minX, eMinX);
-            minY = Math.Min(minY, eMinY);
-            maxX = Math.Max(maxX, eMaxX);
-            maxY = Math.Max(maxY, eMaxY);
-        }
-
-        double worldW = maxX - minX;
-        double worldH = maxY - minY;
-        minX -= worldW * extentsPadding; maxX += worldW * extentsPadding;
-        minY -= worldH * extentsPadding; maxY += worldH * extentsPadding;
-        worldW = maxX - minX;
-        worldH = maxY - minY;
-
-        if (worldW < 1 || worldH < 1)
-        {
-            _windowCount = 0;
-            return;
-        }
-
-        double scale = Math.Min((_mapW - 2) / worldW, (_mapH - 2) / worldH);
-        double offX = (_mapW - worldW * scale) / 2;
-        double offY = (_mapH - worldH * scale) / 2;
-
-        _vpMinX = (float)(offX + (viewport.x - minX) * scale);
-        _vpMinY = (float)(offY + (viewport.y - minY) * scale);
-        _vpMaxX = (float)(offX + (viewport.x + viewport.w - minX) * scale);
-        _vpMaxY = (float)(offY + (viewport.y + viewport.h - minY) * scale);
-
         lock (_windowsLock)
         {
+            // Frame = extents ∪ viewport, padded. If there are no windows yet,
+            // viewport alone defines the frame.
+            double minX = viewport.x;
+            double minY = viewport.y;
+            double maxX = viewport.x + viewport.w;
+            double maxY = viewport.y + viewport.h;
+            if (extents is var (eMinX, eMinY, eMaxX, eMaxY))
+            {
+                minX = Math.Min(minX, eMinX);
+                minY = Math.Min(minY, eMinY);
+                maxX = Math.Max(maxX, eMaxX);
+                maxY = Math.Max(maxY, eMaxY);
+            }
+
+            double worldW = maxX - minX;
+            double worldH = maxY - minY;
+            minX -= worldW * extentsPadding; maxX += worldW * extentsPadding;
+            minY -= worldH * extentsPadding; maxY += worldH * extentsPadding;
+            worldW = maxX - minX;
+            worldH = maxY - minY;
+
+            if (worldW < 1 || worldH < 1)
+            {
+                _windowCount = 0;
+                _vpMinX = _vpMinY = _vpMaxX = _vpMaxY = 0;
+                RequestFrame();
+                return;
+            }
+
+            double scale = Math.Min((_mapW - 2) / worldW, (_mapH - 2) / worldH);
+            double offX = (_mapW - worldW * scale) / 2;
+            double offY = (_mapH - worldH * scale) / 2;
+
+            _vpMinX = (float)(offX + (viewport.x - minX) * scale);
+            _vpMinY = (float)(offY + (viewport.y - minY) * scale);
+            _vpMaxX = (float)(offX + (viewport.x + viewport.w - minX) * scale);
+            _vpMaxY = (float)(offY + (viewport.y + viewport.h - minY) * scale);
+
             int count = 0;
             foreach (var w in windows)
             {
@@ -337,101 +337,58 @@ float4 PSMain(VSOut input) : SV_Target
             }
             _windowCount = count;
         }
+        RequestFrame();
     }
 
-    public void Start()
-    {
-        _running = true;
-        _wakeEvent.Set();
-    }
+    public void Start() => _pump.Start();
 
-    public void Stop()
-    {
-        _running = false;
-    }
+    public void Stop() => _pump.Stop();
 
-    public void StartThread()
-    {
-        _renderThread = new System.Threading.Thread(RenderLoop)
-        {
-            IsBackground = true,
-            Name = "MinimapRenderer"
-        };
-        _renderThread.Start();
-    }
-
-    private void RenderLoop()
-    {
-        while (_alive)
-        {
-            _renderThreadIdle = true;
-            _wakeEvent.Wait();
-            _renderThreadIdle = false;
-
-            while (_running && _alive)
-            {
-                RenderFrame();
-            }
-
-            _wakeEvent.Reset();
-        }
-        _renderThreadIdle = true;
-    }
+    public void StartThread() => _pump.StartThread();
 
     public void Resize(int width, int height)
     {
-        if (_swapChain == null || (_width == width && _height == height)) return;
-
-        bool wasRunning = _running;
-        _running = false;
-        _wakeEvent.Reset();
-        while (!_renderThreadIdle) System.Threading.Thread.Yield();
-
-        _width = width;
-        _height = height;
-        _rtv?.Dispose();
-        _rtv = null;
-        _swapChain.ResizeBuffers(1, (uint)width, (uint)height, Format.R8G8B8A8_UNorm, 0);
-        CreateRenderTarget();
-
-        if (wasRunning)
+        if (width <= 0 || height <= 0) return;
+        _pump.Synchronize(() =>
         {
-            _running = true;
-            _wakeEvent.Set();
-        }
+            if (_surface == null || (_width == width && _height == height)) return;
+            _surface.Resize(width, height);
+            _width = width; _height = height;
+        });
+        RequestFrame();
     }
 
-    private void RenderFrame()
+    private bool RenderFrame()
     {
-        if (_context == null || _swapChain == null) return;
+        if (_context == null || _swapChain == null) return false;
         long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
-        var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
-        var constants = new MinimapConstants
+        lock (_windowsLock)
         {
-            ScreenW = _width,
-            ScreenH = _height,
-            MapOriginX = _mapOriginX,
-            MapOriginY = _mapOriginY,
-            MapW = _mapW,
-            MapH = _mapH,
-            WindowCount = _windowCount,
-            ViewportMinX = _vpMinX,
-            ViewportMinY = _vpMinY,
-            ViewportMaxX = _vpMaxX,
-            ViewportMaxY = _vpMaxY
-        };
-        Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
-        _context.Unmap(_constantBuffer!);
-
-        if (_windowCount > 0)
-        {
-            var mapped = _context.Map(_windowsBuffer!, MapMode.WriteDiscard);
-            lock (_windowsLock)
+            var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
+            var constants = new MinimapConstants
             {
+                ScreenW = _width,
+                ScreenH = _height,
+                MapOriginX = _mapOriginX,
+                MapOriginY = _mapOriginY,
+                MapW = _mapW,
+                MapH = _mapH,
+                WindowCount = _windowCount,
+                ViewportMinX = _vpMinX,
+                ViewportMinY = _vpMinY,
+                ViewportMaxX = _vpMaxX,
+                ViewportMaxY = _vpMaxY
+            };
+            Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
+            _context.Unmap(_constantBuffer!);
+
+            if (_windowCount > 0)
+            {
+                var mapped = _context.Map(_windowsBuffer!, MapMode.WriteDiscard);
                 Marshal.Copy(_windowRects, 0, mapped.DataPointer, _windowCount * 4);
+                _context.Unmap(_windowsBuffer!);
             }
-            _context.Unmap(_windowsBuffer!);
         }
 
         _context.OMSetRenderTargets(_rtv!);
@@ -446,25 +403,21 @@ float4 PSMain(VSOut input) : SV_Target
 
         var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
         PerformanceDiagnostics.Shared.Complete("MinimapFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
+        present.CheckError();
         OnFrameTick?.Invoke();
+        return present.Code == 0;
     }
 
-    public void Dispose()
-    {
-        _alive = false;
-        _running = false;
-        _wakeEvent.Set();
-        _renderThread?.Join(RenderThreadJoinTimeoutMs);
-        _wakeEvent.Dispose();
+    public void Dispose() => _pump.Dispose();
 
-        _rtv?.Dispose();
-        _constantBuffer?.Dispose();
-        _windowsSrv?.Dispose();
-        _windowsBuffer?.Dispose();
-        _pixelShader?.Dispose();
-        _vertexShader?.Dispose();
-        _swapChain?.Dispose();
-        _context?.Dispose();
-        _device?.Dispose();
+    private void ReleaseResources()
+    {
+        _constantBuffer?.Dispose(); _constantBuffer = null;
+        _windowsSrv?.Dispose(); _windowsSrv = null;
+        _windowsBuffer?.Dispose(); _windowsBuffer = null;
+        _pixelShader?.Dispose(); _pixelShader = null;
+        _vertexShader?.Dispose(); _vertexShader = null;
+        _surface?.Dispose();
+        _surface = null;
     }
 }

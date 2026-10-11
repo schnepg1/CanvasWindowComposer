@@ -14,6 +14,7 @@ internal interface IAppConfig
     bool DisableAltPan { get; }
     bool DisableGreedyDraw { get; }
     bool EnableAutomaticMinimization => false;
+    bool EnableFlipRendering => false;
     bool ShowScreenFixedWindowsDuringPan { get; }
 
     /// <summary>
@@ -57,6 +58,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DisableAltPan { get; private set; }
     public bool DisableGreedyDraw { get; private set; } = true;
     public bool EnableAutomaticMinimization { get; private set; }
+    public bool EnableFlipRendering { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
     public bool DisableMouseCurve { get; private set; }
     public bool DisableZoomHotkey { get; private set; }
@@ -84,6 +86,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DisableAltPan = GetBool(values, "DisableAltPan", defaultValue: false);
             DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
             EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
+            EnableFlipRendering = GetBool(values, "EnableFlipRendering", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
             DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
             DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
@@ -95,8 +98,38 @@ internal sealed class AppConfig : IAppConfig, IDisposable
         lock (_watcherGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            ShowScreenFixedWindowsDuringPan = value;
             WriteBool("ShowScreenFixedWindowsDuringPan", value);
+            ShowScreenFixedWindowsDuringPan = value;
+        }
+    }
+
+    public CanvasPreferences Preferences
+    {
+        get
+        {
+            lock (_watcherGate) return new(!DisableSearch, !DisableAltPan, !DisableZoomHotkey,
+                !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
+                EnableAutomaticMinimization, EnableFlipRendering);
+        }
+    }
+
+    public void SavePreferences(CanvasPreferences preferences)
+    {
+        lock (_watcherGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            WriteValues(new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["DisableSearch"] = !preferences.Search,
+                ["DisableAltPan"] = !preferences.AltPan,
+                ["DisableZoomHotkey"] = !preferences.ZoomHotkey,
+                ["DisableMouseCurve"] = !preferences.MouseCurve,
+                ["ShowScreenFixedWindowsDuringPan"] = preferences.ScreenFixedWindows,
+                ["DisableGreedyDraw"] = !preferences.ClipOffscreen,
+                ["EnableAutomaticMinimization"] = preferences.AutomaticMinimization,
+                ["EnableFlipRendering"] = preferences.FlipRendering
+            });
+            Load();
         }
     }
 
@@ -175,6 +208,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Restores without activation on approach; unsupported captures retain current behavior
 ;EnableAutomaticMinimization=false
 
+; Experimental flip-model rendering; restart Canvas after changing
+; Keep disabled until DWM thumbnails and layered overlays are visually validated
+;EnableFlipRendering=false
+
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true
 
@@ -217,14 +254,16 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     }
 
     private void WriteBool(string key, bool value)
+        => WriteValues(new(StringComparer.OrdinalIgnoreCase) { [key] = value });
+
+    private void WriteValues(Dictionary<string, bool> values)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_configPath))!);
         if (!File.Exists(_configPath))
             WriteDefault();
 
         string[] lines = File.ReadAllLines(_configPath);
-        string replacement = $"{key}={value.ToString().ToLowerInvariant()}";
-        bool replaced = false;
+        var remaining = new HashSet<string>(values.Keys, StringComparer.OrdinalIgnoreCase);
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -237,23 +276,27 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 continue;
 
             string existingKey = line[..eq].Trim();
-            if (!existingKey.Equals(key, StringComparison.OrdinalIgnoreCase))
+            if (!values.TryGetValue(existingKey, out bool value))
                 continue;
 
-            lines[i] = replacement;
-            replaced = true;
-            break;
+            // Update duplicates too: the reader uses the last occurrence.
+            lines[i] = $"{existingKey}={value.ToString().ToLowerInvariant()}";
+            remaining.Remove(existingKey);
         }
 
-        if (!replaced)
+        if (remaining.Count > 0)
         {
             var updated = new List<string>(lines.Length + 2);
             updated.AddRange(lines);
             updated.Add("");
-            updated.Add(replacement);
+            foreach (string key in remaining)
+                updated.Add($"{key}={values[key].ToString().ToLowerInvariant()}");
             lines = updated.ToArray();
         }
 
         File.WriteAllLines(_configPath, lines);
     }
 }
+
+internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotkey, bool MouseCurve,
+    bool ScreenFixedWindows, bool ClipOffscreen, bool AutomaticMinimization, bool FlipRendering);

@@ -38,6 +38,17 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     public event Action? Changed;
     public event Action<string>? LaunchFailed;
 
+    // Only actual cards on the current desktop are annotated. Their geometry is
+    // supplied by the overview, so labels follow a drag before the next save.
+    public IReadOnlyDictionary<IntPtr, string> GetPlaceholderTitles()
+    {
+        var titles = new Dictionary<IntPtr, string>();
+        foreach (var item in Document.Items)
+            if (_cards.TryGetValue(item.Id, out var card))
+                titles[card.Handle] = item.Name.Length > 0 ? item.Name : item.Title;
+        return titles;
+    }
+
     public WorkspaceService(Canvas canvas, WindowManager wm, IWindowApi api,
         IVirtualDesktops desktops, DesktopStateCache cache, IWorkspaceStore store,
         IWorkspacePlaceholderFactory placeholders, IWorkspaceWindowActions windowActions,
@@ -378,7 +389,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         : _ambiguous.Contains(item.Id) ? "Needs linking" : "Placeholder";
 
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
-        item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name);
+        item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder);
 
     private WorkspaceItem? Find(Guid id) => _disposed ? null : Document.Items.FirstOrDefault(i => i.Id == id);
 

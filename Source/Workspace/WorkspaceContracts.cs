@@ -5,7 +5,7 @@ namespace CanvasDesktop;
 
 // A detached snapshot: forms cannot mutate the persisted model by editing a row.
 internal sealed record WorkspaceItemView(Guid Id, string Title, string ExecutablePath,
-    string Target, bool OpenOnStartup, WorldRect Bounds, string State, string Name = "");
+    string Target, bool OpenOnStartup, WorldRect Bounds, string State, string Name = "", bool IsFolder = false);
 
 internal sealed record WorkspaceLinkCandidate(Guid Token, string Description);
 

@@ -16,6 +16,7 @@ internal sealed class ZoneAnnotationWindow : Window
 {
     private readonly ZoneDrawing _drawing = new();
     private System.Drawing.Rectangle _bounds;
+    public IntPtr HitPlaceholderLabel(int x, int y) => _drawing.HitPlaceholderLabel(x, y);
     public ZoneAnnotationWindow(IntPtr owner)
     {
         WindowStyle = WindowStyle.None;
@@ -35,9 +36,10 @@ internal sealed class ZoneAnnotationWindow : Window
     }
 
     public void Update(IReadOnlyList<ZoneView> zones, double x, double y, double zoom,
-        System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts = null)
+        System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts = null,
+        IReadOnlyList<PlaceholderAnnotation>? placeholders = null)
     {
-        _drawing.Update(zones, x, y, zoom, screen, preview, drawing, ghosts);
+        _drawing.Update(zones, x, y, zoom, screen, preview, drawing, ghosts, placeholders);
         bool opening = !IsVisible;
         if (opening) Show();
         if (opening || _bounds != screen)
@@ -49,7 +51,7 @@ internal sealed class ZoneAnnotationWindow : Window
         }
     }
 
-    private sealed class ZoneDrawing : FrameworkElement
+    internal sealed class ZoneDrawing : FrameworkElement
     {
         private IReadOnlyList<ZoneView> _zones = Array.Empty<ZoneView>();
         private double _x, _y, _zoom;
@@ -57,13 +59,26 @@ internal sealed class ZoneAnnotationWindow : Window
         private WorldRect? _preview;
         private bool _drawing;
         private IReadOnlyList<WorldRect> _ghosts = Array.Empty<WorldRect>();
+        private IReadOnlyList<PlaceholderAnnotation> _placeholders = Array.Empty<PlaceholderAnnotation>();
+        private IReadOnlyList<PlaceholderLabel> _labels = Array.Empty<PlaceholderLabel>();
+
+        public IntPtr HitPlaceholderLabel(int x, int y)
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            foreach (var label in _labels)
+                if (label.Rect.Contains(new Point(x / dpi.DpiScaleX, y / dpi.DpiScaleY))) return label.Card.Handle;
+            return IntPtr.Zero;
+        }
 
         public void Update(IReadOnlyList<ZoneView> zones, double x, double y, double zoom,
-            System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts)
+            System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts,
+            IReadOnlyList<PlaceholderAnnotation>? placeholders)
         {
             _zones = zones; _x = x; _y = y; _zoom = zoom; _screen = screen;
             _preview = preview; _drawing = drawing;
             _ghosts = ghosts ?? Array.Empty<WorldRect>();
+            _placeholders = placeholders ?? Array.Empty<PlaceholderAnnotation>();
+            _labels = Array.Empty<PlaceholderLabel>();
             InvalidateVisual();
         }
 
@@ -72,6 +87,7 @@ internal sealed class ZoneAnnotationWindow : Window
             base.OnRender(dc);
             var dpi = VisualTreeHelper.GetDpi(this);
             dc.PushClip(new RectangleGeometry(new Rect(RenderSize)));
+            DrawPlaceholderLabels(dc, dpi);
             foreach (var zone in _zones)
                 DrawZone(dc, zone.Bounds, zone.Name + $" · {zone.MemberCount}", (Color)ColorConverter.ConvertFromString(zone.Color), dpi, false);
             foreach (var ghost in _ghosts)
@@ -87,6 +103,33 @@ internal sealed class ZoneAnnotationWindow : Window
                 new Rect(20, 20, text.Width + 28, 36), 10, 10);
             dc.DrawText(text, new Point(34, 28));
             dc.Pop();
+        }
+
+        private void DrawPlaceholderLabels(DrawingContext dc, DpiScale dpi)
+        {
+            var monitor = new ScreenRect(_screen.X, _screen.Y, _screen.Width, _screen.Height);
+            var reserved = new List<Rect> { new(0, 0, RenderSize.Width, 64) };
+            foreach (var zone in _zones)
+                if (ZoneLabelLayout.Get(zone.Bounds, _x, _y, _zoom, monitor, dpi.DpiScaleX, dpi.DpiScaleY) is { } header)
+                    reserved.Add(new Rect(header.X / dpi.DpiScaleX, header.Y / dpi.DpiScaleY,
+                        header.Width / dpi.DpiScaleX, header.Height / dpi.DpiScaleY));
+            _labels = PlaceholderLabelLayout.Get(_placeholders, _x, _y, _zoom, monitor,
+                dpi.DpiScaleX, dpi.DpiScaleY, reserved);
+            foreach (var label in _labels)
+            {
+                var rect = label.Rect;
+                var border = new SolidColorBrush(label.Card.Priority ? Color.FromRgb(147, 197, 253) : Color.FromRgb(80, 103, 137));
+                dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(23, 31, 46)),
+                    new Pen(border, label.Card.Priority ? 2 : 1), rect, 10, 10);
+                var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                    new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                    label.FontSize, Brushes.WhiteSmoke, dpi.PixelsPerDip)
+                {
+                    MaxTextWidth = rect.Width - 24, MaxTextHeight = rect.Height - 16,
+                    MaxLineCount = 2, Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
+                };
+                dc.DrawText(text, new Point(rect.X + 12, rect.Y + Math.Max(8, (rect.Height - text.Height) / 2)));
+            }
         }
 
         private void DrawZone(DrawingContext dc, WorldRect b, string name, Color color, DpiScale dpi, bool preview)

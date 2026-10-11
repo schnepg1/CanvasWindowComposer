@@ -1,20 +1,23 @@
 using System.Runtime.ExceptionServices;
 using System.Windows.Forms;
 using CanvasDesktop;
+using System.Windows;
+using Wpf = System.Windows.Controls;
 
 namespace CanvasDesktop.Tests;
 
+[Collection("ShellViews")]
 public class WorkspaceViewTests
 {
     [Fact]
-    public void DisposingUnshownWorkspaceFormUnsubscribesFromCommands()
+    public void ClosingUnshownWorkspaceWindowUnsubscribesFromCommands()
     {
         OnSta(() =>
         {
             var commands = new TestCommands();
-            var form = new WorkspaceForm(commands);
+            var form = new WorkspaceWindow(commands);
             Assert.Equal(1, commands.Subscribers);
-            form.Dispose(); form.Dispose();
+            form.Close(); form.Close();
             Assert.Equal(0, commands.Subscribers);
             commands.RaiseChanged(); // No callback into a disposed form.
         });
@@ -48,16 +51,23 @@ public class WorkspaceViewTests
         OnSta(() =>
         {
             var commands = new TestCommands();
-            using var form = new WorkspaceForm(commands);
-            form.Show();
-            var list = form.Controls.OfType<ListView>().Single();
-            var row = Assert.Single(list.Items.Cast<ListViewItem>());
-            Assert.IsType<WorkspaceItemView>(row.Tag);
-            row.Selected = true; row.Checked = true;
-            Assert.Equal((commands.Items[0].Id, true), commands.AutoOpen);
-            var open = form.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b => b.Text == "Open");
-            open.PerformClick();
-            Assert.Equal(commands.Items[0].Id, commands.Opened);
+            var window = new WorkspaceWindow(commands);
+            try
+            {
+                var list = Descendants(window).OfType<Wpf.ListBox>().Single();
+                list.SelectedIndex = 0;
+                var row = Assert.IsType<WorkspaceItemView>(list.SelectedItem);
+                var check = new Wpf.CheckBox { DataContext = row, IsChecked = true };
+                list.RaiseEvent(new RoutedEventArgs(Wpf.CheckBox.ClickEvent, check));
+                Assert.Equal((row.Id, true), commands.AutoOpen);
+                Descendants(window).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Open"))
+                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                Assert.Equal(row.Id, commands.Opened);
+                commands.RaiseChanged();
+                window.Close(); // A queued refresh must not access a closed view.
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+            }
+            finally { window.Close(); }
         });
     }
 
@@ -69,23 +79,32 @@ public class WorkspaceViewTests
         OnSta(() =>
         {
             var commands = new TestCommands { LinkSucceeds = succeeds };
-            var candidate = new WorkspaceLinkCandidate(Guid.NewGuid(), "Project — Editor [PID 42, window 0x123]");
+            var candidate = new WorkspaceLinkCandidate(Guid.NewGuid(), "Project ? Editor [PID 42, window 0x123]");
             commands.Candidates = new[] { candidate };
-            using var form = new WorkspaceLinkForm(commands, commands.Items[0].Id);
-            form.Show();
-            var link = form.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>()
-                .Single(b => b.Text == "Link selected window");
-            Assert.False(link.Enabled);
-            form.Controls.OfType<ListBox>().Single().SelectedIndex = 0;
-            Assert.True(link.Enabled);
-            link.PerformClick();
-            Assert.Equal((commands.Items[0].Id, candidate.Token), commands.Linked);
-            if (succeeds) Assert.Equal(DialogResult.OK, form.DialogResult);
-            else
+            var window = WorkspaceInteractionDialogs.CreateLinkWindow(IntPtr.Zero, commands, commands.Items[0].Id);
+            Exception? callbackFailure = null;
+            window.Dispatcher.BeginInvoke(() =>
             {
-                Assert.False(link.Enabled);
-                Assert.Contains(form.Controls.OfType<Label>(), l => l.Text.Contains("no longer available"));
-            }
+                try
+                {
+                    var link = Descendants(window).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Link selected window"));
+                    Assert.False(link.IsEnabled);
+                    Descendants(window).OfType<Wpf.ListBox>().Single().SelectedIndex = 0;
+                    Assert.True(link.IsEnabled);
+                    link.RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                    Assert.Equal((commands.Items[0].Id, candidate.Token), commands.Linked);
+                    if (!succeeds)
+                    {
+                        Assert.False(link.IsEnabled);
+                        Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), l => l.Text.Contains("no longer available"));
+                    }
+                }
+                catch (Exception ex) { callbackFailure = ex; }
+                finally { window.Close(); }
+            });
+            bool? result = window.ShowDialog();
+            if (callbackFailure != null) ExceptionDispatchInfo.Capture(callbackFailure).Throw();
+            Assert.Equal(succeeds, result == true);
         });
     }
 
@@ -95,13 +114,38 @@ public class WorkspaceViewTests
         OnSta(() =>
         {
             var commands = new TestCommands();
-            using var form = new WorkspaceLinkForm(commands, commands.Items[0].Id);
-            form.Show(); form.PerformLayout();
-            Assert.Empty(form.Controls.OfType<ListBox>().Single().Items);
-            Assert.Contains(form.Controls.OfType<Label>(), l => l.Text.Contains("No eligible windows"));
-            using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
-            form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
-            bitmap.Save(Path.Combine(AppContext.BaseDirectory, "workspace-link-preview.png"));
+            var window = WorkspaceInteractionDialogs.CreateLinkWindow(IntPtr.Zero, commands, commands.Items[0].Id);
+            try
+            {
+                Assert.Empty(Descendants(window).OfType<Wpf.ListBox>().Single().Items);
+                Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), l => l.Text.Contains("No eligible windows"));
+                Render(window, "workspace-link-preview.png");
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
+    public void WorkspaceSearchRetainsSelectionByIdAndShowsAnEmptyState()
+    {
+        OnSta(() =>
+        {
+            var commands = new TestCommands();
+            var window = new WorkspaceWindow(commands);
+            try
+            {
+                var list = Descendants(window).OfType<Wpf.ListBox>().Single();
+                var filter = Descendants(window).OfType<Wpf.TextBox>().Single();
+                list.SelectedIndex = 0;
+                filter.Text = "notes.txt";
+                Assert.Equal(commands.Items[0].Id, Assert.IsType<WorkspaceItemView>(list.SelectedItem).Id);
+                filter.Text = "no matches";
+                Assert.Empty(list.Items);
+                Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), l => l.Text.Contains("No saved places"));
+                filter.Clear();
+                Render(window, "workspace-shell-preview.png");
+            }
+            finally { window.Close(); }
         });
     }
 
@@ -123,7 +167,37 @@ public class WorkspaceViewTests
         });
     }
 
-    private static void OnSta(Action action)
+    internal static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+        { yield return child; foreach (var descendant in Descendants(child)) yield return descendant; }
+    }
+
+    internal static void Render(Window window, string fileName, double scale = 1)
+    {
+        window.ShowActivated = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = System.Windows.Forms.SystemInformation.VirtualScreen.Right + 500;
+        window.Top = System.Windows.Forms.SystemInformation.VirtualScreen.Bottom + 500;
+        window.Show(); window.UpdateLayout();
+        var content = (FrameworkElement)window.Content;
+        double width = content.ActualWidth + 48, height = content.ActualHeight + 48;
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(width * scale),
+            (int)(height * scale), 96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+        var visual = new System.Windows.Media.DrawingVisual();
+        using (var drawing = visual.RenderOpen())
+        {
+            drawing.DrawRectangle(window.Background, null, new Rect(0, 0, width, height));
+            drawing.DrawRectangle(new System.Windows.Media.VisualBrush(content), null,
+                new Rect(24, 24, width - 48, height - 48));
+        }
+        bitmap.Render(visual);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(AppContext.BaseDirectory, fileName)); encoder.Save(stream);
+    }
+
+    internal static void OnSta(Action action)
     {
         Exception? failure = null;
         var thread = new Thread(() => { try { action(); } catch (Exception ex) { failure = ex; } });

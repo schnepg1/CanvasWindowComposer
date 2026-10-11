@@ -155,6 +155,66 @@ public class WindowVisibilityTests
     }
 
     [Fact]
+    public void VisibilityPassDefersWindowsAddedByReentrantNativeQueries()
+    {
+        var canvas = new Canvas();
+        var api = new FakeWindowApi();
+        var added = (IntPtr)43;
+        api.AddWindow(Handle, 0, 0, 400, 300, pid: 7);
+        api.AddWindow(added, 500, 0, 400, 300, pid: 8);
+        canvas.SetWindow(Handle, 0, 0, 400, 300);
+        bool add = true;
+        using var manager = new WindowManager(canvas, api, new FakeAppConfig(), new FakeInputRouter(),
+            inspectProcess: pid =>
+            {
+                if (add)
+                {
+                    add = false;
+                    canvas.SetWindow(added, 500, 0, 400, 300);
+                }
+                return new(pid, 100, "test.exe");
+            });
+
+        manager.RefreshPreviewState();
+        Assert.NotNull(manager.GetRuntimeVisibility(Handle));
+        Assert.Null(manager.GetRuntimeVisibility(added));
+        manager.RefreshPreviewState();
+        Assert.NotNull(manager.GetRuntimeVisibility(added));
+    }
+
+    [Fact]
+    public void VisibilityPassDoesNotResurrectWindowsRemovedDuringNativeQueries()
+    {
+        var canvas = new Canvas();
+        var api = new FakeWindowApi();
+        var other = (IntPtr)43;
+        api.AddWindow(Handle, 0, 0, 400, 300, pid: 7);
+        api.AddWindow(other, 500, 0, 400, 300, pid: 8);
+        bool remove = false;
+        WindowManager? manager = null;
+        using (manager = new WindowManager(canvas, api, new FakeAppConfig(), new FakeInputRouter(),
+            inspectProcess: pid =>
+            {
+                if (remove)
+                {
+                    remove = false;
+                    manager!.RemoveWindow(Handle);
+                    manager.RemoveWindow(other);
+                }
+                return new(pid, 100, "test.exe");
+            }))
+        {
+            manager.RegisterWindow(Handle);
+            manager.RegisterWindow(other);
+            remove = true;
+            manager.RefreshPreviewState();
+            Assert.Empty(canvas.Windows);
+            Assert.Null(manager.GetRuntimeVisibility(Handle));
+            Assert.Null(manager.GetRuntimeVisibility(other));
+        }
+    }
+
+    [Fact]
     public void MultipleMonitorsAndLargeCoordinatesUseWideArithmetic()
     {
         var screens = new[] { (-1000, 0, 800, 800), (int.MaxValue - 100, 0, 100, 800) };

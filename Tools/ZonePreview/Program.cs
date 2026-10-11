@@ -12,6 +12,11 @@ internal static class Program
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
+        if (args.Length == 2 && args[0] == "--render-placeholders")
+        {
+            PlaceholderPreview.Render(args[1]);
+            return;
+        }
         var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
         var document = new WorkspaceDocument();
         document.Items.Add(new WorkspaceItem { Title = "Browser · Design references", Bounds = new WorldRect { X = 180, Y = 210, W = 400, H = 260 } });

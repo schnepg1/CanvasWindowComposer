@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
 
 /// <summary>
 /// Thin shell around <see cref="MinimapRenderer"/>. Canvas events translate
-/// to a single <c>UpdateSnapshot</c> on the UI thread; drawing and fade
-/// timing run on the render thread.
+/// to a single <c>UpdateSnapshot</c> on the UI thread. Opacity has its own UI
+/// timer, so fading does not require resubmitting unchanged GPU content.
 /// </summary>
 internal sealed class MinimapOverlay : Form
 {
@@ -19,8 +18,7 @@ internal sealed class MinimapOverlay : Form
     private const int InnerPadding = 8;
     private const double MinimapOpacity = 0.75;
 
-    // Fade: hold full for HoldMs, then linear ramp to 0 over FadeMs. Driven on
-    // the render thread via OnFrameTick; mirrors the overview's inertia tick.
+    // Hold without GPU work, then animate only the layered-window opacity.
     private const long HoldMs = 2000;
     private const long FadeMs = 500;
     private const double OpacityQuantum = 0.02;
@@ -36,13 +34,12 @@ internal sealed class MinimapOverlay : Form
     private readonly IInputRouter _input;
     private readonly DesktopStateCache _desktops;
     private volatile bool _closing;
-    private readonly MinimapRenderer _renderer = new();
-    private readonly Action _applyFadeOnUi;
+    private readonly MinimapRenderer _renderer;
+    private readonly Timer _fadeTimer;
     private bool _rendererInitialized;
 
     private long _touchTicks;
     private double _lastAppliedOpacity = -1;
-    private int _fadeUpdateQueued;
 
     // Scratch buffer reused across snapshots, refilled per snapshot by
     // sorting Canvas.Windows by WorldRect.ZOrder descending (topmost first).
@@ -65,12 +62,15 @@ internal sealed class MinimapOverlay : Form
         get { return true; }
     }
 
-    public MinimapOverlay(Canvas canvas, IInputRouter input, DesktopStateCache desktops, IScreens? screens = null)
+    public MinimapOverlay(Canvas canvas, IInputRouter input, DesktopStateCache desktops, IScreens? screens = null,
+        bool preferFlip = false)
     {
         _canvas = canvas;
         _screens = screens ?? WinFormsScreens.Instance;
         _input = input; _desktops = desktops;
-        _applyFadeOnUi = ApplyFadeOnUi;
+        _renderer = new MinimapRenderer(preferFlip);
+        _fadeTimer = new Timer();
+        _fadeTimer.Tick += (_, _) => ApplyFadeOnUi();
 
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
@@ -100,10 +100,13 @@ internal sealed class MinimapOverlay : Form
         RebuildSnapshot();
 
         _touchTicks = Environment.TickCount64;
+        _fadeTimer.Stop();
+        _fadeTimer.Interval = (int)HoldMs;
+        _fadeTimer.Start();
+        Opacity = MinimapOpacity;
+        _lastAppliedOpacity = MinimapOpacity;
         if (!Visible)
         {
-            Opacity = MinimapOpacity;
-            _lastAppliedOpacity = MinimapOpacity;
             Show();
             _renderer.Start();
         }
@@ -144,28 +147,14 @@ internal sealed class MinimapOverlay : Form
             mapOriginX: InnerPadding, mapOriginY: InnerPadding, mapW: MapWidth, mapH: MapHeight);
         if (_rendererInitialized)
         {
-            _renderer.OnFrameTick = OnRendererFrameTick;
             _renderer.StartThread();
         }
     }
 
-    /// <summary>
-    /// Render-thread tick. Coalesces into a single pending BeginInvoke — the
-    /// UI handler recomputes the target so it isn't stale if the UI was busy.
-    /// </summary>
-    private void OnRendererFrameTick()
-    {
-        if (_closing || IsDisposed || !IsHandleCreated) return;
-        if (Interlocked.Exchange(ref _fadeUpdateQueued, 1) != 0) return;
-        try { BeginInvoke(_applyFadeOnUi); }
-        catch (InvalidOperationException) when (_closing || IsDisposed || !IsHandleCreated)
-        { Interlocked.Exchange(ref _fadeUpdateQueued, 0); }
-    }
-
     private void ApplyFadeOnUi()
     {
-        _fadeUpdateQueued = 0;
         if (_closing || IsDisposed) return;
+        _fadeTimer.Interval = 16;
 
         long elapsed = Environment.TickCount64 - _touchTicks;
         double fadeProgress = Math.Clamp((elapsed - HoldMs) / (double)FadeMs, 0.0, 1.0);
@@ -178,6 +167,7 @@ internal sealed class MinimapOverlay : Form
         {
             if (Visible) Hide();
             _renderer.Stop();
+            _fadeTimer.Stop();
         }
         else
         {
@@ -197,6 +187,18 @@ internal sealed class MinimapOverlay : Form
     private void OnWindowChanged(IntPtr _) => NotifyCanvasChanged();
     private void OnFrontChanged(IntPtr _) => RefreshSnapshotIfVisible();
 
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        _renderer?.RequestFrame();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (_rendererInitialized) _renderer.Resize(ClientSize.Width, ClientSize.Height);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing && !_closing)
@@ -210,6 +212,7 @@ internal sealed class MinimapOverlay : Form
             _input.DragStarted -= BringToFront;
             _desktops.AfterStateLoaded -= NotifyCanvasChanged;
             _renderer.OnFrameTick = null;
+            _fadeTimer.Dispose();
             try { _renderer.Dispose(); }
             finally { base.Dispose(disposing); }
             return;

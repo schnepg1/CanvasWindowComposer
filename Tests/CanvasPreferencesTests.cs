@@ -1,0 +1,55 @@
+using CanvasDesktop;
+
+namespace CanvasDesktop.Tests;
+
+public class CanvasPreferencesTests : IDisposable
+{
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "canvas-preferences-" + Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public void DefaultsKeepExperimentalResourceAndRenderingOptionsDisabled()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.Equal(new(true, true, true, true, true, false, false, false), config.Preferences);
+        Assert.Contains(";EnableFlipRendering=false", File.ReadAllText(Path.Combine(_directory, "config.ini")));
+    }
+
+    [Fact]
+    public void SaveRoundTripsAllSettingsAndPreservesCommentsUnknownKeysAndDuplicates()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"),
+            "; My comment\n[CanvasWindowComposer]\nFutureOption=keep\nDisableSearch=false\ndisablesearch=false\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        var wanted = new CanvasPreferences(false, false, false, false, false, true, true, true);
+        config.SavePreferences(wanted);
+        Assert.Equal(wanted, config.Preferences);
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.Equal(wanted, reopened.Preferences);
+        string contents = File.ReadAllText(Path.Combine(_directory, "config.ini"));
+        Assert.Contains("; My comment", contents); Assert.Contains("FutureOption=keep", contents);
+        Assert.Contains("DisableSearch=true", contents); Assert.Contains("disablesearch=true", contents);
+    }
+
+    [Fact]
+    public void EditingADetachedSnapshotDoesNotChangeRunningPolicy()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        var edits = config.Preferences with { AutomaticMinimization = true, FlipRendering = true };
+        Assert.False(config.EnableAutomaticMinimization); Assert.False(config.EnableFlipRendering);
+        config.SavePreferences(edits);
+        Assert.True(config.EnableAutomaticMinimization); Assert.True(config.EnableFlipRendering);
+    }
+
+    [Fact]
+    public void FailedSaveKeepsTheRunningPreferences()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        var original = config.Preferences;
+        using var locked = new FileStream(Path.Combine(_directory, "config.ini"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.Throws<IOException>(() => config.SavePreferences(original with { AutomaticMinimization = true }));
+        Assert.Equal(original, config.Preferences);
+    }
+
+    public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
+}
