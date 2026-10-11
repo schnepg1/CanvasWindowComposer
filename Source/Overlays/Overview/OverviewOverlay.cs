@@ -163,7 +163,19 @@ internal sealed class OverviewOverlay : Form
             return;
         }
 
-        Grid?.Dispose();
-        Grid = null;
+        base.OnFormClosing(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            var grid = Grid;
+            Grid = null;
+            try { grid?.Dispose(); }
+            finally { base.Dispose(disposing); }
+            return;
+        }
+        base.Dispose(disposing);
     }
 }

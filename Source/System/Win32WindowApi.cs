@@ -99,7 +99,7 @@ internal sealed class Win32WindowApi : IWindowApi
         }
     }
 
-    public unsafe bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false)
+    public unsafe bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false, bool allowMaximized = false)
     {
         HWND h = (HWND)hWnd;
         if (!PInvoke.IsWindowVisible(h))
@@ -113,7 +113,7 @@ internal sealed class Win32WindowApi : IWindowApi
         int style = PInvoke.GetWindowLong(h, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
         int exStyle = PInvoke.GetWindowLong(h, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
 
-        if ((style & (int)WINDOW_STYLE.WS_MAXIMIZE) != 0)
+        if (!allowMaximized && (style & (int)WINDOW_STYLE.WS_MAXIMIZE) != 0)
             return false;
         if (!allowMinimized && (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0)
             return false;
@@ -149,6 +149,32 @@ internal sealed class Win32WindowApi : IWindowApi
     public void SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
     {
         PInvoke.SetWindowPos((HWND)hWnd, HWND.Null, x, y, w, h, (SET_WINDOW_POS_FLAGS)flags);
+    }
+
+    public (int x, int y, int w, int h) GetNormalRect(IntPtr hWnd)
+    {
+        var placement = new WINDOWPLACEMENT { length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>() };
+        if (!PInvoke.GetWindowPlacement((HWND)hWnd, ref placement)) return GetWindowRect(hWnd);
+        var screen = System.Windows.Forms.Screen.FromHandle(hWnd);
+        var r = placement.rcNormalPosition;
+        return (r.left + screen.WorkingArea.X - screen.Bounds.X,
+            r.top + screen.WorkingArea.Y - screen.Bounds.Y, r.right - r.left, r.bottom - r.top);
+    }
+
+    public void RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+    {
+        var screen = System.Windows.Forms.Screen.FromRectangle(new System.Drawing.Rectangle(rect.X, rect.Y, rect.W, rect.H));
+        int dx = screen.WorkingArea.X - screen.Bounds.X, dy = screen.WorkingArea.Y - screen.Bounds.Y;
+        var placement = new WINDOWPLACEMENT
+        { length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>() };
+        // Preserve native placement flags, notably restore-to-maximized for a
+        // minimized window. Repairing its normal bounds must not lose that state.
+        PInvoke.GetWindowPlacement((HWND)hWnd, ref placement);
+        placement.showCmd = state == WindowState.Maximized ? SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED
+            : state == WindowState.Minimized ? SHOW_WINDOW_CMD.SW_SHOWMINNOACTIVE : SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE;
+        placement.rcNormalPosition = new RECT { left = rect.X - dx, top = rect.Y - dy,
+            right = rect.X + rect.W - dx, bottom = rect.Y + rect.H - dy };
+        PInvoke.SetWindowPlacement((HWND)hWnd, placement);
     }
 
     public void ClipWindow(IntPtr hWnd)

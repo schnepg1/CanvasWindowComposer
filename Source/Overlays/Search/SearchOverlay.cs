@@ -11,6 +11,7 @@ internal sealed class SearchOverlay : Form
     private readonly Canvas _canvas;
     private readonly WindowManager _wm;
     private readonly IScreens _screens;
+    private readonly IInputRouter _input;
     private readonly WindowSearchService _searchService;
     private readonly TextBox _searchBox;
     private readonly Label _hintLabel;
@@ -74,6 +75,7 @@ internal sealed class SearchOverlay : Form
         _canvas = canvas;
         _wm = wm;
         _screens = screens ?? WinFormsScreens.Instance;
+        _input = input;
         _searchService = new WindowSearchService(canvas, positioner);
         input.SearchHotkey += OnSearchHotkey;
 
@@ -170,6 +172,7 @@ internal sealed class SearchOverlay : Form
 
     private void OnSearchHotkey()
     {
+        if (IsDisposed || Disposing) return;
         // No DisableSearch check needed: when the flag is set, Win32InputRouter
         // never registers Alt+S, so this handler never fires.
         Toggle();
@@ -412,5 +415,11 @@ internal sealed class SearchOverlay : Form
         var p2 = new Point(bounds.Left + bounds.Width / 2, bounds.Bottom - bounds.Height / 4);
         var p3 = new Point(bounds.Right - bounds.Width / 5, bounds.Top + bounds.Height / 4);
         g.DrawLines(checkPen, new[] { p1, p2, p3 });
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _input.SearchHotkey -= OnSearchHotkey;
+        base.Dispose(disposing);
     }
 }

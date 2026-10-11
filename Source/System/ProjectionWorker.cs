@@ -79,22 +79,29 @@ internal sealed class ProjectionWorker : IDisposable
     {
         while (!_disposed)
         {
-            CancellationTokenSource cts = _cts;
+            CancellationToken token;
             try
             {
-                _signal.Wait(cts.Token);
+                // ClearPending can cancel/dispose the old source before this
+                // thread reads Token. Once captured, use the token throughout.
+                token = Volatile.Read(ref _cts).Token;
+                _signal.Wait(token);
             }
             catch (OperationCanceledException)
             {
                 continue; // _cts was swapped or disposed — re-read next iteration.
+            }
+            catch (ObjectDisposedException)
+            {
+                continue;
             }
             _signal.Reset();
             if (_disposed) break;
             lock (_processLock)
             {
                 Job? job = Interlocked.Exchange(ref _pending, null);
-                if (job != null && !cts.IsCancellationRequested && !_disposed)
-                    _win32.BatchMove(job.Items, isAsync: job.IsAsync, isTransient: job.IsTransient, ct: cts.Token);
+                if (job != null && !token.IsCancellationRequested && !_disposed)
+                    _win32.BatchMove(job.Items, isAsync: job.IsAsync, isTransient: job.IsTransient, ct: token);
             }
         }
     }
@@ -103,8 +110,10 @@ internal sealed class ProjectionWorker : IDisposable
     {
         _disposed = true;
         _cts.Cancel();
-        _thread.Join(TimeSpan.FromSeconds(1));
-        _signal.Dispose();
-        _cts.Dispose();
+        if (_thread.Join(TimeSpan.FromSeconds(1)))
+        {
+            _signal.Dispose();
+            _cts.Dispose();
+        }
     }
 }

@@ -1,3 +1,5 @@
+using System;
+
 namespace CanvasDesktop;
 
 /// <summary>
@@ -6,11 +8,12 @@ namespace CanvasDesktop;
 /// Lives in its own class so the binding logic can be exercised against a
 /// fake controller without instantiating the real form-bound OverviewManager.
 /// </summary>
-internal sealed class OverviewInputs
+internal sealed class OverviewInputs : IDisposable
 {
     private readonly IOverviewController _overview;
     private readonly IInputRouter _input;
     private readonly Canvas _canvas;
+    private bool _disposed;
 
     public OverviewInputs(IOverviewController overview, IInputRouter input, Canvas canvas)
     {
@@ -29,11 +32,13 @@ internal sealed class OverviewInputs
 
     private void OnCanvasCameraChanged()
     {
+        if (_disposed) return;
         _overview.SyncCamera();
     }
 
     private void OnOverviewModeChanged(OverviewMode from, OverviewMode to)
     {
+        if (_disposed) return;
         if (to == OverviewMode.Panning)
             _input.SetExtraPanSurfaces(_overview.MonitorHandles);
         else
@@ -59,17 +64,20 @@ internal sealed class OverviewInputs
 
     private void OnEscPressed()
     {
+        if (_disposed) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
     }
 
     private void OnDragStarted()
     {
+        if (_disposed) return;
         _overview.TransitionTo(OverviewMode.Panning);
     }
 
     private void OnMouseButtonDown()
     {
+        if (_disposed) return;
         // A non-pan click while the panning overview is up — close it so the
         // click interacts with the underlying window normally.
         if (_overview.CurrentMode == OverviewMode.Panning)
@@ -78,6 +86,7 @@ internal sealed class OverviewInputs
 
     private void OnOverviewHotkey()
     {
+        if (_disposed) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
         else
@@ -86,6 +95,7 @@ internal sealed class OverviewInputs
 
     private void OnCanvasInput()
     {
+        if (_disposed) return;
         if (_input.TryDrainPanDelta(out int dx, out int dy))
         {
             _canvas.Pan(dx, dy);
@@ -102,5 +112,18 @@ internal sealed class OverviewInputs
             else
                 _overview.TransitionTo(OverviewMode.Zooming);
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _canvas.CameraChanged -= OnCanvasCameraChanged;
+        _overview.BeforeModeChanged -= OnOverviewModeChanged;
+        _input.DragStarted -= OnDragStarted;
+        _input.ButtonDown -= OnMouseButtonDown;
+        _input.OverviewHotkey -= OnOverviewHotkey;
+        _input.InputAvailable -= OnCanvasInput;
+        _input.EscPressed -= OnEscPressed;
     }
 }

@@ -45,6 +45,8 @@ IsWindowVisible
 GetWindowLong
 SetWindowLong
 GetWindowRect
+GetWindowPlacement
+SetWindowPlacement
 SetWindowPos
 ShowWindow
 GetShellWindow
@@ -133,3 +135,4 @@ UnhookWindowsHookEx
 CallNextHookEx
 WINDOWS_HOOK_ID
 WM_MBUTTONDOWN
+DestroyIcon

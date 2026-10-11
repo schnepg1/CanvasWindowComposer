@@ -26,6 +26,7 @@ bld/
 
 ## Debug logs
 canvas_debug.log
+TestResults/
 .claude/
 native/build/
 publish*/

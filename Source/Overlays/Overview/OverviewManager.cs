@@ -71,6 +71,8 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
     // All DWM thumbnail state (desktop + taskbars + per-window). Owned here
     // so it can reference _passes; OverviewManager only drives lifecycle.
     private readonly OverviewThumbnails _thumbnails;
+    private readonly OverviewInputs _inputs;
+    private volatile bool _disposed;
 
     // Pan/drag state (virtual-screen coords)
     private bool _panning;
@@ -93,8 +95,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
-        // Reference held only to keep the binding alive for the lifetime of this manager.
-        _ = new OverviewInputs(this, input, mainCanvas);
+        _inputs = new OverviewInputs(this, input, mainCanvas);
     }
 
     public void RefreshConfig()
@@ -105,6 +106,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
+        if (_disposed) return;
         // Monitor topology changed — rebuild passes to match. If overview is
         // open, close it, rebuild, reopen in the previous mode.
         OverviewMode prev = CurrentMode;
@@ -197,12 +199,13 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
     /// <summary>Called on a grid render thread after Present. Drives inertia.</summary>
     private void OnGridFrameTick()
     {
+        if (_disposed) return;
         var (dx, dy, stopped) = _inertia.Tick();
 
         if (stopped)
         {
             if (_passes.Count > 0 && _passes[0].IsHandleCreated)
-                _passes[0].BeginInvoke(() => { if (CurrentMode != OverviewMode.Hidden) TransitionTo(OverviewMode.Hidden); });
+                _passes[0].BeginInvoke(() => { if (!_disposed && CurrentMode != OverviewMode.Hidden) TransitionTo(OverviewMode.Hidden); });
             return;
         }
 
@@ -230,7 +233,7 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
                         _pendingInertiaDy = 0;
                         _inertiaPanQueued = false;
                     }
-                    if (!_inertia.IsActive || (cdx == 0 && cdy == 0)) return;
+                    if (_disposed || !_inertia.IsActive || (cdx == 0 && cdy == 0)) return;
                     _mainCanvas.Pan(cdx, cdy);
                 });
             }
@@ -675,16 +678,36 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
-
-        if (CurrentMode != OverviewMode.Hidden)
-            TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+        var failures = new List<Exception>();
+        void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(() =>
+        {
+            if (CurrentMode != OverviewMode.Hidden)
+                TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+        });
+        Attempt(_inputs.Dispose);
+        Attempt(CancelInertia);
+        // HideInternal may have failed after the state changed to Hidden.
+        // Retry native ownership cleanup independently of that transition.
+        Attempt(_thumbnails.Hide);
+        Attempt(() =>
+        {
+            if (_mmcssHandle != IntPtr.Zero)
+            {
+                Mmcss.Revert(_mmcssHandle);
+                _mmcssHandle = IntPtr.Zero;
+            }
+        });
         foreach (var p in _passes)
         {
-            p.Close();
-            p.Dispose();
+            if (p.Grid != null) p.Grid.OnFrameTick = null;
+            Attempt(p.Dispose);
         }
         _passes.Clear();
+        if (failures.Count > 0) throw new AggregateException("Overview resource cleanup failed.", failures);
     }
 
 }

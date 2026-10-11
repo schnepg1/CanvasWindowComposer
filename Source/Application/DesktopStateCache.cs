@@ -10,7 +10,7 @@ namespace CanvasDesktop;
 /// desktops. Fires <see cref="AfterStateLoaded"/> once the new desktop's
 /// canvas is in place — the minimap subscribes to that for its bring-up flash.
 /// </summary>
-internal sealed class DesktopStateCache
+internal sealed class DesktopStateCache : IDisposable
 {
     private readonly Dictionary<Guid, CanvasState> _states = new();
     private readonly Canvas _canvas;
@@ -18,8 +18,10 @@ internal sealed class DesktopStateCache
     private readonly IOverviewController _overview;
     private readonly IVirtualDesktops _vds;
     private Guid _lastDesktopId;
+    private bool _disposed;
 
     public event Action? AfterStateLoaded;
+    public event Action? BeforeStateSaved;
 
     public DesktopStateCache(Canvas canvas, WindowManager wm, IOverviewController overview, IVirtualDesktops vds)
     {
@@ -34,10 +36,12 @@ internal sealed class DesktopStateCache
 
     private void OnDesktopChanged()
     {
+        if (_disposed) return;
         _overview.CancelInertia();
 
         if (_lastDesktopId != Guid.Empty)
         {
+            BeforeStateSaved?.Invoke();
             _states[_lastDesktopId] = _canvas.SaveState();
             _wm.Reset();
         }
@@ -49,5 +53,11 @@ internal sealed class DesktopStateCache
         _canvas.Commit();
 
         AfterStateLoaded?.Invoke();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _vds.DesktopChanged -= OnDesktopChanged;
     }
 }

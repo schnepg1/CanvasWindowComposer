@@ -1,12 +1,13 @@
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
 
 !define VERSION "1.12.2"
 
 ; --- General ---
 Name "Canvas Window Composer"
 OutFile "CanvasWindowComposer-Setup.exe"
-InstallDir "$PROGRAMFILES64\CanvasWindowComposer"
-RequestExecutionLevel admin
+InstallDir "$LOCALAPPDATA\Programs\CanvasWindowComposer"
+RequestExecutionLevel user
 
 ; --- Version info (shown in file properties) ---
 VIProductVersion "${VERSION}.0"
@@ -45,9 +46,9 @@ Section "Install"
     File "publish-fd\Vortice.DirectX.dll"
     File "publish-fd\Vortice.DXGI.dll"
     File "publish-fd\Vortice.Mathematics.dll"
-    File "publish-fd\System.IO.Pipelines.dll"
-    File "publish-fd\System.Text.Encodings.Web.dll"
-    File "publish-fd\System.Text.Json.dll"
+    File /nonfatal "publish-fd\System.IO.Pipelines.dll"
+    File /nonfatal "publish-fd\System.Text.Encodings.Web.dll"
+    File /nonfatal "publish-fd\System.Text.Json.dll"
 
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -57,26 +58,31 @@ Section "Install"
     CreateShortcut "$SMPROGRAMS\Canvas Window Composer\Canvas Window Composer.lnk" "$INSTDIR\CanvasDesktop.exe"
     CreateShortcut "$SMPROGRAMS\Canvas Window Composer\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
 
-    ; Add to startup with Task Scheduler (runs elevated on login)
-    nsExec::ExecToLog 'schtasks /create /tn "CanvasWindowComposer" /tr "\"$INSTDIR\CanvasDesktop.exe\"" /sc onlogon /rl highest /f'
+    ; Normal-user sign-in startup: never create a highest-privilege task.
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CanvasWindowComposer-Local" '"$INSTDIR\CanvasDesktop.exe"'
 
     ; Registry for Add/Remove Programs
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "DisplayName" "Canvas Window Composer"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "InstallLocation" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "Publisher" "Devnova"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "DisplayVersion" "${VERSION}"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "NoModify" 1
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "NoRepair" 1
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "DisplayName" "Canvas Window Composer"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "Publisher" "Devnova"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "DisplayVersion" "${VERSION}"
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "NoModify" 1
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer" "NoRepair" 1
 SectionEnd
 
 ; --- Uninstall ---
 Section "Uninstall"
-    ; Kill running instance
-    nsExec::ExecToLog 'taskkill /f /im CanvasDesktop.exe'
-
-    ; Remove scheduled task
-    nsExec::ExecToLog 'schtasks /delete /tn "CanvasWindowComposer" /f'
+    ; Wait for the save-and-recover exit path; never force-kill user windows.
+    ExecWait '"$INSTDIR\CanvasDesktop.exe" --exit' $0
+    ${If} $0 != 0
+        MessageBox MB_OK "Canvas could not exit safely. Exit it through its tray menu, then retry uninstalling."
+        Abort
+    ${EndIf}
+    ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CanvasWindowComposer-Local"
+    ${If} $1 == '"$INSTDIR\CanvasDesktop.exe"'
+        DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CanvasWindowComposer-Local"
+    ${EndIf}
 
     ; Remove files
     Delete "$INSTDIR\CanvasDesktop.exe"
@@ -104,5 +110,5 @@ Section "Uninstall"
     RMDir "$SMPROGRAMS\Canvas Window Composer"
 
     ; Remove registry
-    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CanvasWindowComposer"
 SectionEnd

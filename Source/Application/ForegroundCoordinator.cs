@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 /// focus blips. When a focused window is genuinely off-screen, recenter the
 /// canvas on it.
 /// </summary>
-internal sealed class ForegroundCoordinator
+internal sealed class ForegroundCoordinator : IDisposable
 {
     private const long ForegroundSuppressionMs = 500;
 
@@ -17,6 +17,8 @@ internal sealed class ForegroundCoordinator
     private readonly IOverviewController _overview;
     private readonly IClock _clock;
     private readonly IScreens _screens;
+    private readonly IInputRouter _input;
+    private bool _disposed;
 
     private long _lastWindowLostTick;
     private long _lastOverlayClosedTick;
@@ -32,6 +34,7 @@ internal sealed class ForegroundCoordinator
         _overview = overview;
         _clock = clock;
         _screens = screens;
+        _input = input;
 
         overview.BeforeModeChanged += OnOverviewModeChanged;
 
@@ -42,22 +45,26 @@ internal sealed class ForegroundCoordinator
 
     private void OnOverviewModeChanged(OverviewMode from, OverviewMode to)
     {
+        if (_disposed) return;
         if (to == OverviewMode.Hidden)
             _lastOverlayClosedTick = _clock.TickCount64;
     }
 
     private void OnWindowMinimized(IntPtr hWnd)
     {
+        if (_disposed) return;
         _lastWindowLostTick = _clock.TickCount64;
     }
 
     private void OnWindowDestroyed(IntPtr hWnd)
     {
+        if (_disposed) return;
         _lastWindowLostTick = _clock.TickCount64;
     }
 
     private void OnWindowFocused(IntPtr hwnd)
     {
+        if (_disposed) return;
         if (_overview.CurrentMode != OverviewMode.Hidden)
             return;
 
@@ -91,5 +98,15 @@ internal sealed class ForegroundCoordinator
                 return true;
         }
         return false;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _overview.BeforeModeChanged -= OnOverviewModeChanged;
+        _input.WindowDestroyed -= OnWindowDestroyed;
+        _input.WindowFocused -= OnWindowFocused;
+        _input.WindowMinimized -= OnWindowMinimized;
     }
 }

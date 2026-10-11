@@ -35,7 +35,8 @@ internal sealed class WindowSearchService
 
         _win32.EnumWindows(hWnd =>
         {
-            if (!_win32.IsManageable(hWnd, ownPid, allowMinimized: true))
+            bool ownCard = _canvas.HasWindow(hWnd) && _win32.GetWindowProcessId(hWnd) == ownPid;
+            if (!_win32.IsManageable(hWnd, ownPid, allowMinimized: true) && !ownCard)
                 return true;
 
             string title = _win32.GetWindowTitle(hWnd);

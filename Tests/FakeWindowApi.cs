@@ -19,6 +19,8 @@ internal sealed class FakeWindowApi : IWindowApi
     public readonly HashSet<IntPtr> ClippedWindows = new();
     public readonly List<BatchMoveItem> LastBatch = new();
     public readonly List<(IntPtr hWnd, int x, int y, int w, int h, uint flags)> SetPositionCalls = new();
+    public readonly List<(IntPtr hWnd, WindowRect rect, WindowState state)> NativeStateCalls = new();
+    public Action<IntPtr>? BeforeSetPosition;
     public List<(int x, int y, int w, int h)> ScreenAreas = new() { (0, 0, 1920, 1080) };
 
     // Windows returned by EnumWindows, in order
@@ -64,7 +66,7 @@ internal sealed class FakeWindowApi : IWindowApi
         return Processes.TryGetValue(pid, out var info) ? info : ProcessFallback;
     }
 
-    public bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false)
+    public bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false, bool allowMaximized = false)
     {
         if (!Windows.TryGetValue(hWnd, out var w)) return false;
         if (w.ProcessId == ownPid) return false;
@@ -73,6 +75,7 @@ internal sealed class FakeWindowApi : IWindowApi
 
     public void SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
     {
+        BeforeSetPosition?.Invoke(hWnd);
         SetPositionCalls.Add((hWnd, x, y, w, h, flags));
         if (Windows.TryGetValue(hWnd, out var win))
         {
@@ -81,6 +84,12 @@ internal sealed class FakeWindowApi : IWindowApi
     }
 
     public void ClipWindow(IntPtr hWnd) => ClippedWindows.Add(hWnd);
+
+    public void RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+    {
+        NativeStateCalls.Add((hWnd, rect, state));
+        SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H, 0x14);
+    }
 
     public void UnclipWindow(IntPtr hWnd) => ClippedWindows.Remove(hWnd);
 

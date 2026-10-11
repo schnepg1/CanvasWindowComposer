@@ -22,6 +22,7 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
     private readonly RawMouseInput _mouse;
     private readonly MessageWindow _msgWindow;
     private readonly Win32EventRouter _winEvents;
+    private bool _disposed;
 
     // Drainable mouse state, populated on the UI thread by DrainRing.
     private int _pendingPanDx;
@@ -62,24 +63,33 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
 
     public Win32InputRouter(IAppConfig config)
     {
-        _mouse = new RawMouseInput(config, OnInputFrame);
+        try
+        {
+            _mouse = new RawMouseInput(config, OnInputFrame);
 
-        _msgWindow = new MessageWindow();
-        _msgWindow.RegisterHandlers(
-            onSearchHotkey:   config.DisableSearch     ? null : () => SearchHotkey?.Invoke(),
-            onOverviewHotkey: config.DisableZoomHotkey ? null : () => OverviewHotkey?.Invoke());
+            _msgWindow = new MessageWindow();
+            _msgWindow.RegisterHandlers(
+                onSearchHotkey: config.DisableSearch ? null : () => SearchHotkey?.Invoke(),
+                onOverviewHotkey: config.DisableZoomHotkey ? null : () => OverviewHotkey?.Invoke());
 
-        _winEvents = new Win32EventRouter();
-        _winEvents.WindowMinimized += h => WindowMinimized?.Invoke(h);
-        _winEvents.WindowDestroyed += h => WindowDestroyed?.Invoke(h);
-        _winEvents.WindowShown     += h => WindowShown?.Invoke(h);
-        _winEvents.WindowRestored  += h => WindowRestored?.Invoke(h);
-        _winEvents.WindowFocused   += h => WindowFocused?.Invoke(h);
-        _winEvents.WindowMoved     += h => WindowMoved?.Invoke(h);
-        _winEvents.AltTabStarted   += () => AltTabStarted?.Invoke();
-        _winEvents.AltTabEnded     += () => AltTabEnded?.Invoke();
+            _winEvents = new Win32EventRouter();
+            _winEvents.WindowMinimized += h => WindowMinimized?.Invoke(h);
+            _winEvents.WindowDestroyed += h => WindowDestroyed?.Invoke(h);
+            _winEvents.WindowShown += h => WindowShown?.Invoke(h);
+            _winEvents.WindowRestored += h => WindowRestored?.Invoke(h);
+            _winEvents.WindowFocused += h => WindowFocused?.Invoke(h);
+            _winEvents.WindowMoved += h => WindowMoved?.Invoke(h);
+            _winEvents.AltTabStarted += () => AltTabStarted?.Invoke();
+            _winEvents.AltTabEnded += () => AltTabEnded?.Invoke();
 
-        _mouse.Install();
+            _mouse.Install();
+        }
+        catch
+        {
+            try { Dispose(); }
+            catch (Exception ex) { TrayApp.Log("Input startup rollback failed: " + ex); }
+            throw;
+        }
     }
 
     /// <summary>
@@ -90,6 +100,7 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
     /// </summary>
     private void OnInputFrame()
     {
+        if (_disposed) return;
         bool any = false;
         while (_mouse.Events.TryDequeue(out var evt))
         {
@@ -205,9 +216,14 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
 
     public void Dispose()
     {
-        DisableMiddleButtonBlock();
-        _winEvents.Dispose();
-        _mouse.Dispose();
-        _msgWindow.Dispose();
+        if (_disposed) return;
+        _disposed = true;
+        var failures = new List<Exception>();
+        void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(DisableMiddleButtonBlock);
+        Attempt(() => _winEvents?.Dispose());
+        Attempt(() => _mouse?.Dispose());
+        Attempt(() => _msgWindow?.Dispose());
+        if (failures.Count > 0) throw new AggregateException("Input cleanup failed.", failures);
     }
 }

@@ -27,74 +27,135 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Win32InputRouter _input;
     private readonly DesktopStateCache _desktops;
     private readonly ForegroundCoordinator _foreground;
+    private readonly WorkspaceService _workspace;
+    private WorkspaceForm? _workspaceForm;
+    private readonly ApplicationLifecycle _lifecycle = new(failure => Log($"Shutdown step '{failure.Step}' failed: {failure.Error}"));
+    private readonly Control _dispatcher;
     private bool _enabled = true;
 
     public TrayApp(IClock? clock = null, IScreens? screens = null)
     {
-        _clock = clock ?? SystemClock.Instance;
-        _screens = screens ?? WinFormsScreens.Instance;
-        _config = new AppConfig(_clock);
-        _config.Load();
-        _config.StartObservingChanges();
-        GridRenderer.CompileShaders();
-        MinimapRenderer.CompileShaders();
-
-        var winApi = new Win32WindowApi(_screens);
-        _vds = new VirtualDesktopService();
-        _canvas = new Canvas();
-        _input = new Win32InputRouter(_config);
-        _wm = new WindowManager(_canvas, winApi, _config, _input, _clock, _vds, useAsyncProjection: true);
-        _overview = new OverviewManager(_canvas, _wm, winApi, _input, _config, _screens);
-        _overview.Warmup();
-        _foreground = new ForegroundCoordinator(_canvas, _overview, _input, _clock, _screens);
-        _desktops = new DesktopStateCache(_canvas, _wm, _overview, _vds);
-
-        // Constructed last so they can self-subscribe to canvas/input/desktops events.
-        _minimap = new MinimapOverlay(_canvas, _input, _desktops, _screens);
-        _search = new SearchOverlay(_canvas, _wm, winApi, _input, _screens);
-
-        _bgTimer = new Timer { Interval = ReconcileTimerIntervalMs };
-        _bgTimer.Tick += OnBgTick;
-        _bgTimer.Start();
-
-        var toggleItem = new ToolStripMenuItem("Enabled", null, OnToggle) { Checked = true };
-        var showScreenFixedItem = new ToolStripMenuItem(
-            "Show Pinned/Fullscreen While Panning",
-            null,
-            OnToggleScreenFixedWindowsDuringPan)
+        try
         {
-            Checked = _config.ShowScreenFixedWindowsDuringPan
-        };
-        var refreshItem = new ToolStripMenuItem("Refresh", null, OnRefresh);
-        var openConfigItem = new ToolStripMenuItem("Open Config Directory", null,
-            (_, _) => System.Diagnostics.Process.Start("explorer.exe", AppConfig.ConfigDir));
-        var exitItem = new ToolStripMenuItem("Exit", null, OnExit);
+            _dispatcher = _lifecycle.Own(new Control(), ShutdownPhase.ReleaseUi, "UI dispatcher");
+            _clock = clock ?? SystemClock.Instance;
+            _screens = screens ?? WinFormsScreens.Instance;
+            _config = _lifecycle.Own(new AppConfig(_clock), ShutdownPhase.Quiesce, "Configuration watcher");
+            _config.Load();
+            _config.StartObservingChanges();
+            GridRenderer.CompileShaders();
+            MinimapRenderer.CompileShaders();
 
-        var menu = new ContextMenuStrip();
-        menu.Items.Add(new ToolStripLabel("Canvas Desktop") { Font = new Font("Segoe UI", 9, FontStyle.Bold) });
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(toggleItem);
-        menu.Items.Add(showScreenFixedItem);
-        menu.Items.Add(refreshItem);
-        menu.Items.Add(openConfigItem);
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(exitItem);
+            var winApi = new Win32WindowApi(_screens);
+            _vds = _lifecycle.Own(new VirtualDesktopService(), ShutdownPhase.StopServices, "Virtual desktop poller");
+            _canvas = new Canvas();
+            _input = _lifecycle.Own(new Win32InputRouter(_config), ShutdownPhase.StopServices, "Input hooks");
+            _lifecycle.Register(ShutdownPhase.Quiesce, "Disable input", () => _input.Enabled = false);
+            _wm = new WindowManager(_canvas, winApi, _config, _input, _clock, _vds, useAsyncProjection: true);
+            _lifecycle.Register(ShutdownPhase.RecoverWindows, "Restore desktop windows", _wm.RestoreDesktopViewport);
+            _lifecycle.Register(ShutdownPhase.ReleaseUi, "Window manager fallback disposal", _wm.Dispose);
+            _overview = new OverviewManager(_canvas, _wm, winApi, _input, _config, _screens);
+            _lifecycle.Register(ShutdownPhase.FinalizeLayout, "Close overview", () => _overview.TransitionTo(OverviewMode.Hidden));
+            _lifecycle.Register(ShutdownPhase.FinalizeLayout, "Overview resources", _overview.Dispose);
+            _overview.Warmup();
+            _foreground = _lifecycle.Own(new ForegroundCoordinator(_canvas, _overview, _input, _clock, _screens),
+                ShutdownPhase.Quiesce, "Foreground subscriptions");
+            _desktops = _lifecycle.Own(new DesktopStateCache(_canvas, _wm, _overview, _vds),
+                ShutdownPhase.StopServices, "Desktop cache subscriptions");
+            _workspace = WorkspaceComposition.Create(_canvas, _wm, winApi, _vds, _desktops, screens: _screens, clock: _clock);
+            _lifecycle.Register(ShutdownPhase.SaveWorkspace, "Save workspace and remove placeholders",
+                () => _workspace.Stop(save: _lifecycle.StartupCompleted));
+            _workspace.LaunchFailed += message => MessageBox.Show(message, "Saved workspace",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-        _trayIcon = new NotifyIcon
+            // Constructed last so they can self-subscribe to canvas/input/desktops events.
+            _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens), ShutdownPhase.ReleaseUi, "Minimap");
+            _search = _lifecycle.Own(new SearchOverlay(_canvas, _wm, winApi, _input, _screens), ShutdownPhase.ReleaseUi, "Search overlay");
+            _lifecycle.Register(ShutdownPhase.ReleaseUi, "Workspace form", () => _workspaceForm?.Dispose());
+            _ = _dispatcher.Handle;
+
+            _bgTimer = _lifecycle.Own(new Timer { Interval = ReconcileTimerIntervalMs }, ShutdownPhase.Quiesce, "Background timer");
+            _bgTimer.Tick += OnBgTick;
+
+            var toggleItem = new ToolStripMenuItem("Enabled", null, OnToggle) { Checked = true };
+            var showScreenFixedItem = new ToolStripMenuItem(
+                "Show Pinned/Fullscreen While Panning",
+                null,
+                OnToggleScreenFixedWindowsDuringPan)
+            {
+                Checked = _config.ShowScreenFixedWindowsDuringPan
+            };
+            var refreshItem = new ToolStripMenuItem("Refresh", null, OnRefresh);
+            var openConfigItem = new ToolStripMenuItem("Open Config Directory", null,
+                (_, _) => System.Diagnostics.Process.Start("explorer.exe", AppConfig.ConfigDir));
+            var exitItem = new ToolStripMenuItem("Exit", null, OnExit);
+            var workspaceItem = new ToolStripMenuItem("Saved Workspace…", null, (_, _) =>
+            {
+                if (_workspaceForm == null || _workspaceForm.IsDisposed) _workspaceForm = new WorkspaceForm(_workspace);
+                _workspaceForm.Show(); _workspaceForm.Activate();
+            });
+            var saveItem = new ToolStripMenuItem("Save Workspace Now", null, (_, _) =>
+            {
+                if (!_workspace.SaveNow()) MessageBox.Show(_workspace.Status, "Saved workspace");
+            });
+            var startupItem = new ToolStripMenuItem("Start Canvas at sign-in");
+            try { startupItem.Checked = WorkspaceStartup.Enabled(); } catch { }
+            startupItem.Click += (_, _) =>
+            {
+                try { WorkspaceStartup.SetEnabled(!startupItem.Checked); startupItem.Checked = !startupItem.Checked; }
+                catch (Exception ex) { MessageBox.Show(ex.Message, "Canvas startup"); }
+            };
+
+            var menu = _lifecycle.Own(new ContextMenuStrip(), ShutdownPhase.ReleaseUi, "Tray menu");
+            menu.Items.Add(new ToolStripLabel("Canvas Desktop") { Font = new Font("Segoe UI", 9, FontStyle.Bold) });
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(toggleItem);
+            menu.Items.Add(showScreenFixedItem);
+            menu.Items.Add(refreshItem);
+            menu.Items.Add(openConfigItem);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(workspaceItem);
+            menu.Items.Add(saveItem);
+            menu.Items.Add(startupItem);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(exitItem);
+
+            var icon = CreateIcon();
+            // The image is acquired before NotifyIcon but must outlive its disposal.
+            _lifecycle.Register(ShutdownPhase.ReleaseUi, "Tray notification resources", () =>
+            {
+                try { _trayIcon?.Dispose(); }
+                finally { icon.Dispose(); }
+            });
+            _trayIcon = new NotifyIcon();
+            _trayIcon.Icon = icon;
+            _trayIcon.Text = "Canvas Desktop - Middle-click drag to pan";
+            _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.Visible = true;
+
+            _workspace.Start();
+            _wm.Reproject();
+            // Normal Windows logoff/shutdown also uses the save-and-recover exit path.
+            _lifecycle.Register(ShutdownPhase.Quiesce, "Session ending subscription",
+                () => Microsoft.Win32.SystemEvents.SessionEnding -= OnSessionEnding);
+            Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
+            _lifecycle.CompleteStartup();
+            _bgTimer.Start();
+        }
+        catch
         {
-            Icon = CreateIcon(),
-            Text = "Canvas Desktop - Middle-click drag to pan",
-            ContextMenuStrip = menu,
-            Visible = true
-        };
-
-        _wm.DiscoverNewWindows();
-        _wm.Reproject();
+            // Only acquired resources are registered; keep the original startup exception.
+            _lifecycle.Shutdown();
+            throw;
+        }
     }
 
     private void OnBgTick(object? sender, EventArgs e)
     {
+        if (_lifecycle.IsStopping) return;
+        if (Program.ShutdownSignal?.WaitOne(0) == true) { OnExit(sender, e); return; }
         _wm.Tick();
+        _workspace.Tick();
     }
 
     private void OnToggle(object? sender, EventArgs e)
@@ -130,18 +191,29 @@ internal sealed class TrayApp : ApplicationContext
 
     private void OnExit(object? sender, EventArgs e)
     {
-        _bgTimer.Stop();
-        _bgTimer.Dispose();
-        _input.Dispose();
-        _wm.Reset();
-        _wm.Dispose();
-        _overview.Dispose();
-        _search.Close();
-        _minimap.Close();
-        _vds.Dispose();
-        _trayIcon.Visible = false;
-        _trayIcon.Dispose();
-        Application.Exit();
+        if (_lifecycle.IsStopping) return;
+        Shutdown();
+        ExitThread();
+    }
+
+    private void Shutdown()
+    {
+        _lifecycle.Shutdown();
+        if (_lifecycle.Failures.Count > 0) Environment.ExitCode = 1;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Shutdown();
+        base.Dispose(disposing);
+    }
+
+    private void OnSessionEnding(object sender, Microsoft.Win32.SessionEndingEventArgs e)
+    {
+        // SystemEvents may arrive off-thread; marshal onto the WinForms thread.
+        if (_lifecycle.IsStopping || !_dispatcher.IsHandleCreated || _dispatcher.IsDisposed) return;
+        try { _dispatcher.Invoke(() => OnExit(this, EventArgs.Empty)); }
+        catch (InvalidOperationException) when (_lifecycle.IsStopping || _dispatcher.IsDisposed) { }
     }
 
     private static Icon CreateIcon()
@@ -169,7 +241,13 @@ internal sealed class TrayApp : ApplicationContext
         g.DrawLine(pen, cx, cy + len, cx - arrow, cy + len - arrow);
         g.DrawLine(pen, cx, cy + len, cx + arrow, cy + len - arrow);
 
-        return Icon.FromHandle(bmp.GetHicon());
+        IntPtr handle = bmp.GetHicon();
+        try
+        {
+            using var borrowed = Icon.FromHandle(handle);
+            return (Icon)borrowed.Clone();
+        }
+        finally { PInvoke.DestroyIcon((HICON)handle); }
     }
 
     private static readonly string LogPath = Path.Combine(

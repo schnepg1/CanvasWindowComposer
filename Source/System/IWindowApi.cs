@@ -28,7 +28,11 @@ internal interface IWindowApi
     (string name, string exe) GetProcessInfo(uint pid);
 
     // Filtering
-    bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false);
+    bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false, bool allowMaximized = false);
+
+    (int x, int y, int w, int h) GetNormalRect(IntPtr hWnd) => GetWindowRect(hWnd);
+    void RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+        => SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H, 0x14);
 
     // Mutation
     void SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags);

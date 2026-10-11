@@ -33,6 +33,7 @@ internal sealed class VirtualDesktopService : IVirtualDesktops, IDisposable
     private readonly System.Threading.ManualResetEventSlim _stop = new(false);
     private readonly System.Threading.Thread? _pollThread;
     private Guid _currentDesktopId;
+    private int _disposed;
 
     public Guid CurrentDesktopId
     {
@@ -86,9 +87,9 @@ internal sealed class VirtualDesktopService : IVirtualDesktops, IDisposable
                 if (handler == null) continue;
 
                 if (_uiContext != null)
-                    _uiContext.Post(_ => handler.Invoke(), null);
+                    _uiContext.Post(_ => { if (System.Threading.Volatile.Read(ref _disposed) == 0) handler.Invoke(); }, null);
                 else
-                    handler.Invoke();
+                { if (System.Threading.Volatile.Read(ref _disposed) == 0) handler.Invoke(); }
             }
             catch
             {
@@ -146,8 +147,10 @@ internal sealed class VirtualDesktopService : IVirtualDesktops, IDisposable
 
     public void Dispose()
     {
+        if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _stop.Set();
-        _pollThread?.Join(TimeSpan.FromSeconds(1));
+        if (_pollThread != null && !_pollThread.Join(TimeSpan.FromSeconds(1)))
+            throw new TimeoutException("Virtual desktop poller did not stop. Its in-use resources were retained until process exit.");
         _stop.Dispose();
         if (_manager != null)
             Marshal.ReleaseComObject(_manager);

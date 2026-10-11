@@ -30,6 +30,19 @@ public class DesktopStateCacheTests
     private static readonly Guid GuidB = new("bbbbbbbb-0000-0000-0000-000000000002");
 
     [Fact]
+    public void DisposedCacheDoesNotResetCanvasOnLaterDesktopEvents()
+    {
+        var h = new Harness(initialDesktop: GuidA);
+        h.Canvas.SetWindow((IntPtr)1, 5000, 5000, 800, 600);
+        h.Api.AddWindow((IntPtr)1, 100, 100, 800, 600);
+        h.Cache.Dispose();
+        h.Cache.Dispose();
+        h.Vds.SwitchTo(GuidB);
+        Assert.True(h.Canvas.HasWindow((IntPtr)1));
+        Assert.Empty(h.Api.LastBatch);
+    }
+
+    [Fact]
     public void Switch_FromEmptyInitial_DoesNotResetWmOrSaveState()
     {
         var h = new Harness(initialDesktop: Guid.Empty);

@@ -53,10 +53,43 @@ A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first 
 ## Requirements
 
 - Windows 10/11
-- .NET 8.0+
+- .NET 10 Desktop Runtime (SDK 10.0.401 or a compatible patch for development)
 - NSIS (for installer, optional)
 
 ## Build
+
+### Local persistent-workspace extension
+
+This working copy includes automatic workspace saves, clickable placeholders for
+closed apps, Explorer folder targets, a saved-workspace manager, and opt-in startup
+restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitations.
+Run `Start-Canvas.cmd`; exit any older running instance first.
+
+On a normal exit, the canvas layout is saved before real windows are brought
+back into physical monitor working areas. Starting Canvas again reapplies the
+saved canvas layout. Forced termination cannot run this recovery.
+
+Canvas runs without administrator rights. Sign-in startup is per-user, and saved
+applications are never automatically launched from an elevated Canvas process.
+Windows may block normal-user Canvas from moving elevated applications.
+See [LOCAL-SETUP.md](LOCAL-SETUP.md) for launch-target rules and migration details.
+Development boundaries and refactor validation are documented in
+[workspace architecture](Docs/workspace-architecture.md).
+Startup rollback and shutdown ownership are covered in
+[lifecycle refactor notes](Docs/lifecycle-refactor.md).
+
+Duplicate-window matching now keeps uncertain saved places as placeholders, with
+manual linking and optional names. VS Code can reopen separate project targets;
+opt-in full-path title matching is described in the
+[window identity and matching notes](Docs/identity-and-matching.md).
+
+Build and test on .NET 10:
+
+```powershell
+dotnet restore CanvasDesktop.slnx --locked-mode
+dotnet build CanvasDesktop.slnx -c Release --no-restore
+dotnet test Tests/CanvasDesktop.Tests.csproj -c Release --no-build --no-restore
+```
 
 ```bash
 # C# app

@@ -232,7 +232,9 @@ internal sealed class RawMouseInput : IDisposable
         while (true)
         {
             uint size = (uint)bufferBytes;
-            uint count = PInvoke.GetRawInputBuffer((RAWINPUT*)buffer, ref size, headerSize);
+            // Raw blocks have variable length; use the pointer overload rather
+            // than the generator's fixed-element Span convenience overload.
+            uint count = PInvoke.GetRawInputBuffer((RAWINPUT*)buffer, &size, headerSize);
             if (count == 0) break;
             if (count == unchecked((uint)-1))
             {

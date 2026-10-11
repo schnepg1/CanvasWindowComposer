@@ -223,6 +223,12 @@ internal sealed class Canvas
 
     public bool HasWindow(IntPtr hWnd) => _windows.ContainsKey(hWnd);
 
+    public void RestoreWindow(IntPtr hWnd, WorldRect world)
+    {
+        _windows[hWnd] = world;
+        _foregroundCounter = Math.Max(_foregroundCounter, world.ZOrder);
+    }
+
     public void RemoveWindow(IntPtr hWnd)
     {
         _windows.Remove(hWnd);

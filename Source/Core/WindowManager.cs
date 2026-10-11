@@ -21,6 +21,12 @@ internal sealed class WindowManager : IDisposable
     private readonly IClock _clock;
     private readonly IVirtualDesktops? _vds;
     private readonly ProjectionWorker? _projection;
+    private readonly IInputRouter _input;
+    private bool _disposed;
+
+    // Retain identities across virtual-desktop resets; never move a recycled HWND
+    // belonging to a different process during shutdown.
+    private readonly Dictionary<IntPtr, uint> _sessionWindows = new();
 
     // Track last projected screen positions to detect manual moves
     private readonly Dictionary<IntPtr, (int x, int y, int w, int h)> _lastScreen = new();
@@ -29,6 +35,21 @@ internal sealed class WindowManager : IDisposable
     private readonly HashSet<IntPtr> _clippedWindows = new();
 
     private long _lastReprojectTick;
+
+    public event Action<IntPtr>? WindowRemoving;
+
+    // Our own placeholder forms are explicitly enrolled, never discovered as apps.
+    public void RestorePlacement(IntPtr hWnd, WorldRect world)
+    {
+        TrackForDesktopRestore(hWnd);
+        _win32.UnclipWindow(hWnd);
+        _clippedWindows.Remove(hWnd);
+        _canvas.RestoreWindow(hWnd, world);
+        var rect = _canvas.WorldToScreen(world);
+        _lastScreen[hWnd] = (rect.X, rect.Y, rect.W, rect.H);
+        _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
+            (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
+    }
 
     // Temporarily suspends greedy draw (SetWindowRgn clipping)
     public bool SuspendGreedyDraw { get; set; }
@@ -85,21 +106,22 @@ internal sealed class WindowManager : IDisposable
         _config = config;
         _clock = clock ?? SystemClock.Instance;
         _vds = vds;
+        _input = input;
         _projection = useAsyncProjection ? new ProjectionWorker(win32) : null;
 
-        canvas.Committed       += OnCommitted;
-        canvas.CameraChanged   += OnCameraChanged;
+        canvas.Committed += OnCommitted;
+        canvas.CameraChanged += OnCameraChanged;
         canvas.CollapseChanged += OnReprojectWindowEvent;
         canvas.MaximizeChanged += OnReprojectWindowEvent;
 
         input.WindowMinimized += OnWindowMinimizedEvent;
-        input.WindowRestored  += OnWindowRestoredEvent;
+        input.WindowRestored += OnWindowRestoredEvent;
         input.WindowDestroyed += OnWindowDestroyedEvent;
-        input.WindowShown     += OnWindowShownEvent;
-        input.WindowMoved     += OnWindowMovedEvent;
-        input.WindowFocused   += OnWindowFocusedEvent;
-        input.AltTabStarted   += OnAltTabStarted;
-        input.AltTabEnded     += OnAltTabEnded;
+        input.WindowShown += OnWindowShownEvent;
+        input.WindowMoved += OnWindowMovedEvent;
+        input.WindowFocused += OnWindowFocusedEvent;
+        input.AltTabStarted += OnAltTabStarted;
+        input.AltTabEnded += OnAltTabEnded;
     }
 
     /// <summary>Background tick for window discovery + stale removal.</summary>
@@ -111,7 +133,70 @@ internal sealed class WindowManager : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        _canvas.Committed -= OnCommitted;
+        _canvas.CameraChanged -= OnCameraChanged;
+        _canvas.CollapseChanged -= OnReprojectWindowEvent;
+        _canvas.MaximizeChanged -= OnReprojectWindowEvent;
+        _input.WindowMinimized -= OnWindowMinimizedEvent;
+        _input.WindowRestored -= OnWindowRestoredEvent;
+        _input.WindowDestroyed -= OnWindowDestroyedEvent;
+        _input.WindowShown -= OnWindowShownEvent;
+        _input.WindowMoved -= OnWindowMovedEvent;
+        _input.WindowFocused -= OnWindowFocusedEvent;
+        _input.AltTabStarted -= OnAltTabStarted;
+        _input.AltTabEnded -= OnAltTabEnded;
         _projection?.Dispose();
+    }
+
+    public void TrackForDesktopRestore(IntPtr hWnd)
+    {
+        uint pid = _win32.GetWindowProcessId(hWnd);
+        if (pid != 0 && pid != (uint)Environment.ProcessId)
+            _sessionWindows[hWnd] = pid;
+    }
+
+    /// <summary>
+    /// Final shutdown only. Save the workspace and remove cards before calling.
+    /// Native recovery must never be reconciled back into the saved canvas layout.
+    /// </summary>
+    public void RestoreDesktopViewport()
+    {
+        if (_disposed) return;
+        foreach (var hWnd in _canvas.Windows.Keys)
+            if (!_sessionWindows.ContainsKey(hWnd)) TrackForDesktopRestore(hWnd);
+        _projection?.ClearPending();
+        Dispose(); // No queued camera/input events may schedule a later move.
+        var screens = _win32.GetScreenWorkingAreas();
+        var failures = new List<Exception>();
+        foreach (var (hWnd, pid) in _sessionWindows)
+        {
+            try
+            {
+                if (!_win32.IsWindowVisible(hWnd) || _win32.GetWindowProcessId(hWnd) != pid) continue;
+                if (_clippedWindows.Contains(hWnd)) _win32.UnclipWindow(hWnd);
+                var (x, y, w, h) = _win32.GetNormalRect(hWnd);
+                if (w <= 0 || h <= 0) continue;
+                var before = new WindowRect(x, y, w, h);
+                var rect = DesktopViewport.Fit(before, screens);
+                if (rect == before) continue;
+                int style = _win32.GetWindowStyle(hWnd);
+                var state = (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0 ? WindowState.Minimized
+                    : (style & (int)WINDOW_STYLE.WS_MAXIMIZE) != 0 ? WindowState.Maximized : WindowState.Normal;
+                if (state == WindowState.Normal)
+                    _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
+                        (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
+                else
+                    _win32.RestoreNativeState(hWnd, rect, state);
+            }
+            catch (Exception ex) { failures.Add(new InvalidOperationException($"Could not recover window {hWnd}.", ex)); }
+        }
+        _sessionWindows.Clear();
+        _clippedWindows.Clear();
+        _canvas.ClearWindows();
+        _lastScreen.Clear();
+        if (failures.Count > 0) throw new AggregateException("Some desktop windows could not be recovered.", failures);
     }
 
     private void OnCommitted()
@@ -364,9 +449,11 @@ internal sealed class WindowManager : IDisposable
     /// <summary>Drop a single window from canvas and internal tracking.</summary>
     public void RemoveWindow(IntPtr hWnd)
     {
+        if (_canvas.HasWindow(hWnd)) WindowRemoving?.Invoke(hWnd);
         _canvas.RemoveWindow(hWnd);
         _lastScreen.Remove(hWnd);
         _clippedWindows.Remove(hWnd);
+        _sessionWindows.Remove(hWnd);
     }
 
     /// <summary>Restore regions on all clipped windows (for overview thumbnails).</summary>
@@ -413,7 +500,7 @@ internal sealed class WindowManager : IDisposable
             return;
 
         var (sx, sy, sw, sh) = _win32.GetWindowRect(hWnd);
-
+        TrackForDesktopRestore(hWnd);
         _canvas.SetWindowFromScreen(hWnd, sx, sy, sw, sh);
         _lastScreen[hWnd] = (sx, sy, sw, sh);
     }
@@ -471,7 +558,10 @@ internal sealed class WindowManager : IDisposable
 
         foreach (var (hWnd, world) in _canvas.Windows)
         {
+            TrackForDesktopRestore(hWnd);
             if (!IsWindowActive(hWnd))
+                continue;
+            if (world.State != WindowState.Normal)
                 continue;
             if (world.PinnedToScreen)
                 continue;
@@ -645,7 +735,7 @@ internal sealed class WindowManager : IDisposable
             int right = left + width;
             int bottom = top + height;
             if (rx + rw > left && rx < right &&
-                ry + rh > top  && ry < bottom)
+                ry + rh > top && ry < bottom)
                 return true;
         }
         return false;

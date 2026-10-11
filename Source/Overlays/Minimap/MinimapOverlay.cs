@@ -33,6 +33,9 @@ internal sealed class MinimapOverlay : Form
 
     private readonly Canvas _canvas;
     private readonly IScreens _screens;
+    private readonly IInputRouter _input;
+    private readonly DesktopStateCache _desktops;
+    private volatile bool _closing;
     private readonly MinimapRenderer _renderer = new();
     private readonly Action _applyFadeOnUi;
     private bool _rendererInitialized;
@@ -66,6 +69,7 @@ internal sealed class MinimapOverlay : Form
     {
         _canvas = canvas;
         _screens = screens ?? WinFormsScreens.Instance;
+        _input = input; _desktops = desktops;
         _applyFadeOnUi = ApplyFadeOnUi;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -79,10 +83,10 @@ internal sealed class MinimapOverlay : Form
         PositionOnScreen();
 
         canvas.CameraChanged       += NotifyCanvasChanged;
-        canvas.CollapseChanged     += _ => NotifyCanvasChanged();
-        canvas.MaximizeChanged     += _ => NotifyCanvasChanged();
-        canvas.PinnedChanged       += _ => NotifyCanvasChanged();
-        canvas.FrontChanged        += _ => RefreshSnapshotIfVisible();
+        canvas.CollapseChanged     += OnWindowChanged;
+        canvas.MaximizeChanged     += OnWindowChanged;
+        canvas.PinnedChanged       += OnWindowChanged;
+        canvas.FrontChanged        += OnFrontChanged;
         input.DragStarted          += BringToFront;
         desktops.AfterStateLoaded  += NotifyCanvasChanged;
     }
@@ -90,6 +94,7 @@ internal sealed class MinimapOverlay : Form
     /// <summary>Called on canvas changes + by <see cref="DesktopStateCache"/> after restore.</summary>
     public void NotifyCanvasChanged()
     {
+        if (_closing || IsDisposed) return;
         PositionOnScreen();
         EnsureRendererInitialized();
         RebuildSnapshot();
@@ -110,7 +115,7 @@ internal sealed class MinimapOverlay : Form
     /// </summary>
     private void RefreshSnapshotIfVisible()
     {
-        if (!Visible) return;
+        if (_closing || IsDisposed || !Visible) return;
         EnsureRendererInitialized();
         RebuildSnapshot();
     }
@@ -150,14 +155,17 @@ internal sealed class MinimapOverlay : Form
     /// </summary>
     private void OnRendererFrameTick()
     {
-        if (!IsHandleCreated) return;
+        if (_closing || IsDisposed || !IsHandleCreated) return;
         if (Interlocked.Exchange(ref _fadeUpdateQueued, 1) != 0) return;
-        BeginInvoke(_applyFadeOnUi);
+        try { BeginInvoke(_applyFadeOnUi); }
+        catch (InvalidOperationException) when (_closing || IsDisposed || !IsHandleCreated)
+        { Interlocked.Exchange(ref _fadeUpdateQueued, 0); }
     }
 
     private void ApplyFadeOnUi()
     {
         _fadeUpdateQueued = 0;
+        if (_closing || IsDisposed) return;
 
         long elapsed = Environment.TickCount64 - _touchTicks;
         double fadeProgress = Math.Clamp((elapsed - HoldMs) / (double)FadeMs, 0.0, 1.0);
@@ -186,6 +194,29 @@ internal sealed class MinimapOverlay : Form
         );
     }
 
+    private void OnWindowChanged(IntPtr _) => NotifyCanvasChanged();
+    private void OnFrontChanged(IntPtr _) => RefreshSnapshotIfVisible();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_closing)
+        {
+            _closing = true;
+            _canvas.CameraChanged -= NotifyCanvasChanged;
+            _canvas.CollapseChanged -= OnWindowChanged;
+            _canvas.MaximizeChanged -= OnWindowChanged;
+            _canvas.PinnedChanged -= OnWindowChanged;
+            _canvas.FrontChanged -= OnFrontChanged;
+            _input.DragStarted -= BringToFront;
+            _desktops.AfterStateLoaded -= NotifyCanvasChanged;
+            _renderer.OnFrameTick = null;
+            try { _renderer.Dispose(); }
+            finally { base.Dispose(disposing); }
+            return;
+        }
+        base.Dispose(disposing);
+    }
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         if (e.CloseReason == CloseReason.UserClosing)
@@ -194,7 +225,6 @@ internal sealed class MinimapOverlay : Form
             return;
         }
 
-        _renderer.Dispose();
         base.OnFormClosing(e);
     }
 }

@@ -37,17 +37,19 @@ internal interface IAppConfig
 /// Reads configuration from %APPDATA%/CanvasWindowComposer/config.ini and
 /// reloads on file change. Creates a default config file if it doesn't exist.
 /// </summary>
-internal sealed class AppConfig : IAppConfig
+internal sealed class AppConfig : IAppConfig, IDisposable
 {
     public static readonly string ConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "CanvasWindowComposer");
 
-    private static readonly string ConfigPath = Path.Combine(ConfigDir, "config.ini");
+    private readonly string _configPath;
     private const long ReloadDebounceMs = 200;
 
     private readonly IClock _clock;
     private FileSystemWatcher? _watcher;
+    private readonly object _watcherGate = new();
+    private bool _disposed;
     private long _lastReloadTick;
 
     public bool DisableSearch { get; private set; }
@@ -57,64 +59,99 @@ internal sealed class AppConfig : IAppConfig
     public bool DisableMouseCurve { get; private set; }
     public bool DisableZoomHotkey { get; private set; }
 
-    public AppConfig(IClock? clock = null)
+    public AppConfig(IClock? clock = null, string? directory = null)
     {
         _clock = clock ?? SystemClock.Instance;
+        _configPath = Path.Combine(directory ?? ConfigDir, "config.ini");
     }
 
     public void Load()
     {
-        if (!File.Exists(ConfigPath))
+        lock (_watcherGate)
         {
-            WriteDefault();
-            return;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!File.Exists(_configPath))
+            {
+                WriteDefault();
+                return;
+            }
+
+            var values = ParseIni(_configPath);
+
+            DisableSearch = GetBool(values, "DisableSearch", defaultValue: false);
+            DisableAltPan = GetBool(values, "DisableAltPan", defaultValue: false);
+            DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
+            ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
+            DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
+            DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
         }
-
-        var values = ParseIni(ConfigPath);
-
-        DisableSearch = GetBool(values, "DisableSearch", defaultValue: false);
-        DisableAltPan = GetBool(values, "DisableAltPan", defaultValue: false);
-        DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
-        ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
-        DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
-        DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
     }
 
     public void SetShowScreenFixedWindowsDuringPan(bool value)
     {
-        ShowScreenFixedWindowsDuringPan = value;
-        WriteBool("ShowScreenFixedWindowsDuringPan", value);
+        lock (_watcherGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ShowScreenFixedWindowsDuringPan = value;
+            WriteBool("ShowScreenFixedWindowsDuringPan", value);
+        }
     }
 
     /// <summary>Watch config.ini for changes and reload automatically.</summary>
     public void StartObservingChanges()
     {
-        Directory.CreateDirectory(ConfigDir);
-
-        _watcher = new FileSystemWatcher(ConfigDir, "config.ini")
+        lock (_watcherGate)
         {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime,
-            EnableRaisingEvents = true
-        };
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_watcher != null) return;
+            string directory = Path.GetDirectoryName(Path.GetFullPath(_configPath))!;
+            Directory.CreateDirectory(directory);
 
-        _watcher.Changed += OnConfigFileChanged;
-        _watcher.Created += OnConfigFileChanged;
+            _watcher = new FileSystemWatcher(directory, "config.ini")
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime
+            };
+
+            _watcher.Changed += OnConfigFileChanged;
+            _watcher.Created += OnConfigFileChanged;
+            try { _watcher.EnableRaisingEvents = true; }
+            catch { _watcher.Dispose(); _watcher = null; throw; }
+        }
     }
 
     private void OnConfigFileChanged(object sender, FileSystemEventArgs e)
     {
-        long now = _clock.TickCount64;
-        if (now - _lastReloadTick < ReloadDebounceMs) return;
-        _lastReloadTick = now;
+        lock (_watcherGate)
+        {
+            if (_disposed) return; // A callback may already be queued during disposal.
+            long now = _clock.TickCount64;
+            if (now - _lastReloadTick < ReloadDebounceMs) return;
+            _lastReloadTick = now;
 
-        try { Load(); }
-        catch { }
+            try { Load(); }
+            catch { }
+        }
     }
 
-    private static void WriteDefault()
+    public void Dispose()
     {
-        Directory.CreateDirectory(ConfigDir);
-        File.WriteAllText(ConfigPath,
+        lock (_watcherGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            var watcher = _watcher;
+            _watcher = null;
+            if (watcher == null) return;
+            watcher.Changed -= OnConfigFileChanged;
+            watcher.Created -= OnConfigFileChanged;
+            watcher.Dispose();
+        }
+    }
+
+    private void WriteDefault()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_configPath))!);
+        File.WriteAllText(_configPath,
 @"[CanvasWindowComposer]
 ; All flags below are commented out and set to their default values.
 ; Uncomment a line and flip to true to opt out of the feature.
@@ -172,13 +209,13 @@ internal sealed class AppConfig : IAppConfig
         return val.Equals("true", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void WriteBool(string key, bool value)
+    private void WriteBool(string key, bool value)
     {
-        Directory.CreateDirectory(ConfigDir);
-        if (!File.Exists(ConfigPath))
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_configPath))!);
+        if (!File.Exists(_configPath))
             WriteDefault();
 
-        string[] lines = File.ReadAllLines(ConfigPath);
+        string[] lines = File.ReadAllLines(_configPath);
         string replacement = $"{key}={value.ToString().ToLowerInvariant()}";
         bool replaced = false;
 
@@ -210,6 +247,6 @@ internal sealed class AppConfig : IAppConfig
             lines = updated.ToArray();
         }
 
-        File.WriteAllLines(ConfigPath, lines);
+        File.WriteAllLines(_configPath, lines);
     }
 }
