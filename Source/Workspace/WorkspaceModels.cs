@@ -38,3 +38,13 @@ internal static class WorkspaceGeometry
         double.IsFinite(b.X) && double.IsFinite(b.Y) && Math.Abs(b.X) < 10000000 && Math.Abs(b.Y) < 10000000
         && double.IsFinite(b.W) && double.IsFinite(b.H) && b.W >= 1 && b.H >= 1 && b.W <= 32000 && b.H <= 32000;
 }
+
+internal sealed class WorkspaceZone
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DesktopId { get; set; }
+    public string Name { get; set; } = "Project area";
+    public string Color { get; set; } = "#60A5FA";
+    public WorldRect Bounds { get; set; }
+    public List<Guid> ItemIds { get; set; } = new();
+}

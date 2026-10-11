@@ -4,27 +4,17 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal sealed class WorkspaceZone
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid DesktopId { get; set; }
-    public string Name { get; set; } = "Project area";
-    public string Color { get; set; } = "#60A5FA";
-    public WorldRect Bounds { get; set; }
-}
-
-internal sealed record ZoneView(Guid Id, string Name, string Color, WorldRect Bounds);
-
 /// <summary>UI-independent zone commands. Views are detached and scoped to the active desktop.</summary>
-internal sealed class ZoneService
+internal sealed class ZoneService : IZoneCommands
 {
     public const int MaximumZones = 256;
     private readonly WorkspaceDocument _document;
     private readonly Func<Guid> _desktop;
     private readonly Func<bool> _save;
     public event Action? Changed;
+    public Guid DesktopId => _desktop();
     public IReadOnlyList<ZoneView> Items => _document.Zones.Where(z => z.DesktopId == _desktop())
-        .Select(z => new ZoneView(z.Id, z.Name, z.Color, z.Bounds)).ToArray();
+        .Select(z => new ZoneView(z.Id, z.Name, z.Color, z.Bounds, z.ItemIds.Count)).ToArray();
 
     public ZoneService(WorkspaceDocument document, Func<Guid> desktop, Func<bool> save)
     { _document = document; _desktop = desktop; _save = save; }
@@ -58,6 +48,66 @@ internal sealed class ZoneService
         if (zone == null) return false;
         _document.Zones.Remove(zone);
         return Persist();
+    }
+
+    public IReadOnlyList<ZoneMemberView> Members(Guid id)
+    {
+        var zone = Find(id);
+        if (zone == null) return Array.Empty<ZoneMemberView>();
+        var assigned = zone.ItemIds.ToHashSet();
+        return _document.Items.Where(i => i.DesktopId == _desktop()).Select(i => new ZoneMemberView(i.Id,
+            i.Name.Length > 0 ? i.Name : i.Title, assigned.Contains(i.Id), i.Bounds,
+            i.Target.Length > 0 ? i.Target : i.ExecutablePath)).ToArray();
+    }
+
+    public bool SetMembership(Guid id, IReadOnlyCollection<Guid> itemIds)
+    {
+        var zone = Find(id);
+        if (zone == null || itemIds == null || itemIds.Count > 2000) return false;
+        var ids = itemIds.ToHashSet();
+        var eligible = _document.Items.Where(i => i.DesktopId == _desktop()).Select(i => i.Id).ToHashSet();
+        if (ids.Count != itemIds.Count || !ids.IsSubsetOf(eligible)) return false;
+        zone.ItemIds = ids.OrderBy(i => i).ToList();
+        return Persist();
+    }
+
+    internal bool TryPlanMove(Guid id, double dx, double dy, out ZoneLayoutPlan? plan)
+        => ZoneLayoutPlanner.TryMove(Find(id), _document.Items, dx, dy, out plan);
+
+    internal ZoneLayoutPlan Snapshot(ZoneLayoutPlan plan)
+        => new(plan.ZoneId, Find(plan.ZoneId)!.Bounds, plan.Items.Select(p =>
+            new ZoneItemPlacement(p.Id, _document.Items.First(i => i.Id == p.Id).Bounds)).ToArray());
+
+    internal Guid[] Membership(Guid id) => Find(id)!.ItemIds.OrderBy(i => i).ToArray();
+
+    internal bool TryPlanResize(Guid id, WorldRect bounds, out ZoneLayoutPlan? plan)
+    {
+        plan = null;
+        var zone = Find(id);
+        if (zone == null || !WorkspaceGeometry.ValidBounds(bounds)) return false;
+        var resized = zone.Bounds;
+        resized.X = bounds.X; resized.Y = bounds.Y; resized.W = bounds.W; resized.H = bounds.H;
+        plan = new(id, resized, Array.Empty<ZoneItemPlacement>());
+        return true;
+    }
+
+    internal bool TryReplay(ZoneLayoutEdit edit, bool redo, out ZoneLayoutPlan? plan)
+        => ZoneLayoutPlanner.TryReplay(Find(edit.Before.ZoneId), _document.Items, edit, redo, out plan);
+
+    // The coordinator applies runtime canvas geometry before publishing this change.
+    internal bool ApplyLayout(ZoneLayoutPlan plan)
+    {
+        var zone = Find(plan.ZoneId)!;
+        zone.Bounds = plan.Bounds;
+        var items = _document.Items.ToDictionary(i => i.Id);
+        foreach (var placement in plan.Items) items[placement.Id].Bounds = placement.Bounds;
+        return Persist();
+    }
+
+    internal void ForgetItem(Guid id)
+    {
+        foreach (var zone in _document.Zones) zone.ItemIds.Remove(id);
+        Changed?.Invoke();
     }
 
     private WorkspaceZone? Find(Guid id) => _document.Zones.FirstOrDefault(z => z.Id == id && z.DesktopId == _desktop());

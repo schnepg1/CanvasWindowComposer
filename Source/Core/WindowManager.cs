@@ -7,7 +7,7 @@ namespace CanvasDesktop;
 /// Consumes Canvas state and applies it to real windows.
 /// Handles enumeration, positioning, reconciliation.
 /// </summary>
-internal sealed class WindowManager : IDisposable
+internal sealed partial class WindowManager : IDisposable
 {
     private const int ReconcileTolerancePx = 2;
     private const int ReprojectThrottleMs = 200;
@@ -19,14 +19,43 @@ internal sealed class WindowManager : IDisposable
     private readonly IVirtualDesktops? _vds;
     private readonly ProjectionWorker? _projection;
     private readonly IInputRouter _input;
+    private readonly Func<uint, WorkspaceProcessIdentity?> _inspectProcess;
+    private readonly WindowVisibilityTracker _visibility = new();
+    public WindowPreviewCache Previews { get; }
+    public WindowVisibilitySnapshot? GetRuntimeVisibility(IntPtr hWnd) => _visibility.Get(hWnd);
+    public bool UsesCachedPreview(IntPtr hWnd) => _parking.ContainsKey(hWnd) || _visibility.Get(hWnd)?.AutomaticallyParked == true;
+    public IntPtr GetCachedPreviewSource(IntPtr hWnd)
+        => _visibility.GetToken(hWnd) is { } key ? Previews.GetSource(key) : IntPtr.Zero;
+
+    /// <summary>Request a fresh snapshot; native parking waits for a successful capture.</summary>
+    public bool CapturePreviewBeforeParking(IntPtr hWnd)
+    {
+        if (_disposed || !_canvas.HasWindow(hWnd) || !_win32.IsWindowVisible(hWnd)) return false;
+        ObserveRuntimeWindow(hWnd);
+        if (_visibility.Get(hWnd)?.CanPark != true || _visibility.GetToken(hWnd) is not { } key) return false;
+        var rect = _win32.GetWindowRect(hWnd);
+        Previews.InvalidateImage(hWnd);
+        return Previews.RequestCapture(key, new System.Drawing.Size(rect.w, rect.h));
+    }
+    public bool HasCachedPreview(IntPtr hWnd)
+        => _visibility.GetToken(hWnd) is { } key && Previews.HasImage(key);
+    public void RefreshPreviewState()
+    {
+        if (_disposed) return;
+        UpdateRuntimeVisibility();
+        Previews.DrainCompleted();
+    }
     private bool _disposed;
 
     // Retain identities across virtual-desktop resets; never move a recycled HWND
     // belonging to a different process during shutdown.
     private readonly Dictionary<IntPtr, uint> _sessionWindows = new();
 
-    // Track last projected screen positions to detect manual moves
+    // Last observed or acknowledged placement, retained when a later request fails.
     private readonly Dictionary<IntPtr, (int x, int y, int w, int h)> _lastScreen = new();
+    private readonly Dictionary<IntPtr, PendingMove> _pendingMoves = new();
+    private long _nextMoveId;
+    private readonly record struct PendingMove(BatchMoveItem Item, WindowRect Expected);
 
     // Windows with clipped (empty) region to prevent them from fighting off-screen
     private readonly HashSet<IntPtr> _clippedWindows = new();
@@ -44,15 +73,21 @@ internal sealed class WindowManager : IDisposable
         DrainProjectionResults();
         TrackForDesktopRestore(hWnd);
         _canvas.RestoreWindow(hWnd, world);
+        if (_parking.TryGetValue(hWnd, out var parked))
+        {
+            if (world.State == WindowState.Normal && !RestoreAutomaticWindow(hWnd, parked)) return;
+            ForgetParking(hWnd);
+        }
+        ObserveRuntimeWindow(hWnd);
         var plan = WindowPlacementPlanner.Plan(world, _canvas.Camera, _win32.GetScreenWorkingAreas(),
             ClipOffScreen, _clippedWindows.Contains(hWnd), PlacementIntent.RestoreLayout, repositionClipped: true);
         if (!ApplyRegionChange(hWnd, plan.RegionChange)) return;
         if (!plan.ShouldMove) return;
         var rect = plan.TargetRect;
-        _lastScreen[hWnd] = (rect.X, rect.Y, rect.W, rect.H);
+        var move = TrackMove(hWnd, rect, posOnly: false);
         var result = _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
-        ApplyMoveResult(new(hWnd, rect, false), result);
+        ApplyMoveResult(move, result);
     }
 
     // Temporarily suspends greedy draw (SetWindowRgn clipping)
@@ -103,7 +138,9 @@ internal sealed class WindowManager : IDisposable
         IInputRouter input,
         IClock? clock = null,
         IVirtualDesktops? vds = null,
-        bool useAsyncProjection = false)
+        bool useAsyncProjection = false,
+        Func<uint, WorkspaceProcessIdentity?>? inspectProcess = null,
+        WindowPreviewCache? previews = null)
     {
         _canvas = canvas;
         _win32 = win32;
@@ -111,6 +148,8 @@ internal sealed class WindowManager : IDisposable
         _clock = clock ?? SystemClock.Instance;
         _vds = vds;
         _input = input;
+        _inspectProcess = inspectProcess ?? new WorkspaceIdentity().InspectProcess;
+        Previews = previews ?? new WindowPreviewCache();
         _projection = useAsyncProjection ? new ProjectionWorker(win32) : null;
 
         canvas.Committed += OnCommitted;
@@ -133,9 +172,20 @@ internal sealed class WindowManager : IDisposable
     {
         DiscoverNewWindows();
         RemoveStale();
+        UpdateRuntimeVisibility();
+        Previews.DrainCompleted();
+        ProcessAutomaticParking();
     }
 
     public void Dispose()
+    {
+        if (_disposed) return;
+        var failures = RecoverAutomaticParking();
+        DisposeCore();
+        if (failures.Count > 0) throw new AggregateException("Automatic parking recovery failed.", failures);
+    }
+
+    private void DisposeCore()
     {
         if (_disposed) return;
         _disposed = true;
@@ -152,6 +202,8 @@ internal sealed class WindowManager : IDisposable
         _input.AltTabStarted -= OnAltTabStarted;
         _input.AltTabEnded -= OnAltTabEnded;
         _projection?.Dispose();
+        _visibility.Clear();
+        Previews.Dispose();
     }
 
     public void TrackForDesktopRestore(IntPtr hWnd)
@@ -171,9 +223,9 @@ internal sealed class WindowManager : IDisposable
         foreach (var hWnd in _canvas.Windows.Keys)
             if (!_sessionWindows.ContainsKey(hWnd)) TrackForDesktopRestore(hWnd);
         _projection?.ClearPending();
-        Dispose(); // No queued camera/input events may schedule a later move.
+        var failures = RecoverAutomaticParking();
+        DisposeCore(); // No queued camera/input events may schedule a later move.
         var screens = _win32.GetScreenWorkingAreas();
-        var failures = new List<Exception>();
         foreach (var (hWnd, pid) in _sessionWindows)
         {
             try
@@ -200,6 +252,7 @@ internal sealed class WindowManager : IDisposable
         _clippedWindows.Clear();
         _canvas.ClearWindows();
         _lastScreen.Clear();
+        _pendingMoves.Clear();
         _unconfirmedMoves.Clear();
         if (failures.Count > 0) throw new AggregateException("Some desktop windows could not be recovered.", failures);
     }
@@ -217,6 +270,8 @@ internal sealed class WindowManager : IDisposable
 
     private void OnCameraChanged()
     {
+        UpdateRuntimeVisibility(refreshIdentity: false);
+        ProcessAutomaticParking(allowNewParking: false);
         if (SuspendProjection) return;
 
         // Overview renders its own camera + thumbnails, so real windows don't
@@ -234,17 +289,35 @@ internal sealed class WindowManager : IDisposable
 
     private void OnReprojectWindowEvent(IntPtr hWnd)
     {
+        if (_parking.ContainsKey(hWnd) && _canvas.Windows.TryGetValue(hWnd, out var world)
+            && world.State == WindowState.Minimized)
+            ForgetParking(hWnd); // An explicit model collapse is user intent.
         ReprojectWindow(hWnd);
     }
 
     private void OnWindowMinimizedEvent(IntPtr hWnd)
     {
+        if (_parking.TryGetValue(hWnd, out var parked) && IsParkingIdentityCurrent(parked.Token))
+        {
+            if (parked.Phase != ParkingPhase.Restoring || _applyingParking
+                || (_win32.GetWindowStyle(hWnd) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0) return;
+            ForgetParking(hWnd); // A new minimize after our restore is user intent.
+        }
+        ObserveRuntimeWindow(hWnd, minimized: true);
+        if (_visibility.Get(hWnd)?.AutomaticallyParked == true) return;
         if (_canvas.HasWindow(hWnd))
             _canvas.CollapseWindow(hWnd);
     }
 
     private void OnWindowRestoredEvent(IntPtr hWnd)
     {
+        if (_parking.TryGetValue(hWnd, out var parked))
+        {
+            if (parked.Phase == ParkingPhase.Restoring || parked.Phase == ParkingPhase.Minimizing) return;
+            if ((_win32.GetWindowStyle(hWnd) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0) return;
+            HandleManualParkingRestore(hWnd);
+        }
+        ObserveRuntimeWindow(hWnd, minimized: false);
         if (_canvas.HasWindow(hWnd))
             _canvas.ExpandWindow(hWnd);
         ReprojectWindow(hWnd);
@@ -268,6 +341,11 @@ internal sealed class WindowManager : IDisposable
 
     private void OnWindowFocusedEvent(IntPtr hWnd)
     {
+        if (_parking.TryGetValue(hWnd, out var parked) && parked.Phase == ParkingPhase.Parked
+            && (_win32.GetWindowStyle(hWnd) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0)
+            HandleManualParkingRestore(hWnd);
+        if (_parkingExcluded.TryGetValue(hWnd, out var excluded) && _visibility.GetToken(hWnd) == excluded)
+            CenterManuallyRestoredWindow(hWnd);
         _canvas.BringToForeground(hWnd);
     }
 
@@ -331,17 +409,18 @@ internal sealed class WindowManager : IDisposable
         var screens = _win32.GetScreenWorkingAreas();
         var camera = _canvas.Camera;
         bool clipOffScreen = ClipOffScreen;
+        UpdateRuntimeVisibility(screens, refreshIdentity: false);
+        ProcessAutomaticParking(allowNewParking: false);
 
         foreach (var (hWnd, world) in _canvas.Windows)
         {
+            if (_parking.ContainsKey(hWnd)) continue;
             var plan = WindowPlacementPlanner.Plan(world, camera, screens, clipOffScreen,
                 _clippedWindows.Contains(hWnd), repositionClipped: repositionClipped || _unconfirmedMoves.Contains(hWnd));
             if (!ApplyRegionChange(hWnd, plan.RegionChange)) continue;
             if (!plan.ShouldMove) continue;
             var r = plan.TargetRect;
-            batch.Add(new BatchMoveItem(hWnd, r, PosOnly: true));
-            _lastScreen[hWnd] = (r.X, r.Y, r.W, r.H);
-            _unconfirmedMoves.Add(hWnd);
+            batch.Add(TrackMove(hWnd, r, posOnly: true));
         }
 
         return batch;
@@ -353,6 +432,7 @@ internal sealed class WindowManager : IDisposable
     /// </summary>
     public bool ReprojectWindow(IntPtr hWnd)
     {
+        if (_parking.ContainsKey(hWnd)) return false;
         DrainProjectionResults();
         uint ownPid = (uint)Environment.ProcessId;
         if (!_win32.IsManageable(hWnd, ownPid))
@@ -364,16 +444,17 @@ internal sealed class WindowManager : IDisposable
         if (!_canvas.Windows.TryGetValue(hWnd, out var world))
             return false;
 
+        ObserveRuntimeWindow(hWnd);
         var plan = WindowPlacementPlanner.Plan(world, _canvas.Camera, _win32.GetScreenWorkingAreas(),
             ClipOffScreen, _clippedWindows.Contains(hWnd), repositionClipped: _unconfirmedMoves.Contains(hWnd));
         if (!ApplyRegionChange(hWnd, plan.RegionChange)) return false;
         if (!plan.ShouldMove) return true;
         var r = plan.TargetRect;
 
+        var move = TrackMove(hWnd, r, posOnly: false);
         var result = _win32.SetWindowPosition(hWnd, r.X, r.Y, r.W, r.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
-        _lastScreen[hWnd] = (r.X, r.Y, r.W, r.H);
-        ApplyMoveResult(new(hWnd, r, false), result);
+        ApplyMoveResult(move, result);
         return result.Accepted;
     }
 
@@ -394,6 +475,7 @@ internal sealed class WindowManager : IDisposable
     /// <summary>Update a single window's world position from its actual screen position.</summary>
     public void ReconcileWindow(IntPtr hWnd)
     {
+        if (_parking.ContainsKey(hWnd)) return;
         DrainProjectionResults();
         if (_suspendReconcile)
         {
@@ -424,6 +506,16 @@ internal sealed class WindowManager : IDisposable
 
         var (ax, ay, aw, ah) = _win32.GetWindowRect(hWnd);
 
+        if (_pendingMoves.TryGetValue(hWnd, out var pending))
+        {
+            var expected = pending.Expected;
+            // Either the requested move has landed, or the old placement is still
+            // visible while the worker is processing it. Neither is a user drag.
+            if (Math.Abs(ax - expected.X) <= ReconcileTolerancePx && Math.Abs(ay - expected.Y) <= ReconcileTolerancePx &&
+                Math.Abs(aw - expected.W) <= ReconcileTolerancePx && Math.Abs(ah - expected.H) <= ReconcileTolerancePx)
+                return;
+        }
+
         if (Math.Abs(ax - last.x) <= ReconcileTolerancePx && Math.Abs(ay - last.y) <= ReconcileTolerancePx &&
             Math.Abs(aw - last.w) <= ReconcileTolerancePx && Math.Abs(ah - last.h) <= ReconcileTolerancePx)
             return;
@@ -435,6 +527,7 @@ internal sealed class WindowManager : IDisposable
 
         _canvas.SetWindowFromScreen(hWnd, ax, ay, aw, ah);
         _lastScreen[hWnd] = (ax, ay, aw, ah);
+        _pendingMoves.Remove(hWnd); // Ignore a stale completion after an observed manual change.
     }
 
     /// <summary>Remove windows from canvas that no longer exist.</summary>
@@ -453,12 +546,18 @@ internal sealed class WindowManager : IDisposable
     /// <summary>Drop a single window from canvas and internal tracking.</summary>
     public void RemoveWindow(IntPtr hWnd)
     {
+        ForgetParking(hWnd);
+        _parkingExcluded.Remove(hWnd);
+        _parkingRetry.Remove(hWnd);
         if (_canvas.HasWindow(hWnd)) WindowRemoving?.Invoke(hWnd);
         _canvas.RemoveWindow(hWnd);
         _lastScreen.Remove(hWnd);
+        _pendingMoves.Remove(hWnd);
         _unconfirmedMoves.Remove(hWnd);
         _clippedWindows.Remove(hWnd);
         _sessionWindows.Remove(hWnd);
+        _visibility.Remove(hWnd);
+        Previews.Remove(hWnd);
     }
 
     /// <summary>Restore regions on all clipped windows (for overview thumbnails).</summary>
@@ -508,10 +607,16 @@ internal sealed class WindowManager : IDisposable
         TrackForDesktopRestore(hWnd);
         _canvas.SetWindowFromScreen(hWnd, sx, sy, sw, sh);
         _lastScreen[hWnd] = (sx, sy, sw, sh);
+        ObserveRuntimeWindow(hWnd);
     }
 
     public bool SetWindowPinnedToScreen(IntPtr hWnd, bool pinned)
     {
+        if (_parking.TryGetValue(hWnd, out var parked))
+        {
+            if (!RestoreAutomaticWindow(hWnd, parked)) return _canvas.IsPinnedToScreen(hWnd);
+            ForgetParking(hWnd);
+        }
         uint ownPid = (uint)Environment.ProcessId;
         if (!_win32.IsManageable(hWnd, ownPid, allowMinimized: true))
             return _canvas.IsPinnedToScreen(hWnd);
@@ -550,6 +655,9 @@ internal sealed class WindowManager : IDisposable
     /// <summary>Reset: restore all windows to world positions, clear canvas.</summary>
     public void Reset()
     {
+        RecoverAutomaticParking(); // Failed debts stay tracked for retry/shutdown.
+        _parkingExcluded.Clear();
+        _parkingRetry.Clear();
         // Drop any in-flight worker batch so it can't stomp on the sync reset below.
         _projection?.ClearPending();
 
@@ -564,7 +672,7 @@ internal sealed class WindowManager : IDisposable
         foreach (var (hWnd, world) in _canvas.Windows)
         {
             TrackForDesktopRestore(hWnd);
-            if (!IsWindowActive(hWnd))
+            if (_parking.ContainsKey(hWnd) || !IsWindowActive(hWnd))
                 continue;
             if (world.State != WindowState.Normal)
                 continue;
@@ -578,10 +686,65 @@ internal sealed class WindowManager : IDisposable
         _win32.BatchMove(batch, isAsync: false, isTransient: false);
         _canvas.ClearWindows();
         _lastScreen.Clear();
+        _pendingMoves.Clear();
         _unconfirmedMoves.Clear();
+        _visibility.Clear();
+        Previews.Clear();
     }
 
     // ==================== PRIVATE ====================
+
+    private void UpdateRuntimeVisibility(IReadOnlyList<(int x, int y, int w, int h)>? screens = null,
+        bool refreshIdentity = true)
+    {
+        if (_disposed) return;
+        screens ??= _win32.GetScreenWorkingAreas();
+        // Inspect each process once per pass; never cache identity across process reuse.
+        var processes = new Dictionary<uint, WorkspaceProcessIdentity?>();
+        foreach (var (handle, world) in _canvas.Windows)
+        {
+            uint pid = _win32.GetWindowProcessId(handle);
+            var snapshot = _visibility.Get(handle);
+            WorkspaceWindowIdentity? identity = snapshot?.Identity;
+            // Camera frames reuse tick-validated identity; process inspection is too
+            // expensive for every animation frame. A PID change invalidates it now.
+            if (refreshIdentity || snapshot == null || (identity.HasValue && identity.Value.ProcessId != pid))
+            {
+                if (!processes.TryGetValue(pid, out var process))
+                    processes[pid] = process = pid == 0 ? null : _inspectProcess(pid);
+                identity = process is { } p && p.ProcessId == pid
+                    ? new(handle, pid, p.StartedAtUtcTicks) : null;
+            }
+            ObserveRuntimeWindow(handle, world, screens, identity, null);
+        }
+    }
+
+    private void ObserveRuntimeWindow(IntPtr handle, bool? minimized = null)
+    {
+        if (!_canvas.Windows.TryGetValue(handle, out var world)) return;
+        uint pid = _win32.GetWindowProcessId(handle);
+        var process = pid == 0 ? null : _inspectProcess(pid);
+        WorkspaceWindowIdentity? identity = process is { } p && p.ProcessId == pid
+            ? new(handle, pid, p.StartedAtUtcTicks) : null;
+        ObserveRuntimeWindow(handle, world, _win32.GetScreenWorkingAreas(),
+            identity, minimized);
+    }
+
+    private void ObserveRuntimeWindow(IntPtr handle, WorldRect world,
+        IReadOnlyList<(int x, int y, int w, int h)> screens, WorkspaceWindowIdentity? identity, bool? minimized)
+    {
+        int style = _win32.GetWindowStyle(handle);
+        bool eligible = world.State == WindowState.Normal && !world.PinnedToScreen
+            && (style & (int)WINDOW_STYLE.WS_MAXIMIZE) == 0
+            && _win32.IsManageable(handle, (uint)Environment.ProcessId, allowMinimized: true)
+            && (_vds == null || _vds.IsOnCurrentDesktop(handle));
+        var projected = world.PinnedToScreen
+            ? _win32.GetWindowRect(handle) : default;
+        _visibility.Observe(handle, identity, world.PinnedToScreen
+            ? new WindowRect(projected.x, projected.y, projected.w, projected.h) : _canvas.Camera.Project(world),
+            screens, minimized ?? (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0, eligible, _clock.TickCount64);
+        Previews.Observe(handle, _visibility.GetToken(handle));
+    }
 
     public void DiscoverNewWindows()
     {
@@ -616,10 +779,10 @@ internal sealed class WindowManager : IDisposable
         if (_clippedWindows.Contains(hWnd) && !ApplyRegionChange(hWnd, WindowRegionChange.Unclip)) return;
 
         _canvas.SetPinnedToScreen(hWnd, true);
-        _lastScreen[hWnd] = (rect.X, rect.Y, rect.W, rect.H);
+        var move = TrackMove(hWnd, rect, posOnly: false);
         var result = _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
-        ApplyMoveResult(new(hWnd, rect, false), result);
+        ApplyMoveResult(move, result);
     }
 
     private void UnpinWindowFromScreen(IntPtr hWnd)
@@ -628,6 +791,7 @@ internal sealed class WindowManager : IDisposable
         _canvas.SetWindowFromScreen(hWnd, x, y, w, h);
         _canvas.SetPinnedToScreen(hWnd, false);
         _lastScreen[hWnd] = (x, y, w, h);
+        _pendingMoves.Remove(hWnd);
     }
 
     private WindowRect ResolvePinnedScreenRect(IntPtr hWnd, WorldRect world)
@@ -649,15 +813,35 @@ internal sealed class WindowManager : IDisposable
         for (int i = 0; i < items.Count; i++) ApplyMoveResult(items[i], result.Items[i]);
     }
 
+    private BatchMoveItem TrackMove(IntPtr hWnd, WindowRect rect, bool posOnly)
+    {
+        if (!_lastScreen.ContainsKey(hWnd))
+        {
+            var actual = _win32.GetWindowRect(hWnd);
+            if (actual.w > 0 && actual.h > 0) _lastScreen[hWnd] = actual;
+        }
+        var expected = posOnly && _lastScreen.TryGetValue(hWnd, out var last)
+            ? new WindowRect(rect.X, rect.Y, last.w, last.h) : rect;
+        var item = new BatchMoveItem(hWnd, rect, posOnly) { RequestId = ++_nextMoveId };
+        _pendingMoves[hWnd] = new(item, expected);
+        _unconfirmedMoves.Add(hWnd);
+        return item;
+    }
+
     private void ApplyMoveResult(BatchMoveItem item, NativeOperationResult result)
     {
-        var rect = item.Rect;
-        // A worker completion must not overwrite a newer requested placement.
-        if (!_lastScreen.TryGetValue(item.HWnd, out var latest) || latest != (rect.X, rect.Y, rect.W, rect.H)) return;
-        if (result.Accepted) _unconfirmedMoves.Remove(item.HWnd);
+        // Identical rectangles can belong to different requests. Compare revisions
+        // so an older worker completion cannot consume a newer pending placement.
+        if (!_pendingMoves.TryGetValue(item.HWnd, out var pending) || pending.Item.RequestId != item.RequestId) return;
+        _pendingMoves.Remove(item.HWnd);
+        if (result.Accepted)
+        {
+            var expected = pending.Expected;
+            _lastScreen[item.HWnd] = (expected.X, expected.Y, expected.W, expected.H);
+            _unconfirmedMoves.Remove(item.HWnd);
+        }
         else
         {
-            _lastScreen.Remove(item.HWnd);
             _unconfirmedMoves.Add(item.HWnd);
         }
     }

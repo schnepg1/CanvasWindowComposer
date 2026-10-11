@@ -56,6 +56,10 @@ FindWindowEx
 WindowFromPoint
 SetForegroundWindow
 GetParent
+GetWindow
+GetForegroundWindow
+IsWindowEnabled
+GET_WINDOW_CMD
 GetAncestor
 GetWindowThreadProcessId
 GetClassName

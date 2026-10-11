@@ -1,0 +1,311 @@
+using System;
+using System.Drawing;
+using System.Threading;
+using CanvasDesktop;
+using Windows.Win32.UI.WindowsAndMessaging;
+using Xunit;
+
+namespace CanvasDesktop.Tests;
+
+public class AutomaticParkingTests
+{
+    private sealed class FakeCapture : IWindowPreviewCapture
+    {
+        public bool Fail;
+        public Bitmap? Capture(IntPtr handle, Size source, Size target)
+            => Fail ? null : new Bitmap(target.Width, target.Height);
+    }
+    private sealed class Harness : IDisposable
+    {
+        public readonly Canvas Canvas = new();
+        public readonly FakeWindowApi Api = new();
+        public readonly FakeInputRouter Input = new();
+        public readonly FakeClock Clock = new();
+        public readonly FakeAppConfig Config = new() { EnableAutomaticMinimization = true, DisableGreedyDraw = true };
+        public readonly FakeVirtualDesktops Desktops = new();
+        public readonly FakeCapture Capture = new();
+        public readonly WindowManager Manager;
+        public long Started = 100;
+        public readonly IntPtr Handle = (IntPtr)42;
+        public Harness()
+        {
+            var cache = new WindowPreviewCache(Capture);
+            Manager = new(Canvas, Api, Config, Input, Clock, Desktops,
+                inspectProcess: pid => new(pid, Started, "app.exe"), previews: cache);
+            Api.AddWindow(Handle, 5000, 100, 400, 300, pid: 7);
+            Manager.RegisterWindow(Handle);
+        }
+        public void Tick(long time) { Clock.Now = time; Manager.Tick(); }
+        public void FinishCapture()
+        {
+            Assert.True(SpinWait.SpinUntil(() =>
+            { Manager.Previews.DrainCompleted(); return !Manager.Previews.CapturePending; }, 5000));
+        }
+        public void Park()
+        {
+            Tick(1500); FinishCapture(); Tick(1501);
+            Assert.True(Manager.UsesCachedPreview(Handle));
+            Assert.True(IsMinimized);
+        }
+        public bool IsMinimized => (Api.Windows[Handle].Style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0;
+        public void Dispose()
+        {
+            Api.FailedParkingRestores.Clear(); Api.FailedMoves.Clear();
+            Manager.Dispose();
+        }
+    }
+
+    [Fact]
+    public void DisabledByDefaultDoesNotCaptureOrMinimize()
+    {
+        using var h = new Harness(); h.Config.EnableAutomaticMinimization = false;
+        h.Tick(1500); h.Tick(5000);
+        Assert.False(h.Manager.Previews.CapturePending);
+        Assert.Empty(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void CapturesBeforeParkingAndRetainsSavedWorldAndUserIntent()
+    {
+        using var h = new Harness(); var world = h.Canvas.Windows[h.Handle];
+        h.Api.AfterParkingMinimize = handle => h.Input.RaiseWindowMinimized(handle);
+        h.Tick(1499); Assert.Empty(h.Api.MinimizeCalls);
+        h.Tick(1500); Assert.Empty(h.Api.MinimizeCalls);
+        h.FinishCapture(); h.Tick(1501);
+        Assert.Single(h.Api.MinimizeCalls);
+        Assert.Equal(world, h.Canvas.Windows[h.Handle]);
+        Assert.Equal(RuntimeWindowVisibility.AutomaticallyMinimized, h.Manager.GetRuntimeVisibility(h.Handle)!.Value.State);
+        h.Manager.ReprojectSync(); h.Manager.ReconcileWindow(h.Handle);
+        Assert.Empty(h.Api.SetPositionCalls);
+        Assert.Equal(world, h.Canvas.Windows[h.Handle]);
+    }
+
+    [Fact]
+    public void NearViewportWaitsThenRestoresWithoutChangingFocusAndKeepsTransitionImage()
+    {
+        using var h = new Harness(); h.Park();
+        h.Api.Foreground = (IntPtr)999;
+        h.Api.AfterParkingRestore = handle => h.Input.RaiseWindowRestored(handle);
+        h.Clock.Now = 1600; h.Canvas.SetCamera(3000, 0);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        h.Tick(1749); Assert.Empty(h.Api.ParkingRestoreCalls);
+        h.Tick(1750);
+        Assert.Single(h.Api.ParkingRestoreCalls);
+        Assert.False(h.IsMinimized);
+        Assert.True(h.Manager.UsesCachedPreview(h.Handle));
+        Assert.Equal((IntPtr)999, h.Api.Foreground);
+        Assert.All(h.Api.SetPositionCalls, call => Assert.NotEqual(0u, call.flags & 0x10u));
+        h.Tick(1900); Assert.False(h.Manager.UsesCachedPreview(h.Handle));
+        Assert.Equal(WindowState.Normal, h.Canvas.Windows[h.Handle].State);
+    }
+
+    [Fact]
+    public void VisibleViewportCommitRestoresImmediately()
+    {
+        using var h = new Harness(); h.Park();
+        h.Clock.Now = 1600; h.Canvas.SetCamera(5000, 0); h.Canvas.Commit();
+        Assert.False(h.IsMinimized);
+        Assert.Equal(0, h.Api.Windows[h.Handle].X);
+    }
+
+    [Theory]
+    [InlineData("pinned")]
+    [InlineData("maximized")]
+    [InlineData("user-minimized")]
+    [InlineData("dialog")]
+    [InlineData("foreground")]
+    [InlineData("other-desktop")]
+    public void IneligibleWindowsNeverPark(string reason)
+    {
+        using var h = new Harness();
+        switch (reason)
+        {
+            case "pinned": h.Canvas.SetPinnedToScreen(h.Handle, true); break;
+            case "maximized": h.Api.Windows[h.Handle].Style = (int)WINDOW_STYLE.WS_MAXIMIZE; break;
+            case "user-minimized": h.Api.Windows[h.Handle].Style = (int)WINDOW_STYLE.WS_MINIMIZE; h.Input.RaiseWindowMinimized(h.Handle); break;
+            case "dialog": h.Api.ParkingIneligible.Add(h.Handle); break;
+            case "foreground": h.Api.Foreground = h.Handle; break;
+            case "other-desktop": h.Desktops.DefaultIsOnCurrent = false; break;
+        }
+        h.Tick(1500); h.Tick(5000);
+        Assert.Empty(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void FailedCaptureAndFailedMinimizeBackOff()
+    {
+        using var h = new Harness(); h.Capture.Fail = true;
+        h.Tick(1500); h.FinishCapture(); h.Tick(1501);
+        Assert.Empty(h.Api.MinimizeCalls);
+        h.Capture.Fail = false; h.Tick(5000);
+        Assert.False(h.Manager.Previews.CapturePending);
+        h.Api.FailedMinimizations.Add(h.Handle);
+        h.Tick(11501); h.FinishCapture(); h.Tick(11502);
+        Assert.Single(h.Api.MinimizeCalls);
+        Assert.False(h.Manager.UsesCachedPreview(h.Handle));
+        Assert.Equal(WindowState.Normal, h.Canvas.Windows[h.Handle].State);
+        h.Tick(15000); Assert.Single(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void IdentityReplacementBetweenCaptureAndParkingDoesNotMinimizeReplacement()
+    {
+        using var h = new Harness(); h.Tick(1500); h.FinishCapture();
+        h.Started = 200; h.Tick(1501);
+        Assert.Empty(h.Api.MinimizeCalls);
+        Assert.False(h.Manager.HasCachedPreview(h.Handle));
+    }
+
+    [Fact]
+    public void RecycledHandleIsNeverRestoredDuringRecovery()
+    {
+        using var h = new Harness(); h.Park();
+        h.Started = 200;
+        h.Api.SetPositionCalls.Clear();
+        h.Manager.RestoreDesktopViewport();
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        Assert.Empty(h.Api.SetPositionCalls);
+    }
+
+    [Fact]
+    public void FailedRestoreKeepsDebtAndCachedPreviewUntilSuccessfulRetry()
+    {
+        using var h = new Harness(); h.Park(); h.Api.FailedParkingRestores.Add(h.Handle);
+        h.Clock.Now = 1600; h.Canvas.SetCamera(5000, 0);
+        Assert.True(h.IsMinimized); Assert.True(h.Manager.UsesCachedPreview(h.Handle));
+        h.Tick(2000); Assert.Single(h.Api.ParkingRestoreCalls);
+        h.Api.FailedParkingRestores.Clear(); h.Tick(11600);
+        Assert.False(h.IsMinimized); h.Tick(11750);
+        Assert.False(h.Manager.UsesCachedPreview(h.Handle));
+    }
+
+    [Fact]
+    public void DisableAndDialogAppearanceRecoverExistingParking()
+    {
+        using var h = new Harness(); h.Park();
+        h.Config.EnableAutomaticMinimization = false;
+        h.Tick(1600); Assert.False(h.IsMinimized);
+        h.Tick(1750); h.Config.EnableAutomaticMinimization = true;
+        h.Tick(12000); h.FinishCapture(); h.Tick(12001);
+        Assert.True(h.IsMinimized);
+        h.Api.ParkingIneligible.Add(h.Handle);
+        h.Tick(12500); Assert.False(h.IsMinimized);
+    }
+
+    [Fact]
+    public void ManualTaskbarRestoreRecentersAndExcludesSelfRestoringWindowForLifetime()
+    {
+        using var h = new Harness(); h.Park();
+        h.Api.Windows[h.Handle].Style = 0; h.Api.Foreground = h.Handle;
+        h.Input.RaiseWindowRestored(h.Handle);
+        Assert.False(h.Manager.UsesCachedPreview(h.Handle));
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        Assert.True(h.Canvas.CamX > 0);
+        h.Api.Foreground = IntPtr.Zero; h.Canvas.SetCamera(0, 0);
+        h.Tick(15000); h.Tick(20000);
+        Assert.Single(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void UserMinimizationAfterAutomaticRestoreIsNeverRecovered()
+    {
+        using var h = new Harness(); h.Park(); h.Canvas.SetCamera(5000, 0);
+        h.Api.Windows[h.Handle].Style = (int)WINDOW_STYLE.WS_MINIMIZE;
+        h.Input.RaiseWindowMinimized(h.Handle);
+        Assert.Equal(WindowState.Minimized, h.Canvas.Windows[h.Handle].State);
+        int restores = h.Api.ParkingRestoreCalls.Count;
+        h.Manager.Dispose();
+        Assert.Equal(restores, h.Api.ParkingRestoreCalls.Count);
+        Assert.True(h.IsMinimized);
+    }
+
+    [Theory]
+    [InlineData("reset")]
+    [InlineData("dispose")]
+    [InlineData("exit")]
+    public void RecoveryRestoresOnlyCanvasOwnedMinimization(string action)
+    {
+        using var h = new Harness(); h.Park();
+        var user = (IntPtr)43; h.Api.AddWindow(user, 300, 200, 400, 300, style: (int)WINDOW_STYLE.WS_MINIMIZE);
+        h.Canvas.SetWindow(user, 300, 200, 400, 300); h.Canvas.CollapseWindow(user);
+        switch (action)
+        {
+            case "reset": h.Manager.Reset(); break;
+            case "dispose": h.Manager.Dispose(); break;
+            case "exit": h.Manager.RestoreDesktopViewport(); break;
+        }
+        Assert.False(h.IsMinimized);
+        Assert.NotEqual(0, h.Api.Windows[user].Style & (int)WINDOW_STYLE.WS_MINIMIZE);
+        Assert.Single(h.Api.ParkingRestoreCalls);
+        Assert.Equal(h.Handle, h.Api.ParkingRestoreCalls[0].handle);
+    }
+
+    [Fact]
+    public void PinningParkedWindowRestoresAndPinsIt()
+    {
+        using var h = new Harness(); h.Park();
+        Assert.True(h.Manager.SetWindowPinnedToScreen(h.Handle, true));
+        Assert.False(h.IsMinimized); Assert.False(h.Manager.UsesCachedPreview(h.Handle));
+    }
+
+    [Fact]
+    public void DisablingWhileCaptureCompletesCancelsParking()
+    {
+        using var h = new Harness(); h.Tick(1500); h.FinishCapture();
+        h.Config.EnableAutomaticMinimization = false; h.Tick(1501);
+        Assert.Empty(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void ThrowingMinimizeRetainsRecoverableOwnership()
+    {
+        using var h = new Harness();
+        h.Api.AfterParkingMinimize = _ => throw new InvalidOperationException("Injected failure");
+        h.Tick(1500); h.FinishCapture();
+        Assert.Throws<InvalidOperationException>(() => h.Tick(1501));
+        Assert.True(h.IsMinimized);
+        h.Tick(1502);
+        Assert.False(h.IsMinimized);
+        Assert.Equal(WindowState.Normal, h.Canvas.Windows[h.Handle].State);
+    }
+
+    [Fact]
+    public void FailedResetRecoveryRetainsDebtForLaterTick()
+    {
+        using var h = new Harness(); h.Park();
+        h.Api.FailedParkingRestores.Add(h.Handle);
+        h.Manager.Reset(); Assert.True(h.IsMinimized);
+        h.Api.FailedParkingRestores.Clear(); h.Tick(11501);
+        Assert.False(h.IsMinimized);
+    }
+
+    [Fact]
+    public void MultipleWindowsFromSameProcessHaveIndependentParkingOwnership()
+    {
+        using var h = new Harness();
+        var second = (IntPtr)43;
+        h.Api.AddWindow(second, 6000, 100, 400, 300, pid: 7);
+        h.Manager.RegisterWindow(second);
+        h.Tick(1500); h.FinishCapture(); h.Tick(1501);
+        h.FinishCapture(); h.Tick(1502);
+        Assert.Equal(2, h.Api.MinimizeCalls.Count);
+        h.Api.Windows[h.Handle].Style = 0;
+        h.Input.RaiseWindowRestored(h.Handle);
+        h.Manager.Reset();
+        Assert.Single(h.Api.ParkingRestoreCalls);
+        Assert.Equal(second, h.Api.ParkingRestoreCalls[0].handle);
+    }
+
+    [Fact]
+    public void ManualRestoreCentersWithinMonitorWithNegativeOrigin()
+    {
+        using var h = new Harness(); h.Park();
+        h.Api.ScreenAreas = new() { (-1920, -200, 1920, 1080) };
+        h.Api.Windows[h.Handle].Style = 0; h.Api.Foreground = h.Handle;
+        h.Input.RaiseWindowRestored(h.Handle);
+        var projected = h.Canvas.Camera.Project(h.Canvas.Windows[h.Handle]);
+        Assert.Equal(-960, projected.X + projected.W / 2);
+        Assert.Equal(340, projected.Y + projected.H / 2);
+    }
+}
+

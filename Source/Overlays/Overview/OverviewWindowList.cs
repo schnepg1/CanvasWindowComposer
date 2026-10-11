@@ -95,6 +95,13 @@ internal sealed class OverviewWindowList
         SelectedIndex = -1;
     }
 
+    public void SyncGeometry()
+    {
+        for (int i = 0; i < _windows.Count; i++)
+            if (!_windows[i].ScreenFixed && _canvas.Windows.TryGetValue(_windows[i].HWnd, out var world))
+                _windows[i] = _windows[i] with { World = world };
+    }
+
     public void SelectNext()
     {
         if (_windows.Count == 0) return;

@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="CanvasDesktop.Tests" />
+    <InternalsVisibleTo Include="CanvasDesktop.ZonePreview" />
   </ItemGroup>
 
   <ItemGroup>

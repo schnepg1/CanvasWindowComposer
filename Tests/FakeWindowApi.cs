@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CanvasDesktop.Tests;
 
@@ -26,6 +27,36 @@ internal sealed class FakeWindowApi : IWindowApi
     public HashSet<IntPtr> FailedClips = new();
     public HashSet<IntPtr> FailedUnclips = new();
     public HashSet<IntPtr> FailedMoves = new();
+    public HashSet<IntPtr> ParkingIneligible = new();
+    public HashSet<IntPtr> FailedMinimizations = new();
+    public HashSet<IntPtr> FailedParkingRestores = new();
+    public readonly List<IntPtr> MinimizeCalls = new();
+    public readonly List<(IntPtr handle, WindowRect rect)> ParkingRestoreCalls = new();
+    public IntPtr Foreground;
+    public Action<IntPtr>? AfterParkingMinimize;
+    public Action<IntPtr>? AfterParkingRestore;
+
+    public IntPtr GetForegroundWindow() => Foreground;
+    public bool CanAutomaticallyMinimize(IntPtr handle)
+        => Windows.TryGetValue(handle, out var w) && w.Manageable && w.Visible
+            && !ParkingIneligible.Contains(handle) && Foreground != handle;
+    public NativeOperationResult MinimizeForParking(IntPtr handle)
+    {
+        MinimizeCalls.Add(handle);
+        if (FailedMinimizations.Contains(handle)) return new("MinimizeForParking", handle.ToInt64(), NativeOperationStatus.Failed, 5, 0);
+        Windows[handle].Style |= (int)WINDOW_STYLE.WS_MINIMIZE;
+        AfterParkingMinimize?.Invoke(handle);
+        return NativeOperationResult.Success("MinimizeForParking", handle);
+    }
+    public NativeOperationResult RestoreFromParking(IntPtr handle, WindowRect rect)
+    {
+        ParkingRestoreCalls.Add((handle, rect));
+        if (FailedParkingRestores.Contains(handle)) return new("RestoreFromParking", handle.ToInt64(), NativeOperationStatus.Failed, 5, 0);
+        Windows[handle].Style &= ~(int)(WINDOW_STYLE.WS_MINIMIZE | WINDOW_STYLE.WS_MAXIMIZE);
+        var result = SetWindowPosition(handle, rect.X, rect.Y, rect.W, rect.H, 0x14);
+        AfterParkingRestore?.Invoke(handle);
+        return result;
+    }
 
     // Windows returned by EnumWindows, in order
     public List<IntPtr> EnumOrder = new();
@@ -124,7 +155,8 @@ internal sealed class FakeWindowApi : IWindowApi
             if (Windows.TryGetValue(item.HWnd, out var win))
             {
                 var r = item.Rect;
-                win.X = r.X; win.Y = r.Y; win.W = r.W; win.H = r.H;
+                win.X = r.X; win.Y = r.Y;
+                if (!item.PosOnly) { win.W = r.W; win.H = r.H; }
             }
             results.Add(NativeOperationResult.Success("BatchMoveItem", item.HWnd));
         }

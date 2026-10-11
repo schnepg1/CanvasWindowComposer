@@ -43,8 +43,40 @@ public class WindowManagerPlacementTests
         wm.ReprojectSync();
         var batched = Assert.Single(api.LastBatch, i => i.HWnd == (IntPtr)2);
         Assert.Equal(new WindowRect(individual.x, individual.y, individual.w, individual.h), batched.Rect);
+        Assert.Equal(api.GetWindowRect((IntPtr)1), api.GetWindowRect((IntPtr)2));
         Assert.Equal(!disabled && !suspended, api.ClippedWindows.Contains((IntPtr)1));
         Assert.Equal(api.ClippedWindows.Contains((IntPtr)1), api.ClippedWindows.Contains((IntPtr)2));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BatchAndIndividualProjection_SharePositionPolicyButHaveExplicitSizeSemantics(bool disabled)
+    {
+        var api = new FakeWindowApi(); var canvas = new Canvas();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig { DisableGreedyDraw = disabled }, new FakeInputRouter());
+        canvas.LoadState(new CanvasState { Zoom = 0.5 });
+        foreach (int id in new[] { 1, 2 })
+        {
+            api.AddWindow((IntPtr)id, 100, 100, 800, 600);
+            canvas.SetWindow((IntPtr)id, 10000, 200, 800, 600);
+        }
+
+        Assert.True(wm.ReprojectWindow((IntPtr)1));
+        wm.ReprojectSync();
+        var individual = api.GetWindowRect((IntPtr)1);
+        var batch = api.GetWindowRect((IntPtr)2);
+        Assert.Equal((individual.x, individual.y), (batch.x, batch.y));
+        Assert.Equal((400, 300), (individual.w, individual.h));
+        Assert.Equal((800, 600), (batch.w, batch.h));
+        Assert.Equal(!disabled, api.ClippedWindows.Contains((IntPtr)1));
+        Assert.Equal(!disabled, api.ClippedWindows.Contains((IntPtr)2));
+        Assert.All(api.LastBatch, item => Assert.True(item.PosOnly));
+
+        // A position-only acknowledgement must not predict a resize that did not happen.
+        wm.ReconcileWindow((IntPtr)2);
+        Assert.Equal(800, canvas.Windows[(IntPtr)2].W);
+        Assert.Equal(600, canvas.Windows[(IntPtr)2].H);
     }
 
     [Fact]

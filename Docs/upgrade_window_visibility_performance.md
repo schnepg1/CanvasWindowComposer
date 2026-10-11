@@ -8,9 +8,9 @@ Updated 11 October 2026.
 | --- | --- |
 | 1. Pure placement planner | Implemented and verified locally; details below |
 | 2. Native-operation results and performance baseline | Implemented; synthetic baseline recorded, real-app matrix remains |
-| 3. Runtime visibility and automatic-parking state | Next |
-| 4. Cached previews | Pending |
-| 5. Opt-in automatic minimization | Pending |
+| 3. Runtime visibility and automatic-parking state | Implemented and verified locally; native automatic minimization remains disabled |
+| 4. Cached previews | Implemented and verified locally; best-effort native capture, automatic parking remains disabled |
+| 5. Opt-in automatic minimization | Implemented; unit/native smoke checks pass; disabled by default, real-app matrix pending |
 | 6. Remaining Canvas overhead | Pending; per-batch monitor snapshot included in step 1 |
 | 7. Rendering modernization and UI upgrade | Pending |
 
@@ -146,8 +146,10 @@ compatibility and performance matrix remains before enabling automatic minimizat
   as though the visibility change succeeded. Failed/cancelled/superseded parking
   remains eligible for another placement attempt. Projection-worker results are
   consumed on the UI thread; stale results do not replace a different newer target.
-  Predicted positions while requests are pending still support existing reconciliation;
-  they do not represent confirmed native geometry. Failed final desktop recovery
+  Pending predictions are kept separately from the last observed/acknowledged
+  placement; a failed request retains the reconciliation baseline. Neither a
+  prediction nor API acknowledgement proves final native geometry. Failed final
+  desktop recovery
   aggregates errors and continues processing the other windows.
 - Failed `SetWindowRgn` frees its untransferred GDI region. Native restoration checks
   `GetWindowPlacement` before modifying it, preserving existing placement flags.
@@ -271,11 +273,310 @@ recorded, not automatically repaired by a new resource-state controller. Global
 unclipping, continuous stationary rendering and compatibility edge parking are
 otherwise retained for the later optimization steps.
 
+## Completed: step 3 - runtime visibility and automatic-parking state
+
+Implemented locally on 11 October 2026. Automatic native minimization remains
+disabled: this checkpoint establishes classification, ownership and timing policy.
+
+### Runtime policy and integration
+
+- Added [WindowVisibilityTracker](../Source/Core/WindowVisibilityTracker.cs), a
+  session-only state machine distinguishing visible, near-viewport, off-screen,
+  automatically minimized and user-minimized windows. Geometry uses logical camera
+  projections, never the one-pixel compatibility parking position. Pinned windows
+  use their actual screen rectangle. Multiple monitors are tested independently;
+  wide intersection arithmetic supports negative origins and large coordinates.
+- Visibility observations run during discovery, background ticks, camera changes
+  (including suspended overview projection), batch/individual placement, and native
+  minimize/restore events. `WindowManager.GetRuntimeVisibility` exposes immutable
+  snapshots. Removal, reset and disposal discard runtime state. No runtime fields
+  were added to `WorldRect`, canvas snapshots or workspace files. Existing user
+  minimize events still collapse the saved canvas representation; Canvas-owned
+  minimization has a separate ownership check.
+- The departure margin is **512 screen pixels**, and the approach margin is
+  **256 pixels**. A window classified far away must enter the smaller approach
+  band before becoming near; a near window must leave the larger departure band
+  before becoming off-screen. Eligible normal, unpinned windows require **1500 ms**
+  continuously far away before `CanPark`. Near parked windows require **150 ms**
+  before `ShouldRestore`; actual viewport intersection or loss of eligibility
+  requests recovery immediately. Invalid topology/geometry, unavailable identity,
+  user minimization, maximization and other-desktop windows cannot become parking
+  candidates. These are policy signals only; no minimize or restore is issued.
+- Reused the existing `WorkspaceWindowIdentity` (HWND, PID and process-start ticks)
+  and `WorkspaceIdentity.InspectProcess`. Process inspection runs once per PID in
+  a tick pass; camera frames reuse the last observed identity and invalidate a
+  changed PID immediately. Individual event paths refresh identity. An unavailable
+  identity discards ownership and cannot authorize automatic parking.
+- Parking reservations include a fresh session lifetime token. Identity replacement,
+  removal and re-enrollment invalidate older tokens, including same-process HWND
+  reuse when destruction/removal was observed. Ownership requires a matching
+  reservation, a successful operation for that HWND, and confirmed native minimized
+  state. Failure, cancellation, queued acknowledgement alone and unconfirmed
+  minimization do not establish ownership. Native restoration relinquishes ownership;
+  a later minimization is treated as user-owned. Existing region clipping remains
+  independent of automatic-minimization ownership.
+
+### Verification and limits
+
+Added [WindowVisibilityTests](../Tests/WindowVisibilityTests.cs) covering exact
+viewport/margin edges, hysteresis, dwell reset, ownership confirmation and failures,
+restore delay and immediate recovery, identity/process-start replacement, lifetime
+invalidation, unavailable identity, invalid topology, wide/multi-monitor geometry,
+pinned/maximized exclusions, stale removal, suspended projection and unchanged layout.
+All **17** new cases pass when filtered to `FullyQualifiedName~WindowVisibilityTests`.
+
+`dotnet test Tests/CanvasDesktop.Tests.csproj --no-restore --configuration Release --verbosity minimal -p:NoWarn=WPF0001`
+passes the current working-tree suite (**390 tests**, including concurrent unrelated
+work). The unsuppressed command initially failed on the existing experimental WPF
+`Window.ThemeMode` diagnostic in `Source/Workspace/ZoneWindow.cs`; suppression was
+limited to the validation command. No production project suppression was added by
+this checkpoint.
+
+No real applications were minimized and no resource savings are claimed. The
+tracker is independent of native calls; step 5 must connect reservation/completion
+to actual operations, revalidate fresh native identity immediately before every
+parking/restoration, handle pending-operation events and failures, and preserve
+shutdown/desktop-switch recovery. Polling identity is not an atomic OS guarantee:
+same-process HWND reuse with a missed destruction event cannot be proven from
+HWND/PID/process-start alone. Cached previews, native minimization, dialogs and the
+real-application compatibility matrix remain steps 4/5.
+
 ### Next implementation checkpoint
 
-Step 3: add runtime visibility and ownership state, separating user minimization
-from Canvas-owned automatic parking, with identity validation, viewport margins
-and transition delays. First add classification/state tests with automatic native
-minimization still disabled. Step 4 then provides cached previews; step 5 introduces
-opt-in native minimization and real-application validation. Do not infer resource
-idling merely from geometric off-screen classification or native API acknowledgement.
+Step 4 is implemented below. The next checkpoint is opt-in native minimization
+in step 5. Do not infer resource idling from geometric classification or native
+API acknowledgement.
+
+
+## Review fixes for steps 1 and 2
+
+Implemented on 11 October 2026 following the code review.
+
+- Fixed failed-move reconciliation: the window manager now retains the previous
+  observed/acknowledged placement separately from its pending request. Failed or
+  cancelled requests remain retryable without disabling subsequent manual drag
+  and resize tracking. Explicit saved placement and pinning use the same tracking
+  path. Initial requests establish an observed baseline even without prior discovery.
+- Pending requests have manager-local revision IDs, so an older worker completion
+  cannot consume a newer request merely because their requested rectangles match.
+  Reconciliation recognizes both the pending expected rectangle and the previous
+  placement while a worker move is outstanding. Pending tracking is cleared when
+  a window is removed, a manual change supersedes it, or the canvas is reset.
+- Fixed the fake batch API to honor `PosOnly`/`SWP_NOSIZE`. Batch projection
+  intentionally retains native window dimensions; individual and saved placement
+  may resize to the projected dimensions. These paths share logical position and
+  clipping policy, not an unconditional promise of equal native sizes. Accepted
+  position-only moves now retain the known native dimensions in the reconciliation
+  baseline, avoiding feedback from a resize that did not happen.
+- Strengthened parity assertions to inspect resulting rectangles and added a
+  fractional-zoom case where projected and actual sizes differ, with clipping both
+  enabled and disabled. Added fake and real USER32 move-only versus resize checks;
+  native tests use unshown windows owned by the test process.
+- Added regression cases for individual/batch failures with and without prior
+  registration, unchanged geometry after failure, subsequent manual drag/resize,
+  successful retry, failed saved placement/pinning, and reconciliation while a
+  worker request is pending.
+
+Verification: the full current workspace Release test run passes **391 tests**
+with no warnings or errors. These fixes add 13 regression cases; the total also
+includes concurrent visibility/zone work in this workspace. The earlier 350-test
+result remains the original step 2 checkpoint. No installed application was
+replaced or restarted, and the recorded synthetic baseline was not remeasured
+for these correctness fixes.
+
+## Completed: step 4 - cached previews and lifecycle
+
+Implemented locally on 11 October 2026. This supplies the preview machinery for
+step 5; automatic native minimization is still disabled. Normal operation keeps
+using live previews until a future parking controller explicitly requests capture
+and establishes automatic-parking ownership.
+
+### Capture, limits and ownership
+
+- Added [WindowPreviewCache](../Source/Core/WindowPreviewCache.cs), owned by the
+  window manager. Captures use the runtime identity plus its session lifetime
+  token, rather than HWND alone. Identity replacement/unavailability, removal,
+  reset and disposal invalidate images. Results arriving after invalidation are
+  discarded and disposed; a stale capture cannot be attached to a new lifetime.
+- Images retain aspect ratio without upscaling, capped at **1024 x 576 pixels**.
+  The default **32 MiB image budget** includes cached 32-bit pixel payloads, the
+  shared unavailable-preview image and a reservation for one in-flight capture.
+  LRU eviction and a separate **64-image count limit** bound both large snapshots
+  and many tiny windows. `ImageBytes`, `Count` and `CapturePending` expose the
+  controlled resources. This is not a cap on total process/GPU memory: temporary
+  GDI bookkeeping, window redirection surfaces and DWM thumbnail resources are
+  OS-managed overhead in addition to the image payload. Source surfaces have
+  the same resolution/count bounds; their actual memory cost remains unmeasured.
+- [WindowPreviewCapture](../Source/System/WindowPreviewCapture.cs) uses best-effort
+  native `PrintWindow` capture on a background thread, with GDI mapping directly
+  into the capped bitmap; it never allocates a full-resolution source image.
+  Capture duration/outcome is recorded as `CaptureWindowPreview` in the existing
+  performance collector. Entirely black/untouched frames are treated as unavailable.
+  Nothing writes captured pixels to disk or workspace storage.
+- There is at most **one in-flight capture per cache**, with no pending queue.
+  New requests are rejected while capture or its undrained result is outstanding.
+  The UI consumes completions during background ticks or preview-state refresh.
+  Microsoft's [PrintWindow contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-printwindow)
+  permits a blocking cross-process call: a hung application can stall this single
+  background worker. Disposal does not join it; its bounded bitmap is released
+  when the call returns, and no further workers can accumulate in that cache.
+  A hung capture is not reported as successful or as a completed timeout.
+- `WindowManager.CapturePreviewBeforeParking` refreshes identity and checks parking
+  eligibility before requesting capture. `HasCachedPreview` becomes true only for
+  a real image of the current lifetime; placeholders never satisfy it. Step 5 must
+  wait for a valid image and revalidate identity/eligibility before minimizing.
+
+### Overview representation
+
+- Added [CachedPreviewWindow](../Source/Overlays/Overview/CachedPreviewWindow.cs),
+  a static, borderless, nonactivating tool window outside the virtual desktop,
+  created lazily as a DWM source for a cached bitmap. It has no taskbar/Alt-Tab
+  entry. Live and cached sources therefore share the existing DWM registration
+  order, per-monitor culling, camera projection and foreground handling, without
+  introducing a second image layer with conflicting overlap order. The original
+  application HWND remains the selection/hit-test identity.
+- [OverviewThumbnails](../Source/Overlays/Overview/OverviewThumbnails.cs) now selects
+  the live application or cached source according to runtime parking ownership.
+  It re-registers when the source changes, including recycled numeric HWNDs after
+  cache-surface replacement. Missing/evicted images use one shared bounded
+  **Preview unavailable** image; failure to create a source never falls back to
+  the parked application's live thumbnail.
+- Overview opening refreshes runtime identity and consumes completed captures;
+  it does not request capture or restore automatically parked applications.
+  Closing overview unregisters its thumbnails, then releases cached source HWNDs
+  while retaining bounded CPU images for reopening. Cache changes coalesce a UI
+  reconciliation; overview disposal detaches that subscription. Existing global
+  unclipping remains unchanged for live previews, as planned for later steps.
+
+### Verification and remaining limits
+
+Added [WindowPreviewTests](../Tests/WindowPreviewTests.cs), with **19 cases** covering
+resolution/aspect limits, image/count budgets, LRU eviction, single-flight capture,
+failures/retry, late results, identity/lifetime invalidation, image/surface disposal,
+surface reuse/reopening, a shared placeholder, source switching and re-registration.
+A simulated parked-window test exercises production manager/list/thumbnail code,
+confirming unchanged world bounds and no native move or restore calls.
+
+Three `Category=NativePreview` smoke cases check invalid-HWND capture, rejection of
+a black frame, and scaled red/blue pixels from a test-owned GDI window followed by
+real DWM registration/update/release of its cached source. Owned source windows are
+nonactivating and entirely off-desktop; no user application is moved or minimized.
+The DWM assertions establish API acceptance, not a visual screenshot of the final
+composited overview or first-correct-frame timing.
+
+`dotnet test Tests/CanvasDesktop.Tests.csproj --no-restore --configuration Release --verbosity minimal`
+passes **410 tests** in the current working tree, including concurrent unrelated
+work, with no warnings or errors. The app and performance harness Release builds
+also pass. The earlier experimental WPF diagnostic has been handled in the
+concurrent zone work; this checkpoint's final validation needs no command-line
+suppression. The step 2 performance baseline was not remeasured.
+
+Native capture is best effort, not a supported-app guarantee. Some applications
+ignore GDI mapping, produce incomplete GPU/protected/video content, or report
+success with unusable pixels. Black-frame rejection is conservative (a legitimately
+black window is also unavailable), and nonblack partial/stale frames cannot be
+reliably detected from the return value. Already clipped windows may also fail
+capture; they retain compatibility parking until a usable capture path is proven.
+Real-application capture quality, actual mixed-DPI sizing, final composed overlap
+and restoration transitions still need the step 5 compatibility matrix. A more
+general capture backend can implement `IWindowPreviewCapture` without changing
+cache ownership or overview source selection. No resource-saving claim is made.
+
+### Next implementation checkpoint
+
+Step 5 is implemented below. Real-application compatibility validation remains
+required before changing defaults.
+
+## Implemented: step 5 - opt-in automatic native minimization
+
+Implemented on 11 October 2026. `EnableAutomaticMinimization=false` is the default
+in `AppConfig`, its generated config, and backends without explicit support.
+Set `EnableAutomaticMinimization=true` in `config.ini` to opt in; the user's live
+configuration was not changed. The existing one-pixel/clipping placement policy
+remains the fallback for ineligible windows and unavailable captures.
+
+### Parking, previews and restoration
+
+- [WindowManager.AutomaticParking](../Source/Core/WindowManager.AutomaticParking.cs)
+  connects the step 3 departure/approach margins and timers to native operations.
+  A window must remain eligible and far off-screen for **1,500 ms**, complete a
+  fresh successful bounded capture, and pass fresh HWND/PID/process-start checks
+  before parking. Placeholders and old images cannot satisfy a failed new capture.
+  Capture/minimize failures back off for **10 seconds**.
+- Only normal, unpinned windows on the current virtual desktop qualify. Native
+  checks exclude the foreground window, disabled windows, owned windows,
+  standard dialogs, windows with visible owned windows, tools and Canvas's own
+  process. User-minimized and maximized windows remain outside automatic parking.
+  Custom dialog frameworks cannot all be identified from these native properties.
+- Ownership is recorded before the native minimize call to handle reentrant
+  events. Only confirmed native minimization completes parking; a partially
+  failed or throwing operation retains a recovery debt if it affected the window.
+  Parking never changes saved world coordinates or `WindowState.Normal` intent.
+  Projection and reconciliation skip owned windows rather than consuming their
+  icon geometry. Pending projection work is cancelled/drained before minimizing.
+- [Win32WindowApi](../Source/System/Win32WindowApi.cs) uses `SW_SHOWMINNOACTIVE`
+  and verifies the native minimized style. Restoration uses a normal placement
+  with `SW_SHOWNOACTIVATE`, clears restore-to-maximized intent, and reconciles the
+  target rectangle with `SWP_NOACTIVATE | SWP_NOZORDER`. Identity is rechecked
+  around these operations. These checks cannot make cross-process operations
+  atomic; same-process HWND reuse with a missed destruction event remains a limit.
+- Visible windows restore immediately; near-viewport windows restore after the
+  **150 ms** approach delay. Cached overview sources remain selected for another
+  **150 ms** after successful restoration, including camera movement during that
+  interval. This is a transition allowance, not a first-correct-frame guarantee.
+  Overview receives parking-state notifications and preserves original selection
+  identities without waking every parked application when opened.
+- Manual taskbar/Alt-Tab restoration relinquishes Canvas ownership and excludes
+  that window lifetime from further parking. Foreground restoration recenters an
+  off-screen canvas window, including monitors with negative origins. A new user
+  minimization after automatic restoration remains user intent. Pinning restores
+  an owned window before applying the pin.
+
+### Recovery and verification
+
+Disabling the option or becoming ineligible requests restoration. Failed restores
+retain ownership and cached representation for a later retry. Reset (including
+virtual-desktop switching), disposal and final desktop recovery attempt every
+owned window, fitting its pre-parking rectangle onto available working areas.
+Reset retains failed debts across model/cache clearing for later retries; disposal
+and exit aggregate failures after attempting the remaining windows. Recovery skips
+replaced identities, including final desktop fitting for a stale parking record.
+User-minimized windows are not automatically expanded. There is no persisted
+parking journal or crash/restart recovery guarantee.
+
+[AutomaticParkingTests](../Tests/AutomaticParkingTests.cs) adds **26 fake-only
+cases** covering capture gating, timers, eligibility, independent windows from one
+process, saved intent, nonactivating restoration, transition retention, event
+ordering, recycled handles, failures/retries, manual restoration, pinning, disabled
+configuration and reset/disposal/exit recovery.
+[AutomaticParkingNativeTests](../Tests/AutomaticParkingNativeTests.cs) adds **two
+native smoke checks**: invalid handles fail closed; a nonactivating test-owned
+off-desktop window minimizes/restores through the production API with its geometry
+and foreground window preserved. These do not establish compatibility with other
+applications or the visual quality of the final overview.
+
+Live testing was paused while the user was gaming and resumed only after their
+explicit authorization. The final Release test run passes **479 tests**, with no
+warnings or errors, using:
+
+```powershell
+dotnet test Tests/CanvasDesktop.Tests.csproj --no-restore --configuration Release --verbosity minimal
+```
+
+The app and performance harness Release builds also pass with zero warnings or
+errors. The harness was built only; the step 2 performance baseline was not rerun.
+
+The real-application matrix remains pending: browsers, editors, GPU/video windows,
+custom dialogs, mixed-DPI/topology changes, taskbar/Alt-Tab event ordering and
+virtual-desktop transitions. Native minimize/restore calls are synchronous and
+can block the UI when another process is slow; their production latency and actual
+resource savings have not been measured. Existing operation diagnostics record
+native outcomes/durations. Keep this feature opt-in until the compatibility matrix
+and comparative performance measurements justify a default change.
+
+### Next implementation checkpoint
+
+Step 6: measure and reduce remaining Canvas overhead, including monitor-geometry
+caching, unchanged moves, repeated scans/allocation, stationary overview redraws
+and selective unclipping. Keep the step 5 compatibility matrix outstanding while
+making these optimizations.

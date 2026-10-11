@@ -19,6 +19,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Auto-focus** — Camera follows focused windows
 - **Off-screen hiding** — Windows hidden when panned out of view
 - **System tray** — Toggle, reset, exit
+- **Project areas** — Draw named, colored zones, assign saved places, move groups, resize boundaries, undo/redo layouts, and jump back to projects. Areas save per virtual desktop. See [project areas](Docs/project-areas.md).
 
 ## Controls
 
@@ -29,6 +30,12 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Alt + Q | Toggle overview (map-view) |
 | Alt + scroll | Zoom in/out around cursor (opens overview if closed) |
 | Alt + S | Fuzzy window search |
+| Shift + left-drag in overview | Draw a project area |
+| Drag an area corner in overview | Resize its boundary without moving members |
+| Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) in overview | Undo / redo an area move or resize |
+| N in overview | Draw the next project area with a normal left-drag |
+| Z in overview | Open the project area manager |
+| Drag an area's name in overview | Move the area and its assigned, unpinned places |
 | Tray menu > Enabled | Toggle the canvas on/off |
 | Tray menu > Refresh | Unclip and redraw all windows |
 
@@ -40,11 +47,12 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 
 ## Config
 
-A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first run. Every flag is commented out at its default — uncomment and flip to `true` to opt out of a feature. Changes are picked up live; no restart. Open the folder via **Tray menu > Open Config Directory**.
+A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first run. Every flag is commented out at its default — uncomment and change its value to configure a feature. Changes are picked up live; no restart. Open the folder via **Tray menu > Open Config Directory**.
 
 | Flag | Default | Effect when `true` |
 |---|---|---|
 | `DisableSearch` | `false` | Don't register the Alt+S fuzzy-search hotkey |
+| `EnableAutomaticMinimization` | `false` | Experimental: capture eligible off-screen windows, then minimize them after a delay. Restore without activation on approach, using cached overview previews during restoration. Failed captures retain existing placement behavior. Real-application compatibility validation remains pending |
 | `DisableAltPan` | `false` | Disable Alt + middle-click drag to pan over windows |
 | `DisableGreedyDraw` | `true` | Skip `SetWindowRgn` clipping of off-screen windows. Keeps Alt-Tab / taskbar thumbnails live at the cost of render work for windows panned out of view |
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |

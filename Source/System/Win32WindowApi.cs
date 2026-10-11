@@ -154,6 +154,44 @@ internal sealed class Win32WindowApi : IWindowApi
     public NativeOperationResult SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
         => _moves.Move(new(hWnd, new(x, y, w, h), false), flags);
 
+    public IntPtr GetForegroundWindow() => PInvoke.GetForegroundWindow();
+
+    public unsafe bool CanAutomaticallyMinimize(IntPtr hWnd)
+    {
+        HWND hwnd = (HWND)hWnd;
+        if (!IsManageable(hWnd, (uint)Environment.ProcessId, allowMinimized: true)
+            || !PInvoke.IsWindowEnabled(hwnd) || PInvoke.GetForegroundWindow() == hwnd
+            || PInvoke.GetWindow(hwnd, GET_WINDOW_CMD.GW_OWNER) != HWND.Null) return false;
+        Span<char> className = stackalloc char[64];
+        int classLength;
+        fixed (char* text = className) classLength = PInvoke.GetClassName(hwnd, new PWSTR(text), className.Length);
+        if (className[..classLength].SequenceEqual("#32770")) return false; // Standard top-level dialogs.
+        bool hasOwnedWindow = false;
+        EnumWindows(candidate =>
+        {
+            if (PInvoke.IsWindowVisible((HWND)candidate)
+                && PInvoke.GetWindow((HWND)candidate, GET_WINDOW_CMD.GW_OWNER) == hwnd)
+                hasOwnedWindow = true;
+            return !hasOwnedWindow;
+        });
+        return !hasOwnedWindow;
+    }
+
+    public NativeOperationResult MinimizeForParking(IntPtr hWnd)
+    {
+        long started = Stopwatch.GetTimestamp();
+        if (!PInvoke.IsWindow((HWND)hWnd))
+            return _diagnostics.Complete("MinimizeForParking", hWnd, started, false);
+        // ShowWindow returns previous visibility, not success. Verify the native style.
+        PInvoke.ShowWindow((HWND)hWnd, SHOW_WINDOW_CMD.SW_SHOWMINNOACTIVE);
+        bool minimized = PInvoke.IsWindow((HWND)hWnd)
+            && (GetWindowStyle(hWnd) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0;
+        return _diagnostics.Complete("MinimizeForParking", hWnd, started, minimized);
+    }
+
+    public NativeOperationResult RestoreFromParking(IntPtr hWnd, WindowRect rect)
+        => RestoreNativeStateCore(hWnd, rect, WindowState.Normal, clearRestoreToMaximized: true);
+
     public (int x, int y, int w, int h) GetNormalRect(IntPtr hWnd)
     {
         var placement = new WINDOWPLACEMENT { length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>() };
@@ -165,6 +203,10 @@ internal sealed class Win32WindowApi : IWindowApi
     }
 
     public NativeOperationResult RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+        => RestoreNativeStateCore(hWnd, rect, state);
+
+    private NativeOperationResult RestoreNativeStateCore(IntPtr hWnd, WindowRect rect, WindowState state,
+        bool clearRestoreToMaximized = false)
     {
         var screen = System.Windows.Forms.Screen.FromRectangle(new System.Drawing.Rectangle(rect.X, rect.Y, rect.W, rect.H));
         int dx = screen.WorkingArea.X - screen.Bounds.X, dy = screen.WorkingArea.Y - screen.Bounds.Y;
@@ -178,6 +220,7 @@ internal sealed class Win32WindowApi : IWindowApi
             int error = Marshal.GetLastPInvokeError();
             return _diagnostics.Complete("RestoreNativeState.GetWindowPlacement", hWnd, started, false, error);
         }
+        if (clearRestoreToMaximized) placement.flags &= ~(WINDOWPLACEMENT_FLAGS)2;
         placement.showCmd = state == WindowState.Maximized ? SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED
             : state == WindowState.Minimized ? SHOW_WINDOW_CMD.SW_SHOWMINNOACTIVE : SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE;
         placement.rcNormalPosition = new RECT { left = rect.X - dx, top = rect.Y - dy,

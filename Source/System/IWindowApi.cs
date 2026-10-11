@@ -6,7 +6,11 @@ namespace CanvasDesktop;
 
 /// <summary>One entry of a batched <see cref="IWindowApi.BatchMove"/> call.</summary>
 /// <param name="PosOnly">If true, the call uses SWP_NOSIZE (move only).</param>
-internal readonly record struct BatchMoveItem(IntPtr HWnd, WindowRect Rect, bool PosOnly);
+internal readonly record struct BatchMoveItem(IntPtr HWnd, WindowRect Rect, bool PosOnly)
+{
+    // Manager-local request identity; native backends ignore this metadata.
+    public long RequestId { get; init; }
+}
 
 /// <summary>
 /// Abstracts Win32 window operations so WindowManager can be unit-tested.
@@ -33,6 +37,13 @@ internal interface IWindowApi
     (int x, int y, int w, int h) GetNormalRect(IntPtr hWnd) => GetWindowRect(hWnd);
     NativeOperationResult RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
         => SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H, 0x14);
+    // Fail closed for backends without an explicit automatic-parking implementation.
+    bool CanAutomaticallyMinimize(IntPtr hWnd) => false;
+    IntPtr GetForegroundWindow() => IntPtr.Zero;
+    NativeOperationResult MinimizeForParking(IntPtr hWnd)
+        => new("MinimizeForParking", hWnd.ToInt64(), NativeOperationStatus.Failed, null, 0);
+    NativeOperationResult RestoreFromParking(IntPtr hWnd, WindowRect rect)
+        => RestoreNativeState(hWnd, rect, WindowState.Normal);
 
     // Mutation
     NativeOperationResult SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags);

@@ -23,7 +23,9 @@ internal sealed class OverviewThumbnails
     // based on camera zoom.
     private const byte DesktopOpacityZoomedMin = 30;
 
-    private readonly DwmThumbnailApi _dwm = new();
+    private readonly IDwmThumbnailApi _dwm;
+    private readonly Func<IntPtr, bool> _useCached;
+    private readonly Func<IntPtr, IntPtr> _cachedSource;
     private readonly IReadOnlyList<OverviewOverlay> _passes;
     private readonly OverviewWindowList _windows;
     private readonly OverviewCamera _camera;
@@ -73,6 +75,7 @@ internal sealed class OverviewThumbnails
     private struct ActiveEntry
     {
         public IntPtr HWnd;
+        public IntPtr Source;
         public IntPtr Thumb;
         public WorldRect World;
         public bool ScreenFixed;
@@ -93,7 +96,10 @@ internal sealed class OverviewThumbnails
         OverviewCamera camera,
         OverviewState state,
         IWindowApi win32,
-        IScreens screens)
+        IScreens screens,
+        Func<IntPtr, bool>? useCached = null,
+        Func<IntPtr, IntPtr>? cachedSource = null,
+        IDwmThumbnailApi? dwm = null)
     {
         _passes = passes;
         _windows = windows;
@@ -101,6 +107,9 @@ internal sealed class OverviewThumbnails
         _state = state;
         _win32 = win32;
         _screens = screens;
+        _dwm = dwm ?? new DwmThumbnailApi();
+        _useCached = useCached ?? (_ => false);
+        _cachedSource = cachedSource ?? (_ => IntPtr.Zero);
     }
 
     /// <summary>Register desktop + taskbar thumbnails on every pass. Window thumbnails are registered lazily by <see cref="Reconcile"/>.</summary>
@@ -171,7 +180,7 @@ internal sealed class OverviewThumbnails
             _dwm.Unregister(entry.Thumb);
             list.RemoveAt(idx);
 
-            HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)hWnd, out nint newThumb);
+            HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)entry.Source, out nint newThumb);
             if (hr.Succeeded)
             {
                 SetVisibleOnce(newThumb);
@@ -510,9 +519,12 @@ internal sealed class OverviewThumbnails
             int k = 0;
             for (int ci = 0; ci < current.Count; ci++)
             {
-                if (k < targetCount && current[ci].HWnd == target![k].HWnd)
+                if (k < targetCount && current[ci].HWnd == target![k].HWnd
+                    && current[ci].Source == ResolveSource(target[k].HWnd))
                 {
                     var entry = current[ci];
+                    if (!entry.World.Equals(target[k].World) || entry.ScreenFixed != target[k].ScreenFixed)
+                        InvalidateCameraCache();
                     entry.World = target[k].World;
                     entry.ScreenFixed = target[k].ScreenFixed;
                     current[writeIdx++] = entry;
@@ -529,14 +541,16 @@ internal sealed class OverviewThumbnails
             for (int i = k; i < targetCount; i++)
             {
                 var cand = target![i];
-                HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)cand.HWnd, out nint thumb);
+                var source = ResolveSource(cand.HWnd);
+                if (source == IntPtr.Zero) continue; // A parked source must never fall back to waking the application.
+                HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)source, out nint thumb);
                 if (hr.Succeeded)
                 {
                     SetVisibleOnce(thumb);
-                    var (iL, iT, iR, iB) = _win32.GetFrameInset(cand.HWnd);
+                    var (iL, iT, iR, iB) = source == cand.HWnd ? _win32.GetFrameInset(cand.HWnd) : (0, 0, 0, 0);
                     current.Add(new ActiveEntry
                     {
-                        HWnd = cand.HWnd, Thumb = thumb, World = cand.World,
+                        HWnd = cand.HWnd, Source = source, Thumb = thumb, World = cand.World,
                         ScreenFixed = cand.ScreenFixed,
                         InsetL = iL, InsetT = iT, InsetR = iR, InsetB = iB
                     });
@@ -547,6 +561,22 @@ internal sealed class OverviewThumbnails
         }
 
         return appended;
+    }
+
+    private IntPtr ResolveSource(IntPtr handle) => _useCached(handle) ? _cachedSource(handle) : handle;
+
+    // A destroyed source HWND may be recycled for a new cache surface before the
+    // queued reconciliation. Force re-registration even when its numeric value matches.
+    public void InvalidateCachedSources()
+    {
+        foreach (var list in _windowsByPass.Values)
+            for (int i = 0; i < list.Count; i++)
+            {
+                var entry = list[i];
+                if (entry.Source == entry.HWnd) continue;
+                entry.Source = IntPtr.Zero;
+                list[i] = entry;
+            }
     }
 
     /// <summary>

@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal sealed class WorkspaceService : IWorkspaceCommands, IDisposable
+internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 {
     private readonly Canvas _canvas;
     private readonly WindowManager _wm;
@@ -231,6 +231,7 @@ internal sealed class WorkspaceService : IWorkspaceCommands, IDisposable
                     // Explorer navigation updates this slot's saved folder.
                     if (explorer && target.Length > 0) { old.Target = target; old.IsFolder = true; }
                     else if (target.Length > 0) old.Target = target;
+                    if (old.DesktopId != _desktop) Zones.ForgetItem(old.Id);
                     old.DesktopId = _desktop;
                     continue;
                 }
@@ -453,6 +454,7 @@ internal sealed class WorkspaceService : IWorkspaceCommands, IDisposable
         _ambiguous.Remove(item.Id);
         _queued.Remove(item.Id);
         Document.Items.Remove(item);
+        Zones.ForgetItem(item.Id);
         RemoveCard(item.Id);
         Save(); Changed?.Invoke();
     }

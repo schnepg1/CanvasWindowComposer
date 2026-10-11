@@ -3,8 +3,15 @@ using System.Diagnostics;
 
 namespace CanvasDesktop;
 
-/// <summary>Instrumented DWM acknowledgements and live-registration gauge, including shell previews.</summary>
-internal sealed class DwmThumbnailApi
+internal interface IDwmThumbnailApi
+{
+    HRESULT Register(HWND destination, HWND source, out IntPtr thumbnail);
+    HRESULT Unregister(IntPtr thumbnail);
+    HRESULT Update(IntPtr thumbnail, DWM_THUMBNAIL_PROPERTIES properties);
+}
+
+/// <summary>Instrumented DWM acknowledgements and registration gauge, including shell and cached previews.</summary>
+internal sealed class DwmThumbnailApi : IDwmThumbnailApi
 {
     private readonly PerformanceDiagnostics _diagnostics;
     public DwmThumbnailApi(PerformanceDiagnostics? diagnostics = null) => _diagnostics = diagnostics ?? PerformanceDiagnostics.Shared;

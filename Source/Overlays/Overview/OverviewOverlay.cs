@@ -20,10 +20,10 @@ internal sealed class OverviewOverlay : Form
     private ZoneAnnotationWindow? _annotations;
 
     public void ShowZones(System.Collections.Generic.IReadOnlyList<ZoneView> zones, OverviewCamera camera,
-        WorldRect? preview, bool drawing)
+        WorldRect? preview, bool drawing, System.Collections.Generic.IReadOnlyList<WorldRect>? ghosts = null)
     {
         if (_annotations == null) _annotations = new ZoneAnnotationWindow(Handle);
-        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing);
+        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts);
     }
 
     public void HideZones() => _annotations?.Hide();
@@ -35,6 +35,7 @@ internal sealed class OverviewOverlay : Form
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonUp;
     public Action<OverviewOverlay, MouseEventArgs>? OnWheel;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseDoubleClicked;
+    public Action<OverviewOverlay>? OnCaptureLost;
 
     protected override CreateParams CreateParams
     {
@@ -71,6 +72,7 @@ internal sealed class OverviewOverlay : Form
         MouseUp += (s, e) => OnMouseButtonUp?.Invoke(this, e);
         MouseWheel += (s, e) => OnWheel?.Invoke(this, e);
         MouseDoubleClick += (s, e) => OnMouseDoubleClicked?.Invoke(this, e);
+        MouseCaptureChanged += (_, _) => { if (!Capture) OnCaptureLost?.Invoke(this); };
     }
 
     /// <summary>Ensure HWND and swap chain are created, sized to the monitor.</summary>

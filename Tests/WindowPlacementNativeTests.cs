@@ -67,6 +67,22 @@ public class WindowPlacementNativeTests
             Assert.DoesNotContain(diagnostics.Snapshot().Operations, o => o.Operation == "DeferWindowPos");
         });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativePlacement")]
+    public void NativeBatchMove_ResizesOnlyWhenRequested(bool posOnly)
+        => OnSta(() =>
+        {
+            using var window = new Form { FormBorderStyle = FormBorderStyle.None, AutoScaleMode = AutoScaleMode.None };
+            var api = new Win32WindowApi(diagnostics: new PerformanceDiagnostics());
+            Assert.True(api.SetWindowPosition(window.Handle, 0, 0, 800, 600, 0x14).Accepted);
+            var result = api.BatchMove([new(window.Handle, new(100, 200, 400, 300), posOnly)], false, false);
+            Assert.True(result.Summary.Accepted);
+            Assert.Equal(posOnly ? (100, 200, 800, 600) : (100, 200, 400, 300), api.GetWindowRect(window.Handle));
+            Assert.False(window.Visible);
+        });
+
     private static int RegionType(IntPtr window)
     {
         var region = CreateRectRgn(0, 0, 0, 0);

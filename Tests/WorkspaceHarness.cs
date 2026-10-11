@@ -24,7 +24,8 @@ internal sealed class WorkspaceHarness : IDisposable
         Api = api ?? new();
         if (document != null) Store.Document = document;
         Cards = new(Api);
-        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), new FakeInputRouter(), Clock, Desktops);
+        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), new FakeInputRouter(), Clock, Desktops,
+            inspectProcess: Identity.InspectProcess);
         Cache = new(Canvas, Wm, new FakeOverviewController(), Desktops);
         Workspace = new(Canvas, Wm, Api, Desktops, Cache, store ?? Store, Cards, Actions, Launcher, Identity, Clock);
     }
@@ -59,13 +60,14 @@ internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
     public Exception? Error;
     public long StartedAt = 1;
     public bool Unavailable;
+    public Dictionary<uint, string> Executables = new();
     public Dictionary<IntPtr, string> ReadExplorerFolders()
     {
         if (Error != null) throw Error;
         return Folders;
     }
     public WorkspaceProcessIdentity? InspectProcess(uint pid)
-        => Unavailable || pid == 0 ? null : new(pid, StartedAt, Exe);
+        => Unavailable || pid == 0 ? null : new(pid, StartedAt, Executables.GetValueOrDefault(pid, Exe));
 }
 
 internal sealed class TestWorkspaceLauncher : IWorkspaceLauncher

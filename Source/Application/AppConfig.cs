@@ -13,6 +13,7 @@ internal interface IAppConfig
     bool DisableSearch { get; }
     bool DisableAltPan { get; }
     bool DisableGreedyDraw { get; }
+    bool EnableAutomaticMinimization => false;
     bool ShowScreenFixedWindowsDuringPan { get; }
 
     /// <summary>
@@ -55,6 +56,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DisableSearch { get; private set; }
     public bool DisableAltPan { get; private set; }
     public bool DisableGreedyDraw { get; private set; } = true;
+    public bool EnableAutomaticMinimization { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
     public bool DisableMouseCurve { get; private set; }
     public bool DisableZoomHotkey { get; private set; }
@@ -81,6 +83,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DisableSearch = GetBool(values, "DisableSearch", defaultValue: false);
             DisableAltPan = GetBool(values, "DisableAltPan", defaultValue: false);
             DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
+            EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
             DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
             DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
@@ -167,6 +170,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Default on - with clipping enabled, you might see gray windows,
 ; if this app terminates unexpectedly
 ;DisableGreedyDraw=true
+
+; Experimental: minimize eligible off-screen windows after capturing a preview
+; Restores without activation on approach; unsupported captures retain current behavior
+;EnableAutomaticMinimization=false
 
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true

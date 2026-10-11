@@ -72,11 +72,19 @@ internal sealed class WorkspaceStore : IWorkspaceStore
                 throw new InvalidDataException("Invalid workspace item.");
         }
         var zoneIds = new HashSet<Guid>();
+        var itemsById = new Dictionary<Guid, WorkspaceItem>();
+        foreach (var item in doc.Items) itemsById.Add(item.Id, item);
         foreach (var zone in doc.Zones)
+        {
             if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
                 || !ZoneService.ValidName(zone.Name) || !ZoneService.ValidColor(zone.Color)
-                || !WorkspaceGeometry.ValidBounds(zone.Bounds))
+                || !WorkspaceGeometry.ValidBounds(zone.Bounds) || zone.ItemIds == null || zone.ItemIds.Count > 2000)
                 throw new InvalidDataException("Invalid workspace zone.");
+            var memberIds = new HashSet<Guid>();
+            foreach (var id in zone.ItemIds)
+                if (!memberIds.Add(id) || !itemsById.TryGetValue(id, out var item) || item.DesktopId != zone.DesktopId)
+                    throw new InvalidDataException("Invalid workspace zone membership.");
+        }
         foreach (var c in doc.Cameras.Values)
             if (c == null || !double.IsFinite(c.X) || !double.IsFinite(c.Y)
                 || !double.IsFinite(c.Zoom) || c.Zoom < 0.01 || c.Zoom > 10)

@@ -28,6 +28,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly DesktopStateCache _desktops;
     private readonly ForegroundCoordinator _foreground;
     private readonly WorkspaceService _workspace;
+    private readonly ZoneUi _zoneUi;
     private WorkspaceForm? _workspaceForm;
     private readonly ApplicationLifecycle _lifecycle = new(failure => Log($"Shutdown step '{failure.Step}' failed: {failure.Error}"));
     private readonly Control _dispatcher;
@@ -67,6 +68,7 @@ internal sealed class TrayApp : ApplicationContext
                 () => _workspace.Stop(save: _lifecycle.StartupCompleted));
             _workspace.LaunchFailed += message => MessageBox.Show(message, "Saved workspace",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _zoneUi = _lifecycle.Own(new ZoneUi(_workspace, _overview), ShutdownPhase.ReleaseUi, "Project area UI");
 
             // Constructed last so they can self-subscribe to canvas/input/desktops events.
             _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens), ShutdownPhase.ReleaseUi, "Minimap");
@@ -127,6 +129,7 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(openConfigItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(workspaceItem);
+            menu.Items.Add(new ToolStripMenuItem("Project Areas…", null, (_, _) => _zoneUi.Show()));
             menu.Items.Add(saveItem);
             menu.Items.Add(startupItem);
             menu.Items.Add(new ToolStripSeparator());
