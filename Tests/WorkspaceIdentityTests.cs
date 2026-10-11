@@ -196,16 +196,21 @@ public class WorkspaceIdentityTests
         Assert.Equal("Second", second.Title); Assert.Equal(222, second.Bounds.X);
     }
 
-    [Fact]
-    public void ManualLinkMovesOnlySelectedWindowAndCannotStealABoundWindow()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ManualLinkMovesOnlySelectedWindowAndCannotStealABoundWindow(bool disableClipping)
     {
         var first = Item(); var second = Item();
-        using var rig = new WorkspaceHarness(Document(first, second));
+        using var rig = new WorkspaceHarness(Document(first, second),
+            config: new FakeAppConfig { DisableGreedyDraw = disableClipping });
         rig.Api.AddWindow(Handle, 10, 20, 800, 600, title: first.Title);
         rig.Workspace.Start();
         var candidate = Assert.Single(rig.Workspace.LinkCandidates(first.Id));
         Assert.True(rig.Workspace.LinkWindow(first.Id, candidate.Token));
-        Assert.Equal(5000, rig.Api.Windows[Handle].X);
+        Assert.Equal(disableClipping ? 5000 : 1919, rig.Api.Windows[Handle].X);
+        Assert.Equal(!disableClipping, rig.Api.ClippedWindows.Contains(Handle));
+        Assert.Equal(5000, rig.Canvas.Windows[Handle].X);
         Assert.True(rig.Workspace.IsOpen(first));
         Assert.False(rig.Workspace.IsOpen(second));
         Assert.False(rig.Workspace.LinkWindow(second.Id, candidate.Token));

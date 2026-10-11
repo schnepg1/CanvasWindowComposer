@@ -23,6 +23,7 @@ internal sealed class OverviewThumbnails
     // based on camera zoom.
     private const byte DesktopOpacityZoomedMin = 30;
 
+    private readonly DwmThumbnailApi _dwm = new();
     private readonly IReadOnlyList<OverviewOverlay> _passes;
     private readonly OverviewWindowList _windows;
     private readonly OverviewCamera _camera;
@@ -118,7 +119,7 @@ internal sealed class OverviewThumbnails
         foreach (var kv in _windowsByPass)
         {
             foreach (var entry in kv.Value)
-                PInvoke.DwmUnregisterThumbnail(entry.Thumb);
+                _dwm.Unregister(entry.Thumb);
         }
         _windowsByPass.Clear();
 
@@ -167,10 +168,10 @@ internal sealed class OverviewThumbnails
             if (idx < 0) continue;
 
             var entry = list[idx];
-            PInvoke.DwmUnregisterThumbnail(entry.Thumb);
+            _dwm.Unregister(entry.Thumb);
             list.RemoveAt(idx);
 
-            HRESULT hr = PInvoke.DwmRegisterThumbnail((HWND)pass.Handle, (HWND)hWnd, out nint newThumb);
+            HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)hWnd, out nint newThumb);
             if (hr.Succeeded)
             {
                 SetVisibleOnce(newThumb);
@@ -235,7 +236,7 @@ internal sealed class OverviewThumbnails
         IntPtr desktopWnd = GetDesktopWallpaperHwnd();
         if (desktopWnd == IntPtr.Zero) return;
 
-        HRESULT hr = PInvoke.DwmRegisterThumbnail((HWND)pass.Handle, (HWND)desktopWnd, out nint thumb);
+        HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)desktopWnd, out nint thumb);
         if (hr.Failed) { _desktopByPass[pass] = IntPtr.Zero; return; }
 
         // WorkerW spans the entire virtual screen. Push this pass's slice once
@@ -256,7 +257,7 @@ internal sealed class OverviewThumbnails
             },
             fVisible = true
         };
-        PInvoke.DwmUpdateThumbnailProperties(thumb, props);
+        _dwm.Update(thumb, props);
 
         _desktopByPass[pass] = thumb;
         _lastDesktopOpacity = -1; // force opacity push on the next UpdateDesktop
@@ -265,7 +266,7 @@ internal sealed class OverviewThumbnails
     private void UnregisterDesktop(OverviewOverlay pass)
     {
         if (_desktopByPass.TryGetValue(pass, out var thumb) && thumb != IntPtr.Zero)
-            PInvoke.DwmUnregisterThumbnail(thumb);
+            _dwm.Unregister(thumb);
         _desktopByPass.Remove(pass);
     }
 
@@ -298,7 +299,7 @@ internal sealed class OverviewThumbnails
         foreach (var kv in _desktopByPass)
         {
             if (kv.Value != IntPtr.Zero)
-                PInvoke.DwmUpdateThumbnailProperties(kv.Value, props);
+                _dwm.Update(kv.Value, props);
         }
     }
 
@@ -340,7 +341,7 @@ internal sealed class OverviewThumbnails
         var list = new List<TaskbarEntry>();
         foreach (var hwnd in GetTaskbarHwnds())
         {
-            HRESULT hr = PInvoke.DwmRegisterThumbnail((HWND)pass.Handle, (HWND)hwnd, out nint thumb);
+            HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)hwnd, out nint thumb);
             if (hr.Failed) continue;
 
             // Taskbar position is fixed; push rect once here. Visibility is
@@ -357,7 +358,7 @@ internal sealed class OverviewThumbnails
                     bottom = r.bottom - pass.OriginY
                 }
             };
-            PInvoke.DwmUpdateThumbnailProperties(thumb, props);
+            _dwm.Update(thumb, props);
 
             list.Add(new TaskbarEntry { Hwnd = hwnd, Thumb = thumb });
         }
@@ -369,7 +370,7 @@ internal sealed class OverviewThumbnails
     {
         if (!_taskbarsByPass.TryGetValue(pass, out var list)) return;
         foreach (var entry in list)
-            PInvoke.DwmUnregisterThumbnail(entry.Thumb);
+            _dwm.Unregister(entry.Thumb);
         _taskbarsByPass.Remove(pass);
     }
 
@@ -392,7 +393,7 @@ internal sealed class OverviewThumbnails
         foreach (var kv in _taskbarsByPass)
         {
             foreach (var entry in kv.Value)
-                PInvoke.DwmUpdateThumbnailProperties(entry.Thumb, props);
+                _dwm.Update(entry.Thumb, props);
         }
     }
 
@@ -519,7 +520,7 @@ internal sealed class OverviewThumbnails
                 }
                 else
                 {
-                    PInvoke.DwmUnregisterThumbnail(current[ci].Thumb);
+                    _dwm.Unregister(current[ci].Thumb);
                 }
             }
             if (writeIdx < current.Count)
@@ -528,7 +529,7 @@ internal sealed class OverviewThumbnails
             for (int i = k; i < targetCount; i++)
             {
                 var cand = target![i];
-                HRESULT hr = PInvoke.DwmRegisterThumbnail((HWND)pass.Handle, (HWND)cand.HWnd, out nint thumb);
+                HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)cand.HWnd, out nint thumb);
                 if (hr.Succeeded)
                 {
                     SetVisibleOnce(thumb);
@@ -553,14 +554,14 @@ internal sealed class OverviewThumbnails
     /// registered DWM thumbnails default to invisible; after this, ongoing
     /// UpdateWindowRects only needs to push rect changes.
     /// </summary>
-    private static void SetVisibleOnce(IntPtr thumb)
+    private void SetVisibleOnce(IntPtr thumb)
     {
         var props = new DWM_THUMBNAIL_PROPERTIES
         {
             dwFlags = PInvoke.DWM_TNP_VISIBLE,
             fVisible = true
         };
-        PInvoke.DwmUpdateThumbnailProperties(thumb, props);
+        _dwm.Update(thumb, props);
     }
 
     private void UpdateWindowRects()
@@ -599,7 +600,7 @@ internal sealed class OverviewThumbnails
                     dwFlags = PInvoke.DWM_TNP_RECTDESTINATION,
                     rcDestination = new RECT { left = left, top = top, right = right, bottom = bottom }
                 };
-                PInvoke.DwmUpdateThumbnailProperties(entry.Thumb, props);
+                _dwm.Update(entry.Thumb, props);
             }
         }
     }

@@ -242,8 +242,10 @@ public class WorkspaceTests : IDisposable
         });
     }
 
-    [Fact]
-    public void ExitRecoveryDoesNotOverwriteSavedLayout_AndNextStartReappliesIt()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExitRecoveryDoesNotOverwriteSavedLayout_AndNextStartReappliesIt(bool disableClipping)
     {
         var item = Item("Test helper");
         item.Bounds = new WorldRect { X = 5000, Y = 7000, W = 800, H = 600 };
@@ -251,9 +253,10 @@ public class WorkspaceTests : IDisposable
         doc.Cameras[item.DesktopId] = new WorkspaceCamera { X = 2300, Y = -400, Zoom = 1 };
         new WorkspaceStore(SavePath).Save(doc);
         var api = new FakeWindowApi();
+        var config = new FakeAppConfig { DisableGreedyDraw = disableClipping };
         var handle = (IntPtr)123;
         api.AddWindow(handle, 100, 100, 800, 600, title: item.Title);
-        using (var first = new WorkspaceHarness(store: new WorkspaceStore(SavePath), api: api))
+        using (var first = new WorkspaceHarness(store: new WorkspaceStore(SavePath), api: api, config: config))
         {
             first.Workspace.Start();
             Assert.Equal(5000, first.Canvas.Windows[handle].X);
@@ -264,7 +267,7 @@ public class WorkspaceTests : IDisposable
             Assert.InRange(api.GetWindowRect(handle).x, 0, 1120);
             Assert.InRange(api.GetWindowRect(handle).y, 0, 480);
         }
-        using var next = new WorkspaceHarness(store: new WorkspaceStore(SavePath), api: api);
+        using var next = new WorkspaceHarness(store: new WorkspaceStore(SavePath), api: api, config: config);
         next.Workspace.Start();
         Assert.Single(next.Workspace.Document.Items);
         Assert.True(next.Workspace.IsOpen(next.Workspace.Document.Items[0]));
@@ -272,7 +275,8 @@ public class WorkspaceTests : IDisposable
         Assert.Equal(7000, next.Canvas.Windows[handle].Y);
         Assert.Equal(2300, next.Canvas.CamX);
         Assert.Equal(-400, next.Canvas.CamY);
-        Assert.Equal((2700, 7400, 800, 600), api.GetWindowRect(handle));
+        Assert.Equal(disableClipping ? (2700, 7400, 800, 600) : (1919, 1079, 800, 600), api.GetWindowRect(handle));
+        Assert.Equal(!disableClipping, api.ClippedWindows.Contains(handle));
     }
     private static void OnSta(Action action)
     {

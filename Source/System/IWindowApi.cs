@@ -31,20 +31,19 @@ internal interface IWindowApi
     bool IsManageable(IntPtr hWnd, uint ownPid, bool allowMinimized = false, bool allowMaximized = false);
 
     (int x, int y, int w, int h) GetNormalRect(IntPtr hWnd) => GetWindowRect(hWnd);
-    void RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+    NativeOperationResult RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
         => SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H, 0x14);
 
     // Mutation
-    void SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags);
-    void ClipWindow(IntPtr hWnd);
-    void UnclipWindow(IntPtr hWnd);
+    NativeOperationResult SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags);
+    NativeOperationResult ClipWindow(IntPtr hWnd);
+    NativeOperationResult UnclipWindow(IntPtr hWnd);
     /// <summary>
-    /// Apply a batch of window position changes. If <paramref name="ct"/> is
-    /// cancelled during the batch, aborts cleanly without finalizing the batch —
-    /// partially-applied moves are OK because the next scheduled batch will
-    /// reconcile to the final state.
+    /// Apply a batch of window position changes. Cancellation stops queuing new
+    /// moves and finalizes the queued prefix. Acknowledgement does not confirm
+    /// display, roll back prior moves, or cancel an in-flight native call.
     /// </summary>
-    void BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, CancellationToken ct = default);
+    WindowBatchResult BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, CancellationToken ct = default);
 
     // Enumeration
     void EnumWindows(Func<IntPtr, bool> callback);

@@ -28,9 +28,6 @@ internal struct CanvasState
 /// </summary>
 internal sealed class Canvas
 {
-    private const int MinWindowWidth = 200;
-    private const int MinWindowHeight = 100;
-
     private double _camX, _camY;
     private double _zoom = 1.0;
     private long _foregroundCounter;
@@ -40,32 +37,19 @@ internal sealed class Canvas
     public double CamX => _camX;
     public double CamY => _camY;
     public double Zoom => _zoom;
+    public CanvasCamera Camera => new(_camX, _camY, _zoom);
     public IReadOnlyDictionary<IntPtr, WorldRect> Windows => _windows;
     // ==================== PROJECTIONS ====================
 
     public (int x, int y) WorldToScreen(double wx, double wy)
-    {
-        return (
-            (int)((wx - _camX) * _zoom),
-            (int)((wy - _camY) * _zoom)
-        );
-    }
+        => Camera.ProjectPosition(wx, wy);
 
     public (int w, int h) WorldToScreenSize(double ww, double wh)
-    {
-        return (
-            Math.Max(MinWindowWidth, (int)Math.Ceiling(ww * _zoom)),
-            Math.Max(MinWindowHeight, (int)Math.Ceiling(wh * _zoom))
-        );
-    }
+        => Camera.ProjectSize(ww, wh);
 
     /// <summary>Project a world rect to its on-screen position + size in one shot.</summary>
     public WindowRect WorldToScreen(WorldRect world)
-    {
-        var (x, y) = WorldToScreen(world.X, world.Y);
-        var (w, h) = WorldToScreenSize(world.W, world.H);
-        return new WindowRect(x, y, w, h);
-    }
+        => Camera.Project(world);
 
     public (double x, double y) ScreenToWorld(int sx, int sy)
     {

@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <Compile Remove="Tests\**" />
+    <Compile Remove="Tools\**" />
     <Content Include="icon.ico" />
   </ItemGroup>
 

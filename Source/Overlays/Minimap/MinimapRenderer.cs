@@ -404,6 +404,7 @@ float4 PSMain(VSOut input) : SV_Target
     private void RenderFrame()
     {
         if (_context == null || _swapChain == null) return;
+        long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
         var constants = new MinimapConstants
@@ -443,7 +444,8 @@ float4 PSMain(VSOut input) : SV_Target
         _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         _context.Draw(FullscreenTriangleVertexCount, 0);
 
-        _swapChain.Present(VsyncInterval, PresentFlags.None);
+        var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
+        PerformanceDiagnostics.Shared.Complete("MinimapFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
         OnFrameTick?.Invoke();
     }
 

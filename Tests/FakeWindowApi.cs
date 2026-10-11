@@ -22,6 +22,10 @@ internal sealed class FakeWindowApi : IWindowApi
     public readonly List<(IntPtr hWnd, WindowRect rect, WindowState state)> NativeStateCalls = new();
     public Action<IntPtr>? BeforeSetPosition;
     public List<(int x, int y, int w, int h)> ScreenAreas = new() { (0, 0, 1920, 1080) };
+    public int ScreenAreaQueryCount;
+    public HashSet<IntPtr> FailedClips = new();
+    public HashSet<IntPtr> FailedUnclips = new();
+    public HashSet<IntPtr> FailedMoves = new();
 
     // Windows returned by EnumWindows, in order
     public List<IntPtr> EnumOrder = new();
@@ -73,39 +77,60 @@ internal sealed class FakeWindowApi : IWindowApi
         return w.Manageable;
     }
 
-    public void SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
+    public NativeOperationResult SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
     {
         BeforeSetPosition?.Invoke(hWnd);
         SetPositionCalls.Add((hWnd, x, y, w, h, flags));
+        if (FailedMoves.Contains(hWnd)) return new("SetWindowPos", hWnd.ToInt64(), NativeOperationStatus.Failed, 5, 0);
         if (Windows.TryGetValue(hWnd, out var win))
         {
             win.X = x; win.Y = y; win.W = w; win.H = h;
         }
+        return NativeOperationResult.Success("SetWindowPos", hWnd);
     }
 
-    public void ClipWindow(IntPtr hWnd) => ClippedWindows.Add(hWnd);
+    public NativeOperationResult ClipWindow(IntPtr hWnd)
+    {
+        if (FailedClips.Contains(hWnd)) return new("ClipWindow", hWnd.ToInt64(), NativeOperationStatus.Failed, null, 0);
+        ClippedWindows.Add(hWnd);
+        return NativeOperationResult.Success("ClipWindow", hWnd);
+    }
 
-    public void RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+    public NativeOperationResult RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
     {
         NativeStateCalls.Add((hWnd, rect, state));
-        SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H, 0x14);
+        return SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H, 0x14);
     }
 
-    public void UnclipWindow(IntPtr hWnd) => ClippedWindows.Remove(hWnd);
-
-    public void BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, System.Threading.CancellationToken ct = default)
+    public NativeOperationResult UnclipWindow(IntPtr hWnd)
     {
+        if (FailedUnclips.Contains(hWnd)) return new("UnclipWindow", hWnd.ToInt64(), NativeOperationStatus.Failed, null, 0);
+        ClippedWindows.Remove(hWnd);
+        return NativeOperationResult.Success("UnclipWindow", hWnd);
+    }
+
+    public Action<System.Threading.CancellationToken>? BeforeBatchMove;
+
+    public WindowBatchResult BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, System.Threading.CancellationToken ct = default)
+    {
+        BeforeBatchMove?.Invoke(ct);
         LastBatch.Clear();
         LastBatch.AddRange(items);
+        var results = new List<NativeOperationResult>();
         foreach (var item in items)
         {
-            if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested) { results.Add(new("BatchMoveItem", item.HWnd.ToInt64(), NativeOperationStatus.Cancelled, null, 0)); continue; }
+            if (FailedMoves.Contains(item.HWnd)) { results.Add(new("BatchMoveItem", item.HWnd.ToInt64(), NativeOperationStatus.Failed, 5, 0)); continue; }
             if (Windows.TryGetValue(item.HWnd, out var win))
             {
                 var r = item.Rect;
                 win.X = r.X; win.Y = r.Y; win.W = r.W; win.H = r.H;
             }
+            results.Add(NativeOperationResult.Success("BatchMoveItem", item.HWnd));
         }
+        var status = results.Exists(r => r.Status == NativeOperationStatus.Failed) ? NativeOperationStatus.Failed
+            : ct.IsCancellationRequested ? NativeOperationStatus.Cancelled : NativeOperationStatus.Succeeded;
+        return new(new("BatchMove", 0, status, null, 0, items.Count), results);
     }
 
     public void EnumWindows(Func<IntPtr, bool> callback)
@@ -116,5 +141,9 @@ internal sealed class FakeWindowApi : IWindowApi
         }
     }
 
-    public IReadOnlyList<(int x, int y, int w, int h)> GetScreenWorkingAreas() => ScreenAreas;
+    public IReadOnlyList<(int x, int y, int w, int h)> GetScreenWorkingAreas()
+    {
+        ScreenAreaQueryCount++;
+        return ScreenAreas;
+    }
 }

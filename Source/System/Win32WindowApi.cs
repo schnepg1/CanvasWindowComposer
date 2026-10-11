@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace CanvasDesktop;
 
@@ -11,10 +12,14 @@ namespace CanvasDesktop;
 internal sealed class Win32WindowApi : IWindowApi
 {
     private readonly IScreens _screens;
+    private readonly PerformanceDiagnostics _diagnostics;
+    private readonly WindowBatchMover _moves;
 
-    public Win32WindowApi(IScreens? screens = null)
+    public Win32WindowApi(IScreens? screens = null, PerformanceDiagnostics? diagnostics = null)
     {
         _screens = screens ?? WinFormsScreens.Instance;
+        _diagnostics = diagnostics ?? PerformanceDiagnostics.Shared;
+        _moves = new(new WindowPositionNative(), _diagnostics);
     }
 
     private static readonly HashSet<string> ExcludedClasses = new()
@@ -146,10 +151,8 @@ internal sealed class Win32WindowApi : IWindowApi
         return true;
     }
 
-    public void SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
-    {
-        PInvoke.SetWindowPos((HWND)hWnd, HWND.Null, x, y, w, h, (SET_WINDOW_POS_FLAGS)flags);
-    }
+    public NativeOperationResult SetWindowPosition(IntPtr hWnd, int x, int y, int w, int h, uint flags)
+        => _moves.Move(new(hWnd, new(x, y, w, h), false), flags);
 
     public (int x, int y, int w, int h) GetNormalRect(IntPtr hWnd)
     {
@@ -161,7 +164,7 @@ internal sealed class Win32WindowApi : IWindowApi
             r.top + screen.WorkingArea.Y - screen.Bounds.Y, r.right - r.left, r.bottom - r.top);
     }
 
-    public void RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
+    public NativeOperationResult RestoreNativeState(IntPtr hWnd, WindowRect rect, WindowState state)
     {
         var screen = System.Windows.Forms.Screen.FromRectangle(new System.Drawing.Rectangle(rect.X, rect.Y, rect.W, rect.H));
         int dx = screen.WorkingArea.X - screen.Bounds.X, dy = screen.WorkingArea.Y - screen.Bounds.Y;
@@ -169,70 +172,43 @@ internal sealed class Win32WindowApi : IWindowApi
         { length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>() };
         // Preserve native placement flags, notably restore-to-maximized for a
         // minimized window. Repairing its normal bounds must not lose that state.
-        PInvoke.GetWindowPlacement((HWND)hWnd, ref placement);
+        long started = Stopwatch.GetTimestamp();
+        if (!PInvoke.GetWindowPlacement((HWND)hWnd, ref placement))
+        {
+            int error = Marshal.GetLastPInvokeError();
+            return _diagnostics.Complete("RestoreNativeState.GetWindowPlacement", hWnd, started, false, error);
+        }
         placement.showCmd = state == WindowState.Maximized ? SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED
             : state == WindowState.Minimized ? SHOW_WINDOW_CMD.SW_SHOWMINNOACTIVE : SHOW_WINDOW_CMD.SW_SHOWNOACTIVATE;
         placement.rcNormalPosition = new RECT { left = rect.X - dx, top = rect.Y - dy,
             right = rect.X + rect.W - dx, bottom = rect.Y + rect.H - dy };
-        PInvoke.SetWindowPlacement((HWND)hWnd, placement);
+        bool ok = PInvoke.SetWindowPlacement((HWND)hWnd, placement);
+        int lastError = ok ? 0 : Marshal.GetLastPInvokeError();
+        return _diagnostics.Complete("RestoreNativeState", hWnd, started, ok, lastError);
     }
 
-    public void ClipWindow(IntPtr hWnd)
+    public NativeOperationResult ClipWindow(IntPtr hWnd)
     {
-        HRGN rgn = PInvoke.CreateRectRgn(0, 0, 0, 0);
-        _ = PInvoke.SetWindowRgn((HWND)hWnd, rgn, true);
+        long started = Stopwatch.GetTimestamp();
+        HRGN region = PInvoke.CreateRectRgn(0, 0, 0, 0);
+        if (region == default(HRGN)) return _diagnostics.Complete("ClipWindow.CreateRectRgn", hWnd, started, false);
+        bool ok = PInvoke.SetWindowRgn((HWND)hWnd, region, true) != 0;
+        // USER32 owns the region only on success. Free our allocation on failure.
+        if (!ok) PInvoke.DeleteObject(region);
+        // SetWindowRgn does not document an extended error code; never report stale LastError.
+        return _diagnostics.Complete("ClipWindow", hWnd, started, ok);
     }
 
-    public void UnclipWindow(IntPtr hWnd)
+    public NativeOperationResult UnclipWindow(IntPtr hWnd)
     {
-        _ = PInvoke.SetWindowRgn((HWND)hWnd, (HRGN)IntPtr.Zero, true);
+        long started = Stopwatch.GetTimestamp();
+        bool ok = PInvoke.SetWindowRgn((HWND)hWnd, (HRGN)IntPtr.Zero, true) != 0;
+        return _diagnostics.Complete("UnclipWindow", hWnd, started, ok);
     }
 
-    public void BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, System.Threading.CancellationToken ct = default)
-    {
-        if (items.Count == 0)
-            return;
-
-        HDWP hdwp = PInvoke.BeginDeferWindowPos(items.Count);
-        bool useBatch = hdwp != default(HDWP);
-
-        try
-        {
-            foreach (var item in items)
-            {
-                // On cancel, stop queuing new moves and fall through to the
-                // finally block - accumulated DeferWindowPos entries still need EndDeferWindowPos.
-                if (ct.IsCancellationRequested)
-                    return;
-
-                SET_WINDOW_POS_FLAGS flags = SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE;
-                if (item.PosOnly)  flags |= SET_WINDOW_POS_FLAGS.SWP_NOSIZE;
-                if (isAsync)       flags |= SET_WINDOW_POS_FLAGS.SWP_ASYNCWINDOWPOS;
-                if (isTransient)   flags |= SET_WINDOW_POS_FLAGS.SWP_NOSENDCHANGING;
-
-                HWND target = (HWND)item.HWnd;
-                var r = item.Rect;
-                if (useBatch)
-                {
-                    hdwp = PInvoke.DeferWindowPos(hdwp, target, HWND.Null, r.X, r.Y, r.W, r.H, flags);
-                    if (hdwp == default(HDWP))
-                    {
-                        useBatch = false;
-                        PInvoke.SetWindowPos(target, HWND.Null, r.X, r.Y, r.W, r.H, flags);
-                    }
-                }
-                else
-                {
-                    PInvoke.SetWindowPos(target, HWND.Null, r.X, r.Y, r.W, r.H, flags);
-                }
-            }
-        }
-        finally
-        {
-            if (useBatch && hdwp != default(HDWP))
-                PInvoke.EndDeferWindowPos(hdwp);
-        }
-    }
+    public WindowBatchResult BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient,
+        System.Threading.CancellationToken ct = default)
+        => _moves.Execute(items, isAsync, isTransient, ct);
 
     public unsafe void EnumWindows(Func<IntPtr, bool> callback)
     {

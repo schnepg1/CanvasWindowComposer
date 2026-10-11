@@ -35,3 +35,6 @@ Install/CanvasWindowComposer-Setup.exe
 
 ## Perf traces (large binary captures + analysis scripts/notes)
 Tracing/
+
+## Local performance measurement output
+Tools/PerformanceHarness/results/

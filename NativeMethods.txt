@@ -75,6 +75,7 @@ LAYERED_WINDOW_ATTRIBUTES_FLAGS
 // Regions
 SetWindowRgn
 CreateRectRgn
+DeleteObject
 CreateRoundRectRgn
 
 // Deferred window positioning

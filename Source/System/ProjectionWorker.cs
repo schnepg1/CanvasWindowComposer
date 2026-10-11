@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading;
 
 namespace CanvasDesktop;
@@ -29,6 +30,7 @@ internal sealed class ProjectionWorker : IDisposable
     private CancellationTokenSource _cts = new();
     private volatile bool _disposed;
     private Job? _pending;
+    private readonly ConcurrentQueue<(List<BatchMoveItem> Items, WindowBatchResult Result)> _completed = new();
 
     private sealed class Job
     {
@@ -60,9 +62,8 @@ internal sealed class ProjectionWorker : IDisposable
 
     /// <summary>
     /// Drop any queued batch and cancel the in-flight one if any. The
-    /// in-flight BatchMove exits between items instead of finalizing -
-    /// callers that follow up with their own sync BatchMove get to run
-    /// without waiting for the full batch to complete.
+    /// in-flight BatchMove exits between items and finalizes the queued prefix. This shortens the
+    /// remaining work but cannot interrupt an in-flight USER32 call.
     /// </summary>
     public void ClearPending()
     {
@@ -74,6 +75,9 @@ internal sealed class ProjectionWorker : IDisposable
             Interlocked.Exchange(ref _pending, null);
         }
     }
+
+    public bool TryTakeCompleted(out (List<BatchMoveItem> Items, WindowBatchResult Result) completed)
+        => _completed.TryDequeue(out completed);
 
     private void Loop()
     {
@@ -101,7 +105,7 @@ internal sealed class ProjectionWorker : IDisposable
             {
                 Job? job = Interlocked.Exchange(ref _pending, null);
                 if (job != null && !token.IsCancellationRequested && !_disposed)
-                    _win32.BatchMove(job.Items, isAsync: job.IsAsync, isTransient: job.IsTransient, ct: token);
+                    _completed.Enqueue((job.Items, _win32.BatchMove(job.Items, isAsync: job.IsAsync, isTransient: job.IsTransient, ct: token)));
             }
         }
     }

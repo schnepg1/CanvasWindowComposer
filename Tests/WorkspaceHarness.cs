@@ -18,12 +18,13 @@ internal sealed class WorkspaceHarness : IDisposable
     public DesktopStateCache Cache { get; }
     public WorkspaceService Workspace { get; }
 
-    public WorkspaceHarness(WorkspaceDocument? document = null, IWorkspaceStore? store = null, FakeWindowApi? api = null)
+    public WorkspaceHarness(WorkspaceDocument? document = null, IWorkspaceStore? store = null, FakeWindowApi? api = null,
+        FakeAppConfig? config = null)
     {
         Api = api ?? new();
         if (document != null) Store.Document = document;
         Cards = new(Api);
-        Wm = new(Canvas, Api, new FakeAppConfig(), new FakeInputRouter(), Clock, Desktops);
+        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), new FakeInputRouter(), Clock, Desktops);
         Cache = new(Canvas, Wm, new FakeOverviewController(), Desktops);
         Workspace = new(Canvas, Wm, Api, Desktops, Cache, store ?? Store, Cards, Actions, Launcher, Identity, Clock);
     }

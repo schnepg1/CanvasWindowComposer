@@ -10,9 +10,6 @@ namespace CanvasDesktop;
 internal sealed class WindowManager : IDisposable
 {
     private const int ReconcileTolerancePx = 2;
-    private const int ClipEdgeOffsetPx = 1;
-    private const int FallbackScreenWidth = 1920;
-    private const int FallbackScreenHeight = 1080;
     private const int ReprojectThrottleMs = 200;
 
     private readonly Canvas _canvas;
@@ -33,6 +30,9 @@ internal sealed class WindowManager : IDisposable
 
     // Windows with clipped (empty) region to prevent them from fighting off-screen
     private readonly HashSet<IntPtr> _clippedWindows = new();
+    // Clipping can succeed before a move is failed, cancelled or superseded.
+    // Keep retrying edge placement until a native move has been accepted.
+    private readonly HashSet<IntPtr> _unconfirmedMoves = new();
 
     private long _lastReprojectTick;
 
@@ -41,14 +41,18 @@ internal sealed class WindowManager : IDisposable
     // Our own placeholder forms are explicitly enrolled, never discovered as apps.
     public void RestorePlacement(IntPtr hWnd, WorldRect world)
     {
+        DrainProjectionResults();
         TrackForDesktopRestore(hWnd);
-        _win32.UnclipWindow(hWnd);
-        _clippedWindows.Remove(hWnd);
         _canvas.RestoreWindow(hWnd, world);
-        var rect = _canvas.WorldToScreen(world);
+        var plan = WindowPlacementPlanner.Plan(world, _canvas.Camera, _win32.GetScreenWorkingAreas(),
+            ClipOffScreen, _clippedWindows.Contains(hWnd), PlacementIntent.RestoreLayout, repositionClipped: true);
+        if (!ApplyRegionChange(hWnd, plan.RegionChange)) return;
+        if (!plan.ShouldMove) return;
+        var rect = plan.TargetRect;
         _lastScreen[hWnd] = (rect.X, rect.Y, rect.W, rect.H);
-        _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
+        var result = _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
+        ApplyMoveResult(new(hWnd, rect, false), result);
     }
 
     // Temporarily suspends greedy draw (SetWindowRgn clipping)
@@ -175,20 +179,20 @@ internal sealed class WindowManager : IDisposable
             try
             {
                 if (!_win32.IsWindowVisible(hWnd) || _win32.GetWindowProcessId(hWnd) != pid) continue;
-                if (_clippedWindows.Contains(hWnd)) _win32.UnclipWindow(hWnd);
+                if (_clippedWindows.Contains(hWnd)) RequireAccepted(_win32.UnclipWindow(hWnd));
                 var (x, y, w, h) = _win32.GetNormalRect(hWnd);
                 if (w <= 0 || h <= 0) continue;
                 var before = new WindowRect(x, y, w, h);
-                var rect = DesktopViewport.Fit(before, screens);
+                var rect = WindowPlacementPlanner.FitDesktop(before, screens);
                 if (rect == before) continue;
                 int style = _win32.GetWindowStyle(hWnd);
                 var state = (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0 ? WindowState.Minimized
                     : (style & (int)WINDOW_STYLE.WS_MAXIMIZE) != 0 ? WindowState.Maximized : WindowState.Normal;
                 if (state == WindowState.Normal)
-                    _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
-                        (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
+                    RequireAccepted(_win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
+                        (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE)));
                 else
-                    _win32.RestoreNativeState(hWnd, rect, state);
+                    RequireAccepted(_win32.RestoreNativeState(hWnd, rect, state));
             }
             catch (Exception ex) { failures.Add(new InvalidOperationException($"Could not recover window {hWnd}.", ex)); }
         }
@@ -196,6 +200,7 @@ internal sealed class WindowManager : IDisposable
         _clippedWindows.Clear();
         _canvas.ClearWindows();
         _lastScreen.Clear();
+        _unconfirmedMoves.Clear();
         if (failures.Count > 0) throw new AggregateException("Some desktop windows could not be recovered.", failures);
     }
 
@@ -288,7 +293,7 @@ internal sealed class WindowManager : IDisposable
         if (_projection != null)
             _projection.Schedule(batch, isAsync: isAsync, isTransient: isTransient);
         else
-            _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient);
+            ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient));
     }
 
     /// <summary>
@@ -303,44 +308,40 @@ internal sealed class WindowManager : IDisposable
     {
         _projection?.ClearPending();
         var batch = BuildReprojectBatch();
-        _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient);
+        ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient));
     }
 
-    private List<BatchMoveItem> BuildReprojectBatch()
+    /// <summary>Re-evaluate clipping and edge parking against a fresh monitor layout.</summary>
+    public void ReprojectForDisplayChange()
     {
+        if (_disposed) return;
+        _projection?.ClearPending();
+        var batch = BuildReprojectBatch(repositionClipped: true);
+        ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: false, isTransient: false));
+    }
+
+    private bool ClipOffScreen => !_config.DisableGreedyDraw && !SuspendGreedyDraw;
+
+    private List<BatchMoveItem> BuildReprojectBatch(bool repositionClipped = false)
+    {
+        DrainProjectionResults();
         var batch = new List<BatchMoveItem>();
+        // One geometry/camera/config snapshot for the entire decision pass. Do not
+        // rebuild monitor arrays for every window or consult a moving camera midway.
+        var screens = _win32.GetScreenWorkingAreas();
+        var camera = _canvas.Camera;
+        bool clipOffScreen = ClipOffScreen;
 
         foreach (var (hWnd, world) in _canvas.Windows)
         {
-            if (world.State != WindowState.Normal || world.PinnedToScreen)
-                continue;
-
-            var r = _canvas.WorldToScreen(world);
-            bool onScreen = IsOnAnyScreen(r.X, r.Y, r.W, r.H);
-
-            bool wasClipped = _clippedWindows.Contains(hWnd);
-            if (!_config.DisableGreedyDraw && !SuspendGreedyDraw && !onScreen)
-            {
-                if (!wasClipped)
-                {
-                    _win32.ClipWindow(hWnd);
-                    _clippedWindows.Add(hWnd);
-                    var (px, py) = ClampToScreenEdge(r.X, r.Y, r.W, r.H);
-                    var clipped = new WindowRect(px, py, r.W, r.H);
-                    batch.Add(new BatchMoveItem(hWnd, clipped, PosOnly: true));
-                    _lastScreen[hWnd] = (px, py, r.W, r.H);
-                }
-                continue;
-            }
-
-            if (wasClipped)
-            {
-                _win32.UnclipWindow(hWnd);
-                _clippedWindows.Remove(hWnd);
-            }
-
+            var plan = WindowPlacementPlanner.Plan(world, camera, screens, clipOffScreen,
+                _clippedWindows.Contains(hWnd), repositionClipped: repositionClipped || _unconfirmedMoves.Contains(hWnd));
+            if (!ApplyRegionChange(hWnd, plan.RegionChange)) continue;
+            if (!plan.ShouldMove) continue;
+            var r = plan.TargetRect;
             batch.Add(new BatchMoveItem(hWnd, r, PosOnly: true));
             _lastScreen[hWnd] = (r.X, r.Y, r.W, r.H);
+            _unconfirmedMoves.Add(hWnd);
         }
 
         return batch;
@@ -352,6 +353,7 @@ internal sealed class WindowManager : IDisposable
     /// </summary>
     public bool ReprojectWindow(IntPtr hWnd)
     {
+        DrainProjectionResults();
         uint ownPid = (uint)Environment.ProcessId;
         if (!_win32.IsManageable(hWnd, ownPid))
             return false;
@@ -362,16 +364,17 @@ internal sealed class WindowManager : IDisposable
         if (!_canvas.Windows.TryGetValue(hWnd, out var world))
             return false;
 
-        if (world.PinnedToScreen)
-            return true;
+        var plan = WindowPlacementPlanner.Plan(world, _canvas.Camera, _win32.GetScreenWorkingAreas(),
+            ClipOffScreen, _clippedWindows.Contains(hWnd), repositionClipped: _unconfirmedMoves.Contains(hWnd));
+        if (!ApplyRegionChange(hWnd, plan.RegionChange)) return false;
+        if (!plan.ShouldMove) return true;
+        var r = plan.TargetRect;
 
-        var r = _canvas.WorldToScreen(world);
-
-        _win32.SetWindowPosition(hWnd, r.X, r.Y, r.W, r.H,
+        var result = _win32.SetWindowPosition(hWnd, r.X, r.Y, r.W, r.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
-
         _lastScreen[hWnd] = (r.X, r.Y, r.W, r.H);
-        return true;
+        ApplyMoveResult(new(hWnd, r, false), result);
+        return result.Accepted;
     }
 
     /// <summary>
@@ -391,6 +394,7 @@ internal sealed class WindowManager : IDisposable
     /// <summary>Update a single window's world position from its actual screen position.</summary>
     public void ReconcileWindow(IntPtr hWnd)
     {
+        DrainProjectionResults();
         if (_suspendReconcile)
         {
             _reconcilePending = true;
@@ -452,6 +456,7 @@ internal sealed class WindowManager : IDisposable
         if (_canvas.HasWindow(hWnd)) WindowRemoving?.Invoke(hWnd);
         _canvas.RemoveWindow(hWnd);
         _lastScreen.Remove(hWnd);
+        _unconfirmedMoves.Remove(hWnd);
         _clippedWindows.Remove(hWnd);
         _sessionWindows.Remove(hWnd);
     }
@@ -573,6 +578,7 @@ internal sealed class WindowManager : IDisposable
         _win32.BatchMove(batch, isAsync: false, isTransient: false);
         _canvas.ClearWindows();
         _lastScreen.Clear();
+        _unconfirmedMoves.Clear();
     }
 
     // ==================== PRIVATE ====================
@@ -607,13 +613,13 @@ internal sealed class WindowManager : IDisposable
     {
         var rect = ResolvePinnedScreenRect(hWnd, world);
 
-        if (_clippedWindows.Remove(hWnd))
-            _win32.UnclipWindow(hWnd);
+        if (_clippedWindows.Contains(hWnd) && !ApplyRegionChange(hWnd, WindowRegionChange.Unclip)) return;
 
         _canvas.SetPinnedToScreen(hWnd, true);
         _lastScreen[hWnd] = (rect.X, rect.Y, rect.W, rect.H);
-        _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
+        var result = _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
+        ApplyMoveResult(new(hWnd, rect, false), result);
     }
 
     private void UnpinWindowFromScreen(IntPtr hWnd)
@@ -627,117 +633,53 @@ internal sealed class WindowManager : IDisposable
     private WindowRect ResolvePinnedScreenRect(IntPtr hWnd, WorldRect world)
     {
         var (ax, ay, aw, ah) = _win32.GetWindowRect(hWnd);
-        var actual = new WindowRect(ax, ay, aw, ah);
-        if (!_clippedWindows.Contains(hWnd) && IsOnAnyScreen(actual.X, actual.Y, actual.W, actual.H))
-            return actual;
-
-        var projected = _canvas.WorldToScreen(world);
-        if (IsOnAnyScreen(projected.X, projected.Y, projected.W, projected.H))
-            return projected;
-
-        return MoveIntoNearestScreen(projected);
+        return WindowPlacementPlanner.ResolvePinnedPlacement(world, _canvas.Camera,
+            new WindowRect(ax, ay, aw, ah), _clippedWindows.Contains(hWnd), _win32.GetScreenWorkingAreas());
     }
 
-    private WindowRect MoveIntoNearestScreen(WindowRect rect)
+    private void DrainProjectionResults()
     {
-        var screens = _win32.GetScreenWorkingAreas();
-        (int x, int y, int w, int h) screen = screens.Count > 0
-            ? screens[0]
-            : (0, 0, FallbackScreenWidth, FallbackScreenHeight);
-        int rectCx = rect.X + rect.W / 2;
-        int rectCy = rect.Y + rect.H / 2;
-        long bestDistance = long.MaxValue;
-
-        foreach (var candidate in screens)
-        {
-            int screenCx = candidate.x + candidate.w / 2;
-            int screenCy = candidate.y + candidate.h / 2;
-            long dx = rectCx - screenCx;
-            long dy = rectCy - screenCy;
-            long distance = dx * dx + dy * dy;
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                screen = candidate;
-            }
-        }
-
-        int w = rect.W > 0 ? rect.W : Math.Min(FallbackScreenWidth, Math.Max(1, screen.w));
-        int h = rect.H > 0 ? rect.H : Math.Min(FallbackScreenHeight, Math.Max(1, screen.h));
-        int maxX = screen.x + Math.Max(0, screen.w - w);
-        int maxY = screen.y + Math.Max(0, screen.h - h);
-        int x = Math.Clamp(rect.X, screen.x, maxX);
-        int y = Math.Clamp(rect.Y, screen.y, maxY);
-
-        return new WindowRect(x, y, w, h);
+        if (_projection == null) return;
+        while (_projection.TryTakeCompleted(out var completed))
+            ApplyBatchResult(completed.Items, completed.Result);
     }
 
-    /// <summary>
-    /// Clamp window position so it sits just outside the nearest screen edge.
-    /// This hides DWM border/shadow effects that would bleed onto the visible area.
-    /// </summary>
-    private (int x, int y) ClampToScreenEdge(int sx, int sy, int sw, int sh)
+    private void ApplyBatchResult(List<BatchMoveItem> items, WindowBatchResult result)
     {
-        var screens = _win32.GetScreenWorkingAreas();
-
-        // Find the nearest screen
-        int bestDist = int.MaxValue;
-        var nearest = screens.Count > 0 ? screens[0] : (0, 0, FallbackScreenWidth, FallbackScreenHeight);
-
-        foreach (var (left, top, width, height) in screens)
-        {
-            int cx = sx + sw / 2;
-            int cy = sy + sh / 2;
-            int scx = left + width / 2;
-            int scy = top + height / 2;
-            int dist = Math.Abs(cx - scx) + Math.Abs(cy - scy);
-            if (dist < bestDist)
-            {
-                bestDist = dist;
-                nearest = (left, top, width, height);
-            }
-        }
-
-        int nLeft = nearest.Item1;
-        int nTop = nearest.Item2;
-        int nRight = nLeft + nearest.Item3;
-        int nBottom = nTop + nearest.Item4;
-
-        // Park 1px inside the nearest edge so the OS considers it "on-screen"
-        int px = sx, py = sy;
-
-        if (sx + sw <= nLeft)
-        {
-            px = nLeft - sw + ClipEdgeOffsetPx;
-        }
-        else if (sx >= nRight)
-        {
-            px = nRight - ClipEdgeOffsetPx;
-        }
-
-        if (sy + sh <= nTop)
-        {
-            py = nTop - sh + ClipEdgeOffsetPx;
-        }
-        else if (sy >= nBottom)
-        {
-            py = nBottom - ClipEdgeOffsetPx;
-        }
-
-        return (px, py);
+        for (int i = 0; i < items.Count; i++) ApplyMoveResult(items[i], result.Items[i]);
     }
 
-    /// <summary>Check if a rect overlaps with any monitor's working area (excludes taskbars).</summary>
-    private bool IsOnAnyScreen(int rx, int ry, int rw, int rh)
+    private void ApplyMoveResult(BatchMoveItem item, NativeOperationResult result)
     {
-        foreach (var (left, top, width, height) in _win32.GetScreenWorkingAreas())
+        var rect = item.Rect;
+        // A worker completion must not overwrite a newer requested placement.
+        if (!_lastScreen.TryGetValue(item.HWnd, out var latest) || latest != (rect.X, rect.Y, rect.W, rect.H)) return;
+        if (result.Accepted) _unconfirmedMoves.Remove(item.HWnd);
+        else
         {
-            int right = left + width;
-            int bottom = top + height;
-            if (rx + rw > left && rx < right &&
-                ry + rh > top && ry < bottom)
-                return true;
+            _lastScreen.Remove(item.HWnd);
+            _unconfirmedMoves.Add(item.HWnd);
         }
-        return false;
+    }
+
+    private bool ApplyRegionChange(IntPtr hWnd, WindowRegionChange change)
+    {
+        if (change == WindowRegionChange.Clip)
+        {
+            if (!_win32.ClipWindow(hWnd).Accepted) return false;
+            _clippedWindows.Add(hWnd);
+        }
+        else if (change == WindowRegionChange.Unclip)
+        {
+            if (!_win32.UnclipWindow(hWnd).Accepted) return false;
+            _clippedWindows.Remove(hWnd);
+        }
+        return true;
+    }
+
+    private static void RequireAccepted(NativeOperationResult result)
+    {
+        if (!result.Accepted)
+            throw new InvalidOperationException($"{result.Operation} failed for window {result.Window} (native error {result.ErrorCode?.ToString() ?? "unspecified"}).");
     }
 }

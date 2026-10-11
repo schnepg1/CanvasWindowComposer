@@ -558,6 +558,7 @@ float4 PSMain(VSOut input) : SV_Target
     private void RenderFrame()
     {
         if (_context == null || _swapChain == null) return;
+        long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
         var constants = new GridConstants
@@ -602,7 +603,8 @@ float4 PSMain(VSOut input) : SV_Target
             _context.ClearRenderTargetView(_rtv!, new Vortice.Mathematics.Color4(0, 0, 0, 0));
         }
 
-        _swapChain.Present(VsyncInterval, PresentFlags.None);
+        var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
+        PerformanceDiagnostics.Shared.Complete("GridFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
         OnFrameTick?.Invoke();
     }
 

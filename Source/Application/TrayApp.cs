@@ -112,6 +112,18 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(toggleItem);
             menu.Items.Add(showScreenFixedItem);
             menu.Items.Add(refreshItem);
+            menu.Items.Add(new ToolStripMenuItem("Export performance diagnostics...", null, (_, _) =>
+            {
+                using var dialog = new SaveFileDialog { Filter = "JSON diagnostics|*.json", FileName = "canvas-performance.json" };
+                if (dialog.ShowDialog() != DialogResult.OK) return;
+                try
+                {
+                    File.WriteAllText(dialog.FileName, System.Text.Json.JsonSerializer.Serialize(
+                        PerformanceDiagnostics.Shared.Snapshot(), new System.Text.Json.JsonSerializerOptions
+                        { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } }));
+                }
+                catch (Exception ex) { MessageBox.Show(ex.Message, "Performance diagnostics"); }
+            }));
             menu.Items.Add(openConfigItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(workspaceItem);

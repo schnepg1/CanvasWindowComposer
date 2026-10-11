@@ -126,6 +126,10 @@ internal sealed class OverviewManager : IDisposable, IOverviewController
         // display changes; secondary taskbars come and go with monitors).
         _thumbnails.InvalidateShellCache();
 
+        // Hidden overview sessions also need to re-evaluate native clipping. A
+        // parked window may still be at the edge of a monitor that no longer exists.
+        _wm.ReprojectForDisplayChange();
+
         EnsurePasses();
         WarmupPasses();
 
