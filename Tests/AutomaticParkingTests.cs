@@ -56,6 +56,84 @@ public class AutomaticParkingTests
     }
 
     [Fact]
+    public void OverviewApproachRestoresDespiteDistantMainCameraAndSuspendedProjection()
+    {
+        using var h = new Harness(); h.Park();
+        h.Manager.SuspendProjection = true;
+        h.Api.Foreground = (IntPtr)999;
+        h.Clock.Now = 1600;
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, 1));
+        Assert.False(h.IsMinimized);
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.Equal((IntPtr)999, h.Api.Foreground);
+        Assert.Equal(h.Canvas.Camera.Project(h.Canvas.Windows[h.Handle]), h.Api.ParkingRestoreCalls.Single().rect);
+    }
+
+    [Fact]
+    public void OverviewDepartureParksDespiteMainCameraBeingNear()
+    {
+        using var h = new Harness();
+        h.Canvas.SetCamera(5000, 0);
+        h.Manager.SuspendProjection = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 1));
+        h.Tick(1500); h.FinishCapture(); h.Tick(1501);
+        Assert.True(h.IsMinimized);
+        Assert.Equal(5000, h.Canvas.CamX);
+    }
+
+    [Fact]
+    public void ZoomedOutVisibleWindowParksAndDoesNotWakeUntilZoomedIn()
+    {
+        using var h = new Harness();
+        h.Manager.SuspendProjection = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .1)); // 500 screen pixels: visibly in the map.
+        h.Tick(1500); h.FinishCapture(); h.Tick(1501);
+        Assert.True(h.IsMinimized);
+        h.Tick(5000);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, .5));
+        Assert.False(h.IsMinimized);
+        Assert.Equal(400, h.Api.Windows[h.Handle].W); // Native app is never shrunk to overview zoom.
+        Assert.Equal(300, h.Api.Windows[h.Handle].H);
+    }
+
+    [Fact]
+    public void LeavingZoomedOutOverviewReturnsPolicyToMainCamera()
+    {
+        using var h = new Harness(); h.Canvas.SetCamera(5000, 0);
+        h.Manager.SuspendProjection = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .1));
+        h.Tick(1500); h.FinishCapture(); h.Tick(1501);
+        Assert.True(h.IsMinimized);
+        h.Manager.SetOverviewViewport(null);
+        Assert.False(h.IsMinimized);
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+    }
+
+    [Fact]
+    public void OverviewProximityAndZoomNeverRestoreUserMinimizedWindow()
+    {
+        using var h = new Harness();
+        h.Api.Windows[h.Handle].Style = (int)WINDOW_STYLE.WS_MINIMIZE;
+        h.Input.RaiseWindowMinimized(h.Handle);
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, 1));
+        h.Tick(2000);
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .1)); h.Tick(5000);
+        h.Manager.SetOverviewViewport(null);
+        Assert.True(h.IsMinimized);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        Assert.Empty(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void OverviewApproachUsesEachMonitorIncludingNegativeOrigins()
+    {
+        using var h = new Harness(); h.Park(); h.Manager.SuspendProjection = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(6500, 0, 1), [(-1920, -200, 1920, 1080)]);
+        Assert.False(h.IsMinimized); // Projects at -1500, on the left monitor.
+    }
+
+    [Fact]
     public void DisabledByDefaultDoesNotCaptureOrMinimize()
     {
         using var h = new Harness(); h.Config.EnableAutomaticMinimization = false;

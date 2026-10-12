@@ -8,6 +8,7 @@ internal sealed class WorkspaceHarness : IDisposable
     public Canvas Canvas { get; } = new();
     public FakeWindowApi Api { get; }
     public FakeClock Clock { get; } = new();
+    public FakeInputRouter Input { get; } = new();
     public FakeVirtualDesktops Desktops { get; } = new();
     public MemoryWorkspaceStore Store { get; } = new();
     public TestWorkspaceIdentity Identity { get; } = new();
@@ -24,7 +25,7 @@ internal sealed class WorkspaceHarness : IDisposable
         Api = api ?? new();
         if (document != null) Store.Document = document;
         Cards = new(Api);
-        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), new FakeInputRouter(), Clock, Desktops,
+        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), Input, Clock, Desktops,
             inspectProcess: Identity.InspectProcess);
         Cache = new(Canvas, Wm, new FakeOverviewController(), Desktops);
         Workspace = new(Canvas, Wm, Api, Desktops, Cache, store ?? Store, Cards, Actions, Launcher, Identity, Clock);

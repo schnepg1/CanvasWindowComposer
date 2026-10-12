@@ -15,6 +15,23 @@ public class OverviewWindowListTests
     }
 
     [Fact]
+    public void ProxiesReplaceAppsOnceAtTheirOriginalZOrderAndRetainSelection()
+    {
+        var (canvas, api, list) = Make();
+        foreach (var handle in new[] { (IntPtr)1, (IntPtr)2, (IntPtr)3 })
+        {
+            canvas.SetWindow(handle, 100, 100, 400, 300);
+            api.AddWindow(handle, 100, 100, 400, 300);
+        }
+        api.EnumOrder = [(IntPtr)3, (IntPtr)2, (IntPtr)1]; // Proxy 3's native z-order is irrelevant.
+        list.Refresh(representedWindows: new Dictionary<IntPtr, IntPtr> { [(IntPtr)1] = (IntPtr)3 });
+        Assert.Equal(new[] { (IntPtr)2, (IntPtr)3 }, list.Windows.Select(e => e.HWnd));
+        list.SelectNext();
+        list.Refresh(representedWindows: new Dictionary<IntPtr, IntPtr> { [(IntPtr)1] = (IntPtr)3 }, preserveSelection: true);
+        Assert.Equal(0, list.SelectedIndex);
+    }
+
+    [Fact]
     public void Refresh_PopulatesFromCanvasInZOrder()
     {
         var (canvas, api, list) = Make();

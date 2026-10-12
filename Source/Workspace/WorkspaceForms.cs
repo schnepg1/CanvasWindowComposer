@@ -12,6 +12,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly Button _open;
     private readonly ToolStripMenuItem _auto;
     private readonly ContextMenuStrip _menu;
+    private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
+    private Size _overviewSize;
     public event Action? PlacementChanged;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
@@ -78,22 +80,50 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     public void UpdateItem(WorkspaceItemView item)
     {
+        if (_item != item) _overviewImage = null;
         _item = item;
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
         _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
         _open.Text = _item.State == "Opening…" ? "Opening…" : "Open";
+        if (_item.State is "Minimized" or "Sleeping") _open.Text = "Restore";
+        else if (_item.State == "Open") _open.Text = "Focus";
         if (_item.State == "Needs linking") _open.Text = "Link open window…";
         _open.Enabled = _item.State != "Opening…";
         _hint.Text = _item.State == "Needs linking"
             ? "Several matches are possible. Choose the correct open window.\nRight-click for options"
-            : (_item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
+            : (_item.State is "Minimized" or "Sleeping" ? "Application is minimized · Restore to use it"
+                : _item.State == "Open" ? "Overview preview · Double-click to focus"
+                : _item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
         _auto.Checked = _item.OpenOnStartup;
     }
 
+    // WM_PRINT used by DrawToBitmap renders controls even when their native
+    // window is entirely off-screen. A DWM thumbnail cannot guarantee that.
+    internal System.Windows.Media.Imaging.BitmapSource GetOverviewImage()
+    {
+        if (_overviewImage != null && _overviewSize == Size) return _overviewImage;
+        PerformLayout();
+        using var bitmap = new Bitmap(Width, Height);
+        DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size));
+        using var stream = new System.IO.MemoryStream();
+        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+        stream.Position = 0;
+        var image = new System.Windows.Media.Imaging.BitmapImage();
+        image.BeginInit();
+        image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        image.StreamSource = stream;
+        image.EndInit();
+        image.Freeze();
+        _overviewSize = Size;
+        return _overviewImage = image;
+    }
+
+    internal void ReleaseOverviewImage() => _overviewImage = null;
+
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { PlacementChanged = null; _menu.Dispose(); }
+        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); }
         base.Dispose(disposing);
     }
 

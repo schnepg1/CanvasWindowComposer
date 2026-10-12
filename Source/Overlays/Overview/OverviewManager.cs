@@ -93,6 +93,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private int _dragStartVx, _dragStartVy;
     private void ReconcileVisuals()
     {
+        _wm.SetOverviewViewport(new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom),
+            _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
+        if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
+        {
+            _placeholderTitles = _placeholderWorkspace.GetPlaceholderTitles();
+            RefreshOverviewWindows();
+        }
         _thumbnails.Reconcile();
         RefreshZoneAnnotations();
     }
@@ -110,6 +117,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (!_disposed && CurrentMode != OverviewMode.Hidden)
             {
                 _thumbnails.InvalidateCachedSources();
+                RefreshOverviewWindows();
                 ReconcileVisuals();
             }
         }));
@@ -126,7 +134,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _camera = new OverviewCamera(_screens);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows);
+            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows,
+            useNativeSource: handle => !_placeholderTitles.ContainsKey(handle));
         _wm.Previews.Changed += OnPreviewChanged;
         _wm.AutomaticParkingChanged += OnPreviewChanged;
 
@@ -374,6 +383,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
 
         _wm.SetLivePreviewWindows(Array.Empty<IntPtr>());
+        _wm.SetOverviewViewport(null);
+        _placeholderWorkspace?.SetOverviewCardMode(false);
         _mainCanvas.Commit();
         _wm.SuspendReconcile = false;
         _wm.SuspendProjection = false;
@@ -393,7 +404,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void ApplyConfig()
     {
-        _windows.Refresh(includeScreenFixedWindows: ShouldShowScreenFixedWindowsDuringPan);
+        RefreshOverviewWindows();
 
         // WS_EX_LAYERED is added in Panning and removed in Zooming. Panning
         // is where background-throttle freezes were seen after losing
@@ -753,6 +764,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void GoToWindow(IntPtr hWnd, WorldRect world)
     {
+        if (_placeholderWorkspace?.LiveCardItem(hWnd) is { } itemId)
+        {
+            TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+            _placeholderWorkspace.Open(itemId);
+            return;
+        }
         if (_mainCanvas.IsCollapsed(hWnd))
             PInvoke.ShowWindow((HWND)hWnd, SHOW_WINDOW_CMD.SW_RESTORE);
 

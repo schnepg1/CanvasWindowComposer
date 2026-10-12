@@ -21,10 +21,10 @@ internal sealed class OverviewOverlay : Form
 
     public void ShowZones(System.Collections.Generic.IReadOnlyList<ZoneView> zones, OverviewCamera camera,
         WorldRect? preview, bool drawing, System.Collections.Generic.IReadOnlyList<WorldRect>? ghosts = null,
-        System.Collections.Generic.IReadOnlyList<PlaceholderAnnotation>? placeholders = null)
+        System.Collections.Generic.IReadOnlyList<PlaceholderAnnotation>? placeholders = null, bool showHints = true)
     {
         if (_annotations == null) _annotations = new ZoneAnnotationWindow(Handle);
-        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts, placeholders);
+        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts, placeholders, showHints);
     }
 
     public IntPtr HitPlaceholderLabel(int x, int y) => _annotations?.HitPlaceholderLabel(x, y) ?? IntPtr.Zero;

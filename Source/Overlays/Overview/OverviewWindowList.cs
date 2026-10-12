@@ -32,12 +32,23 @@ internal sealed class OverviewWindowList
     }
 
     /// <summary>Rebuild the list from canvas + Z-order. Resets selection.</summary>
-    public void Refresh(bool includeScreenFixedWindows = false)
+    public void Refresh(bool includeScreenFixedWindows = false,
+        IReadOnlyDictionary<IntPtr, IntPtr>? representedWindows = null, bool preserveSelection = false)
     {
+        var selected = preserveSelection && SelectedIndex >= 0 && SelectedIndex < _windows.Count
+            ? _windows[SelectedIndex].HWnd : IntPtr.Zero;
+        var proxies = representedWindows == null ? null : new HashSet<IntPtr>(representedWindows.Values);
         _windows.Clear();
         SelectedIndex = -1;
         _win32.EnumWindows(hWnd =>
         {
+            if (proxies?.Contains(hWnd) == true) return true;
+            if (representedWindows != null && representedWindows.TryGetValue(hWnd, out var proxy)
+                && _canvas.Windows.TryGetValue(proxy, out var proxyWorld))
+            {
+                AddCanvasWindow(proxy, proxyWorld, includeScreenFixedWindows);
+                return true;
+            }
             if (_canvas.Windows.TryGetValue(hWnd, out var world))
             {
                 AddCanvasWindow(hWnd, world, includeScreenFixedWindows);
@@ -48,6 +59,7 @@ internal sealed class OverviewWindowList
             }
             return true;
         });
+        if (selected != IntPtr.Zero) SelectedIndex = _windows.FindIndex(e => e.HWnd == selected);
     }
 
     private void AddCanvasWindow(IntPtr hWnd, WorldRect world, bool includeScreenFixedWindows)

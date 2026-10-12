@@ -38,13 +38,13 @@ internal sealed class WindowVisibilityTracker
 
     public WindowVisibilitySnapshot Observe(IntPtr handle, WorkspaceWindowIdentity? identity,
         WindowRect projected, IReadOnlyList<(int x, int y, int w, int h)> screens,
-        bool minimized, bool eligible, long now)
+        bool minimized, bool eligible, long now, bool allowLivePreview = true)
     {
         if (!_entries.TryGetValue(handle, out var e) || e.Identity != identity)
             _entries[handle] = e = new Entry { Identity = identity };
 
-        bool visible = Intersects(projected, screens, 0);
-        bool near = Intersects(projected, screens, e.Far ? ApproachMarginPx : DepartureMarginPx);
+        bool visible = allowLivePreview && Intersects(projected, screens, 0);
+        bool near = allowLivePreview && Intersects(projected, screens, e.Far ? ApproachMarginPx : DepartureMarginPx);
         e.Far = !visible && !near;
         bool hasViewport = false;
         foreach (var screen in screens)

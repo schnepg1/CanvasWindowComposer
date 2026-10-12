@@ -37,9 +37,9 @@ internal sealed class ZoneAnnotationWindow : Window
 
     public void Update(IReadOnlyList<ZoneView> zones, double x, double y, double zoom,
         System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts = null,
-        IReadOnlyList<PlaceholderAnnotation>? placeholders = null)
+        IReadOnlyList<PlaceholderAnnotation>? placeholders = null, bool showHints = true)
     {
-        _drawing.Update(zones, x, y, zoom, screen, preview, drawing, ghosts, placeholders);
+        _drawing.Update(zones, x, y, zoom, screen, preview, drawing, ghosts, placeholders, showHints);
         bool opening = !IsVisible;
         if (opening) Show();
         if (opening || _bounds != screen)
@@ -58,6 +58,7 @@ internal sealed class ZoneAnnotationWindow : Window
         private System.Drawing.Rectangle _screen;
         private WorldRect? _preview;
         private bool _drawing;
+        private bool _showHints = true;
         private IReadOnlyList<WorldRect> _ghosts = Array.Empty<WorldRect>();
         private IReadOnlyList<PlaceholderAnnotation> _placeholders = Array.Empty<PlaceholderAnnotation>();
         private IReadOnlyList<PlaceholderLabel> _labels = Array.Empty<PlaceholderLabel>();
@@ -72,10 +73,11 @@ internal sealed class ZoneAnnotationWindow : Window
 
         public void Update(IReadOnlyList<ZoneView> zones, double x, double y, double zoom,
             System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts,
-            IReadOnlyList<PlaceholderAnnotation>? placeholders)
+            IReadOnlyList<PlaceholderAnnotation>? placeholders, bool showHints = true)
         {
             _zones = zones; _x = x; _y = y; _zoom = zoom; _screen = screen;
             _preview = preview; _drawing = drawing;
+            _showHints = showHints;
             _ghosts = ghosts ?? Array.Empty<WorldRect>();
             _placeholders = placeholders ?? Array.Empty<PlaceholderAnnotation>();
             _labels = Array.Empty<PlaceholderLabel>();
@@ -87,6 +89,7 @@ internal sealed class ZoneAnnotationWindow : Window
             base.OnRender(dc);
             var dpi = VisualTreeHelper.GetDpi(this);
             dc.PushClip(new RectangleGeometry(new Rect(RenderSize)));
+            DrawPlaceholderCards(dc, dpi);
             DrawPlaceholderLabels(dc, dpi);
             foreach (var zone in _zones)
                 DrawZone(dc, zone.Bounds, zone.Name + $" · {zone.MemberCount}", (Color)ColorConverter.ConvertFromString(zone.Color), dpi, false);
@@ -95,6 +98,7 @@ internal sealed class ZoneAnnotationWindow : Window
             if (_preview is { } bounds)
                 DrawZone(dc, bounds, "New project area", Color.FromRgb(96, 165, 250), dpi, true);
 
+            if (!_showHints) { dc.Pop(); return; }
             // Fixed-size hint remains readable at every zoom level.
             string hint = _drawing ? "Drag to mark a project area  ·  Esc to cancel"
                 : "Drag name: move group   Corners: resize   Ctrl+Z/Y: undo/redo   Z: areas   P: projects";
@@ -103,6 +107,38 @@ internal sealed class ZoneAnnotationWindow : Window
                 new Rect(20, 20, text.Width + 28, 36), 10, 10);
             dc.DrawText(text, new Point(34, 28));
             dc.Pop();
+        }
+
+        private Rect Project(WorldRect b, DpiScale dpi) => new(
+            ((b.X - _x) * _zoom - _screen.X) / dpi.DpiScaleX,
+            ((b.Y - _y) * _zoom - _screen.Y) / dpi.DpiScaleY,
+            Math.Max(0, b.W * _zoom / dpi.DpiScaleX), Math.Max(0, b.H * _zoom / dpi.DpiScaleY));
+
+        private void DrawPlaceholderCards(DrawingContext dc, DpiScale dpi)
+        {
+            foreach (var card in _placeholders)
+            {
+                bool simple = _zoom < WindowManager.OverviewLivePreviewZoom;
+                if (!simple && card.Image == null) continue;
+                var rect = Project(card.Bounds, dpi);
+                if (!rect.IntersectsWith(new Rect(RenderSize))) continue;
+                Geometry visible = new RectangleGeometry(rect);
+                // Annotations sit above DWM. Cut out higher windows so card
+                // snapshots preserve the overview's native thumbnail z-order.
+                if (card.Occluders != null)
+                    foreach (var above in card.Occluders)
+                    {
+                        var covered = Project(above, dpi);
+                        if (covered.IntersectsWith(rect))
+                            visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
+                    }
+                dc.PushClip(visible);
+                if (simple)
+                    dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(28, 34, 46)),
+                        new Pen(new SolidColorBrush(Color.FromRgb(80, 103, 137)), 1), rect, 6, 6);
+                else dc.DrawImage(card.Image, rect);
+                dc.Pop();
+            }
         }
 
         private void DrawPlaceholderLabels(DrawingContext dc, DpiScale dpi)
