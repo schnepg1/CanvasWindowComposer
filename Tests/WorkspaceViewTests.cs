@@ -24,6 +24,31 @@ public class WorkspaceViewTests
     }
 
     [Fact]
+    public void OffscreenPlaceholderPaintsChildrenWithoutFocusOrApplicationLaunch()
+    {
+        OnSta(() =>
+        {
+            var commands = new TestCommands();
+            using var form = new PlaceholderForm(commands, commands.Items[0]);
+            var artwork = form.Controls.OfType<TableLayoutPanel>().Single()
+                .Controls.OfType<PlaceholderArtwork>().Single();
+            int paints = 0;
+            artwork.Paint += (_, _) => paints++;
+            var desktop = SystemInformation.VirtualScreen;
+            form.ShowAt(new WindowRect(desktop.Left - 1000, desktop.Top - 700, 800, 550));
+            Assert.True(paints > 0); // No message pump, focus, or DrawToBitmap to mask startup paint debt.
+            int initialPaints = paints;
+            form.UpdateItem(commands.Items[0] with { Title = "Changed while off-screen" });
+            form.PrepareOverviewPreview();
+            Assert.True(paints > initialPaints);
+            Assert.Equal("Changed while off-screen", artwork.Text);
+            Assert.Null(commands.Opened);
+            Assert.NotSame(form, Form.ActiveForm);
+            Assert.False(form.ShowInTaskbar);
+        });
+    }
+
+    [Fact]
     public void PlaceholderUsesSnapshotUpdatesAndSendsOnlyItemId()
     {
         OnSta(() =>

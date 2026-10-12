@@ -12,6 +12,21 @@ and a generic application symbol as fallbacks. Icons are loaded when the symbol
 changes, never during painting, and disposed with the card. Missing application
 files do not prevent cards from displaying.
 
+Cards paint their form and child controls synchronously on first show, even when
+their saved position is off-screen. When a card enters the overview, its source
+is painted again after compatibility-region unclipping and before DWM thumbnail
+registration. This does not activate the card or launch its saved application.
+Existing thumbnails are reused without repainting cards on every camera frame.
+
+Automatic minimization is a separate, opt-in policy (`EnableAutomaticMinimization`).
+It parks eligible running windows after 1.5 seconds beyond the main canvas
+viewport's 512-pixel departure margin, and restores them without activation when
+they enter the viewport or remain within its 256-pixel approach margin for 150 ms.
+The independent zoomed overview camera does not drive this policy; new parking
+is suspended in zooming mode. Automatically parked applications use cached image
+previews, while closed saved applications and folders use these info cards.
+User-minimized windows are not automatically restored by the parking policy.
+
 Below 80% overview zoom, a separate WPF annotation draws crisp title badges in
 display coordinates, following each card's current projected position. Text stays
 between 22 and 32 logical pixels rather than shrinking with the DWM thumbnail.

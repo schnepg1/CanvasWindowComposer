@@ -74,6 +74,22 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     {
         SetBounds(rect.X, rect.Y, rect.W, rect.H);
         Show();
+        PrepareOverviewPreview();
+    }
+
+    // DWM cannot supply card pixels until the form and its child HWNDs have
+    // painted. Saved positions can be off-screen from the very first Show.
+    // Also call after overview source unclipping, before registering a thumbnail.
+    // This paints only our own lightweight card; it does not focus or launch it.
+    internal unsafe void PrepareOverviewPreview()
+    {
+        if (IsDisposed || !IsHandleCreated || !Visible) return;
+        PerformLayout();
+        PInvoke.RedrawWindow((Windows.Win32.Foundation.HWND)Handle, null,
+            (Windows.Win32.Graphics.Gdi.HRGN)IntPtr.Zero,
+            REDRAW_WINDOW_FLAGS.RDW_INVALIDATE | REDRAW_WINDOW_FLAGS.RDW_ERASE |
+            REDRAW_WINDOW_FLAGS.RDW_FRAME | REDRAW_WINDOW_FLAGS.RDW_ALLCHILDREN |
+            REDRAW_WINDOW_FLAGS.RDW_UPDATENOW);
     }
 
     public void UpdateItem(WorkspaceItemView item)
