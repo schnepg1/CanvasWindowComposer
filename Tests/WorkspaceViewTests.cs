@@ -10,6 +10,42 @@ namespace CanvasDesktop.Tests;
 public class WorkspaceViewTests
 {
     [Fact]
+    public void DistantCardRendersRectangleWithoutAnImageAndHasOnlyItsOverlayTitle()
+    {
+        OnSta(() =>
+        {
+            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
+            drawing.Update([], 0, 0, .25, new System.Drawing.Rectangle(0, 0, 400, 300), null, false, null,
+                [new PlaceholderAnnotation((IntPtr)42, "Project", new WorldRect { X = 400, Y = 400, W = 800, H = 600 })], false);
+            drawing.Measure(new Size(400, 300)); drawing.Arrange(new Rect(0, 0, 400, 300));
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(400, 300, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
+            var pixels = new byte[400 * 300 * 4]; bitmap.CopyPixels(pixels, 1600, 0);
+            Assert.True(pixels[(110 * 400 + 110) * 4 + 3] > 0); // Card body exists without any native pixels.
+            Assert.NotEqual(IntPtr.Zero, drawing.HitPlaceholderLabel(200, 175));
+        });
+    }
+
+    [Theory]
+    [InlineData("Minimized")]
+    [InlineData("Sleeping")]
+    public void MinimizedCardOffersRestoreInsteadOfClaimingTheAppIsClosed(string state)
+    {
+        OnSta(() =>
+        {
+            var commands = new TestCommands();
+            using var form = new PlaceholderForm(commands, commands.Items[0] with { State = state });
+            form.ShowAt(new WindowRect(-10000, -10000, 800, 550));
+            var panel = form.Controls.OfType<TableLayoutPanel>().Single();
+            Assert.Equal("Restore", panel.Controls.OfType<Button>().Single().Text);
+            Assert.DoesNotContain(panel.Controls.OfType<Label>(), label => label.Text.Contains("closed"));
+            panel.Controls.OfType<Button>().Single().PerformClick();
+            Assert.Equal(commands.Items[0].Id, commands.Opened);
+        });
+    }
+
+    [Fact]
     public void ClosingUnshownWorkspaceWindowUnsubscribesFromCommands()
     {
         OnSta(() =>

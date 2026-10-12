@@ -42,6 +42,21 @@ public class MinimizedPlaceholderTests
     }
 
     [Fact]
+    public void MatchingSavedNormalSlotDoesNotWakeAlreadyMinimizedApp()
+    {
+        var item = new WorkspaceItem { Title = "Project", ExecutablePath = @"C:\Apps\Editor.exe",
+            Bounds = new WorldRect { X = 4000, Y = 200, W = 800, H = 600 } };
+        using var h = new WorkspaceHarness(new WorkspaceDocument { Items = [item] });
+        h.Api.AddWindow(App, 100, 200, 800, 600, pid: 7, title: "Project", style: (int)WINDOW_STYLE.WS_MINIMIZE);
+        h.Workspace.Start();
+        Assert.All(h.Api.NativeStateCalls, call => Assert.Equal(WindowState.Minimized, call.state));
+        Assert.Equal(4000, h.Canvas.Windows[App].X);
+        Assert.Equal(WindowState.Minimized, item.Bounds.State);
+        Assert.Single(h.Cards.Created);
+        Assert.Empty(h.Actions.Focused);
+    }
+
+    [Fact]
     public void RuntimeMinimizeCreatesCardAndTaskbarRestoreRemovesIt()
     {
         using var h = Start();

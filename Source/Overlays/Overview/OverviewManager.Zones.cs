@@ -114,10 +114,13 @@ internal sealed partial class OverviewManager
                         && (entry.World.Y - _camera.Y) * _camera.Zoom < b.Bottom
                         && (entry.World.Y + entry.World.H - _camera.Y) * _camera.Zoom > b.Top;
                 }) && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
+            {
+                if (_camera.Zoom < WindowManager.OverviewLivePreviewZoom) card.ReleaseOverviewImage();
                 cards.Add(new(entry.HWnd, title, entry.World,
                     i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder || (_draggingWindow && i == _dragIndex),
                     _camera.Zoom >= WindowManager.OverviewLivePreviewZoom ? card.GetOverviewImage() : null,
                     occluders.ToArray()));
+            }
             if (entry.ScreenFixed)
             {
                 var rect = _win32.GetWindowRect(entry.HWnd);

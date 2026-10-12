@@ -370,6 +370,13 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         if (!StillCurrent(live)) { live.ItemId = null; return; }
         var handle = live.Identity.Handle;
         var placed = item.Bounds;
+        if ((_api.GetWindowStyle(handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0 && !_wm.UsesCachedPreview(handle))
+        {
+            // Matching a saved slot must not wake an app the user minimized
+            // before Canvas started. Keep the saved geometry, adopt native intent.
+            placed.State = WindowState.Minimized;
+            item.Bounds = placed;
+        }
         _api.RestoreNativeState(handle, _canvas.WorldToScreen(placed), placed.State);
         if (placed.State == WindowState.Normal) _wm.RestorePlacement(handle, placed);
         else _canvas.RestoreWindow(handle, placed);

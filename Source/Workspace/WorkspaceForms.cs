@@ -119,9 +119,11 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         return _overviewImage = image;
     }
 
+    internal void ReleaseOverviewImage() => _overviewImage = null;
+
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { PlacementChanged = null; _menu.Dispose(); }
+        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); }
         base.Dispose(disposing);
     }
 
