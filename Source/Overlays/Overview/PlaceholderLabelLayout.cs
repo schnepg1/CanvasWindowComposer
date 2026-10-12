@@ -17,7 +17,7 @@ internal static class PlaceholderLabelLayout
         IReadOnlyList<Rect>? reserved = null)
     {
         var result = new List<PlaceholderLabel>();
-        if (!double.IsFinite(zoom) || zoom <= 0 || zoom >= .8 || dpiX <= 0 || dpiY <= 0) return result;
+        if (!double.IsFinite(zoom) || zoom <= 0 || zoom >= WindowManager.OverviewLivePreviewZoom || dpiX <= 0 || dpiY <= 0) return result;
         double viewWidth = monitor.Width / dpiX, viewHeight = monitor.Height / dpiY;
         if (viewWidth < 40 || viewHeight < 40) return result;
         double fontSize = Math.Clamp(44 * zoom, 22, 32);

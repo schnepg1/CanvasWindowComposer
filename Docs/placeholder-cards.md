@@ -19,20 +19,35 @@ created only for cards entering the view and reused until their content or size
 changes. They follow pan/zoom and are clipped around higher windows to preserve
 thumbnail z-order. Rendering never activates a card or launches its saved app.
 
-Automatic minimization is a separate, opt-in policy (`EnableAutomaticMinimization`).
-It parks eligible running windows after 1.5 seconds beyond the main canvas
-viewport's 512-pixel departure margin, and restores them without activation when
-they enter the viewport or remain within its 256-pixel approach margin for 150 ms.
-The independent zoomed overview camera does not drive this policy; new parking
-is suspended in zooming mode. Automatically parked applications use cached image
-previews, while closed saved applications and folders use these info cards.
-User-minimized windows are not automatically restored by the parking policy.
+Automatic minimization is an opt-in policy (`EnableAutomaticMinimization`). Outside
+the overview it follows the main canvas viewport. While the overview is open,
+its independent camera, zoom, and monitor bounds drive proximity instead.
+Eligible running windows park after 1.5 seconds beyond the viewport's 512-pixel
+departure margin. At 50% zoom or closer they restore without activation when
+visible or after 150 ms within the 256-pixel approach margin. Below 50% zoom,
+eligible apps may park even when visible in the map and are not restored merely
+because the wide view includes them. Zooming out never maximizes applications;
+native sizes and saved placements remain independent of the overview zoom.
 
-Below 80% overview zoom, a separate WPF annotation draws crisp title badges in
+Below 50% zoom, running apps use info-card proxies. Minimized apps and folders
+also have cards at every zoom. A live card replaces its application in overview
+ordering, with one saved identity, geometry, and project membership. Moving or
+resizing the proxy updates the live application's saved place without restoring
+it. Leaving the overview or zooming back in removes unnecessary live proxies.
+Automatically parked windows retain their cached capture during restoration.
+
+User-minimized windows stay minimized until an explicit **Restore**, navigator
+activation, or overview double-click. Live-card activation restores/focuses the
+existing validated HWND, never launches a duplicate process. Closed cards keep
+their **Open** action and are never launched just by proximity or zoom changes.
+
+Below 50% overview zoom, the card is a simple rectangle, without a bitmap of its
+controls. A separate WPF annotation draws crisp title badges in
 display coordinates, following each card's current projected position. Text stays
 between 22 and 32 logical pixels rather than shrinking with the DWM thumbnail.
-Badges support the overview's existing drag and double-click navigation. They do
-not launch an application on their own.
+Badges support the overview's existing drag and double-click navigation. At 50%
+and above, the full info card's own title is shown, without a duplicate badge.
+There is no card bitmap generation or DWM card thumbnail in the distant view.
 
 Overlapping badges yield to hovered, keyboard-selected, or dragged cards. Labels
 also avoid project headers and the overview instruction strip. Extremely small

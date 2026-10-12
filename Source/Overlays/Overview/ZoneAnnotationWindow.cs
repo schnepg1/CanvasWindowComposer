@@ -118,7 +118,8 @@ internal sealed class ZoneAnnotationWindow : Window
         {
             foreach (var card in _placeholders)
             {
-                if (card.Image == null) continue;
+                bool simple = _zoom < WindowManager.OverviewLivePreviewZoom;
+                if (!simple && card.Image == null) continue;
                 var rect = Project(card.Bounds, dpi);
                 if (!rect.IntersectsWith(new Rect(RenderSize))) continue;
                 Geometry visible = new RectangleGeometry(rect);
@@ -132,7 +133,10 @@ internal sealed class ZoneAnnotationWindow : Window
                             visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
                     }
                 dc.PushClip(visible);
-                dc.DrawImage(card.Image, rect);
+                if (simple)
+                    dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(28, 34, 46)),
+                        new Pen(new SolidColorBrush(Color.FromRgb(80, 103, 137)), 1), rect, 6, 6);
+                else dc.DrawImage(card.Image, rect);
                 dc.Pop();
             }
         }

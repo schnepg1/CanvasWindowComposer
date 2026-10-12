@@ -33,6 +33,7 @@ internal sealed class OverviewThumbnails
     private readonly IWindowApi _win32;
     private readonly IScreens _screens;
     private readonly Action<IEnumerable<IntPtr>>? _prepareLiveSources;
+    private readonly Func<IntPtr, bool> _useNativeSource;
     private readonly HashSet<IntPtr> _liveSources = new();
 
     // Shell HWND caches — stable across overview opens, invalidated on
@@ -102,7 +103,8 @@ internal sealed class OverviewThumbnails
         Func<IntPtr, bool>? useCached = null,
         Func<IntPtr, IntPtr>? cachedSource = null,
         IDwmThumbnailApi? dwm = null,
-        Action<IEnumerable<IntPtr>>? prepareLiveSources = null)
+        Action<IEnumerable<IntPtr>>? prepareLiveSources = null,
+        Func<IntPtr, bool>? useNativeSource = null)
     {
         _passes = passes;
         _windows = windows;
@@ -114,6 +116,7 @@ internal sealed class OverviewThumbnails
         _useCached = useCached ?? (_ => false);
         _cachedSource = cachedSource ?? (_ => IntPtr.Zero);
         _prepareLiveSources = prepareLiveSources;
+        _useNativeSource = useNativeSource ?? (_ => true);
     }
 
     /// <summary>Register desktop + taskbar thumbnails on every pass. Window thumbnails are registered lazily by <see cref="Reconcile"/>.</summary>
@@ -479,6 +482,7 @@ internal sealed class OverviewThumbnails
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
+            if (!_useNativeSource(entry.HWnd)) continue; // Info cards are drawn directly by the annotation surface.
 
             var screen = GetScreenRect(entry, camX, camY, zoom);
             int right = screen.X + screen.W;

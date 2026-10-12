@@ -21,6 +21,23 @@ internal sealed partial class WindowManager : IDisposable
     private readonly IInputRouter _input;
     private readonly Func<uint, WorkspaceProcessIdentity?> _inspectProcess;
     private readonly WindowVisibilityTracker _visibility = new();
+    private CanvasCamera? _overviewViewport;
+    private IReadOnlyList<(int x, int y, int w, int h)>? _overviewScreens;
+    internal const double OverviewLivePreviewZoom = 0.5;
+    public bool OverviewUsesInfoCards => _overviewViewport is { Zoom: < OverviewLivePreviewZoom };
+
+    /// <summary>Resource policy follows the viewed camera; native window sizes still follow the main canvas.</summary>
+    public void SetOverviewViewport(CanvasCamera? camera,
+        IReadOnlyList<(int x, int y, int w, int h)>? screens = null)
+    {
+        if (_disposed) return;
+        if (camera is { } c && (!double.IsFinite(c.X) || !double.IsFinite(c.Y)
+            || !double.IsFinite(c.Zoom) || c.Zoom <= 0)) return;
+        _overviewViewport = camera;
+        _overviewScreens = camera.HasValue ? screens : null;
+        UpdateRuntimeVisibility(refreshIdentity: false);
+        ProcessAutomaticParking(allowNewParking: false);
+    }
     public WindowPreviewCache Previews { get; }
     public WindowVisibilitySnapshot? GetRuntimeVisibility(IntPtr hWnd) => _visibility.Get(hWnd);
     public bool UsesCachedPreview(IntPtr hWnd) => _parking.ContainsKey(hWnd) || _visibility.Get(hWnd)?.AutomaticallyParked == true;
@@ -70,6 +87,7 @@ internal sealed partial class WindowManager : IDisposable
     private long _lastScreenTopologyVersion = -1;
 
     public event Action<IntPtr>? WindowRemoving;
+    public event Action<IntPtr>? WindowStateChanged;
 
     // Our own placeholder forms are explicitly enrolled, never discovered as apps.
     public void RestorePlacement(IntPtr hWnd, WorldRect world)
@@ -314,6 +332,7 @@ internal sealed partial class WindowManager : IDisposable
         if (_visibility.Get(hWnd)?.AutomaticallyParked == true) return;
         if (_canvas.HasWindow(hWnd))
             _canvas.CollapseWindow(hWnd);
+        WindowStateChanged?.Invoke(hWnd);
     }
 
     private void OnWindowRestoredEvent(IntPtr hWnd)
@@ -328,6 +347,7 @@ internal sealed partial class WindowManager : IDisposable
         if (_canvas.HasWindow(hWnd))
             _canvas.ExpandWindow(hWnd);
         ReprojectWindow(hWnd);
+        WindowStateChanged?.Invoke(hWnd);
     }
 
     private void OnWindowDestroyedEvent(IntPtr hWnd)
@@ -694,6 +714,8 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Reset: restore all windows to world positions, clear canvas.</summary>
     public void Reset()
     {
+        _overviewViewport = null;
+        _overviewScreens = null;
         RecoverAutomaticParking(); // Failed debts stay tracked for retry/shutdown.
         _parkingExcluded.Clear();
         _parkingRetry.Clear();
@@ -789,9 +811,18 @@ internal sealed partial class WindowManager : IDisposable
         var projected = world.PinnedToScreen
             ? _win32.GetWindowRect(handle) : default;
         if (_disposed || !_canvas.Windows.TryGetValue(handle, out var current) || !current.Equals(world)) return;
-        _visibility.Observe(handle, identity, world.PinnedToScreen
-            ? new WindowRect(projected.x, projected.y, projected.w, projected.h) : _canvas.Camera.Project(world),
-            screens, minimized ?? (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0, eligible, _clock.TickCount64);
+        var policyCamera = _overviewViewport ?? _canvas.Camera;
+        var policyRect = world.PinnedToScreen
+            ? new WindowRect(projected.x, projected.y, projected.w, projected.h)
+            : _overviewViewport.HasValue
+                ? new WindowRect((int)((world.X - policyCamera.X) * policyCamera.Zoom),
+                    (int)((world.Y - policyCamera.Y) * policyCamera.Zoom),
+                    Math.Max(1, (int)Math.Ceiling(world.W * policyCamera.Zoom)),
+                    Math.Max(1, (int)Math.Ceiling(world.H * policyCamera.Zoom)))
+                : policyCamera.Project(world);
+        _visibility.Observe(handle, identity, policyRect, _overviewScreens ?? screens,
+            minimized ?? (style & (int)WINDOW_STYLE.WS_MINIMIZE) != 0, eligible, _clock.TickCount64,
+            allowLivePreview: !OverviewUsesInfoCards);
         Previews.Observe(handle, _visibility.GetToken(handle));
     }
 

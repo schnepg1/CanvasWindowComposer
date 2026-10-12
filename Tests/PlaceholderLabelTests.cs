@@ -11,8 +11,7 @@ public class PlaceholderLabelTests
     [Theory]
     [InlineData(.1)]
     [InlineData(.25)]
-    [InlineData(.5)]
-    [InlineData(.79)]
+    [InlineData(.49)]
     public void ZoomedOutTitlesStayReadableAndInsideTheMonitor(double zoom)
     {
         var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, zoom,
@@ -25,9 +24,9 @@ public class PlaceholderLabelTests
     public void MixedDpiAndNegativeMonitorOriginKeepLabelCenteredInDips()
     {
         var card = Card(x: -1800, y: 600);
-        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { card }, -100, 100, .5,
+        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { card }, -100, 100, .25,
             new ScreenRect(-1920, 0, 1920, 1080), 1.5, 1.5));
-        double center = ((card.Bounds.X + card.Bounds.W / 2 + 100) * .5 + 1920) / 1.5;
+        double center = ((card.Bounds.X + card.Bounds.W / 2 + 100) * .25 + 1920) / 1.5;
         Assert.Equal(center, label.Rect.X + label.Rect.Width / 2, 6);
         Assert.Equal(22, label.FontSize);
     }
@@ -48,6 +47,7 @@ public class PlaceholderLabelTests
     {
         var monitor = new ScreenRect(0, 0, 1920, 1080);
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, 1, monitor, 1, 1));
+        Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, .5, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card(x: -10000) }, 0, 0, .25, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, .001, monitor, 1, 1));
         Assert.Single(PlaceholderLabelLayout.Get(new[] { Card(priority: true) }, 0, 0, .001, monitor, 1, 1));

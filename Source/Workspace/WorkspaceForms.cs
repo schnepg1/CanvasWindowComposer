@@ -86,11 +86,15 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         _title.UpdateItem(item);
         _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
         _open.Text = _item.State == "Opening…" ? "Opening…" : "Open";
+        if (_item.State is "Minimized" or "Sleeping") _open.Text = "Restore";
+        else if (_item.State == "Open") _open.Text = "Focus";
         if (_item.State == "Needs linking") _open.Text = "Link open window…";
         _open.Enabled = _item.State != "Opening…";
         _hint.Text = _item.State == "Needs linking"
             ? "Several matches are possible. Choose the correct open window.\nRight-click for options"
-            : (_item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
+            : (_item.State is "Minimized" or "Sleeping" ? "Application is minimized · Restore to use it"
+                : _item.State == "Open" ? "Overview preview · Double-click to focus"
+                : _item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
         _auto.Checked = _item.OpenOnStartup;
     }
 

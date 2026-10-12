@@ -69,6 +69,8 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
             var handle = live?.Identity.Handle
                 ?? (_cards.TryGetValue(placement.Id, out var card) ? card.Handle : IntPtr.Zero);
             if (handle != IntPtr.Zero && _canvas.HasWindow(handle)) targets.Add((handle, placement.Bounds, live != null));
+            if (live != null && _cards.TryGetValue(placement.Id, out var proxy) && _canvas.HasWindow(proxy.Handle))
+                targets.Add((proxy.Handle, placement.Bounds, false));
         }
         foreach (var (handle, bounds, _) in targets)
             _canvas.SetWindow(handle, bounds.X, bounds.Y, bounds.W, bounds.H);

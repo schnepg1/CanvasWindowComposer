@@ -26,8 +26,16 @@ internal sealed partial class OverviewManager
     {
         if (_disposed) return;
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
-        RefreshZoneAnnotations();
+        if (CurrentMode != OverviewMode.Hidden)
+        {
+            RefreshOverviewWindows();
+            ReconcileVisuals();
+        }
     }
+
+    private void RefreshOverviewWindows()
+        => _windows.Refresh(includeScreenFixedWindows: ShouldShowScreenFixedWindowsDuringPan,
+            representedWindows: _placeholderWorkspace?.GetRepresentedWindows(), preserveSelection: true);
 
     private int HitOverviewWindow(OverviewOverlay pass, int x, int y, double wx, double wy)
     {
@@ -108,7 +116,8 @@ internal sealed partial class OverviewManager
                 }) && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
                 cards.Add(new(entry.HWnd, title, entry.World,
                     i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder || (_draggingWindow && i == _dragIndex),
-                    card.GetOverviewImage(), occluders.ToArray()));
+                    _camera.Zoom >= WindowManager.OverviewLivePreviewZoom ? card.GetOverviewImage() : null,
+                    occluders.ToArray()));
             if (entry.ScreenFixed)
             {
                 var rect = _win32.GetWindowRect(entry.HWnd);

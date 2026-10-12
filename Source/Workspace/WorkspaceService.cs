@@ -29,6 +29,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private Guid _desktop;
     private long _nextCapture;
     private bool _switching, _disposed, _started;
+    private bool _overviewCardMode;
     private string? _status;
     public WorkspaceDocument Document => _persistence.Document;
     public ZoneService Zones { get; }
@@ -49,6 +50,30 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         return titles;
     }
 
+    public IReadOnlyDictionary<IntPtr, IntPtr> GetRepresentedWindows()
+    {
+        var handles = new Dictionary<IntPtr, IntPtr>();
+        foreach (var (id, card) in _cards)
+            if (BoundWindow(id) is { } live) handles[live.Identity.Handle] = card.Handle;
+        return handles;
+    }
+
+    public Guid? LiveCardItem(IntPtr handle)
+    {
+        foreach (var (id, card) in _cards)
+            if (card.Handle == handle && BoundWindow(id) != null) return id;
+        return null;
+    }
+
+    public bool SetOverviewCardMode(bool enabled)
+    {
+        if (_disposed || !_started || _switching || _overviewCardMode == enabled) return false;
+        Capture();
+        _overviewCardMode = enabled;
+        EnsureCards();
+        return true;
+    }
+
     public WorkspaceService(Canvas canvas, WindowManager wm, IWindowApi api,
         IVirtualDesktops desktops, DesktopStateCache cache, IWorkspaceStore store,
         IWorkspacePlaceholderFactory placeholders, IWorkspaceWindowActions windowActions,
@@ -61,6 +86,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _persistence = new WorkspacePersistence(store);
         Zones = new ZoneService(Document, () => _desktop, Save);
         _wm.WindowRemoving += OnRemoving;
+        _wm.WindowStateChanged += OnWindowStateChanged;
+        _wm.AutomaticParkingChanged += OnAutomaticParkingChanged;
         _cache.BeforeStateSaved += BeforeSwitch;
         _cache.AfterStateLoaded += AfterSwitch;
     }
@@ -110,6 +137,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private void BeforeSwitch()
     {
         if (!_started || _disposed) return;
+        foreach (var (id, card) in _cards)
+            if (Document.Items.FirstOrDefault(i => i.Id == id) is { } item) SyncCardGeometry(item, card);
         // The virtual-desktop service has already reported the new desktop.
         // Snapshot the old canvas before querying only the newly active desktop.
         foreach (var (handle, world) in _canvas.Windows)
@@ -165,6 +194,10 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         _ambiguous.Clear();
         _folders = _identity.ReadExplorerFolders();
+        // A dragged proxy and its live minimized/sleeping window share one saved
+        // place. Reconcile proxy geometry before reading the live bindings.
+        foreach (var (id, card) in _cards.ToArray())
+            if (Document.Items.FirstOrDefault(i => i.Id == id) is { } item) SyncCardGeometry(item, card);
         // Validate before reading canvas geometry. A recycled HWND must not write
         // the previous window's cached geometry into either saved slot.
         foreach (var live in _bindings.Windows.ToArray())
@@ -220,6 +253,14 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 EnrollNativeGeometry(handle);
                 world = _canvas.Windows[handle];
                 live.NeedsNativeGeometry = false;
+            }
+            // Polling also covers a minimize event missed during startup. Canvas
+            // parking is session ownership and must never become saved user intent.
+            if ((_api.GetWindowStyle(handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0
+                && !_wm.UsesCachedPreview(handle) && world.State != WindowState.Minimized)
+            {
+                world.State = WindowState.Minimized;
+                _canvas.RestoreWindow(handle, world);
             }
             if (live.Forgotten) continue;
             var exe = observation.Value.Exe;
@@ -356,7 +397,12 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         foreach (var item in Document.Items.Where(i => i.DesktopId == _desktop).ToArray())
         {
-            if (IsOpen(item)) { RemoveCard(item.Id); continue; }
+            var live = BoundWindow(item.Id);
+            bool minimized = live != null && (_api.GetWindowStyle(live.Identity.Handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0;
+            bool preview = live != null && _overviewCardMode && !item.Bounds.PinnedToScreen
+                && item.Bounds.State != WindowState.Maximized;
+            if (live != null && !minimized && !preview && !_wm.UsesCachedPreview(live.Identity.Handle))
+            { RemoveCard(item.Id); continue; }
             if (_cards.ContainsKey(item.Id))
             {
                 var card = _cards[item.Id];
@@ -372,9 +418,28 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             bounds.State = WindowState.Normal;
             bounds.PinnedToScreen = false;
             _wm.RestorePlacement(form.Handle, bounds);
-            form.PlacementChanged += () => { if (!_disposed && !_switching) _wm.ReconcileWindow(form.Handle); };
+            form.PlacementChanged += () =>
+            {
+                if (_disposed || _switching) return;
+                _wm.ReconcileWindow(form.Handle);
+                SyncCardGeometry(item, form);
+            };
         }
     }
+
+    private void SyncCardGeometry(WorkspaceItem item, IWorkspacePlaceholder card)
+    {
+        if (!_canvas.Windows.TryGetValue(card.Handle, out var world) || !WorkspaceGeometry.ValidBounds(world)) return;
+        var bounds = item.Bounds;
+        if (bounds.X == world.X && bounds.Y == world.Y && bounds.W == world.W && bounds.H == world.H) return;
+        bounds.X = world.X; bounds.Y = world.Y; bounds.W = world.W; bounds.H = world.H;
+        item.Bounds = bounds;
+        if (BoundWindow(item.Id) is { } live)
+            _canvas.SetWindow(live.Identity.Handle, bounds.X, bounds.Y, bounds.W, bounds.H);
+    }
+
+    private void OnWindowStateChanged(IntPtr handle) => _nextCapture = 0;
+    private void OnAutomaticParkingChanged() => _nextCapture = 0;
 
     private void RemoveCard(Guid id)
     {
@@ -385,7 +450,9 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     public bool IsOpen(WorkspaceItem item) => BoundWindow(item.Id) != null;
     public string ItemState(WorkspaceItem item) => _launching.ContainsKey(item.Id) ? "Opening…"
-        : _queued.Contains(item.Id) ? "Queued" : IsOpen(item) ? "Open"
+        : _queued.Contains(item.Id) ? "Queued" : BoundWindow(item.Id) is { } live
+            ? (_api.GetWindowStyle(live.Identity.Handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0
+                ? _wm.UsesCachedPreview(live.Identity.Handle) ? "Sleeping" : "Minimized" : "Open"
         : _ambiguous.Contains(item.Id) ? "Needs linking" : "Placeholder";
 
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
@@ -405,7 +472,10 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (BoundWindow(item.Id) is { } live)
         {
+            RemoveCard(item.Id);
             Focus(live.Identity.Handle, item.Bounds);
+            _nextCapture = 0;
+            Changed?.Invoke();
             return;
         }
         if (_launching.ContainsKey(item.Id)) return;
@@ -542,6 +612,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         }
         _disposed = true;
         _wm.WindowRemoving -= OnRemoving;
+        _wm.WindowStateChanged -= OnWindowStateChanged;
+        _wm.AutomaticParkingChanged -= OnAutomaticParkingChanged;
         _cache.BeforeStateSaved -= BeforeSwitch;
         _cache.AfterStateLoaded -= AfterSwitch;
         foreach (var id in _cards.Keys.ToArray())

@@ -13,8 +13,9 @@ internal interface IZoneNavigationSource
 
 internal sealed record ZoneNavigationMember(Guid Id, string Title, string State, bool Pinned, string Details)
 {
-    public bool CanActivate => State is "Open" or "Placeholder";
-    public string ActionLabel => State == "Open" ? "Focus member" : State == "Placeholder" ? "Reopen member" : State;
+    public bool CanActivate => State is "Open" or "Placeholder" or "Minimized" or "Sleeping";
+    public string ActionLabel => State == "Open" ? "Focus member" : State == "Placeholder" ? "Reopen member"
+        : State is "Minimized" or "Sleeping" ? "Restore member" : State;
 }
 internal sealed record ZoneNavigationEntry(ZoneView Area, IReadOnlyList<ZoneNavigationMember> Members);
 
@@ -73,7 +74,7 @@ internal sealed class ZoneNavigation : IDisposable
         var area = _source.NavigationAreas.FirstOrDefault(a => a.Area.Id == areaId);
         if (area == null || !area.MemberIds.Contains(memberId)) return false;
         var member = _workspace.Items.FirstOrDefault(i => i.Id == memberId);
-        if (member == null || member.State is not ("Open" or "Placeholder")) return false;
+        if (member == null || member.State is not ("Open" or "Placeholder" or "Minimized" or "Sleeping")) return false;
         _beforeActivate();
         // Open resolves the current binding again: focus a live app, otherwise use
         // the existing launch/queue/identity policy for this saved place.

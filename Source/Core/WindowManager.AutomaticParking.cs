@@ -70,7 +70,7 @@ internal sealed partial class WindowManager
             if (shouldRestore && now >= record.RetryAt) RestoreAutomaticWindow(handle, record);
         }
 
-        if (!allowNewParking || !_config.EnableAutomaticMinimization || SuspendProjection) return;
+        if (!allowNewParking || !_config.EnableAutomaticMinimization || (SuspendProjection && !_overviewViewport.HasValue)) return;
         foreach (var handle in new List<IntPtr>(_canvas.Windows.Keys))
         {
             if (_parking.ContainsKey(handle)) continue;
