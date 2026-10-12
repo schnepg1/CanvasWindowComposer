@@ -12,11 +12,12 @@ and a generic application symbol as fallbacks. Icons are loaded when the symbol
 changes, never during painting, and disposed with the card. Missing application
 files do not prevent cards from displaying.
 
-Cards paint their form and child controls synchronously on first show, even when
-their saved position is off-screen. When a card enters the overview, its source
-is painted again after compatibility-region unclipping and before DWM thumbnail
-registration. This does not activate the card or launch its saved application.
-Existing thumbnails are reused without repainting cards on every camera frame.
+The overview draws cached snapshots of card controls on its annotation surface.
+`DrawToBitmap` renders the controls even when Windows has never painted their
+off-screen form, avoiding white DWM thumbnails until first focus. Snapshots are
+created only for cards entering the view and reused until their content or size
+changes. They follow pan/zoom and are clipped around higher windows to preserve
+thumbnail z-order. Rendering never activates a card or launches its saved app.
 
 Automatic minimization is a separate, opt-in policy (`EnableAutomaticMinimization`).
 It parks eligible running windows after 1.5 seconds beyond the main canvas

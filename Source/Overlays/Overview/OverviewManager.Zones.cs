@@ -84,25 +84,43 @@ internal sealed partial class OverviewManager
             _zoneDesktop = _zones.DesktopId;
             CancelZoneDrawing();
         }
-        if (CurrentMode != OverviewMode.Zooming) return;
-        var zones = _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
+        if (CurrentMode == OverviewMode.Hidden) return;
+        bool zooming = CurrentMode == OverviewMode.Zooming;
+        var zones = !zooming || _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
         if (_zoneGesture.MovingId is { } movingId && _zoneGesture.Preview is { } moved)
         {
             for (int i = 0; i < zones.Count; i++)
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
         }
         var cards = new List<PlaceholderAnnotation>();
+        var occluders = new List<WorldRect>();
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
-            if (!entry.ScreenFixed && _placeholderTitles.TryGetValue(entry.HWnd, out var title))
+            if (!entry.ScreenFixed && _placeholderTitles.TryGetValue(entry.HWnd, out var title)
+                && _passes.Exists(pass =>
+                {
+                    var b = pass.Screen.Bounds;
+                    return (entry.World.X - _camera.X) * _camera.Zoom < b.Right
+                        && (entry.World.X + entry.World.W - _camera.X) * _camera.Zoom > b.Left
+                        && (entry.World.Y - _camera.Y) * _camera.Zoom < b.Bottom
+                        && (entry.World.Y + entry.World.H - _camera.Y) * _camera.Zoom > b.Top;
+                }) && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
                 cards.Add(new(entry.HWnd, title, entry.World,
-                    i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder || (_draggingWindow && i == _dragIndex)));
+                    i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder || (_draggingWindow && i == _dragIndex),
+                    card.GetOverviewImage(), occluders.ToArray()));
+            if (entry.ScreenFixed)
+            {
+                var rect = _win32.GetWindowRect(entry.HWnd);
+                occluders.Add(new WorldRect { X = _camera.X + rect.x / _camera.Zoom,
+                    Y = _camera.Y + rect.y / _camera.Zoom, W = rect.w / _camera.Zoom, H = rect.h / _camera.Zoom });
+            }
+            else occluders.Add(entry.World);
         }
         foreach (var p in _passes)
             if (p.Visible) p.ShowZones(zones, _camera,
                 _zoneGesture.Kind == ZoneGestureKind.Draw ? _zoneGesture.Preview : null,
-                _zoneGesture.Armed || _zoneGesture.Kind == ZoneGestureKind.Draw, _zoneGesture.Ghosts, cards);
+                _zoneGesture.Armed || _zoneGesture.Kind == ZoneGestureKind.Draw, _zoneGesture.Ghosts, cards, zooming);
     }
 
     private ZoneView? HitZoneHeader(OverviewOverlay pass, int x, int y)

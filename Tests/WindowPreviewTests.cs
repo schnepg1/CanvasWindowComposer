@@ -343,30 +343,18 @@ public class WindowPreviewTests
             var wanted = new System.Collections.Generic.HashSet<IntPtr>();
             var camera = new OverviewCamera(screens);
             var dwm = new Dwm();
-            var prepared = new List<IntPtr>();
             var thumbnails = new OverviewThumbnails([pass], windows, camera, new(), api, screens,
                 handle => cached && handle == (IntPtr)2, _ => (IntPtr)987, dwm,
-                sources => { wanted.Clear(); wanted.UnionWith(sources); },
-                source =>
-                {
-                    if (source != (IntPtr)987) Assert.Contains(source, wanted);
-                    prepared.Add(source);
-                });
+                sources => { wanted.Clear(); wanted.UnionWith(sources); });
             try
             {
                 thumbnails.Reconcile(); Assert.Equal(new[] { (IntPtr)1 }, wanted);
-                Assert.Contains((IntPtr)1, prepared);
-                Assert.Contains((IntPtr)987, prepared);
-                Assert.DoesNotContain((IntPtr)3, prepared);
-                int preparations = prepared.Count;
                 int updates = dwm.Updates.Count;
                 thumbnails.Reconcile(); Assert.Equal(updates, dwm.Updates.Count);
-                Assert.Equal(preparations, prepared.Count);
                 cached = false; thumbnails.Reconcile(); Assert.Equal(2, wanted.Count);
                 camera.SetTo(b.Width + 50, 0, 1);
                 thumbnails.Reconcile(); Assert.DoesNotContain((IntPtr)1, wanted);
                 Assert.Contains((IntPtr)3, wanted);
-                Assert.Contains((IntPtr)3, prepared);
             }
             finally { thumbnails.Hide(); }
             Assert.Empty(wanted);

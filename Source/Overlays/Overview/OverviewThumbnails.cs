@@ -33,7 +33,6 @@ internal sealed class OverviewThumbnails
     private readonly IWindowApi _win32;
     private readonly IScreens _screens;
     private readonly Action<IEnumerable<IntPtr>>? _prepareLiveSources;
-    private readonly Action<IntPtr>? _prepareSource;
     private readonly HashSet<IntPtr> _liveSources = new();
 
     // Shell HWND caches — stable across overview opens, invalidated on
@@ -103,8 +102,7 @@ internal sealed class OverviewThumbnails
         Func<IntPtr, bool>? useCached = null,
         Func<IntPtr, IntPtr>? cachedSource = null,
         IDwmThumbnailApi? dwm = null,
-        Action<IEnumerable<IntPtr>>? prepareLiveSources = null,
-        Action<IntPtr>? prepareSource = null)
+        Action<IEnumerable<IntPtr>>? prepareLiveSources = null)
     {
         _passes = passes;
         _windows = windows;
@@ -116,7 +114,6 @@ internal sealed class OverviewThumbnails
         _useCached = useCached ?? (_ => false);
         _cachedSource = cachedSource ?? (_ => IntPtr.Zero);
         _prepareLiveSources = prepareLiveSources;
-        _prepareSource = prepareSource;
     }
 
     /// <summary>Register desktop + taskbar thumbnails on every pass. Window thumbnails are registered lazily by <see cref="Reconcile"/>.</summary>
@@ -557,7 +554,6 @@ internal sealed class OverviewThumbnails
                 var cand = target![i];
                 var source = ResolveSource(cand.HWnd);
                 if (source == IntPtr.Zero) continue; // A parked source must never fall back to waking the application.
-                _prepareSource?.Invoke(source);
                 HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)source, out nint thumb);
                 if (hr.Succeeded)
                 {

@@ -12,6 +12,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly Button _open;
     private readonly ToolStripMenuItem _auto;
     private readonly ContextMenuStrip _menu;
+    private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
+    private Size _overviewSize;
     public event Action? PlacementChanged;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
@@ -74,26 +76,11 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     {
         SetBounds(rect.X, rect.Y, rect.W, rect.H);
         Show();
-        PrepareOverviewPreview();
-    }
-
-    // DWM cannot supply card pixels until the form and its child HWNDs have
-    // painted. Saved positions can be off-screen from the very first Show.
-    // Also call after overview source unclipping, before registering a thumbnail.
-    // This paints only our own lightweight card; it does not focus or launch it.
-    internal unsafe void PrepareOverviewPreview()
-    {
-        if (IsDisposed || !IsHandleCreated || !Visible) return;
-        PerformLayout();
-        PInvoke.RedrawWindow((Windows.Win32.Foundation.HWND)Handle, null,
-            (Windows.Win32.Graphics.Gdi.HRGN)IntPtr.Zero,
-            REDRAW_WINDOW_FLAGS.RDW_INVALIDATE | REDRAW_WINDOW_FLAGS.RDW_ERASE |
-            REDRAW_WINDOW_FLAGS.RDW_FRAME | REDRAW_WINDOW_FLAGS.RDW_ALLCHILDREN |
-            REDRAW_WINDOW_FLAGS.RDW_UPDATENOW);
     }
 
     public void UpdateItem(WorkspaceItemView item)
     {
+        if (_item != item) _overviewImage = null;
         _item = item;
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
@@ -105,6 +92,27 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             ? "Several matches are possible. Choose the correct open window.\nRight-click for options"
             : (_item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
         _auto.Checked = _item.OpenOnStartup;
+    }
+
+    // WM_PRINT used by DrawToBitmap renders controls even when their native
+    // window is entirely off-screen. A DWM thumbnail cannot guarantee that.
+    internal System.Windows.Media.Imaging.BitmapSource GetOverviewImage()
+    {
+        if (_overviewImage != null && _overviewSize == Size) return _overviewImage;
+        PerformLayout();
+        using var bitmap = new Bitmap(Width, Height);
+        DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size));
+        using var stream = new System.IO.MemoryStream();
+        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+        stream.Position = 0;
+        var image = new System.Windows.Media.Imaging.BitmapImage();
+        image.BeginInit();
+        image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        image.StreamSource = stream;
+        image.EndInit();
+        image.Freeze();
+        _overviewSize = Size;
+        return _overviewImage = image;
     }
 
     protected override void Dispose(bool disposing)

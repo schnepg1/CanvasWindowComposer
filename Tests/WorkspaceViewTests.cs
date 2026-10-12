@@ -24,27 +24,48 @@ public class WorkspaceViewTests
     }
 
     [Fact]
-    public void OffscreenPlaceholderPaintsChildrenWithoutFocusOrApplicationLaunch()
+    public void OffscreenPlaceholderSnapshotRendersWithoutFocusOrApplicationLaunch()
     {
         OnSta(() =>
         {
             var commands = new TestCommands();
             using var form = new PlaceholderForm(commands, commands.Items[0]);
-            var artwork = form.Controls.OfType<TableLayoutPanel>().Single()
-                .Controls.OfType<PlaceholderArtwork>().Single();
-            int paints = 0;
-            artwork.Paint += (_, _) => paints++;
             var desktop = SystemInformation.VirtualScreen;
             form.ShowAt(new WindowRect(desktop.Left - 1000, desktop.Top - 700, 800, 550));
-            Assert.True(paints > 0); // No message pump, focus, or DrawToBitmap to mask startup paint debt.
-            int initialPaints = paints;
+            var image = form.GetOverviewImage();
+            Assert.True(image.IsFrozen);
+            Assert.Same(image, form.GetOverviewImage());
+            var pixels = new byte[image.PixelWidth * image.PixelHeight * 4];
+            new System.Windows.Media.Imaging.FormatConvertedBitmap(image,
+                System.Windows.Media.PixelFormats.Bgra32, null, 0).CopyPixels(pixels, image.PixelWidth * 4, 0);
+            Assert.Contains(Enumerable.Range(0, pixels.Length / 4), i =>
+                pixels[i * 4] < 80 && pixels[i * 4 + 1] < 80 && pixels[i * 4 + 2] < 80);
             form.UpdateItem(commands.Items[0] with { Title = "Changed while off-screen" });
-            form.PrepareOverviewPreview();
-            Assert.True(paints > initialPaints);
-            Assert.Equal("Changed while off-screen", artwork.Text);
+            Assert.NotSame(image, form.GetOverviewImage());
             Assert.Null(commands.Opened);
             Assert.NotSame(form, Form.ActiveForm);
-            Assert.False(form.ShowInTaskbar);
+        });
+    }
+
+    [Fact]
+    public void OverviewCardSnapshotYieldsToHigherWindows()
+    {
+        OnSta(() =>
+        {
+            var commands = new TestCommands();
+            using var form = new PlaceholderForm(commands, commands.Items[0]);
+            form.ShowAt(new WindowRect(-10000, -10000, 800, 550));
+            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
+            drawing.Update([], 0, 0, 1, new System.Drawing.Rectangle(0, 0, 300, 300), null, false, null,
+                [new PlaceholderAnnotation(form.Handle, "Notes", new WorldRect { X = 100, Y = 100, W = 100, H = 100 },
+                    Image: form.GetOverviewImage(), Occluders: [new WorldRect { X = 150, Y = 100, W = 50, H = 100 }])], false);
+            drawing.Measure(new Size(300, 300)); drawing.Arrange(new Rect(0, 0, 300, 300));
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(300, 300, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
+            var pixels = new byte[300 * 300 * 4]; bitmap.CopyPixels(pixels, 1200, 0);
+            Assert.True(pixels[(120 * 300 + 120) * 4 + 3] > 0);
+            Assert.Equal(0, pixels[(120 * 300 + 170) * 4 + 3]);
         });
     }
 

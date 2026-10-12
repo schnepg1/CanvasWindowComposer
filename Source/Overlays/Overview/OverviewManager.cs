@@ -126,11 +126,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _camera = new OverviewCamera(_screens);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows,
-            prepareSource: handle =>
-            {
-                if (Control.FromHandle(handle) is PlaceholderForm card) card.PrepareOverviewPreview();
-            });
+            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows);
         _wm.Previews.Changed += OnPreviewChanged;
         _wm.AutomaticParkingChanged += OnPreviewChanged;
 

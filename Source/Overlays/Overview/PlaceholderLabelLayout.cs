@@ -5,7 +5,8 @@ using System.Windows;
 
 namespace CanvasDesktop;
 
-internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldRect Bounds, bool Priority = false);
+internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldRect Bounds, bool Priority = false,
+    System.Windows.Media.ImageSource? Image = null, IReadOnlyList<WorldRect>? Occluders = null);
 internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
 /// <summary>Display-sized labels: project positions with the camera, never shrink text below 22 DIPs.</summary>
