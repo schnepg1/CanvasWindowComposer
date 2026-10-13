@@ -100,6 +100,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _placeholderTitles = _placeholderWorkspace.GetPlaceholderTitles();
             RefreshOverviewWindows();
         }
+        RefreshCardIdentities();
         _thumbnails.Reconcile();
         RefreshZoneAnnotations();
     }
@@ -135,7 +136,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
             _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows,
-            useNativeSource: handle => !_placeholderTitles.ContainsKey(handle));
+            useNativeSource: handle => !_placeholderTitles.ContainsKey(handle),
+            transitionSource: GetCardTransitionSource);
         _wm.Previews.Changed += OnPreviewChanged;
         _wm.AutomaticParkingChanged += OnPreviewChanged;
 
@@ -368,6 +370,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HideInternal(bool syncCamera)
     {
         _previewRefreshQueued = false;
+        ClearCardTransitions();
         CancelZoneDrawing();
         foreach (var p in _passes) p.HideZones();
         foreach (var p in _passes)
@@ -795,6 +798,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (CurrentMode != OverviewMode.Hidden)
                 TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
         });
+        Attempt(ClearCardTransitions);
+        Attempt(() => _cardAnimationTimer?.Dispose());
         Attempt(_inputs.Dispose);
         Attempt(CancelInertia);
         // HideInternal may have failed after the state changed to Hidden.

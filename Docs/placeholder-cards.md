@@ -63,3 +63,26 @@ The isolated renderer in `Tools/ZonePreview` produces
 drawing. Automated checks cover zoom limits, collision priority, off-screen
 culling, negative monitor origins, DPI scaling, custom names, and desktop
 switching. Physical multi-monitor interaction still requires a live check.
+
+## Overview transitions
+
+The first overview view uses 50% zoom to select a representation. Thereafter,
+zooming below 45% enters the simple-card mode; zooming back to 55% exits it.
+The same latch controls card rendering and automatic parking, so the 45–55%
+band cannot repeatedly minimize/restore apps or flip their titles.
+
+Visible cards transition over 150 ms with smoothstep easing. Card geometry
+follows the current camera and drag position throughout. A running app's native
+thumbnail is retained underneath its incoming card only for the fade, then
+unregistered. Restoration keeps the old card through the existing cached restore
+allowance, then fades it away after live DWM registration on all relevant passes.
+Registration is not a guarantee that a third-party app has painted fresh pixels.
+Manually minimized windows that have no remaining native/cached pixels show an
+opaque card immediately rather than fading over an empty surface.
+
+Full-card and floating titles fade sequentially through a plain rectangle to
+avoid duplicate text. Frozen outgoing card snapshots are borrowed only during
+transitions and released afterward. Distant views create no new card bitmaps.
+Only visible saved identities have transition state; panning away, leaving the
+overview, switching desktop, or disposal releases it. The UI animation timer runs
+only while a transition is active, independently of camera inertia.

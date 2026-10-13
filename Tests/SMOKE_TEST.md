@@ -59,3 +59,18 @@ Run through before each release. Test on the installed version, not debug.
 ## Exit
 - [ ] Tray menu Exit restores all windows to original positions
 - [ ] App terminates cleanly (no orphan processes)
+
+### Card transitions
+
+- Open overview near 100%, zoom slowly below 45%, then back above 55%.
+  Watch for the subtle 150 ms fade with stable geometry and one title treatment.
+- Rock between 46% and 54% in each direction: no representation flip or restore churn.
+- Reverse direction mid-fade, pan/drag during it, and test overlapping cards
+  across monitors with different DPI: no position jumps or incorrect overlap.
+- With automatic parking enabled, zoom out and wait for parking; approach at
+  detailed zoom. The card persists through restore, then fades to the app without activation.
+- Minimize manually and restore using its card. Already minimized apps with no
+  usable underlay should display an opaque card promptly. Test several real apps;
+  DWM registration does not certify that each app has repainted its contents.
+- Leave overview or change desktops during a fade; reopen. No old cards or
+  titles should linger, and idle overview should have no animation timer activity.

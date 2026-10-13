@@ -360,6 +360,43 @@ public class WindowPreviewTests
             Assert.Empty(wanted);
         });
 
+    [Fact]
+    public void ProxyFadeTemporarilyRetainsNativeUnderlayAndReleasesItWhenOpaque()
+        => OnSta(() =>
+        {
+            using var pass = new OverviewOverlay(Screen.PrimaryScreen!);
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var screens = new FakeScreens();
+            var b = pass.Screen.Bounds;
+            foreach (var handle in new[] { (IntPtr)42, (IntPtr)99 })
+            {
+                api.AddWindow(handle, b.X + 100, b.Y + 100, 400, 300);
+                canvas.SetWindow(handle, b.X + 100, b.Y + 100, 400, 300);
+            }
+            var windows = new OverviewWindowList(canvas, api);
+            windows.Refresh(representedWindows: new Dictionary<IntPtr, IntPtr> { [(IntPtr)42] = (IntPtr)99 });
+            bool fading = true;
+            var dwm = new Dwm();
+            var thumbnails = new OverviewThumbnails([pass], windows, new(screens), new(), api, screens,
+                dwm: dwm, useNativeSource: _ => false,
+                transitionSource: _ => fading ? (IntPtr)42 : IntPtr.Zero);
+            try
+            {
+                thumbnails.Reconcile();
+                Assert.Equal((IntPtr)42, Assert.Single(dwm.Sources));
+                Assert.True(thumbnails.HasLiveSource((IntPtr)42));
+                Assert.DoesNotContain((IntPtr)99, dwm.Sources); // No DWM card surface.
+                thumbnails.Reconcile();
+                Assert.Single(dwm.Sources); // No per-frame re-registration.
+                fading = false;
+                thumbnails.Reconcile();
+                Assert.False(thumbnails.HasLiveSource((IntPtr)42));
+                Assert.Single(dwm.Released);
+                Assert.Empty(api.SetPositionCalls);
+                Assert.Empty(api.NativeStateCalls);
+            }
+            finally { thumbnails.Hide(); }
+        });
+
     private sealed class PaintedWindow : Form
     {
         private readonly bool _black;

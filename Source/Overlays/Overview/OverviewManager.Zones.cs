@@ -100,27 +100,42 @@ internal sealed partial class OverviewManager
             for (int i = 0; i < zones.Count; i++)
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
         }
-        var cards = new List<PlaceholderAnnotation>();
+        RefreshCardIdentities();
+        var inputs = new List<OverviewCardInput>();
         var occluders = new List<WorldRect>();
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
-            if (!entry.ScreenFixed && _placeholderTitles.TryGetValue(entry.HWnd, out var title)
-                && _passes.Exists(pass =>
-                {
-                    var b = pass.Screen.Bounds;
-                    return (entry.World.X - _camera.X) * _camera.Zoom < b.Right
-                        && (entry.World.X + entry.World.W - _camera.X) * _camera.Zoom > b.Left
-                        && (entry.World.Y - _camera.Y) * _camera.Zoom < b.Bottom
-                        && (entry.World.Y + entry.World.H - _camera.Y) * _camera.Zoom > b.Top;
-                }) && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
+            bool visible = !entry.ScreenFixed && _passes.Exists(pass =>
             {
-                if (_camera.Zoom < WindowManager.OverviewLivePreviewZoom) card.ReleaseOverviewImage();
-                cards.Add(new(entry.HWnd, title, entry.World,
-                    i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder || (_draggingWindow && i == _dragIndex),
-                    _camera.Zoom >= WindowManager.OverviewLivePreviewZoom ? card.GetOverviewImage() : null,
-                    occluders.ToArray()));
+                var b = pass.Screen.Bounds;
+                return (entry.World.X - _camera.X) * _camera.Zoom < b.Right
+                    && (entry.World.X + entry.World.W - _camera.X) * _camera.Zoom > b.Left
+                    && (entry.World.Y - _camera.Y) * _camera.Zoom < b.Bottom
+                    && (entry.World.Y + entry.World.H - _camera.Y) * _camera.Zoom > b.Top;
+            });
+            bool priority = i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder
+                || (_draggingWindow && i == _dragIndex);
+            if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
+            {
+                if (_placeholderTitles.TryGetValue(entry.HWnd, out var title)
+                    && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
+                {
+                    bool simple = _wm.OverviewUsesInfoCards;
+                    // The transition controller retains the outgoing frozen image
+                    // only until the fade ends; distant cards create no new bitmap.
+                    if (simple) card.ReleaseOverviewImage();
+                    bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
+                    inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
+                        simple ? null : card.GetOverviewImage(), occluders.ToArray()),
+                        simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay));
+                }
+                else
+                    inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: occluders.ToArray()),
+                        OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd)));
             }
+            else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)
+                offscreen.ReleaseOverviewImage();
             if (entry.ScreenFixed)
             {
                 var rect = _win32.GetWindowRect(entry.HWnd);
@@ -129,6 +144,8 @@ internal sealed partial class OverviewManager
             }
             else occluders.Add(entry.World);
         }
+        var cards = _cardTransitions.Update(inputs, Environment.TickCount64);
+        UpdateCardAnimationTimer();
         foreach (var p in _passes)
             if (p.Visible) p.ShowZones(zones, _camera,
                 _zoneGesture.Kind == ZoneGestureKind.Draw ? _zoneGesture.Preview : null,

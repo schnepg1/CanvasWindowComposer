@@ -58,6 +58,19 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         return handles;
     }
 
+    // Saved identities survive proxy HWND creation/disposal and prevent animation
+    // state from being transferred to an unrelated recycled native handle.
+    public IReadOnlyDictionary<IntPtr, Guid> GetOverviewItemIds()
+    {
+        var ids = new Dictionary<IntPtr, Guid>();
+        foreach (var item in Document.Items)
+        {
+            if (_cards.TryGetValue(item.Id, out var card)) ids[card.Handle] = item.Id;
+            if (BoundWindow(item.Id) is { } live) ids[live.Identity.Handle] = item.Id;
+        }
+        return ids;
+    }
+
     public Guid? LiveCardItem(IntPtr handle)
     {
         foreach (var (id, card) in _cards)

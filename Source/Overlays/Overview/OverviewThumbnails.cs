@@ -34,6 +34,7 @@ internal sealed class OverviewThumbnails
     private readonly IScreens _screens;
     private readonly Action<IEnumerable<IntPtr>>? _prepareLiveSources;
     private readonly Func<IntPtr, bool> _useNativeSource;
+    private readonly Func<IntPtr, IntPtr> _transitionSource;
     private readonly HashSet<IntPtr> _liveSources = new();
 
     // Shell HWND caches — stable across overview opens, invalidated on
@@ -82,6 +83,7 @@ internal sealed class OverviewThumbnails
         public IntPtr Thumb;
         public WorldRect World;
         public bool ScreenFixed;
+        public bool Ready;
         // DWM frame inset, cached at registration time. Stable while the entry
         // is in the target list — maximize/unmaximize force a re-register which
         // refreshes this, so the only drift case is custom-chrome apps that
@@ -104,7 +106,8 @@ internal sealed class OverviewThumbnails
         Func<IntPtr, IntPtr>? cachedSource = null,
         IDwmThumbnailApi? dwm = null,
         Action<IEnumerable<IntPtr>>? prepareLiveSources = null,
-        Func<IntPtr, bool>? useNativeSource = null)
+        Func<IntPtr, bool>? useNativeSource = null,
+        Func<IntPtr, IntPtr>? transitionSource = null)
     {
         _passes = passes;
         _windows = windows;
@@ -117,6 +120,7 @@ internal sealed class OverviewThumbnails
         _cachedSource = cachedSource ?? (_ => IntPtr.Zero);
         _prepareLiveSources = prepareLiveSources;
         _useNativeSource = useNativeSource ?? (_ => true);
+        _transitionSource = transitionSource ?? (_ => IntPtr.Zero);
     }
 
     /// <summary>Register desktop + taskbar thumbnails on every pass. Window thumbnails are registered lazily by <see cref="Reconcile"/>.</summary>
@@ -199,6 +203,7 @@ internal sealed class OverviewThumbnails
             {
                 SetVisibleOnce(newThumb);
                 entry.Thumb = newThumb;
+                entry.Ready = false;
                 list.Add(entry);
                 moved = true;
             }
@@ -482,7 +487,12 @@ internal sealed class OverviewThumbnails
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
-            if (!_useNativeSource(entry.HWnd)) continue; // Info cards are drawn directly by the annotation surface.
+            if (!_useNativeSource(entry.HWnd))
+            {
+                var underlying = _transitionSource(entry.HWnd);
+                if (underlying == IntPtr.Zero) continue;
+                entry = entry with { HWnd = underlying }; // Preserve the proxy's geometry and z-order during its fade.
+            }
 
             var screen = GetScreenRect(entry, camX, camY, zoom);
             int right = screen.X + screen.W;
@@ -578,6 +588,19 @@ internal sealed class OverviewThumbnails
         return appended;
     }
 
+    public bool HasLiveSource(IntPtr handle)
+    {
+        bool found = false;
+        foreach (var pair in _scratchTargetByPass)
+        {
+            if (!pair.Value.Exists(e => e.HWnd == handle)) continue;
+            found = true;
+            if (!_windowsByPass.TryGetValue(pair.Key, out var current)
+                || !current.Exists(e => e.HWnd == handle && e.Source == handle && e.Ready)) return false;
+        }
+        return found;
+    }
+
     private IntPtr ResolveSource(IntPtr handle) => _useCached(handle) ? _cachedSource(handle) : handle;
 
     // A destroyed source HWND may be recycled for a new cache surface before the
@@ -626,8 +649,9 @@ internal sealed class OverviewThumbnails
             var pass = kv.Key;
             var list = kv.Value;
 
-            foreach (var entry in list)
+            for (int i = 0; i < list.Count; i++)
             {
+                var entry = list[i];
                 var screen = GetScreenRect(entry, camX, camY, zoom);
 
                 int fL = entry.ScreenFixed ? entry.InsetL : (int)(entry.InsetL * zoom);
@@ -642,10 +666,13 @@ internal sealed class OverviewThumbnails
 
                 var props = new DWM_THUMBNAIL_PROPERTIES
                 {
-                    dwFlags = PInvoke.DWM_TNP_RECTDESTINATION,
+                    dwFlags = PInvoke.DWM_TNP_RECTDESTINATION | PInvoke.DWM_TNP_VISIBLE,
+                    fVisible = true,
                     rcDestination = new RECT { left = left, top = top, right = right, bottom = bottom }
                 };
-                _dwm.Update(entry.Thumb, props);
+                entry.Ready = _dwm.Update(entry.Thumb, props).Succeeded;
+                list[i] = entry;
+                if (!entry.Ready) InvalidateCameraCache();
             }
         }
     }

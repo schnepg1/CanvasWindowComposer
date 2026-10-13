@@ -10,6 +10,25 @@ namespace CanvasDesktop.Tests;
 public class WorkspaceViewTests
 {
     [Fact]
+    public void FadingCardUsesCurrentGeometryClippingAndOneTitleAboveTheOldThreshold()
+        => OnSta(() =>
+        {
+            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
+            drawing.Update([], 0, 0, 1, new System.Drawing.Rectangle(0, 0, 400, 300), null, false, null,
+                [new PlaceholderAnnotation((IntPtr)42, "Project", new WorldRect { X = 100, Y = 100, W = 200, H = 150 },
+                    Occluders: [new WorldRect { X = 250, Y = 100, W = 50, H = 150 }],
+                    Opacity: .5, ImageOpacity: 0, LabelOpacity: 1)], false);
+            drawing.Measure(new Size(400, 300)); drawing.Arrange(new Rect(0, 0, 400, 300));
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(400, 300, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
+            var pixels = new byte[400 * 300 * 4]; bitmap.CopyPixels(pixels, 1600, 0);
+            Assert.InRange(pixels[(110 * 400 + 110) * 4 + 3], (byte)126, (byte)129);
+            Assert.Equal(0, pixels[(110 * 400 + 270) * 4 + 3]);
+            Assert.Equal((IntPtr)42, drawing.HitPlaceholderLabel(200, 175));
+        });
+
+    [Fact]
     public void DistantCardRendersRectangleWithoutAnImageAndHasOnlyItsOverlayTitle()
     {
         OnSta(() =>

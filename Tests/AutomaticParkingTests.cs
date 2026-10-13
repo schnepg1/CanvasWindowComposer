@@ -56,6 +56,33 @@ public class AutomaticParkingTests
     }
 
     [Fact]
+    public void ZoomPolicyUsesHysteresisAndResetsBetweenOverviewSessions()
+    {
+        using var h = new Harness();
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 1));
+        foreach (double zoom in new[] { .55, .5, .46, .45 })
+        {
+            h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, zoom));
+            Assert.False(h.Manager.OverviewUsesInfoCards);
+        }
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .44));
+        foreach (double zoom in new[] { .45, .49, .51, .54 })
+        {
+            h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, zoom));
+            Assert.True(h.Manager.OverviewUsesInfoCards);
+        }
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .55));
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+        h.Manager.SetOverviewViewport(null);
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .49));
+        Assert.True(h.Manager.OverviewUsesInfoCards); // Initial session still uses the 50% default.
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, double.NaN));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        h.Manager.Reset();
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+    }
+
+    [Fact]
     public void OverviewApproachRestoresDespiteDistantMainCameraAndSuspendedProjection()
     {
         using var h = new Harness(); h.Park();
@@ -91,7 +118,7 @@ public class AutomaticParkingTests
         Assert.True(h.IsMinimized);
         h.Tick(5000);
         Assert.Empty(h.Api.ParkingRestoreCalls);
-        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, .5));
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, .55));
         Assert.False(h.IsMinimized);
         Assert.Equal(400, h.Api.Windows[h.Handle].W); // Native app is never shrunk to overview zoom.
         Assert.Equal(300, h.Api.Windows[h.Handle].H);
