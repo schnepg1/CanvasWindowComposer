@@ -188,7 +188,7 @@ public class WindowPreviewTests
         {
             Updates.Add(properties);
             if (_sourcesByThumbnail.GetValueOrDefault(thumbnail) == (IntPtr)42
-                && (properties.dwFlags & PInvoke.DWM_TNP_RECTDESTINATION) != 0 && DestinationFailures-- > 0)
+                && (properties.dwFlags & Windows.Win32.PInvoke.DWM_TNP_RECTDESTINATION) != 0 && DestinationFailures-- > 0)
                 return new(-1);
             return new(0);
         }
