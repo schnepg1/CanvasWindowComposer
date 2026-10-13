@@ -14,9 +14,17 @@ namespace CanvasDesktop;
 /// </summary>
 internal sealed class ZoneAnnotationWindow : Window
 {
-    private readonly ZoneDrawing _drawing = new();
+    private ZoneDrawing _drawing = new();
     private System.Drawing.Rectangle _bounds;
     public IntPtr HitPlaceholderLabel(int x, int y) => _drawing.HitPlaceholderLabel(x, y);
+    public void Clear()
+    {
+        // Drop both input snapshots and WPF's retained drawing when hidden.
+        Content = null;
+        _drawing = new ZoneDrawing();
+        Content = _drawing;
+    }
+
     public ZoneAnnotationWindow(IntPtr owner)
     {
         WindowStyle = WindowStyle.None;
@@ -118,8 +126,8 @@ internal sealed class ZoneAnnotationWindow : Window
         {
             foreach (var card in _placeholders)
             {
-                bool simple = _zoom < WindowManager.OverviewLivePreviewZoom;
-                if (!simple && card.Image == null) continue;
+                double imageOpacity = card.ImageOpacity ?? (_zoom < WindowManager.OverviewLivePreviewZoom ? 0 : 1);
+                if (card.Opacity <= 0 || (imageOpacity >= 1 && card.Image == null)) continue;
                 var rect = Project(card.Bounds, dpi);
                 if (!rect.IntersectsWith(new Rect(RenderSize))) continue;
                 Geometry visible = new RectangleGeometry(rect);
@@ -133,10 +141,17 @@ internal sealed class ZoneAnnotationWindow : Window
                             visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
                     }
                 dc.PushClip(visible);
-                if (simple)
+                dc.PushOpacity(card.Opacity);
+                if (imageOpacity < 1)
                     dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(28, 34, 46)),
                         new Pen(new SolidColorBrush(Color.FromRgb(80, 103, 137)), 1), rect, 6, 6);
-                else dc.DrawImage(card.Image, rect);
+                if (card.Image != null && imageOpacity > 0)
+                {
+                    dc.PushOpacity(imageOpacity);
+                    dc.DrawImage(card.Image, rect);
+                    dc.Pop();
+                }
+                dc.Pop();
                 dc.Pop();
             }
         }
@@ -153,6 +168,7 @@ internal sealed class ZoneAnnotationWindow : Window
                 dpi.DpiScaleX, dpi.DpiScaleY, reserved);
             foreach (var label in _labels)
             {
+                dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
                 var rect = label.Rect;
                 var border = new SolidColorBrush(label.Card.Priority ? Color.FromRgb(147, 197, 253) : Color.FromRgb(80, 103, 137));
                 dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(23, 31, 46)),
@@ -165,6 +181,7 @@ internal sealed class ZoneAnnotationWindow : Window
                     MaxLineCount = 2, Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
                 };
                 dc.DrawText(text, new Point(rect.X + 12, rect.Y + Math.Max(8, (rect.Height - text.Height) / 2)));
+                dc.Pop();
             }
         }
 

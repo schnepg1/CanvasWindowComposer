@@ -24,7 +24,9 @@ internal sealed partial class WindowManager : IDisposable
     private CanvasCamera? _overviewViewport;
     private IReadOnlyList<(int x, int y, int w, int h)>? _overviewScreens;
     internal const double OverviewLivePreviewZoom = 0.5;
-    public bool OverviewUsesInfoCards => _overviewViewport is { Zoom: < OverviewLivePreviewZoom };
+    internal const double OverviewCardEnterZoom = 0.45, OverviewCardExitZoom = 0.55;
+    private bool _overviewUsesInfoCards;
+    public bool OverviewUsesInfoCards => _overviewUsesInfoCards;
 
     /// <summary>Resource policy follows the viewed camera; native window sizes still follow the main canvas.</summary>
     public void SetOverviewViewport(CanvasCamera? camera,
@@ -33,6 +35,9 @@ internal sealed partial class WindowManager : IDisposable
         if (_disposed) return;
         if (camera is { } c && (!double.IsFinite(c.X) || !double.IsFinite(c.Y)
             || !double.IsFinite(c.Zoom) || c.Zoom <= 0)) return;
+        _overviewUsesInfoCards = camera is { } next && (_overviewViewport.HasValue
+            ? _overviewUsesInfoCards ? next.Zoom < OverviewCardExitZoom : next.Zoom < OverviewCardEnterZoom
+            : next.Zoom < OverviewLivePreviewZoom);
         _overviewViewport = camera;
         _overviewScreens = camera.HasValue ? screens : null;
         UpdateRuntimeVisibility(refreshIdentity: false);
@@ -715,6 +720,7 @@ internal sealed partial class WindowManager : IDisposable
     public void Reset()
     {
         _overviewViewport = null;
+        _overviewUsesInfoCards = false;
         _overviewScreens = null;
         RecoverAutomaticParking(); // Failed debts stay tracked for retry/shutdown.
         _parkingExcluded.Clear();

@@ -6,7 +6,8 @@ using System.Windows;
 namespace CanvasDesktop;
 
 internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldRect Bounds, bool Priority = false,
-    System.Windows.Media.ImageSource? Image = null, IReadOnlyList<WorldRect>? Occluders = null);
+    System.Windows.Media.ImageSource? Image = null, IReadOnlyList<WorldRect>? Occluders = null,
+    double Opacity = 1, double? ImageOpacity = null, double? LabelOpacity = null);
 internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
 /// <summary>Display-sized labels: project positions with the camera, never shrink text below 22 DIPs.</summary>
@@ -17,12 +18,14 @@ internal static class PlaceholderLabelLayout
         IReadOnlyList<Rect>? reserved = null)
     {
         var result = new List<PlaceholderLabel>();
-        if (!double.IsFinite(zoom) || zoom <= 0 || zoom >= WindowManager.OverviewLivePreviewZoom || dpiX <= 0 || dpiY <= 0) return result;
+        if (!double.IsFinite(zoom) || zoom <= 0 || dpiX <= 0 || dpiY <= 0) return result;
         double viewWidth = monitor.Width / dpiX, viewHeight = monitor.Height / dpiY;
         if (viewWidth < 40 || viewHeight < 40) return result;
         double fontSize = Math.Clamp(44 * zoom, 22, 32);
         foreach (var card in cards.OrderByDescending(c => c.Priority))
         {
+            if ((card.LabelOpacity ?? (zoom < WindowManager.OverviewLivePreviewZoom ? 1 : 0)) <= 0
+                || card.Opacity <= 0) continue;
             var b = card.Bounds;
             double x = ((b.X - camX) * zoom - monitor.X) / dpiX;
             double y = ((b.Y - camY) * zoom - monitor.Y) / dpiY;

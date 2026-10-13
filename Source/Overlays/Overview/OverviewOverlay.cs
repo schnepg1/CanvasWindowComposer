@@ -29,7 +29,11 @@ internal sealed class OverviewOverlay : Form
 
     public IntPtr HitPlaceholderLabel(int x, int y) => _annotations?.HitPlaceholderLabel(x, y) ?? IntPtr.Zero;
 
-    public void HideZones() => _annotations?.Hide();
+    public void HideZones()
+    {
+        _annotations?.Clear();
+        _annotations?.Hide();
+    }
 
     // Input forwarding callbacks (set by OverviewOverlay coordinator)
     public Action<OverviewOverlay, KeyEventArgs>? OnKey;
