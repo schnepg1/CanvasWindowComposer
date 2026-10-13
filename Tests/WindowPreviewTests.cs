@@ -174,10 +174,24 @@ public class WindowPreviewTests
         public readonly System.Collections.Generic.List<IntPtr> Released = new();
         public readonly System.Collections.Generic.List<DWM_THUMBNAIL_PROPERTIES> Updates = new();
         private int _next;
+        public int RegistrationFailures, DestinationFailures;
+        private readonly Dictionary<IntPtr, IntPtr> _sourcesByThumbnail = new();
         public HRESULT Register(HWND destination, HWND source, out IntPtr thumbnail)
-        { Sources.Add(source); thumbnail = (IntPtr)(++_next); return new(0); }
+        {
+            if ((IntPtr)source == (IntPtr)42 && RegistrationFailures-- > 0)
+            { thumbnail = IntPtr.Zero; return new(-1); }
+            Sources.Add(source); thumbnail = (IntPtr)(++_next);
+            _sourcesByThumbnail[thumbnail] = source; return new(0);
+        }
         public HRESULT Unregister(IntPtr thumbnail) { Released.Add(thumbnail); return new(0); }
-        public HRESULT Update(IntPtr thumbnail, DWM_THUMBNAIL_PROPERTIES properties) { Updates.Add(properties); return new(0); }
+        public HRESULT Update(IntPtr thumbnail, DWM_THUMBNAIL_PROPERTIES properties)
+        {
+            Updates.Add(properties);
+            if (_sourcesByThumbnail.GetValueOrDefault(thumbnail) == (IntPtr)42
+                && (properties.dwFlags & PInvoke.DWM_TNP_RECTDESTINATION) != 0 && DestinationFailures-- > 0)
+                return new(-1);
+            return new(0);
+        }
     }
 
     [Fact]
@@ -358,6 +372,43 @@ public class WindowPreviewTests
             }
             finally { thumbnails.Hide(); }
             Assert.Empty(wanted);
+        });
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CoveredRestorationRecoversOnReadinessRetryWithoutCameraMovement(bool registrationFailure)
+        => OnSta(() =>
+        {
+            using var pass = new OverviewOverlay(Screen.PrimaryScreen!);
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var screens = new FakeScreens();
+            var b = pass.Screen.Bounds;
+            api.AddWindow((IntPtr)42, b.X + 100, b.Y + 100, 400, 300);
+            canvas.SetWindow((IntPtr)42, b.X + 100, b.Y + 100, 400, 300);
+            var windows = new OverviewWindowList(canvas, api); windows.Refresh();
+            var dwm = new Dwm { RegistrationFailures = registrationFailure ? 1 : 0,
+                DestinationFailures = registrationFailure ? 0 : 1 };
+            var thumbnails = new OverviewThumbnails([pass], windows, new(screens), new(), api, screens, dwm: dwm);
+            var transitions = new OverviewCardTransitions(); var id = Guid.NewGuid();
+            var card = new PlaceholderAnnotation((IntPtr)42, "Notes", canvas.Windows[(IntPtr)42]);
+            transitions.Update([new(id, card, OverviewCardMode.Simple)], 0);
+            try
+            {
+                thumbnails.Reconcile();
+                Assert.False(thumbnails.HasLiveSource((IntPtr)42));
+                var waiting = Assert.Single(transitions.Update([new(id, card, OverviewCardMode.Live,
+                    thumbnails.HasLiveSource((IntPtr)42))], 10));
+                Assert.Equal(1, waiting.Opacity);
+                Assert.True(transitions.HasPendingLiveSources); // This keeps the slower retry timer running.
+                thumbnails.Reconcile(); // Readiness retry only: camera and window list stay unchanged.
+                Assert.True(thumbnails.HasLiveSource((IntPtr)42));
+                transitions.Update([new(id, card, OverviewCardMode.Live, true)], 260);
+                Assert.False(transitions.HasPendingLiveSources);
+                Assert.True(transitions.IsAnimating);
+                Assert.Empty(transitions.Update([new(id, card, OverviewCardMode.Live, true)], 410));
+                Assert.False(transitions.IsAnimating);
+            }
+            finally { thumbnails.Hide(); }
         });
 
     [Fact]
