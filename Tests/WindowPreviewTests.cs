@@ -382,7 +382,7 @@ public class WindowPreviewTests
             try
             {
                 thumbnails.Reconcile();
-                Assert.Single(dwm.Sources.Where(source => source == (IntPtr)42));
+                Assert.Single(dwm.Sources, source => source == (IntPtr)42);
                 Assert.True(thumbnails.HasLiveSource((IntPtr)42));
                 Assert.DoesNotContain((IntPtr)99, dwm.Sources); // No DWM card surface.
                 int registrations = dwm.Sources.Count;
