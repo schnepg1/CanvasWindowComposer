@@ -14,9 +14,17 @@ namespace CanvasDesktop;
 /// </summary>
 internal sealed class ZoneAnnotationWindow : Window
 {
-    private readonly ZoneDrawing _drawing = new();
+    private ZoneDrawing _drawing = new();
     private System.Drawing.Rectangle _bounds;
     public IntPtr HitPlaceholderLabel(int x, int y) => _drawing.HitPlaceholderLabel(x, y);
+    public void Clear()
+    {
+        // Drop both input snapshots and WPF's retained drawing when hidden.
+        Content = null;
+        _drawing = new ZoneDrawing();
+        Content = _drawing;
+    }
+
     public ZoneAnnotationWindow(IntPtr owner)
     {
         WindowStyle = WindowStyle.None;

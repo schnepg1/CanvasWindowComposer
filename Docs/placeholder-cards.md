@@ -23,13 +23,13 @@ Automatic minimization is an opt-in policy (`EnableAutomaticMinimization`). Outs
 the overview it follows the main canvas viewport. While the overview is open,
 its independent camera, zoom, and monitor bounds drive proximity instead.
 Eligible running windows park after 1.5 seconds beyond the viewport's 512-pixel
-departure margin. At 50% zoom or closer they restore without activation when
-visible or after 150 ms within the 256-pixel approach margin. Below 50% zoom,
+departure margin. In detailed overview mode they restore without activation when
+visible or after 150 ms within the 256-pixel approach margin. In simple overview mode,
 eligible apps may park even when visible in the map and are not restored merely
 because the wide view includes them. Zooming out never maximizes applications;
 native sizes and saved placements remain independent of the overview zoom.
 
-Below 50% zoom, running apps use info-card proxies. Minimized apps and folders
+In simple overview mode, running apps use info-card proxies. Minimized apps and folders
 also have cards at every zoom. A live card replaces its application in overview
 ordering, with one saved identity, geometry, and project membership. Moving or
 resizing the proxy updates the live application's saved place without restoring
@@ -41,12 +41,12 @@ activation, or overview double-click. Live-card activation restores/focuses the
 existing validated HWND, never launches a duplicate process. Closed cards keep
 their **Open** action and are never launched just by proximity or zoom changes.
 
-Below 50% overview zoom, the card is a simple rectangle, without a bitmap of its
+In simple overview mode, the card is a simple rectangle, without a bitmap of its
 controls. A separate WPF annotation draws crisp title badges in
 display coordinates, following each card's current projected position. Text stays
 between 22 and 32 logical pixels rather than shrinking with the DWM thumbnail.
-Badges support the overview's existing drag and double-click navigation. At 50%
-and above, the full info card's own title is shown, without a duplicate badge.
+Badges support the overview's existing drag and double-click navigation. In detailed
+mode, the full info card's own title is shown, without a duplicate badge.
 There is no card bitmap generation or DWM card thumbnail in the distant view.
 
 Overlapping badges yield to hovered, keyboard-selected, or dragged cards. Labels

@@ -38,6 +38,7 @@ internal sealed partial class OverviewManager
                 _cardAnimationTimer.Tick += (_, _) =>
                 {
                     if (_disposed || CurrentMode == OverviewMode.Hidden) { ClearCardTransitions(); return; }
+                    RefreshCardIdentities();
                     _thumbnails.Reconcile();
                     RefreshZoneAnnotations();
                     // Remove any outgoing native thumbnail immediately after its cover becomes opaque.

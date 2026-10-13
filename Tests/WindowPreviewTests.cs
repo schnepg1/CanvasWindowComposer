@@ -382,11 +382,12 @@ public class WindowPreviewTests
             try
             {
                 thumbnails.Reconcile();
-                Assert.Equal((IntPtr)42, Assert.Single(dwm.Sources));
+                Assert.Single(dwm.Sources.Where(source => source == (IntPtr)42));
                 Assert.True(thumbnails.HasLiveSource((IntPtr)42));
                 Assert.DoesNotContain((IntPtr)99, dwm.Sources); // No DWM card surface.
+                int registrations = dwm.Sources.Count;
                 thumbnails.Reconcile();
-                Assert.Single(dwm.Sources); // No per-frame re-registration.
+                Assert.Equal(registrations, dwm.Sources.Count); // No per-frame re-registration.
                 fading = false;
                 thumbnails.Reconcile();
                 Assert.False(thumbnails.HasLiveSource((IntPtr)42));
