@@ -30,7 +30,7 @@ internal sealed partial class OverviewManager
 
     private void UpdateCardAnimationTimer()
     {
-        if (_cardTransitions.IsAnimating)
+        if (_cardTransitions.IsAnimating || _cardTransitions.HasPendingLiveSources)
         {
             if (_cardAnimationTimer == null)
             {
@@ -42,9 +42,12 @@ internal sealed partial class OverviewManager
                     _thumbnails.Reconcile();
                     RefreshZoneAnnotations();
                     // Remove any outgoing native thumbnail immediately after its cover becomes opaque.
-                    if (!_cardTransitions.IsAnimating) _thumbnails.Reconcile();
+                    if (!_cardTransitions.IsAnimating && !_cardTransitions.HasPendingLiveSources) _thumbnails.Reconcile();
                 };
             }
+            // Readiness failures need a retry even before a fade can start.
+            // Waiting sources poll slowly; normal idle overview has no timer.
+            _cardAnimationTimer.Interval = _cardTransitions.IsAnimating ? 16 : 250;
             _cardAnimationTimer.Start();
         }
         else _cardAnimationTimer?.Stop();

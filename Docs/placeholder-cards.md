@@ -85,4 +85,6 @@ avoid duplicate text. Frozen outgoing card snapshots are borrowed only during
 transitions and released afterward. Distant views create no new card bitmaps.
 Only visible saved identities have transition state; panning away, leaving the
 overview, switching desktop, or disposal releases it. The UI animation timer runs
-only while a transition is active, independently of camera inertia.
+while a transition is active, independently of camera inertia. If live-thumbnail
+registration or its initial update fails, a covered source retries every 250 ms
+until ready or no longer visible. A normal idle overview has no timer activity.

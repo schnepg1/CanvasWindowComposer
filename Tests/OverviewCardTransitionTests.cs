@@ -38,10 +38,30 @@ public class OverviewCardTransitionTests
         Assert.Equal("Notes", waiting.Title);
         Assert.Equal((IntPtr)42, waiting.Handle); // Input targets the existing app, not the disposed card.
         Assert.False(transitions.IsAnimating);
-        transitions.Update([Input(OverviewCardMode.Live)], 1010);
-        Assert.Equal(.5, Assert.Single(transitions.Update([Input(OverviewCardMode.Live)], 1085)).Opacity, 6);
-        Assert.Empty(transitions.Update([Input(OverviewCardMode.Live)], 1160));
+        Assert.True(transitions.HasPendingLiveSources);
+        waiting = Assert.Single(transitions.Update([Input(OverviewCardMode.Live, ready: false)], 1250));
+        Assert.Equal(1, waiting.Opacity);
+        Assert.True(transitions.HasPendingLiveSources);
+        transitions.Update([Input(OverviewCardMode.Live)], 1260);
+        Assert.Equal(.5, Assert.Single(transitions.Update([Input(OverviewCardMode.Live)], 1335)).Opacity, 6);
+        Assert.Empty(transitions.Update([Input(OverviewCardMode.Live)], 1410));
         Assert.False(transitions.IsAnimating);
+    }
+
+    [Fact]
+    public void WaitingSourceRetriesStopWhenItsCardLeavesTheViewOrOverviewCloses()
+    {
+        var transitions = new OverviewCardTransitions();
+        transitions.Update([Input(OverviewCardMode.Simple)], 0);
+        transitions.Update([Input(OverviewCardMode.Live, ready: false)], 10);
+        Assert.True(transitions.HasPendingLiveSources);
+        transitions.Update([], 20);
+        Assert.False(transitions.HasPendingLiveSources);
+        transitions.Update([Input(OverviewCardMode.Simple)], 30);
+        transitions.Update([Input(OverviewCardMode.Live, ready: false)], 40);
+        Assert.True(transitions.HasPendingLiveSources);
+        transitions.Clear();
+        Assert.False(transitions.HasPendingLiveSources);
     }
 
     [Fact]

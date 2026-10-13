@@ -23,12 +23,14 @@ internal sealed class OverviewCardTransitions
     }
     private readonly Dictionary<Guid, Entry> _entries = new();
     public bool IsAnimating => _entries.Values.Any(e => e.Moving);
+    public bool HasPendingLiveSources { get; private set; }
     internal int RetainedImages => _entries.Values.Count(e => e.Image != null);
 
     public bool NeedsLiveUnderlay(Guid id) => _entries.TryGetValue(id, out var e) && e.Live > 0;
 
     public IReadOnlyList<PlaceholderAnnotation> Update(IReadOnlyList<OverviewCardInput> inputs, long now)
     {
+        HasPendingLiveSources = false;
         var seen = new HashSet<Guid>();
         var result = new List<PlaceholderAnnotation>();
         foreach (var input in inputs)
@@ -58,6 +60,8 @@ internal sealed class OverviewCardTransitions
                 e.Target = input.Mode; e.Started = now; e.Moving = true;
             }
             if (!e.Moving && e.Target != OverviewCardMode.Detailed) e.Image = null;
+            if (input.Mode == OverviewCardMode.Live && !input.LiveReady && e.Live < 1)
+                HasPendingLiveSources = true;
             double cover = 1 - e.Live;
             if (cover <= 0) continue;
             double detail = Math.Clamp(e.Detail / cover, 0, 1);
@@ -82,5 +86,9 @@ internal sealed class OverviewCardTransitions
         if (t >= 1) e.Moving = false;
     }
 
-    public void Clear() => _entries.Clear();
+    public void Clear()
+    {
+        _entries.Clear();
+        HasPendingLiveSources = false;
+    }
 }
