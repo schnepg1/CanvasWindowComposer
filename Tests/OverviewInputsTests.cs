@@ -18,6 +18,54 @@ public class OverviewInputsTests
         }
     }
 
+    [Fact]
+    public void IntroSkipDrainsQueuedPanZoomAndDragEndWithoutChangingTheSavedCamera()
+    {
+        var h = new Harness();
+        h.Overview.StartupIntroActive = true;
+        h.Input.PendingPanDx = 120; h.Input.PendingPanDy = -30;
+        h.Input.PendingDragEnded = true; h.Input.PendingZoom = true;
+        h.Input.RaiseInputAvailable();
+        Assert.False(h.Overview.StartupIntroActive);
+        Assert.Equal(0, h.Canvas.CamX); Assert.Equal(0, h.Canvas.CamY);
+        Assert.Empty(h.Overview.RecordedDeltas); Assert.Empty(h.Overview.Transitions);
+        Assert.Equal(0, h.Overview.ReleaseInertiaCalls);
+        Assert.False(h.Input.TryDrainZoom()); Assert.False(h.Input.TryDrainDragEnded());
+        Assert.False(h.Input.TryDrainPanDelta(out _, out _));
+    }
+
+    [Fact]
+    public void IntroSkipButtonHotkeyAndDragDoNotBecomeNormalOverviewCommands()
+    {
+        var h = new Harness();
+        foreach (var signal in new Action[] { h.Input.RaiseDragStarted, h.Input.RaiseButtonDown,
+            h.Input.RaiseOverviewHotkey, h.Input.RaiseEscPressed })
+        {
+            h.Overview.StartupIntroActive = true;
+            signal();
+            Assert.False(h.Overview.StartupIntroActive);
+            Assert.Empty(h.Overview.Transitions);
+        }
+        h.Overview.ConsumeIntroGesture = true;
+        h.Input.RaiseDragStarted();
+        Assert.Empty(h.Overview.Transitions); // Raw hook and form messages can describe the same skip gesture.
+    }
+
+    [Fact]
+    public void RawDragUsedToSkipStaysSuppressedUntilItsReleaseEvenAfterCleanupFinishes()
+    {
+        var h = new Harness(); h.Overview.StartupIntroActive = true;
+        h.Input.RaiseDragStarted();
+        h.Overview.ConsumeIntroGesture = false;
+        h.Input.QueuePanAndRaise(500, -300);
+        Assert.Equal(0, h.Canvas.CamX); Assert.Equal(0, h.Canvas.CamY);
+        h.Input.PendingDragEnded = true; h.Input.RaiseInputAvailable();
+        Assert.Equal(0, h.Overview.ReleaseInertiaCalls);
+        h.Input.RaiseDragStarted();
+        h.Input.QueuePanAndRaise(10, 20);
+        Assert.Equal(-10, h.Canvas.CamX); Assert.Equal(-20, h.Canvas.CamY);
+    }
+
     // ==================== MOUSE / DRAG ====================
 
     [Fact]

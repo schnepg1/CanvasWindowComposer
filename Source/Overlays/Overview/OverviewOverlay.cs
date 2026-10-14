@@ -21,10 +21,18 @@ internal sealed class OverviewOverlay : Form
 
     public void ShowZones(System.Collections.Generic.IReadOnlyList<ZoneView> zones, OverviewCamera camera,
         WorldRect? preview, bool drawing, System.Collections.Generic.IReadOnlyList<WorldRect>? ghosts = null,
-        System.Collections.Generic.IReadOnlyList<PlaceholderAnnotation>? placeholders = null, bool showHints = true)
+        System.Collections.Generic.IReadOnlyList<PlaceholderAnnotation>? placeholders = null, bool showHints = true,
+        StartupIntroFrame? intro = null, bool showIntroTitle = false)
     {
         if (_annotations == null) _annotations = new ZoneAnnotationWindow(Handle);
-        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts, placeholders, showHints);
+        _annotations.Update(zones, camera.X, camera.Y, camera.Zoom, Screen.Bounds, preview, drawing, ghosts, placeholders, showHints, intro, showIntroTitle);
+    }
+
+    public void SetIntroOpacity(double opacity)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        PInvoke.SetLayeredWindowAttributes((HWND)Handle, new COLORREF(0),
+            (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255), LAYERED_WINDOW_ATTRIBUTES_FLAGS.LWA_ALPHA);
     }
 
     public IntPtr HitPlaceholderLabel(int x, int y) => _annotations?.HitPlaceholderLabel(x, y) ?? IntPtr.Zero;

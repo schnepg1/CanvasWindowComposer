@@ -1,0 +1,144 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Windows.Forms;
+
+namespace CanvasDesktop;
+
+internal sealed partial class OverviewManager
+{
+    private readonly Func<bool> _prefersReducedStartupMotion;
+    private StartupIntroFlight? _startupFlight;
+    private StartupIntroFrame? _startupIntroFrame;
+    private readonly Stopwatch _startupIntroClock = new();
+    private Timer? _startupIntroTimer, _startupIntroInputCleanupTimer;
+    private StartupIntroInputFilter? _startupIntroFilter;
+    private bool _startupIntroAttempted, _openingStartupIntro, _parkingWasSuspended;
+    private bool _startupIntroLanded;
+    public bool StartupIntroInputSuppressed => _startupIntroFilter != null && !IsStartupIntroActive;
+    internal bool IsStartupIntroActive => _startupFlight != null;
+
+    public bool TryStartStartupIntro()
+    {
+        if (_disposed || _startupIntroAttempted) return false;
+        _startupIntroAttempted = true;
+        if (!_appConfig.EnableStartupIntro || !_input.Enabled || CurrentMode != OverviewMode.Hidden) return false;
+        try
+        {
+            Warmup();
+            if (_passes.Count == 0 || _passes.Exists(p => p.Grid == null)) return false;
+            var nearby = new List<WorldRect>(_mainCanvas.Windows.Values);
+            bool reduced = _appConfig.ReduceStartupMotion || _prefersReducedStartupMotion();
+            _startupFlight = new StartupIntroFlight(_mainCanvas.Camera, _screens.PrimaryBounds, nearby, reduced);
+            _startupIntroFrame = _startupFlight.Sample(0);
+            _parkingWasSuspended = _wm.SuspendAutomaticParking;
+            _wm.SuspendAutomaticParking = true;
+            _startupIntroFilter = new StartupIntroInputFilter(TrySkipStartupIntro);
+            Application.AddMessageFilter(_startupIntroFilter);
+            _openingStartupIntro = true;
+            try { TransitionTo(OverviewMode.Zooming); }
+            finally { _openingStartupIntro = false; }
+            _startupIntroTimer = new Timer { Interval = 16 };
+            _startupIntroTimer.Tick += OnStartupIntroTick;
+            _startupIntroClock.Restart();
+            _startupIntroTimer.Start();
+            return true;
+        }
+        catch (Exception ex) { FailStartupIntro(ex); return false; }
+    }
+
+    private void OnStartupIntroTick(object? sender, EventArgs e)
+        => AdvanceStartupIntro(_startupIntroClock.Elapsed.TotalSeconds);
+
+    internal void AdvanceStartupIntro(double elapsedSeconds)
+    {
+        if (_disposed || _startupFlight == null) return;
+        try
+        {
+            var frame = _startupFlight.Sample(elapsedSeconds);
+            _startupIntroFrame = frame;
+            if (frame.Complete) { FinishStartupIntro(refresh: true); return; }
+            _camera.SetTo(frame.X, frame.Y, frame.Zoom);
+            foreach (var pass in _passes)
+            {
+                pass.SetIntroOpacity(frame.RevealOpacity);
+                pass.Grid?.UpdateCamera(frame.X, frame.Y, frame.Zoom);
+            }
+            ReconcileVisuals();
+        }
+        catch (Exception ex) { FailStartupIntro(ex); }
+    }
+
+    public bool TrySkipStartupIntro()
+    {
+        if (!IsStartupIntroActive) return false;
+        _startupIntroFilter?.CaptureHeldInput();
+        try
+        {
+            FinishStartupIntro(refresh: true, keepInputFilter: true);
+            if (_startupIntroFilter != null)
+            {
+                _startupIntroInputCleanupTimer = new Timer { Interval = 50 };
+                _startupIntroInputCleanupTimer.Tick += (_, _) =>
+                {
+                    if (_disposed || _startupIntroFilter?.HasPendingGesture != true) ClearStartupIntroInputFilter();
+                };
+                _startupIntroInputCleanupTimer.Start();
+            }
+        }
+        catch (Exception ex) { FailStartupIntro(ex); }
+        return true;
+    }
+
+    public void CancelStartupIntro()
+    {
+        if (!IsStartupIntroActive) return;
+        FinishStartupIntro(refresh: false);
+        TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+    }
+
+    private void ClearStartupIntroInputFilter()
+    {
+        var timer = _startupIntroInputCleanupTimer; _startupIntroInputCleanupTimer = null;
+        timer?.Stop(); timer?.Dispose();
+        if (_startupIntroFilter == null) return;
+        Application.RemoveMessageFilter(_startupIntroFilter);
+        _startupIntroFilter = null;
+    }
+
+    private void FinishStartupIntro(bool refresh, bool keepInputFilter = false)
+    {
+        if (_startupFlight == null)
+        {
+            if (!keepInputFilter) ClearStartupIntroInputFilter();
+            return;
+        }
+        _startupFlight = null;
+        _startupIntroFrame = null;
+        _startupIntroClock.Stop();
+        var timer = _startupIntroTimer; _startupIntroTimer = null;
+        timer?.Stop(); timer?.Dispose();
+        if (!keepInputFilter) ClearStartupIntroInputFilter();
+        // Release the policy guard before any native/visual cleanup can fail.
+        _wm.SuspendAutomaticParking = _parkingWasSuspended;
+        _camera.SyncFrom(_mainCanvas); // The persistent desktop camera never follows the flight.
+        _startupIntroLanded = true;
+        foreach (var pass in _passes)
+        {
+            if (pass.IsDisposed) continue;
+            pass.SetIntroOpacity(1);
+            pass.SetModeStyle(CurrentMode == OverviewMode.Panning, CurrentMode == OverviewMode.Panning);
+            pass.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
+        }
+        if (refresh && !_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+    }
+
+    private void FailStartupIntro(Exception ex)
+    {
+        TrayApp.Log("Startup intro skipped after a rendering failure: " + ex.Message);
+        try { FinishStartupIntro(refresh: false); }
+        catch (Exception cleanup) { TrayApp.Log("Startup intro cleanup: " + cleanup.Message); }
+        try { TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false); }
+        catch (Exception cleanup) { TrayApp.Log("Startup intro close: " + cleanup.Message); }
+    }
+}

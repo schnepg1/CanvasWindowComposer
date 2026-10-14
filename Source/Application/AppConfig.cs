@@ -15,6 +15,8 @@ internal interface IAppConfig
     bool DisableGreedyDraw { get; }
     bool EnableAutomaticMinimization => false;
     bool EnableFlipRendering => false;
+    bool EnableStartupIntro => true;
+    bool ReduceStartupMotion => false;
     bool ShowScreenFixedWindowsDuringPan { get; }
 
     /// <summary>
@@ -59,6 +61,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DisableGreedyDraw { get; private set; } = true;
     public bool EnableAutomaticMinimization { get; private set; }
     public bool EnableFlipRendering { get; private set; }
+    public bool EnableStartupIntro { get; private set; } = true;
+    public bool ReduceStartupMotion { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
     public bool DisableMouseCurve { get; private set; }
     public bool DisableZoomHotkey { get; private set; }
@@ -87,6 +91,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
             EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
             EnableFlipRendering = GetBool(values, "EnableFlipRendering", defaultValue: false);
+            EnableStartupIntro = GetBool(values, "EnableStartupIntro", defaultValue: true);
+            ReduceStartupMotion = GetBool(values, "ReduceStartupMotion", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
             DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
             DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
@@ -109,7 +115,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
         {
             lock (_watcherGate) return new(!DisableSearch, !DisableAltPan, !DisableZoomHotkey,
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
-                EnableAutomaticMinimization, EnableFlipRendering);
+                EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion);
         }
     }
 
@@ -127,7 +133,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["ShowScreenFixedWindowsDuringPan"] = preferences.ScreenFixedWindows,
                 ["DisableGreedyDraw"] = !preferences.ClipOffscreen,
                 ["EnableAutomaticMinimization"] = preferences.AutomaticMinimization,
-                ["EnableFlipRendering"] = preferences.FlipRendering
+                ["EnableFlipRendering"] = preferences.FlipRendering,
+                ["EnableStartupIntro"] = preferences.StartupIntro,
+                ["ReduceStartupMotion"] = preferences.ReducedIntroMotion
             });
             Load();
         }
@@ -219,6 +227,13 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; (default off = curve on, pan tracks cursor; on = raw HID deltas)
 ;DisableMouseCurve=false
 
+; Cinematic overview reveal at app startup; click, scroll, or press a key to skip
+;EnableStartupIntro=true
+
+; Use a short stationary title fade instead of the startup camera flight
+; Windows animation preferences are also respected
+;ReduceStartupMotion=false
+
 ; Disable the Alt+Q overview/zoom global hotkey
 ; (frees Alt+Q for other apps; the overview is still reachable via pan)
 ;DisableZoomHotkey=false
@@ -299,4 +314,5 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 }
 
 internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotkey, bool MouseCurve,
-    bool ScreenFixedWindows, bool ClipOffscreen, bool AutomaticMinimization, bool FlipRendering);
+    bool ScreenFixedWindows, bool ClipOffscreen, bool AutomaticMinimization, bool FlipRendering,
+    bool StartupIntro = true, bool ReducedIntroMotion = false);

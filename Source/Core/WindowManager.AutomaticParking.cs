@@ -22,6 +22,7 @@ internal sealed partial class WindowManager
     private readonly Dictionary<IntPtr, long> _parkingRetry = new();
     private readonly Dictionary<IntPtr, AutomaticParkingToken> _parkingExcluded = new();
     private bool _applyingParking;
+    public bool SuspendAutomaticParking { get; set; }
     public event Action? AutomaticParkingChanged;
 
     private bool IsParkingIdentityCurrent(AutomaticParkingToken key)
@@ -41,7 +42,7 @@ internal sealed partial class WindowManager
 
     private void ProcessAutomaticParking(bool allowNewParking = true)
     {
-        if (_disposed) return;
+        if (_disposed || SuspendAutomaticParking) return;
         if (_parking.Count == 0 && !_config.EnableAutomaticMinimization) return;
         long now = _clock.TickCount64;
         foreach (var (handle, record) in new List<KeyValuePair<IntPtr, ParkingRecord>>(_parking))

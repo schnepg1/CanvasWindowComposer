@@ -9,6 +9,40 @@ namespace CanvasDesktop.Tests;
 [Collection("ShellViews")]
 public class WorkspaceViewTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(1.5)]
+    public void StartupTitleRendersInScreenSpaceAndClearsWhenTheIntroEnds(double scale)
+        => OnSta(() =>
+        {
+            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
+            drawing.Update([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false,
+                new StartupIntroFrame(0, 0, .4, 1, 2, 1, false), true);
+            drawing.Measure(new Size(800, 500)); drawing.Arrange(new Rect(0, 0, 800, 500));
+            byte[] Pixels(bool saveFrame = false)
+            {
+                drawing.UpdateLayout();
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(800 * scale), (int)(500 * scale),
+                    96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(drawing);
+                if (saveFrame)
+                {
+                    string directory = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TestResults");
+                    Directory.CreateDirectory(directory);
+                    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                    using var stream = File.Create(Path.Combine(directory, $"startup-title-{(int)(scale * 100)}.png"));
+                    encoder.Save(stream);
+                }
+                var pixels = new byte[(int)(800 * scale) * (int)(500 * scale) * 4];
+                bitmap.CopyPixels(pixels, (int)(800 * scale) * 4, 0);
+                return pixels;
+            }
+            Assert.Contains(Pixels(saveFrame: true), value => value > 0);
+            drawing.Update([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false);
+            Assert.False(Pixels().Any(value => value != 0), "Title pixels remained after processing the cleared layout.");
+        });
+
     [Fact]
     public void FadingCardUsesCurrentGeometryClippingAndOneTitleAboveTheOldThreshold()
         => OnSta(() =>

@@ -124,12 +124,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }));
     }
 
-    public OverviewManager(Canvas mainCanvas, WindowManager wm, IWindowApi win32, IInputRouter input, IAppConfig appConfig, IScreens? screens = null)
+    public OverviewManager(Canvas mainCanvas, WindowManager wm, IWindowApi win32, IInputRouter input, IAppConfig appConfig, IScreens? screens = null,
+        Func<bool>? prefersReducedStartupMotion = null)
     {
         _mainCanvas = mainCanvas;
         _wm = wm;
         _win32 = win32;
         _appConfig = appConfig;
+        _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
         _screens = screens ?? WinFormsScreens.Instance;
         _camera = new OverviewCamera(_screens);
@@ -157,6 +159,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_disposed) return;
         // Monitor topology changed — rebuild passes to match. If overview is
         // open, close it, rebuild, reopen in the previous mode.
+        CancelStartupIntro();
         OverviewMode prev = CurrentMode;
         bool wasVisible = prev != OverviewMode.Hidden;
 
@@ -305,6 +308,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     /// <summary>Sync overview camera to the main canvas and update visuals on all passes.</summary>
     public void SyncCamera()
     {
+        if (IsStartupIntroActive) { CancelStartupIntro(); return; }
         if (CurrentMode == OverviewMode.Hidden) return;
         _camera.SyncFrom(_mainCanvas);
 
@@ -316,6 +320,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     /// <summary>Single entry point for every mode change.</summary>
     public void TransitionTo(OverviewMode target, bool syncCameraOnClose = true)
     {
+        if (IsStartupIntroActive && !_openingStartupIntro)
+            FinishStartupIntro(refresh: false);
         CancelInertia();
 
         OverviewMode from = CurrentMode;
@@ -324,7 +330,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         BeforeModeChanged?.Invoke(from, target);
 
         if (target == OverviewMode.Hidden)
-            HideInternal(syncCamera: syncCameraOnClose && from != OverviewMode.Hidden);
+        {
+            HideInternal(syncCamera: syncCameraOnClose && from != OverviewMode.Hidden && !_startupIntroLanded);
+            _startupIntroLanded = false;
+        }
         else if (from == OverviewMode.Hidden)
             ShowInternal();
         else
@@ -352,6 +361,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         foreach (var p in _passes)
         {
+            if (_startupIntroFrame is { } intro) p.SetIntroOpacity(intro.RevealOpacity);
             p.Show();
         }
         if (_passes.Count > 0) _passes[0].Activate();
@@ -419,7 +429,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             CancelZoneDrawing();
             foreach (var p in _passes) p.HideZones();
         }
-        bool wantLayered = (CurrentMode == OverviewMode.Panning);
+        bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
         bool wantNoActivate = (CurrentMode == OverviewMode.Panning);
         foreach (var p in _passes)
         {
@@ -570,6 +580,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleKeyDown(OverviewOverlay _, KeyEventArgs e)
     {
+        if (TrySkipStartupIntro()) { e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
 
         if (e.KeyCode == Keys.Escape)
@@ -612,6 +623,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         var world = _windows.Windows[_windows.SelectedIndex].World;
 
         // Center overview camera on selected window (do NOT change zoom)
+        _startupIntroLanded = false;
         _camera.CenterOnWorld(world.X, world.Y, world.W, world.H);
 
         foreach (var p in _passes)
@@ -621,6 +633,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled)
         {
             TransitionTo(OverviewMode.Hidden);
@@ -707,6 +720,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
             double worldDx = dx / _camera.Zoom;
             double worldDy = dy / _camera.Zoom;
+            if (dx != 0 || dy != 0) _startupIntroLanded = false;
             _camera.PanByVirtual(dx, dy);
 
             foreach (var p in _passes)
@@ -720,6 +734,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (TrySkipStartupIntro()) return;
         if (CompleteZoneGesture(pass, e)) return;
         if (_draggingWindow)
         {
@@ -732,6 +747,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseWheel(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _zoneGesture.Active) return;
 
         double notches = e.Delta / MouseWheelDeltaPerNotch;
@@ -739,6 +755,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         int vy = e.Y + pass.OriginY;
 
         if (!_camera.ZoomToCursor(vx, vy, notches)) return;
+        _startupIntroLanded = false;
 
         foreach (var p in _passes)
             p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
@@ -748,6 +765,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
         if (e.Button != MouseButtons.Left || _zoneGesture.Armed || _zoneGesture.Active || (Control.ModifierKeys & Keys.Shift) != 0) return;
 
@@ -793,6 +811,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(() => FinishStartupIntro(refresh: false));
         Attempt(() =>
         {
             if (CurrentMode != OverviewMode.Hidden)

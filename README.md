@@ -118,3 +118,18 @@ Install\build-installer.bat
 ## License
 
 [MIT](LICENSE)
+
+### Startup reveal
+
+On launch, Canvas reveals the restored workspace with a 3.5-second intro:
+centered zoom-out to lightweight cards, a softly tracked app title, a short curved
+camera flight across nearby windows, and a gentle return to the saved view.
+The overview remains interactive afterward. The flight never updates the saved
+camera or uses its temporary view to automatically minimize or restore apps.
+
+Click, scroll, or press a key to skip. The skip gesture is consumed through its
+release so it cannot accidentally open a window or start a pan. Settings → Startup
+lets you disable the intro or choose a short stationary title fade. Windows'
+animation preference also selects the reduced-motion version automatically.
+
+Configuration keys: `EnableStartupIntro=true`, `ReduceStartupMotion=false`.

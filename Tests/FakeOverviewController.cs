@@ -10,6 +10,18 @@ internal sealed class FakeOverviewController : IOverviewController
     public List<IntPtr> Monitors = new();
     public OverviewMode CurrentMode { get; private set; } = OverviewMode.Hidden;
 
+    public bool StartupIntroActive;
+    public bool ConsumeIntroGesture;
+    public bool StartupIntroInputSuppressed => ConsumeIntroGesture;
+    public int CancelStartupIntroCalls;
+    public bool TrySkipStartupIntro()
+    {
+        if (!StartupIntroActive && !ConsumeIntroGesture) return false;
+        StartupIntroActive = false;
+        return true;
+    }
+    public void CancelStartupIntro() { CancelStartupIntroCalls++; StartupIntroActive = false; }
+
     public int CancelInertiaCalls;
     public int SyncCameraCalls;
     public int ReleaseInertiaCalls;

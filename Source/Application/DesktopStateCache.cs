@@ -37,6 +37,7 @@ internal sealed class DesktopStateCache : IDisposable
     private void OnDesktopChanged()
     {
         if (_disposed) return;
+        _overview.CancelStartupIntro();
         _overview.CancelInertia();
 
         if (_lastDesktopId != Guid.Empty)

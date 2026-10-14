@@ -80,6 +80,7 @@ internal sealed partial class OverviewManager
     {
         TransitionTo(OverviewMode.Zooming);
         var fit = ZoneGeometry.Fit(zone.Bounds, _screens.PrimaryWorkingArea);
+        _startupIntroLanded = false;
         _camera.SetTo(fit.X, fit.Y, fit.Zoom);
         foreach (var p in _passes) p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
         ReconcileVisuals();
@@ -149,7 +150,7 @@ internal sealed partial class OverviewManager
         foreach (var p in _passes)
             if (p.Visible) p.ShowZones(zones, _camera,
                 _zoneGesture.Kind == ZoneGestureKind.Draw ? _zoneGesture.Preview : null,
-                _zoneGesture.Armed || _zoneGesture.Kind == ZoneGestureKind.Draw, _zoneGesture.Ghosts, cards, zooming);
+                _zoneGesture.Armed || _zoneGesture.Kind == ZoneGestureKind.Draw, _zoneGesture.Ghosts, cards, zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary);
     }
 
     private ZoneView? HitZoneHeader(OverviewOverlay pass, int x, int y)

@@ -13,7 +13,7 @@ internal sealed class OverviewInputs : IDisposable
     private readonly IOverviewController _overview;
     private readonly IInputRouter _input;
     private readonly Canvas _canvas;
-    private bool _disposed;
+    private bool _disposed, _discardIntroDrag;
 
     public OverviewInputs(IOverviewController overview, IInputRouter input, Canvas canvas)
     {
@@ -65,6 +65,7 @@ internal sealed class OverviewInputs : IDisposable
     private void OnEscPressed()
     {
         if (_disposed) return;
+        if (_overview.TrySkipStartupIntro()) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
     }
@@ -72,12 +73,18 @@ internal sealed class OverviewInputs : IDisposable
     private void OnDragStarted()
     {
         if (_disposed) return;
+        if (_overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed)
+        {
+            _discardIntroDrag = true;
+            return;
+        }
         _overview.TransitionTo(OverviewMode.Panning);
     }
 
     private void OnMouseButtonDown()
     {
         if (_disposed) return;
+        if (_overview.TrySkipStartupIntro()) return;
         // A non-pan click while the panning overview is up — close it so the
         // click interacts with the underlying window normally.
         if (_overview.CurrentMode == OverviewMode.Panning)
@@ -87,6 +94,7 @@ internal sealed class OverviewInputs : IDisposable
     private void OnOverviewHotkey()
     {
         if (_disposed) return;
+        if (_overview.TrySkipStartupIntro()) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
         else
@@ -96,6 +104,13 @@ internal sealed class OverviewInputs : IDisposable
     private void OnCanvasInput()
     {
         if (_disposed) return;
+        if (_overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed || _discardIntroDrag)
+        {
+            _input.TryDrainPanDelta(out _, out _);
+            if (_input.TryDrainDragEnded()) _discardIntroDrag = false;
+            _input.TryDrainZoom();
+            return;
+        }
         if (_input.TryDrainPanDelta(out int dx, out int dy))
         {
             _canvas.Pan(dx, dy);
