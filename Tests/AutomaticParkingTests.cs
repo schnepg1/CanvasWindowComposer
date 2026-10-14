@@ -56,6 +56,28 @@ public class AutomaticParkingTests
     }
 
     [Fact]
+    public void IntroSuspensionPreventsCameraFlightFromParkingOrRestoringApps()
+    {
+        using var h = new Harness();
+        h.Manager.SuspendAutomaticParking = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .4));
+        h.Tick(5000);
+        Assert.Empty(h.Api.MinimizeCalls);
+        Assert.False(h.Manager.Previews.CapturePending);
+        h.Manager.SuspendAutomaticParking = false;
+        h.Tick(5001); h.FinishCapture(); h.Tick(5002);
+        Assert.True(h.IsMinimized);
+        h.Manager.SuspendAutomaticParking = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, 1));
+        h.Tick(5500);
+        Assert.True(h.IsMinimized);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        h.Manager.SuspendAutomaticParking = false;
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, 1));
+        Assert.False(h.IsMinimized);
+    }
+
+    [Fact]
     public void ZoomPolicyUsesHysteresisAndResetsBetweenOverviewSessions()
     {
         using var h = new Harness();

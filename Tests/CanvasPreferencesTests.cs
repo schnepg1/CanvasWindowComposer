@@ -21,7 +21,7 @@ public class CanvasPreferencesTests : IDisposable
         File.WriteAllText(Path.Combine(_directory, "config.ini"),
             "; My comment\n[CanvasWindowComposer]\nFutureOption=keep\nDisableSearch=false\ndisablesearch=false\n");
         using var config = new AppConfig(directory: _directory); config.Load();
-        var wanted = new CanvasPreferences(false, false, false, false, false, true, true, true);
+        var wanted = new CanvasPreferences(false, false, false, false, false, true, true, true, false, true);
         config.SavePreferences(wanted);
         Assert.Equal(wanted, config.Preferences);
         using var reopened = new AppConfig(directory: _directory); reopened.Load();
@@ -29,6 +29,20 @@ public class CanvasPreferencesTests : IDisposable
         string contents = File.ReadAllText(Path.Combine(_directory, "config.ini"));
         Assert.Contains("; My comment", contents); Assert.Contains("FutureOption=keep", contents);
         Assert.Contains("DisableSearch=true", contents); Assert.Contains("disablesearch=true", contents);
+    }
+
+    [Fact]
+    public void LegacyConfigEnablesIntroByDefaultAndMotionPreferencesRoundTrip()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "DisableSearch=false\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.EnableStartupIntro);
+        Assert.False(config.ReduceStartupMotion);
+        config.SavePreferences(config.Preferences with { StartupIntro = false, ReducedIntroMotion = true });
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.False(reopened.EnableStartupIntro);
+        Assert.True(reopened.ReduceStartupMotion);
     }
 
     [Fact]

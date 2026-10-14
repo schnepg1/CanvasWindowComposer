@@ -180,6 +180,11 @@ internal sealed class TrayApp : ApplicationContext
             Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
             _lifecycle.CompleteStartup();
             _bgTimer.Start();
+            // Run only after the message loop starts, workspace restore and graphics warmup finish.
+            _dispatcher.BeginInvoke((Action)(() =>
+            {
+                if (!_lifecycle.IsStopping && _enabled) _overview.TryStartStartupIntro();
+            }));
         }
         catch
         {
@@ -202,7 +207,10 @@ internal sealed class TrayApp : ApplicationContext
         _enabled = !_enabled;
         _input.Enabled = _enabled;
         if (!_enabled)
+        {
+            _overview.CancelStartupIntro();
             _overview.CancelInertia();
+        }
 
         if (sender is ToolStripMenuItem item)
             item.Checked = _enabled;

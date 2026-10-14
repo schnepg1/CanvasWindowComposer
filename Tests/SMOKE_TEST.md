@@ -74,3 +74,24 @@ Run through before each release. Test on the installed version, not debug.
   DWM registration does not certify that each app has repainted its contents.
 - Leave overview or change desktops during a fade; reopen. No old cards or
   titles should linger, and idle overview should have no animation timer activity.
+
+### Startup intro
+
+- Launch with several saved app/folder cards and open windows. Check the initial
+  reveal, centered pullback, crisp title, level curved flight, and soft landing.
+  Saved positions and native app sizes should not change during the flight.
+- Enable automatic minimization; launch with both manually minimized and closed
+  apps. The flight must not restore or launch them, or park other apps along its route.
+- Skip with Enter (hold through key-repeat), arrows, Esc, left/double click,
+  wheel, and Alt+middle drag (hold and move for over a second). The same gesture
+  must not open a card, move the saved camera, or start inertia afterward.
+- Open on a saved zoom below 100%; finish or skip, then close the untouched
+  overview. Saved camera must be unchanged. After intentional navigation,
+  normal overview-to-desktop synchronization must still work.
+- Test empty layouts, multiple monitors/negative origins/mixed DPI, and both
+  presentation backends. Verify DWM thumbnails stay visible while layered alpha
+  changes and all monitors reveal together. Cancel during display/desktop change,
+  disable Canvas, or quit: no overlay, filter, timer or parking guard may remain.
+- Settings: disable startup intro and restart; then enable reduced startup motion
+  or disable Windows animations. The latter uses a short stationary fade, with
+  no camera flight or expanding title tracking. Rendering errors must skip the intro.

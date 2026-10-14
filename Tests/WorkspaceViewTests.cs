@@ -9,6 +9,30 @@ namespace CanvasDesktop.Tests;
 [Collection("ShellViews")]
 public class WorkspaceViewTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(1.5)]
+    public void StartupTitleRendersInScreenSpaceAndClearsWhenTheIntroEnds(double scale)
+        => OnSta(() =>
+        {
+            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
+            drawing.Update([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false,
+                new StartupIntroFrame(0, 0, .4, 1, 2, 1, false), true);
+            drawing.Measure(new Size(800, 500)); drawing.Arrange(new Rect(0, 0, 800, 500));
+            byte[] Pixels()
+            {
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)(800 * scale), (int)(500 * scale),
+                    96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(drawing);
+                var pixels = new byte[(int)(800 * scale) * (int)(500 * scale) * 4];
+                bitmap.CopyPixels(pixels, (int)(800 * scale) * 4, 0);
+                return pixels;
+            }
+            Assert.Contains(Pixels(), value => value > 0);
+            drawing.Update([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false);
+            Assert.All(Pixels(), value => Assert.Equal(0, value));
+        });
+
     [Fact]
     public void FadingCardUsesCurrentGeometryClippingAndOneTitleAboveTheOldThreshold()
         => OnSta(() =>

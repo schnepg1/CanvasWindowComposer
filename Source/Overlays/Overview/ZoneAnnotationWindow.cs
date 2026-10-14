@@ -45,9 +45,10 @@ internal sealed class ZoneAnnotationWindow : Window
 
     public void Update(IReadOnlyList<ZoneView> zones, double x, double y, double zoom,
         System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts = null,
-        IReadOnlyList<PlaceholderAnnotation>? placeholders = null, bool showHints = true)
+        IReadOnlyList<PlaceholderAnnotation>? placeholders = null, bool showHints = true,
+        StartupIntroFrame? intro = null, bool showIntroTitle = false)
     {
-        _drawing.Update(zones, x, y, zoom, screen, preview, drawing, ghosts, placeholders, showHints);
+        _drawing.Update(zones, x, y, zoom, screen, preview, drawing, ghosts, placeholders, showHints, intro, showIntroTitle);
         bool opening = !IsVisible;
         if (opening) Show();
         if (opening || _bounds != screen)
@@ -67,6 +68,8 @@ internal sealed class ZoneAnnotationWindow : Window
         private WorldRect? _preview;
         private bool _drawing;
         private bool _showHints = true;
+        private StartupIntroFrame? _intro;
+        private bool _showIntroTitle;
         private IReadOnlyList<WorldRect> _ghosts = Array.Empty<WorldRect>();
         private IReadOnlyList<PlaceholderAnnotation> _placeholders = Array.Empty<PlaceholderAnnotation>();
         private IReadOnlyList<PlaceholderLabel> _labels = Array.Empty<PlaceholderLabel>();
@@ -81,11 +84,14 @@ internal sealed class ZoneAnnotationWindow : Window
 
         public void Update(IReadOnlyList<ZoneView> zones, double x, double y, double zoom,
             System.Drawing.Rectangle screen, WorldRect? preview, bool drawing, IReadOnlyList<WorldRect>? ghosts,
-            IReadOnlyList<PlaceholderAnnotation>? placeholders, bool showHints = true)
+            IReadOnlyList<PlaceholderAnnotation>? placeholders, bool showHints = true,
+            StartupIntroFrame? intro = null, bool showIntroTitle = false)
         {
             _zones = zones; _x = x; _y = y; _zoom = zoom; _screen = screen;
             _preview = preview; _drawing = drawing;
             _showHints = showHints;
+            _intro = intro; _showIntroTitle = showIntroTitle;
+            Opacity = intro?.RevealOpacity ?? 1;
             _ghosts = ghosts ?? Array.Empty<WorldRect>();
             _placeholders = placeholders ?? Array.Empty<PlaceholderAnnotation>();
             _labels = Array.Empty<PlaceholderLabel>();
@@ -106,6 +112,8 @@ internal sealed class ZoneAnnotationWindow : Window
             if (_preview is { } bounds)
                 DrawZone(dc, bounds, "New project area", Color.FromRgb(96, 165, 250), dpi, true);
 
+            if (_intro is { } intro && _showIntroTitle)
+                StartupIntroTitle.Draw(dc, RenderSize, dpi, intro);
             if (!_showHints) { dc.Pop(); return; }
             // Fixed-size hint remains readable at every zoom level.
             string hint = _drawing ? "Drag to mark a project area  ·  Esc to cancel"

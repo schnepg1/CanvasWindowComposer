@@ -8,7 +8,7 @@ namespace CanvasDesktop;
 /// <summary>Detached edits; opening or cancelling settings never changes resource policy.</summary>
 internal sealed class SettingsWindow : Window
 {
-    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip;
+    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion;
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
 
     public SettingsWindow(AppConfig config, Action applied)
@@ -47,6 +47,10 @@ internal sealed class SettingsWindow : Window
         Hint("Clipping may affect application previews. It does not guarantee that applications stop rendering.");
         _parking = Option("Automatically minimize off-screen windows · Experimental", preferences.AutomaticMinimization);
         Hint("Canvas captures a preview first and restores eligible windows as you approach. Application compatibility testing is still in progress.");
+        Heading("Startup");
+        _intro = Option("Show the cinematic canvas intro at startup", preferences.StartupIntro);
+        _reducedMotion = Option("Reduce startup motion · use a short title fade", preferences.ReducedIntroMotion);
+        Hint("Click, scroll, or press any key to skip. Windows animation preferences are respected.");
         Heading("Rendering");
         _flip = Option("Use flip-model presentation · Experimental", preferences.FlipRendering);
         Hint("Requires a restart. Keep off if overview previews or minimap opacity render incorrectly. Canvas uses the compatibility renderer if initialization fails.");
@@ -56,7 +60,8 @@ internal sealed class SettingsWindow : Window
             {
                 config.SavePreferences(new(_search.IsChecked == true, _altPan.IsChecked == true,
                     _zoom.IsChecked == true, _curve.IsChecked == true, _fixed.IsChecked == true,
-                    _clip.IsChecked == true, _parking.IsChecked == true, _flip.IsChecked == true));
+                    _clip.IsChecked == true, _parking.IsChecked == true, _flip.IsChecked == true,
+                    _intro.IsChecked == true, _reducedMotion.IsChecked == true));
                 applied(); Close();
             }
             catch (Exception ex) { _status.Text = "Settings could not be saved. " + ex.Message; }

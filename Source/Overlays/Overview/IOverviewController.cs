@@ -13,6 +13,9 @@ internal interface IOverviewController
     IReadOnlyList<IntPtr> MonitorHandles { get; }
     OverviewMode CurrentMode { get; }
     void TransitionTo(OverviewMode target, bool syncCameraOnClose = true);
+    bool StartupIntroInputSuppressed => false;
+    bool TrySkipStartupIntro() => false;
+    void CancelStartupIntro() { }
     void CancelInertia();
     void SyncCamera();
     void RecordPanDelta(int dx, int dy);
