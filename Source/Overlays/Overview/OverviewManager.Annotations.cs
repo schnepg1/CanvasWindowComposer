@@ -80,8 +80,8 @@ internal sealed partial class OverviewManager
         {
             _annotationToolbar=new();
             _annotationToolbar.ModeRequested+=SelectAnnotationMode;
-            _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Stroke);
-            _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Color,stroke);
+            _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);
+            _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Selected?.Color ?? _annotationTool.Color,stroke);
             _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
             _annotationToolbar.RedoRequested+=()=>AnnotationHistory(true);
             _annotationToolbar.DeleteRequested+=DeleteAnnotation;
