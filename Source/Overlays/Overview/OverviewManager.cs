@@ -827,7 +827,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (CurrentMode != OverviewMode.Hidden)
                 TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
         });
-        Attempt(CancelInteraction);
+        Attempt(() => { CancelInteraction(); });
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
         _zoneTool.Completed -= OnZoneToolCompleted;
         Attempt(ClearCardTransitions);
