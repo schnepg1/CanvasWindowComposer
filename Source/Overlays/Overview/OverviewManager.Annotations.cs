@@ -1,0 +1,191 @@
+using System;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace CanvasDesktop;
+
+internal sealed partial class OverviewManager
+{
+    private AnnotationPersistence? _annotationStore;
+    private AnnotationDocument? _annotationDocument;
+    private AnnotationCanvasTool? _annotationTool;
+    private ICanvasTool? _annotationRouter;
+    private CanvasAnnotationLayer? _annotationLayer;
+    private Func<Guid> _annotationDesktop=()=>Guid.Empty;
+    private IVirtualDesktops? _annotationDesktops;
+    private AnnotationToolbar? _annotationToolbar;
+    private AnnotationTextEditor? _annotationEditor;
+    private long _annotationEditGeneration;
+    private string? _annotationError;
+    public bool CanvasInputSuspended => _annotationEditor != null || (_annotationTool?.HasPendingInteraction == true);
+    internal AnnotationDocument? Annotations => _annotationDocument;
+    internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
+    internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
+
+    public void AttachAnnotations(IVirtualDesktops desktops,string? path=null)
+    {
+        if(_annotationDocument!=null) throw new InvalidOperationException("Annotations are already attached.");
+        _annotationDesktop=()=>desktops.CurrentDesktopId;
+        _annotationDesktops=desktops;
+        _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
+        _annotationDocument=_annotationStore.Document;
+        _annotationTool=new(_annotationDocument,_annotationDesktop);
+        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive);
+        _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool);
+        _drawingLayers=[_annotationLayer];
+        foreach(var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
+        _tools.SetTool(_annotationRouter);
+        _annotationDocument.Changed+=OnAnnotationsChanged;
+        _annotationTool.EditTextRequested+=QueueAnnotationTextEdit;
+        desktops.DesktopChanged+=OnAnnotationDesktopChanged;
+    }
+    private void OnAnnotationsChanged()
+    {
+        _annotationStore?.Save(); RefreshToolPreview();
+    }
+    private void OnAnnotationDesktopChanged()
+    {
+        CancelInteraction(); _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Navigate);
+        RefreshToolPreview();
+    }
+    internal void SelectAnnotationMode(AnnotationMode mode)
+    {
+        if(_annotationTool==null) return;
+        CancelInteraction(); _zoneTool.Cancel(); _annotationTool.SetMode(mode); _annotationError=null;
+        _tools.SetTool(_annotationRouter); RefreshToolPreview(); FocusOverview();
+    }
+    private void FocusOverview()
+    {
+        if(!_disposed && CurrentMode==OverviewMode.Zooming) _passes.FirstOrDefault(p=>p.Visible)?.Activate();
+    }
+    private string? AnnotationHint => _annotationTool?.Mode switch
+    {
+        AnnotationMode.Select => "Select / drag: move  ·  Handles: resize  ·  Double-click note: edit  ·  Delete  ·  Ctrl+Z/Y",
+        AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
+        AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
+        AnnotationMode.Text => "Click to add a note  ·  Ctrl+Enter: save text  ·  Esc: cancel  ·  Middle drag: pan",
+        _ => null
+    };
+    private void RefreshAnnotationUi()
+    {
+        if(_annotationTool==null) return;
+        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive)
+        { _annotationToolbar?.Hide(); return; }
+        var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
+        if(pass==null) return;
+        if (_annotationToolbar?.IsDisposed == true) _annotationToolbar = null;
+        if(_annotationToolbar==null)
+        {
+            _annotationToolbar=new();
+            _annotationToolbar.ModeRequested+=SelectAnnotationMode;
+            _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);
+            _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Selected?.Color ?? _annotationTool.Color,stroke);
+            _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
+            _annotationToolbar.RedoRequested+=()=>AnnotationHistory(true);
+            _annotationToolbar.DeleteRequested+=DeleteAnnotation;
+            _annotationToolbar.RetrySaveRequested+=()=>
+            {
+                _annotationStore?.Save(); RefreshAnnotationUi();
+                if(_annotationStore?.Status is {} message) MessageBox.Show(_annotationToolbar,message,"Canvas annotations");
+                FocusOverview();
+            };
+            _annotationToolbar.KeyDown+=(_,e)=>HandleKeyDown(pass,e);
+        }
+        _annotationToolbar.UpdateState(_annotationTool.Mode,_annotationError??_annotationStore?.Status);
+        if(!_annotationToolbar.Visible)
+        {
+            _annotationToolbar.Show(pass);
+            var area=pass.Screen.WorkingArea;
+            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height-24);
+        }
+    }
+    private void ChangeAnnotationStyle(string color,double stroke)
+    {
+        CancelInteraction();
+        try { _annotationTool?.SetStyle(color,stroke); }
+        catch(ArgumentException ex) { _annotationError=ex.Message; }
+        RefreshToolPreview(); FocusOverview();
+    }
+    private void DeleteAnnotation() { CancelInteraction(); _annotationTool?.Delete(); RefreshToolPreview(); FocusOverview(); }
+    private void AnnotationHistory(bool redo)
+    {
+        CancelInteraction(); _annotationDocument?.Undo(_annotationDesktop(),redo); RefreshToolPreview(); FocusOverview();
+    }
+    private bool HandleAnnotationKey(KeyEventArgs e)
+    {
+        if(_annotationEditor!=null) return true;
+        if(_annotationTool==null || _annotationTool.Mode==AnnotationMode.Navigate) return false;
+        if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) AnnotationHistory(e.KeyCode==Keys.Y || e.Shift);
+        else if(e.KeyCode==Keys.Delete || e.KeyCode==Keys.Back) DeleteAnnotation();
+        else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { Kind:AnnotationKind.Text } text) QueueAnnotationTextEdit(text);
+        else
+        {
+            // Annotation mode owns typing/navigation keys; project-area shortcuts stay in Windows mode.
+            e.Handled=true; e.SuppressKeyPress=true; return true;
+        }
+        e.Handled=true; e.SuppressKeyPress=true; return true;
+    }
+    private void QueueAnnotationTextEdit(CanvasAnnotation item)
+    {
+        if(_passes.Count==0) return;
+        long generation=++_annotationEditGeneration;
+        _passes[0].BeginInvoke((Action)(()=>
+        {
+            if(_disposed || generation!=_annotationEditGeneration || item.DesktopId!=_annotationDesktop() || CurrentMode!=OverviewMode.Zooming) return;
+            OpenAnnotationTextEdit(item);
+        }));
+    }
+    private void OpenAnnotationTextEdit(CanvasAnnotation item)
+    {
+        CancelAnnotationEdit();
+        _annotationTool?.Select(item.Id);
+        var point=new Point((int)Math.Round((item.Bounds.X-_camera.X)*_camera.Zoom),(int)Math.Round((item.Bounds.Y-_camera.Y)*_camera.Zoom));
+        var pass=_passes.FirstOrDefault(p=>p.Screen.Bounds.Contains(point))??_passes[0];
+        var editor=new AnnotationTextEditor(item.Text); _annotationEditor=editor;
+        var area=pass.Screen.WorkingArea;
+        editor.Location=new Point(Math.Clamp(point.X,area.Left,Math.Max(area.Left,area.Right-editor.Width)),Math.Clamp(point.Y,area.Top,Math.Max(area.Top,area.Bottom-editor.Height)));
+        editor.Finished+=save=>
+        {
+            if(_annotationEditor!=editor) return;
+            string text=editor.Editor.Text;
+            if(save && !string.IsNullOrWhiteSpace(text) && item.DesktopId==_annotationDesktop())
+            {
+                try { _annotationDocument!.Put(item with { Text=text }); _annotationTool?.Select(item.Id); }
+                catch(ArgumentException ex) { MessageBox.Show(editor,ex.Message,"Canvas note"); return; }
+            }
+            CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview();
+        };
+        editor.Show(pass); editor.Activate();
+    }
+    private bool CancelAnnotationEdit()
+    {
+        ++_annotationEditGeneration;
+        if(_annotationEditor is not {} editor) return false;
+        _annotationEditor=null; editor.Dispose(); return true;
+    }
+    private void DisposeAnnotations()
+    {
+        CancelAnnotationEdit();
+        if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
+        if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
+        _annotationToolbar?.Dispose(); _annotationToolbar=null;
+    }
+}
+
+internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotations,ICanvasTool zones) : ICanvasTool
+{
+    private ICanvasTool? _owner;
+    public bool HasPendingInteraction=>annotations.HasPendingInteraction || zones.HasPendingInteraction;
+    public bool PointerDown(CanvasPointer p)
+    {
+        if(annotations.PointerDown(p)) { _owner=annotations; return true; }
+        if(annotations.Mode==AnnotationMode.Navigate && zones.PointerDown(p)) { _owner=zones; return true; }
+        return false;
+    }
+    public void PointerMove(CanvasPointer p)=>_owner?.PointerMove(p);
+    public void PointerUp(CanvasPointer p) { var owner=_owner; _owner=null; owner?.PointerUp(p); }
+    public void Cancel() { _owner=null; annotations.Cancel(); zones.Cancel(); }
+    public CanvasCursor CursorAt(CanvasPointer p)=>annotations.Mode==AnnotationMode.Navigate?zones.CursorAt(p):annotations.CursorAt(p);
+}

@@ -14,9 +14,12 @@ internal sealed partial class OverviewManager
     public void SetCanvasTool(ICanvasTool? tool, IReadOnlyList<IOverviewAnnotationLayer>? layers = null)
     {
         CancelInteraction();
-        _tools.SetTool(tool ?? _zoneTool);
-        _drawingLayers = layers == null ? Array.Empty<IOverviewAnnotationLayer>()
-            : new List<IOverviewAnnotationLayer>(layers);
+        if (tool == null) _annotationTool?.SetMode(AnnotationMode.Navigate);
+        _tools.SetTool(tool ?? _annotationRouter ?? _zoneTool);
+        var attached = new List<IOverviewAnnotationLayer>();
+        if (_annotationLayer != null) attached.Add(_annotationLayer);
+        if (layers != null) attached.AddRange(layers);
+        _drawingLayers = attached;
         foreach (var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
         RefreshToolPreview();
     }
@@ -72,7 +75,8 @@ internal sealed partial class OverviewManager
     public bool CancelInteraction()
     {
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
-        bool cancelled = _tools.Cancel(); // Clear owner before releasing native capture.
+        bool cancelled = CancelAnnotationEdit();
+        cancelled |= _tools.Cancel(); // Clear owner before releasing native capture.
         _dragIndex = -1;
         ApplyPointerCapture();
         if (windowDrag && !_disposed) _wm.Reproject(true);
@@ -83,6 +87,9 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
-        if (!CancelInteraction()) TransitionTo(OverviewMode.Hidden);
+        if (_annotationEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
+        if (CancelInteraction()) return;
+        if (_annotationTool is { Mode: not AnnotationMode.Navigate }) { SelectAnnotationMode(AnnotationMode.Navigate); return; }
+        TransitionTo(OverviewMode.Hidden);
     }
 }

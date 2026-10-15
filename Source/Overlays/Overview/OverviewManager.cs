@@ -386,6 +386,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         ClearCardTransitions();
         CancelInteraction();
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
+        _annotationToolbar?.Hide();
         foreach (var p in _passes) p.HideZones();
         foreach (var p in _passes)
         {
@@ -431,6 +432,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (CurrentMode != OverviewMode.Zooming)
         {
             CancelInteraction();
+            _annotationToolbar?.Hide();
             foreach (var p in _passes) p.HideZones();
         }
         bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
@@ -594,6 +596,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
+        if (HandleAnnotationKey(e)) return;
         if (HandleZoneKey(e)) return;
         if (_tools.Active) { e.Handled = true; return; }
         if (_windows.Count == 0) return;
@@ -641,6 +644,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
+        if (_annotationEditor != null) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
@@ -677,7 +681,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
-        if (!_cfg.InputEnabled) return;
+        if (!_cfg.InputEnabled || _annotationEditor != null) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -758,7 +762,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseWheel(OverviewOverlay pass, MouseEventArgs e)
     {
         if (TrySkipStartupIntro()) return;
-        if (!_cfg.InputEnabled || _tools.Active) return;
+        if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
 
         double notches = e.Delta / MouseWheelDeltaPerNotch;
         int vx = e.X + pass.OriginX;
@@ -777,6 +781,15 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
+        if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
+        {
+            if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
+                && annotationTool.Hit(Pointer(pass,e)) is { Kind: AnnotationKind.Text } note)
+            {
+                CancelInteraction(); annotationTool.Select(note.Id); QueueAnnotationTextEdit(note);
+            }
+            return;
+        }
         if (e.Button != MouseButtons.Left || _tools.ToolHasPendingInteraction || (Control.ModifierKeys & Keys.Shift) != 0) return;
 
         int vx = e.X + pass.OriginX;
@@ -821,6 +834,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(DisposeAnnotations);
         Attempt(() => FinishStartupIntro(refresh: false));
         Attempt(() =>
         {

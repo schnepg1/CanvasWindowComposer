@@ -135,3 +135,13 @@ lets you disable the intro or choose a short stationary title fade. Windows'
 animation preference also selects the reduced-motion version automatically.
 
 Configuration keys: `EnableStartupIntro=true`, `ReduceStartupMotion=false`.
+
+### Canvas annotations
+
+In canvas overview, use the toolbar to draw arrows, rectangles and ellipses, or
+click **Text** to add a note. Use **Select** to move/resize drawings, double-click
+notes to edit, and **Windows** to return to window navigation. Shift constrains
+shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edits
+while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
+editing. Drawings save automatically per virtual desktop and return after restart.
+See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.

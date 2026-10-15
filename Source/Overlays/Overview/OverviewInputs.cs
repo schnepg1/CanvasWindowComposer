@@ -73,7 +73,7 @@ internal sealed class OverviewInputs : IDisposable
     private void OnDragStarted()
     {
         if (_disposed) return;
-        if (_overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed)
+        if (_overview.CanvasInputSuspended || _overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed)
         {
             _discardIntroDrag = true;
             return;
@@ -93,7 +93,7 @@ internal sealed class OverviewInputs : IDisposable
 
     private void OnOverviewHotkey()
     {
-        if (_disposed) return;
+        if (_disposed || _overview.CanvasInputSuspended) return;
         if (_overview.TrySkipStartupIntro()) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
@@ -104,7 +104,7 @@ internal sealed class OverviewInputs : IDisposable
     private void OnCanvasInput()
     {
         if (_disposed) return;
-        if (_overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed || _discardIntroDrag)
+        if (_overview.CanvasInputSuspended || _overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed || _discardIntroDrag)
         {
             _input.TryDrainPanDelta(out _, out _);
             if (_input.TryDrainDragEnded()) _discardIntroDrag = false;

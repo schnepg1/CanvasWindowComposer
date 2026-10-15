@@ -81,3 +81,45 @@ Run the existing locked restore, Release build, tests and publish workflow on
 Windows. Native capture across physical monitors, mixed-DPI display changes,
 physical Escape hotkeys and future text IME behavior still merit manual hardware
 smoke checks; offscreen rendering does not verify those interactions.
+
+## Canvas annotations v1
+
+The overview toolbar exposes Windows (normal window/area navigation), Select,
+Arrow, Rectangle, Ellipse and Text modes. Drawing modes own left clicks even above
+window previews; middle drag remains camera navigation. Select moves annotations
+and exposes corner/endpoint handles. Shift constrains arrows to 45-degree steps
+and shapes to equal sides. Color and stroke apply to the selection and new items.
+Delete removes the selected item. Double-click a note in Select mode, or press
+Enter with a note selected, to edit it.
+
+Text is plain multiline Unicode. A separate focused native editor handles typing,
+clipboard and IME, while annotation painting stays passive. Ctrl+Enter or Save
+commits the complete text edit; Escape or closing the editor cancels it. Global
+canvas input is drained while editing or drawing. A first Escape cancels a gesture
+or editor; an idle drawing/selection mode returns to Windows mode on Escape,
+then Escape closes overview. Annotations are visible only in interactive overview,
+not on the live desktop or during the startup flight.
+
+`AnnotationDocument` owns immutable world geometry and bounded, desktop-local
+undo/redo. Pointer previews do not enter storage/history. Ctrl+Z/Y and
+Ctrl+Shift+Z operate on annotation history while an annotation mode is active;
+Windows mode retains project-area history. Toolbar Undo/Redo always target
+annotations. TextBox undo remains local while typing. Selection handles and hit
+slop use DIPs; annotation geometry and text size follow canvas zoom.
+
+`annotations.json` in the existing configuration directory stores a separate
+version-1 document with desktop GUIDs and annotation GUIDs. Saves happen only on
+completed edits and use a temporary file, disk flush, atomic replacement and
+backup. Invalid primary data can recover from backup while preserving the damaged
+file. If neither copy can load, saving stays disabled to preserve user data.
+The toolbar shows a warning and its Save action retries saves and displays the
+status. Limits: 2,000 items, 10,000 characters per note, 16 MiB file, finite
+coordinates within ±10,000,000, stroke widths 1–12. History retains 100 edits per
+desktop for the current session. No HWND identities are persisted.
+
+Hardware smoke checklist: draw across a monitor boundary; test a negative-origin
+monitor at a different DPI; resize both ends of an arrow; edit a Persian/IME note;
+press Escape locally/globally; switch desktops during capture/editing; restart to
+verify saved geometry; verify Windows mode still opens preview windows on double
+click. Automated coverage includes offscreen rendering and native overview input,
+but does not substitute for these physical-device checks.
