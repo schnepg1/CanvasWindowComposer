@@ -67,7 +67,7 @@ internal sealed class OverviewInputs : IDisposable
         if (_disposed) return;
         if (_overview.TrySkipStartupIntro()) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
-            _overview.TransitionTo(OverviewMode.Hidden);
+            _overview.HandleEscape();
     }
 
     private void OnDragStarted()

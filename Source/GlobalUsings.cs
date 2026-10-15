@@ -1,4 +1,5 @@
 global using Windows.Win32;
+global using CanvasDesktop.CanvasView;
 global using Windows.Win32.Foundation;
 global using Windows.Win32.UI.WindowsAndMessaging;
 global using Windows.Win32.UI.Accessibility;

@@ -1,0 +1,88 @@
+using System;
+using System.Collections.Generic;
+using System.Windows.Forms;
+
+namespace CanvasDesktop;
+
+// The host alone translates WinForms input and owns native pointer capture.
+internal sealed partial class OverviewManager
+{
+    private readonly CanvasToolController _tools = new();
+    private readonly ZoneCanvasTool _zoneTool;
+    private IReadOnlyList<IOverviewAnnotationLayer> _drawingLayers = Array.Empty<IOverviewAnnotationLayer>();
+
+    public void SetCanvasTool(ICanvasTool? tool, IReadOnlyList<IOverviewAnnotationLayer>? layers = null)
+    {
+        CancelInteraction();
+        _tools.SetTool(tool ?? _zoneTool);
+        _drawingLayers = layers == null ? Array.Empty<IOverviewAnnotationLayer>()
+            : new List<IOverviewAnnotationLayer>(layers);
+        foreach (var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
+        RefreshToolPreview();
+    }
+
+    private CanvasPointer Pointer(OverviewOverlay pass, MouseEventArgs e)
+    {
+        var b = pass.Screen.Bounds;
+        double dpi = pass.DeviceDpi / 96.0;
+        var view = new CanvasViewTransform(_camera.X, _camera.Y, _camera.Zoom,
+            new(b.X, b.Y, b.Width, b.Height), dpi, dpi);
+        var modifiers = Control.ModifierKeys;
+        var flags = CanvasModifiers.None;
+        if ((modifiers & Keys.Shift) != 0) flags |= CanvasModifiers.Shift;
+        if ((modifiers & Keys.Control) != 0) flags |= CanvasModifiers.Control;
+        if ((modifiers & Keys.Alt) != 0) flags |= CanvasModifiers.Alt;
+        var button = e.Button switch
+        {
+            MouseButtons.Left => CanvasPointerButton.Left,
+            MouseButtons.Middle => CanvasPointerButton.Middle,
+            MouseButtons.Right => CanvasPointerButton.Right,
+            _ => CanvasPointerButton.None
+        };
+        return new(_passes.IndexOf(pass), new(e.X, e.Y), button, flags, view);
+    }
+
+    private IReadOnlyList<WorldRect> ZoneMoveMembers(Guid id)
+    {
+        var members = new List<WorldRect>();
+        if (_zones != null)
+            foreach (var member in _zones.Members(id))
+                if (member.Assigned && !member.Bounds.PinnedToScreen) members.Add(member.Bounds);
+        return members;
+    }
+
+    private void OnZoneToolCompleted(ZoneGestureResult result)
+    {
+        ApplyPointerCapture();
+        if (result.Kind == ZoneGestureKind.Draw) ZoneDrawn?.Invoke(result.Bounds);
+        else if (result.Kind == ZoneGestureKind.Move) ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
+        else if (result.Kind == ZoneGestureKind.Resize) ZoneResizeRequested?.Invoke(result.ZoneId, result.Bounds);
+        RefreshZoneLayout();
+    }
+
+    private void ApplyPointerCapture()
+    {
+        for (int i = 0; i < _passes.Count; i++)
+        {
+            bool capture = _tools.CapturedSurface == i;
+            if (_passes[i].Capture != capture) _passes[i].Capture = capture;
+        }
+    }
+
+    public bool CancelInteraction()
+    {
+        bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
+        bool cancelled = _tools.Cancel(); // Clear owner before releasing native capture.
+        _dragIndex = -1;
+        ApplyPointerCapture();
+        if (windowDrag && !_disposed) _wm.Reproject(true);
+        if (cancelled && !_disposed) RefreshToolPreview();
+        return cancelled;
+    }
+
+    public void HandleEscape()
+    {
+        if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (!CancelInteraction()) TransitionTo(OverviewMode.Hidden);
+    }
+}

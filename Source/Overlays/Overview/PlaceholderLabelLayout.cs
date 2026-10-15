@@ -20,6 +20,8 @@ internal static class PlaceholderLabelLayout
         var result = new List<PlaceholderLabel>();
         if (!double.IsFinite(zoom) || zoom <= 0 || dpiX <= 0 || dpiY <= 0) return result;
         double viewWidth = monitor.Width / dpiX, viewHeight = monitor.Height / dpiY;
+        var view = new CanvasViewTransform(camX, camY, zoom,
+            new(monitor.X, monitor.Y, monitor.Width, monitor.Height), dpiX, dpiY);
         if (viewWidth < 40 || viewHeight < 40) return result;
         double fontSize = Math.Clamp(44 * zoom, 22, 32);
         foreach (var card in cards.OrderByDescending(c => c.Priority))
@@ -27,9 +29,8 @@ internal static class PlaceholderLabelLayout
             if ((card.LabelOpacity ?? (zoom < WindowManager.OverviewLivePreviewZoom ? 1 : 0)) <= 0
                 || card.Opacity <= 0) continue;
             var b = card.Bounds;
-            double x = ((b.X - camX) * zoom - monitor.X) / dpiX;
-            double y = ((b.Y - camY) * zoom - monitor.Y) / dpiY;
-            double w = b.W * zoom / dpiX, h = b.H * zoom / dpiY;
+            var projected = view.WorldToDip(new CanvasRect(b.X, b.Y, b.W, b.H));
+            double x = projected.X, y = projected.Y, w = projected.Width, h = projected.Height;
             if (!WorkspaceGeometry.ValidBounds(b) || x >= viewWidth || y >= viewHeight || x + w <= 0 || y + h <= 0
                 || (!card.Priority && (w < 8 || h < 8))) continue;
             double width = Math.Min(viewWidth - 16, Math.Clamp(card.Title.Length * fontSize * .55 + 28, 130, 320));

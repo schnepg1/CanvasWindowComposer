@@ -6,6 +6,20 @@ namespace CanvasDesktop.Tests;
 
 public class OverviewInputsTests
 {
+    [Fact]
+    public void GlobalEscapeCancelsPendingInteractionBeforeClosingOverview()
+    {
+        var h = new Harness();
+        h.Overview.TransitionTo(OverviewMode.Zooming);
+        h.Overview.PendingInteraction = true;
+        h.Input.RaiseEscPressed();
+        Assert.Equal(1, h.Overview.EscapeCalls);
+        Assert.False(h.Overview.PendingInteraction);
+        Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
+        h.Input.RaiseEscPressed();
+        Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode);
+    }
+
     private sealed class Harness
     {
         public Canvas Canvas = new();

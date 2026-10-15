@@ -27,6 +27,22 @@ internal sealed class FakeOverviewController : IOverviewController
     public int ReleaseInertiaCalls;
     public List<(int dx, int dy)> RecordedDeltas = new();
     public List<OverviewMode> Transitions = new();
+    public bool PendingInteraction;
+    public int EscapeCalls, CancelInteractionCalls;
+
+    public bool CancelInteraction()
+    {
+        CancelInteractionCalls++;
+        bool pending = PendingInteraction;
+        PendingInteraction = false;
+        return pending;
+    }
+
+    public void HandleEscape()
+    {
+        EscapeCalls++;
+        if (CurrentMode == OverviewMode.Zooming && !CancelInteraction()) TransitionTo(OverviewMode.Hidden);
+    }
 
     public IReadOnlyList<IntPtr> MonitorHandles { get { return Monitors; } }
 
