@@ -39,10 +39,13 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
                 else dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(245,28,34,46)),pen,rect,6,6);
                 if(!string.IsNullOrEmpty(item.Text) && rect.Width>16 && rect.Height>16)
                 {
+                    var textRect = item.Kind == AnnotationKind.Ellipse
+                        ? new Rect(rect.X + rect.Width * .15, rect.Y + rect.Height * .15, rect.Width * .7, rect.Height * .7)
+                        : rect;
                     var text=context.Text(item.Text,Math.Max(.5,18*context.View.Zoom/context.Dpi.DpiScaleX),brush);
-                    text.MaxTextWidth=Math.Max(1,rect.Width-16); text.MaxTextHeight=Math.Max(1,rect.Height-16);
+                    text.MaxTextWidth=Math.Max(1,textRect.Width-16); text.MaxTextHeight=Math.Max(1,textRect.Height-16);
                     text.Trimming=TextTrimming.CharacterEllipsis;
-                    dc.PushClip(new RectangleGeometry(rect)); dc.DrawText(text,new Point(rect.X+8,rect.Y+8)); dc.Pop();
+                    dc.PushClip(new RectangleGeometry(textRect)); dc.DrawText(text,new Point(textRect.X+8,textRect.Y+8)); dc.Pop();
                 }
             }
             if(tool.Mode!=AnnotationMode.Navigate && item.Id==tool.SelectedId)

@@ -53,6 +53,13 @@ public class CanvasComposerOverviewTests
             window.GenerateButton.PerformClick();PumpUntil(()=>!window.Busy);
             Assert.Empty(overview.Annotations!.Items);Assert.True(window.ApplyButton.Enabled);
             Assert.Empty(provider.Received!.SharedAnnotations);Assert.True(overview.CanvasInputSuspended);
+            if (Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is {} workspace)
+            {
+                string artifacts = Path.Combine(workspace, "TestResults"); Directory.CreateDirectory(artifacts);
+                using var bitmap = new System.Drawing.Bitmap(window.Width,window.Height);
+                window.DrawToBitmap(bitmap,new System.Drawing.Rectangle(0,0,window.Width,window.Height));
+                bitmap.Save(Path.Combine(artifacts,"ai-composer-preview.png"),System.Drawing.Imaging.ImageFormat.Png);
+            }
             window.ApplyButton.PerformClick();Assert.Equal(3,overview.Annotations.Items.Count);
             Assert.False(window.ApplyButton.Enabled);Assert.True(overview.Annotations.Undo(desktops.CurrentDesktopId));Assert.Empty(overview.Annotations.Items);
             Assert.False(overview.Annotations.Undo(desktops.CurrentDesktopId));
