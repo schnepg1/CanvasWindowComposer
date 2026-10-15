@@ -15,9 +15,9 @@ public class WorkspaceViewTests
     public void StartupTitleRendersInScreenSpaceAndClearsWhenTheIntroEnds(double scale)
         => OnSta(() =>
         {
-            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
-            drawing.Update([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false,
-                new StartupIntroFrame(0, 0, .4, 1, 2, 1, false), true);
+            var drawing = new OverviewAnnotationSurface();
+            drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false,
+                new StartupIntroFrame(0, 0, .4, 1, 2, 1, false), true));
             drawing.Measure(new Size(800, 500)); drawing.Arrange(new Rect(0, 0, 800, 500));
             byte[] Pixels(bool saveFrame = false)
             {
@@ -39,7 +39,7 @@ public class WorkspaceViewTests
                 return pixels;
             }
             Assert.Contains(Pixels(saveFrame: true), value => value > 0);
-            drawing.Update([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false);
+            drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false));
             Assert.False(Pixels().Any(value => value != 0), "Title pixels remained after processing the cleared layout.");
         });
 
@@ -47,11 +47,11 @@ public class WorkspaceViewTests
     public void FadingCardUsesCurrentGeometryClippingAndOneTitleAboveTheOldThreshold()
         => OnSta(() =>
         {
-            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
-            drawing.Update([], 0, 0, 1, new System.Drawing.Rectangle(0, 0, 400, 300), null, false, null,
+            var drawing = new OverviewAnnotationSurface();
+            drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, 1, new System.Drawing.Rectangle(0, 0, 400, 300), null, false, null,
                 [new PlaceholderAnnotation((IntPtr)42, "Project", new WorldRect { X = 100, Y = 100, W = 200, H = 150 },
                     Occluders: [new WorldRect { X = 250, Y = 100, W = 50, H = 150 }],
-                    Opacity: .5, ImageOpacity: 0, LabelOpacity: 1)], false);
+                    Opacity: .5, ImageOpacity: 0, LabelOpacity: 1)], false));
             drawing.Measure(new Size(400, 300)); drawing.Arrange(new Rect(0, 0, 400, 300));
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(400, 300, 96, 96,
                 System.Windows.Media.PixelFormats.Pbgra32);
@@ -67,9 +67,9 @@ public class WorkspaceViewTests
     {
         OnSta(() =>
         {
-            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
-            drawing.Update([], 0, 0, .25, new System.Drawing.Rectangle(0, 0, 400, 300), null, false, null,
-                [new PlaceholderAnnotation((IntPtr)42, "Project", new WorldRect { X = 400, Y = 400, W = 800, H = 600 })], false);
+            var drawing = new OverviewAnnotationSurface();
+            drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, .25, new System.Drawing.Rectangle(0, 0, 400, 300), null, false, null,
+                [new PlaceholderAnnotation((IntPtr)42, "Project", new WorldRect { X = 400, Y = 400, W = 800, H = 600 })], false));
             drawing.Measure(new Size(400, 300)); drawing.Arrange(new Rect(0, 0, 400, 300));
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(400, 300, 96, 96,
                 System.Windows.Media.PixelFormats.Pbgra32);
@@ -144,10 +144,10 @@ public class WorkspaceViewTests
             var commands = new TestCommands();
             using var form = new PlaceholderForm(commands, commands.Items[0]);
             form.ShowAt(new WindowRect(-10000, -10000, 800, 550));
-            var drawing = new ZoneAnnotationWindow.ZoneDrawing();
-            drawing.Update([], 0, 0, 1, new System.Drawing.Rectangle(0, 0, 300, 300), null, false, null,
+            var drawing = new OverviewAnnotationSurface();
+            drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, 1, new System.Drawing.Rectangle(0, 0, 300, 300), null, false, null,
                 [new PlaceholderAnnotation(form.Handle, "Notes", new WorldRect { X = 100, Y = 100, W = 100, H = 100 },
-                    Image: form.GetOverviewImage(), Occluders: [new WorldRect { X = 150, Y = 100, W = 50, H = 100 }])], false);
+                    Image: form.GetOverviewImage(), Occluders: [new WorldRect { X = 150, Y = 100, W = 50, H = 100 }])], false));
             drawing.Measure(new Size(300, 300)); drawing.Arrange(new Rect(0, 0, 300, 300));
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(300, 300, 96, 96,
                 System.Windows.Media.PixelFormats.Pbgra32);

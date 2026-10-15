@@ -74,7 +74,8 @@ internal sealed class OverviewCamera
     /// <summary>World coordinates corresponding to a virtual-screen pixel.</summary>
     public (double x, double y) WorldFromVirtual(int virtualX, int virtualY)
     {
-        return (virtualX / Zoom + X, virtualY / Zoom + Y);
+        var world = new CanvasViewTransform(X, Y, Zoom, default).VirtualToWorld(new(virtualX, virtualY));
+        return (world.X, world.Y);
     }
 
     /// <summary>

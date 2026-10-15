@@ -1,0 +1,83 @@
+# Canvas view module and future drawing tools
+
+The canvas view now has a UI-neutral module in
+`Modules/CanvasView/CanvasDesktop.CanvasView.csproj` targeting `net10.0`.
+It has no package, WinForms, WPF, Win32 or application dependency.
+The application references the module; dependencies do not point back into the
+executable. This refactor prepares drawing support without adding arrows or notes.
+
+## Current boundaries
+
+| Component | Responsibility |
+| --- | --- |
+| `CanvasViewTransform` | Floating-point world, virtual-screen, monitor-local physical pixel and DIP conversion. Shared by input, layout and painting; separate from native window placement rules. |
+| `ICanvasTool` / `CanvasPointer` | Tool interaction with normalized button, modifier, surface and world-coordinate data. No UI event arguments or native handles. |
+| `CanvasToolController` | Exclusive tool/window/pan gesture ownership, initiating surface/button, cancellation and clearing ownership before commit callbacks. |
+| `ZoneCanvasTool` | Adapts the existing pure draw/move/resize engine to the tool contract, with detached zone/member data and commit events. No forms or service dependencies. |
+| `OverviewManager.Tools` | WinForms conversion, native capture, selected tool/layer attachment and common Escape policy. |
+| `OverviewAnnotationSurface` | Explicit painting order: placeholder cards/labels, areas, attached drawing layers, then HUD. |
+| Annotation painters / snapshot | WPF rendering and hit-layout data, independent of native window ownership. Existing DWM thumbnail and grid lifecycles remain in the overview host. |
+
+The host can attach a tool and its WPF layers with `SetCanvasTool`. Passing null
+restores the project-area tool. Beginning a new project area restores that tool
+explicitly. Pointer updates refresh the scene using the cached card snapshot,
+without rebuilding card transitions and occluders for each preview movement.
+Hidden/disposed overviews clear the cached image references.
+
+Tools get first opportunity to consume pointer-down. A consumed gesture keeps its
+initiating surface and button until completion or cancellation; other buttons
+cannot start a competing pan/window drag. The host alone acquires/releases
+native capture. Capture loss, overview exit, tool switching, display rebuild and
+desktop switching cancel pending gestures. A first Escape cancels an armed/active
+interaction; another closes the overview. Global hotkey and form events use the
+same operation. Wheel and keyboard camera navigation are blocked during a gesture;
+external camera changes cancel it before replacing the transform.
+
+## Recommended feature stack
+
+Continue with **C#/.NET 10**, the new **UI-neutral canvas-view module**, and
+**WPF drawing layers** above the existing **DWM/D3D11** window view.
+This provides native Windows integration, vector arrows, text layout, per-monitor
+DPI support and a focused text editor using APIs already deployed in the app.
+A browser renderer or new UI framework would introduce another composition/input
+boundary without solving a current requirement.
+
+| Feature | Recommended implementation |
+| --- | --- |
+| Arrows, connectors and selection handles | Immutable world-space points/styles in the drawing domain; WPF `StreamGeometry`/`DrawingContext` painting through a drawing layer. Keep handles readable in DIPs. |
+| Text notes | Immutable note ID, desktop ID, world position/bounds, text and style. WPF `FormattedText` for display, a focused `TextBox` editor hosted by the Windows adapter for input/IME. |
+| Tool state and undo | C# command-based drawing document with one edit per completed gesture. Keep previews transient. Route undo by editing context initially; add a combined chronological history only if product behavior requires it. |
+| Persistence | Versioned `System.Text.Json` drawing data through a host adapter, reusing the existing atomic-save/backup/error approach. Define migration and finite-coordinate/text/point-count limits before enabling saves. |
+| Window-attached connectors | Stable workspace item IDs and a bounds adapter; never persistent HWND identities. Define closed-app/placeholder and desktop-switch behavior. |
+| Testing | xUnit for geometry/tools/document/history, WPF offscreen rendering for layers, and Windows native tests/smoke checks for capture, focus, IME and DWM ordering. |
+
+The future drawing domain should own drawing IDs, geometry, styles and desktop
+scope independently of `Canvas.Windows`, `WorldRect` window state and workspace
+matching. Put its headless code beside or within the neutral module. WPF painters
+and editor adapters stay in the Windows host; extract a Windows presentation
+project only when it has enough independent functionality to justify one.
+
+For a first feature PR, implement free-positioned arrows, then text-note display
+and editing. Suspend overview shortcuts while an editor owns focus and handle
+Escape inside editing before closing the view. Decide explicitly whether annotations
+are visible only in interactive overview or also over the live desktop: the
+current annotations hide with the overview and panning remains click-through.
+
+Use retained `DrawingVisual` layers and viewport culling if measurements justify
+them for larger documents. Consider SkiaSharp only if profiling identifies a WPF
+rendering limitation or a cross-platform product requirement emerges. Neither
+SkiaSharp nor a spatial index is required to start with arrows and text notes.
+
+## Verification
+
+The existing project-area geometry/history and placeholder pixel/occlusion tests
+are retained. New checks cover the standalone assembly dependency boundary,
+fractional geometry, negative monitor origins, mixed per-axis DPI, exclusive
+gesture ownership, secondary buttons, stale releases, cancellation, reentrant and
+failed commits, tool switching, desktop cancellation, real overview Escape routing,
+layer ordering/detachment and detached scene collections.
+
+Run the existing locked restore, Release build, tests and publish workflow on
+Windows. Native capture across physical monitors, mixed-DPI display changes,
+physical Escape hotkeys and future text IME behavior still merit manual hardware
+smoke checks; offscreen rendering does not verify those interactions.

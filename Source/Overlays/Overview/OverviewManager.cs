@@ -86,9 +86,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private volatile bool _disposed;
 
     // Pan/drag state (virtual-screen coords)
-    private bool _panning;
     private int _panStartVx, _panStartVy;
-    private bool _draggingWindow;
     private int _dragIndex = -1;
     private int _dragStartVx, _dragStartVy;
     private void ReconcileVisuals()
@@ -135,6 +133,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _input = input;
         _screens = screens ?? WinFormsScreens.Instance;
         _camera = new OverviewCamera(_screens);
+        _zoneTool = new ZoneCanvasTool(() => _zones != null,
+            () => _zones?.Items ?? Array.Empty<ZoneView>(), ZoneMoveMembers);
+        _zoneTool.Completed += OnZoneToolCompleted;
+        _tools.SetTool(_zoneTool);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
             _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows,
@@ -218,6 +220,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         foreach (var screen in Screen.AllScreens)
         {
             var pass = new OverviewOverlay(screen);
+            pass.SetDrawingLayers(_drawingLayers);
             pass.OnKey = HandleKeyDown;
             pass.OnMouseButtonDown = HandleMouseDown;
             pass.OnMouseMoved = HandleMouseMove;
@@ -226,9 +229,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             pass.OnMouseDoubleClicked = HandleDoubleClick;
             pass.OnCaptureLost = _ =>
             {
-                if (!_zoneGesture.Active) return;
-                CancelZoneDrawing();
-                RefreshZoneAnnotations();
+                if (_tools.CapturedSurface != _passes.IndexOf(pass)) return;
+                CancelInteraction();
             };
             _passes.Add(pass);
         }
@@ -310,6 +312,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (IsStartupIntroActive) { CancelStartupIntro(); return; }
         if (CurrentMode == OverviewMode.Hidden) return;
+        CancelInteraction();
         _camera.SyncFrom(_mainCanvas);
 
         foreach (var p in _passes)
@@ -381,7 +384,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         _previewRefreshQueued = false;
         ClearCardTransitions();
-        CancelZoneDrawing();
+        CancelInteraction();
+        _annotationCards = Array.Empty<PlaceholderAnnotation>();
         foreach (var p in _passes) p.HideZones();
         foreach (var p in _passes)
         {
@@ -426,7 +430,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         // holds foreground itself so it doesn't need the layered cost.
         if (CurrentMode != OverviewMode.Zooming)
         {
-            CancelZoneDrawing();
+            CancelInteraction();
             foreach (var p in _passes) p.HideZones();
         }
         bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
@@ -585,16 +589,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         if (e.KeyCode == Keys.Escape)
         {
-            if (_zoneGesture.Active || _zoneGesture.Armed)
-            {
-                CancelZoneDrawing(); RefreshZoneAnnotations(); e.Handled = true; return;
-            }
-            TransitionTo(OverviewMode.Hidden);
+            HandleEscape();
             e.Handled = true;
             return;
         }
 
         if (HandleZoneKey(e)) return;
+        if (_tools.Active) { e.Handled = true; return; }
         if (_windows.Count == 0) return;
 
         if (e.KeyCode == Keys.Right || e.KeyCode == Keys.Down)
@@ -643,7 +644,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
-        if (TryBeginZoneGesture(pass, e, vx, vy)) return;
+        var pointer = Pointer(pass, e);
+        if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
         if (e.Button == MouseButtons.Left)
         {
             var (wx, wy) = _camera.WorldFromVirtual(vx, vy);
@@ -651,20 +653,23 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (hit >= 0)
             {
                 BringWindowToFront(hit);
-                _draggingWindow = true;
+                _tools.TryBeginNavigation(CanvasInteractionKind.Window, pointer);
+                ApplyPointerCapture();
                 _dragIndex = 0;
                 _dragStartVx = vx;
                 _dragStartVy = vy;
                 return;
             }
 
-            _panning = true;
+            _tools.TryBeginNavigation(CanvasInteractionKind.Pan, pointer);
+            ApplyPointerCapture();
             _panStartVx = vx;
             _panStartVy = vy;
         }
         else if (e.Button == MouseButtons.Middle)
         {
-            _panning = true;
+            _tools.TryBeginNavigation(CanvasInteractionKind.Pan, pointer);
+            ApplyPointerCapture();
             _panStartVx = vx;
             _panStartVy = vy;
         }
@@ -677,13 +682,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
-        if (_zoneGesture.Active)
-        {
-            var end = _camera.WorldFromVirtual(vx, vy);
-            _zoneGesture.Update(end.x, end.y);
-            RefreshZoneAnnotations();
-            return;
-        }
+        var pointer = Pointer(pass, e);
+        if (_tools.MoveTool(pointer)) { RefreshToolPreview(); return; }
+        if (_tools.Active && !_tools.OwnsSurface(pointer.SurfaceId)) return;
         var hoverWorld = _camera.WorldFromVirtual(vx, vy);
         int hoverIndex = HitOverviewWindow(pass, e.X, e.Y, hoverWorld.x, hoverWorld.y);
         var hovered = hoverIndex >= 0 && _placeholderTitles.ContainsKey(_windows.Windows[hoverIndex].HWnd)
@@ -693,11 +694,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _hoveredPlaceholder = hovered;
             RefreshZoneAnnotations();
         }
-        var corner = HitZoneCorner(pass, e.X, e.Y);
-        pass.Cursor = corner is { } c
-            ? c.Corner is ZoneResizeCorner.TopLeft or ZoneResizeCorner.BottomRight ? Cursors.SizeNWSE : Cursors.SizeNESW
-            : Cursors.Default;
-        if (_draggingWindow && _dragIndex >= 0 && _dragIndex < _windows.Count)
+        pass.Cursor = _tools.CursorAt(pointer) switch
+        {
+            CanvasCursor.Crosshair => Cursors.Cross,
+            CanvasCursor.ResizeNorthWestSouthEast => Cursors.SizeNWSE,
+            CanvasCursor.ResizeNorthEastSouthWest => Cursors.SizeNESW,
+            _ => Cursors.Default
+        };
+        if (_tools.Kind == CanvasInteractionKind.Window && _dragIndex >= 0 && _dragIndex < _windows.Count)
         {
             double dx = (vx - _dragStartVx) / _camera.Zoom;
             double dy = (vy - _dragStartVy) / _camera.Zoom;
@@ -711,7 +715,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
             ReconcileVisuals();
         }
-        else if (_panning)
+        else if (_tools.Kind == CanvasInteractionKind.Pan)
         {
             int dx = vx - _panStartVx;
             int dy = vy - _panStartVy;
@@ -735,20 +739,26 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
         if (TrySkipStartupIntro()) return;
-        if (CompleteZoneGesture(pass, e)) return;
-        if (_draggingWindow)
+        var pointer = Pointer(pass, e);
+        if (_tools.Kind == CanvasInteractionKind.Tool)
+        {
+            try { _tools.CompleteTool(pointer); }
+            finally { ApplyPointerCapture(); RefreshToolPreview(); }
+            return;
+        }
+        var ended = _tools.EndNavigation(pointer);
+        ApplyPointerCapture();
+        if (ended == CanvasInteractionKind.Window)
         {
             _wm.Reproject(true);
-            _draggingWindow = false;
             _dragIndex = -1;
         }
-        _panning = false;
     }
 
     private void HandleMouseWheel(OverviewOverlay pass, MouseEventArgs e)
     {
         if (TrySkipStartupIntro()) return;
-        if (!_cfg.InputEnabled || _zoneGesture.Active) return;
+        if (!_cfg.InputEnabled || _tools.Active) return;
 
         double notches = e.Delta / MouseWheelDeltaPerNotch;
         int vx = e.X + pass.OriginX;
@@ -767,7 +777,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
-        if (e.Button != MouseButtons.Left || _zoneGesture.Armed || _zoneGesture.Active || (Control.ModifierKeys & Keys.Shift) != 0) return;
+        if (e.Button != MouseButtons.Left || _tools.ToolHasPendingInteraction || (Control.ModifierKeys & Keys.Shift) != 0) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -817,6 +827,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (CurrentMode != OverviewMode.Hidden)
                 TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
         });
+        Attempt(CancelInteraction);
+        _annotationCards = Array.Empty<PlaceholderAnnotation>();
+        _zoneTool.Completed -= OnZoneToolCompleted;
         Attempt(ClearCardTransitions);
         Attempt(() => _cardAnimationTimer?.Dispose());
         Attempt(_inputs.Dispose);

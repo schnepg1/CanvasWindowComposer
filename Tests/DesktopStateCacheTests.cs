@@ -60,10 +60,13 @@ public class DesktopStateCacheTests
     public void Switch_CancelsOverviewInertia()
     {
         var h = new Harness(initialDesktop: GuidA);
+        h.Overview.PendingInteraction = true;
 
         h.Vds.SwitchTo(GuidB);
 
         Assert.Equal(1, h.Overview.CancelInertiaCalls);
+        Assert.Equal(1, h.Overview.CancelInteractionCalls);
+        Assert.False(h.Overview.PendingInteraction);
     }
 
     [Fact]

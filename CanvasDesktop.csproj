@@ -29,6 +29,7 @@
   <ItemGroup>
     <Compile Remove="Tests\**" />
     <Compile Remove="Tools\**" />
+    <Compile Remove="Modules\**" />
     <Content Include="icon.ico" />
   </ItemGroup>
 
@@ -48,6 +49,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="Modules\CanvasView\CanvasDesktop.CanvasView.csproj" />
     <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.360">

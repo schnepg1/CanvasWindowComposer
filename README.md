@@ -89,6 +89,8 @@ Development boundaries and refactor validation are documented in
 [workspace architecture](Docs/workspace-architecture.md).
 Startup rollback and shutdown ownership are covered in
 [lifecycle refactor notes](Docs/lifecycle-refactor.md).
+Canvas tool hosting, annotation layers, and the recommended stack for future
+arrows and text notes are described in [canvas view tools](Docs/canvas-view-tools.md).
 
 Duplicate-window matching now keeps uncertain saved places as placeholders, with
 manual linking and optional names. VS Code can reopen separate project targets;

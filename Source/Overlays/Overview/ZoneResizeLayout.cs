@@ -11,10 +11,16 @@ internal static class ZoneResizeLayout
 {
     public static IReadOnlyList<ZoneResizeHandle> Get(WorldRect bounds, double camX, double camY,
         double zoom, ScreenRect monitor, double dpiX, double dpiY, bool hitTarget = false)
+        => Get(bounds, new CanvasViewTransform(camX, camY, zoom,
+            new(monitor.X, monitor.Y, monitor.Width, monitor.Height), dpiX, dpiY), hitTarget);
+
+    public static IReadOnlyList<ZoneResizeHandle> Get(WorldRect bounds, CanvasViewTransform view, bool hitTarget = false)
     {
         var handles = new List<ZoneResizeHandle>(4);
-        double x = (bounds.X - camX) * zoom - monitor.X, y = (bounds.Y - camY) * zoom - monitor.Y;
-        double w = bounds.W * zoom, h = bounds.H * zoom;
+        var rect = view.WorldToLocal(new CanvasRect(bounds.X, bounds.Y, bounds.W, bounds.H));
+        double x = rect.X, y = rect.Y, w = rect.Width, h = rect.Height;
+        var monitor = view.Monitor;
+        double dpiX = view.DpiX, dpiY = view.DpiY;
         if (w < 24 * dpiX || h < 24 * dpiY) return handles;
         double size = hitTarget ? 18 : 8;
         void Add(ZoneResizeCorner corner, double cx, double cy)
