@@ -69,7 +69,7 @@ public class CanvasComposerTests
         var context=Context() with { Obstacles=[new(0,0,1000,1000)] };
         var preview=CanvasComposer.Prepare(context,Diagram()); var nodes=preview.Items.Where(a=>a.Kind!=AnnotationKind.Arrow).ToArray();
         Assert.All(nodes,a=>Assert.True(a.Bounds.X>1000 || a.Bounds.Y>1000));
-        var arrow=Assert.Single(preview.Items.Where(a=>a.Kind==AnnotationKind.Arrow));
+        var arrow=Assert.Single(preview.Items,a=>a.Kind==AnnotationKind.Arrow);
         Assert.Equal(nodes[0].Bounds.X+nodes[0].Bounds.Width,arrow.A.X,5);
         Assert.Equal(nodes[1].Bounds.X,arrow.B.X,5);
         var repeated=CanvasComposer.Prepare(context,Diagram());
