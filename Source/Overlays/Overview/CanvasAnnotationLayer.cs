@@ -5,13 +5,13 @@ using System.Windows.Media;
 
 namespace CanvasDesktop;
 
-internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible) : IOverviewAnnotationLayer
+internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null) : IOverviewAnnotationLayer
 {
     public void Draw(DrawingContext dc, OverviewAnnotationContext context)
     {
         if(!visible()) return;
         var preview=tool.Preview;
-        var items=document.Items.Where(a=>a.DesktopId==desktop() && a.Id!=preview?.Id).ToList();
+        var items=document.Items.Where(a=>a.DesktopId==desktop() && a.Id!=preview?.Id && hidden?.Invoke(a.Id) != true).ToList();
         if(preview!=null && preview.DesktopId==desktop()) items.Add(preview);
         foreach(var item in items)
         {
@@ -32,12 +32,12 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
                     dc.DrawLine(pen,b,b+delta*size+wing); dc.DrawLine(pen,b,b+delta*size-wing);
                 }
             }
-            else if(item.Kind==AnnotationKind.Rectangle) dc.DrawRectangle(null,pen,rect);
-            else if(item.Kind==AnnotationKind.Ellipse) dc.DrawEllipse(null,pen,new(rect.X+rect.Width/2,rect.Y+rect.Height/2),rect.Width/2,rect.Height/2);
             else
             {
-                dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(245,28,34,46)),pen,rect,6,6);
-                if(rect.Width>16 && rect.Height>16)
+                if(item.Kind==AnnotationKind.Rectangle) dc.DrawRectangle(null,pen,rect);
+                else if(item.Kind==AnnotationKind.Ellipse) dc.DrawEllipse(null,pen,new(rect.X+rect.Width/2,rect.Y+rect.Height/2),rect.Width/2,rect.Height/2);
+                else dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(245,28,34,46)),pen,rect,6,6);
+                if(!string.IsNullOrEmpty(item.Text) && rect.Width>16 && rect.Height>16)
                 {
                     var text=context.Text(item.Text,Math.Max(.5,18*context.View.Zoom/context.Dpi.DpiScaleX),brush);
                     text.MaxTextWidth=Math.Max(1,rect.Width-16); text.MaxTextHeight=Math.Max(1,rect.Height-16);

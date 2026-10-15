@@ -1,0 +1,103 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Windows.Forms;
+
+namespace CanvasDesktop;
+
+internal sealed partial class OverviewManager
+{
+    private static readonly HttpClient ComposerHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(3) };
+    private CanvasComposerWindow? _composerWindow;
+    private ComposerPreviewLayer? _composerLayer;
+    private readonly HashSet<Guid> _composerPreviewIds = [];
+    internal CanvasComposerWindow? ComposerWindow => _composerWindow;
+
+    private IReadOnlyList<CanvasAnnotation> CurrentComposerNotes() => _annotationDocument?.Items
+        .Where(a => a.DesktopId == _annotationDesktop() && a.Kind == AnnotationKind.Text).ToArray() ?? [];
+
+    internal void OpenCanvasComposer(ICanvasComposerProvider? provider = null, IComposerCredentials? credentials = null)
+    {
+        if (_disposed || _annotationDocument == null || CurrentMode != OverviewMode.Zooming) return;
+        if (_composerWindow != null) { _composerWindow.Activate(); return; }
+        Guid? selectedId = _annotationTool?.SelectedId;
+        SelectAnnotationMode(AnnotationMode.Navigate);
+        var owner = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
+        if (owner == null) return;
+        var form = new CanvasComposerWindow(provider ?? new OpenAiCanvasComposerProvider(ComposerHttp), credentials ?? new ComposerCredentials(),
+            BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId);
+        _composerWindow = form;
+        form.PreviewChanged += preview =>
+        {
+            _composerPreviewIds.Clear();
+            if (preview != null) foreach (var item in preview.Items) _composerPreviewIds.Add(item.Id);
+            _composerLayer?.SetPreview(preview);
+            if (preview != null) FrameComposerPreview(preview);
+            RefreshToolPreview();
+        };
+        form.Dismissed += () => { CancelCanvasComposer(); RefreshToolPreview(); FocusOverview(); };
+        var area = owner.Screen.WorkingArea;
+        form.Size = new(Math.Min(form.Width, area.Width), Math.Min(form.Height, area.Height - 80));
+        form.Location = new(area.Right - form.Width - 12, area.Top + 24);
+        form.Show(owner); form.Activate();
+    }
+    private ComposerContext BuildComposerContext(IReadOnlyList<CanvasAnnotation> shared)
+    {
+        if (_annotationDocument == null || shared.Count > CanvasComposer.MaximumContextItems
+            || shared.Sum(a => a.Text.Length) > CanvasComposer.MaximumContextCharacters)
+            throw new ArgumentException("Share up to 20 notes and 32,000 characters.");
+        var desktop = _annotationDesktop();
+        foreach (var item in shared)
+            if (item.DesktopId != desktop || item.Kind != AnnotationKind.Text || !_annotationDocument.Items.Contains(item))
+                throw new InvalidOperationException("A shared note changed. Reopen the composer and try again.");
+        var primary = _screens.PrimaryWorkingArea;
+        var anchor = _camera.WorldFromVirtual(primary.X + 80, primary.Y + 100);
+        var obstacles = _annotationDocument.Items.Where(a => a.DesktopId == desktop).Select(a => a.Bounds)
+            .Concat(_windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H))).ToArray();
+        return new(desktop, _annotationDocument.Revision, new(anchor.x, anchor.y), shared.ToArray(), obstacles);
+    }
+    private string ApplyComposerPreview(ComposerPreview preview)
+    {
+        if (_annotationDocument == null || _annotationDesktop() != preview.Desktop || CurrentMode != OverviewMode.Zooming)
+            throw new InvalidOperationException("The desktop changed. Generate a fresh preview.");
+        _annotationDocument.ApplyBatch(preview.Revision, preview.Desktop, preview.Items);
+        return _annotationStore?.Status is {} warning ? "Applied in memory. " + warning : "Applied to canvas. Undo restores the entire previous state.";
+    }
+    private void FrameComposerPreview(ComposerPreview preview)
+    {
+        if (preview.Items.Count == 0) return;
+        double left = preview.Items.Min(a => a.Bounds.X), top = preview.Items.Min(a => a.Bounds.Y);
+        double width = Math.Max(100, preview.Items.Max(a => a.Bounds.X + a.Bounds.Width) - left);
+        double height = Math.Max(100, preview.Items.Max(a => a.Bounds.Y + a.Bounds.Height) - top);
+        var screen = _screens.PrimaryWorkingArea;
+        double availableWidth = Math.Max(300, screen.Width - (_composerWindow?.Width ?? 0) - 60);
+        double zoom = Math.Clamp(Math.Min(availableWidth / width, (screen.Height - 160) / height) * .85, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
+        _camera.SetTo(left + width / 2 - (screen.X + availableWidth / 2) / zoom,
+            top + height / 2 - (screen.Y + screen.Height / 2) / zoom, zoom);
+        _startupIntroLanded = false;
+        foreach (var pass in _passes) pass.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
+        ReconcileVisuals();
+    }
+    private bool CancelCanvasComposer()
+    {
+        if (_composerWindow is not {} form) return false;
+        _composerWindow = null; form.Dispose(); _composerLayer?.SetPreview(null); _composerPreviewIds.Clear(); return true;
+    }
+}
+
+internal sealed class ComposerPreviewLayer(Func<bool> visible) : IOverviewAnnotationLayer
+{
+    private CanvasAnnotationLayer? _layer;
+    public void SetPreview(ComposerPreview? preview)
+    {
+        if (preview == null) { _layer = null; return; }
+        var document = new AnnotationDocument(preview.Items);
+        _layer = new(document, new AnnotationCanvasTool(document, () => preview.Desktop), () => preview.Desktop, visible);
+    }
+    public void Draw(System.Windows.Media.DrawingContext dc, OverviewAnnotationContext context)
+    {
+        if (_layer == null || !visible()) return;
+        dc.PushOpacity(.6); _layer.Draw(dc, context); dc.Pop();
+    }
+}

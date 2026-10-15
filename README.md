@@ -145,3 +145,13 @@ shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edi
 while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
 editing. Drawings save automatically per virtual desktop and return after restart.
 See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
+
+### AI Canvas Composer
+
+Click **AI Compose** in overview to turn a prompt and explicitly checked notes into
+an editable diagram or text rewrite. Enter an OpenAI API key and a model ID that
+supports Structured Outputs; API usage is billed to your API account. Saving the
+key in Windows Credential Manager is optional. Inspect the translucent preview,
+then Apply or discard it. A complete proposal is one undo step. ChatGPT sign-in and
+ACP are planned as separate connections; this version uses API keys only.
+See [AI composer design and roadmap](Docs/ai-canvas-composer.md).
