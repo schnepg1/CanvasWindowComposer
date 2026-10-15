@@ -29,6 +29,7 @@ public class AnnotationPersistenceTests : IDisposable
     [InlineData("{broken")]
     [InlineData("{\"Version\":99,\"Items\":[]}")]
     [InlineData("{\"Version\":1,\"Items\":[null]}")]
+    [InlineData("{\"Version\":1,\"Items\":null}")]
     public void FailedLoadNeverOverwritesExistingData(string original)
     {
         Directory.CreateDirectory(_folder);File.WriteAllText(FilePath,original);var store=new AnnotationPersistence(FilePath);

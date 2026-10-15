@@ -22,7 +22,7 @@ internal sealed class AnnotationPersistence
     {
         _path=path;
         try { Document=Load(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or ArgumentException)
         {
             Document=new(); _canSave=false; Status="Annotations could not be loaded. Existing files are preserved: "+ex.Message;
         }
@@ -46,7 +46,7 @@ internal sealed class AnnotationPersistence
                 }
                 return document;
             }
-            catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException) { failure=ex; }
+            catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or ArgumentException) { failure=ex; }
         }
         if(failure!=null) throw new IOException("Could not read annotations or backup.",failure);
         return new();
@@ -64,7 +64,7 @@ internal sealed class AnnotationPersistence
             if(File.Exists(_path)) File.Replace(temp,_path,_path+".bak"); else File.Move(temp,_path);
             Status=null; return true;
         }
-        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or JsonException)
+        catch(Exception ex) when(ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException)
         { Status="Annotations could not be saved: "+ex.Message; return false; }
         finally { try { if(File.Exists(temp)) File.Delete(temp); } catch(IOException) { } catch(UnauthorizedAccessException) { } }
     }

@@ -15,7 +15,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     public bool HasPendingInteraction => _active;
     public CanvasAnnotation? Selected => document.Items.FirstOrDefault(a=>a.Id==SelectedId && a.DesktopId==desktop());
     public event Action<CanvasAnnotation>? EditTextRequested;
-    public void SetMode(AnnotationMode mode) { Cancel(); Mode=mode; }
+    public void SetMode(AnnotationMode mode) { Cancel(); Mode=mode; if (mode==AnnotationMode.Navigate) SelectedId=null; }
     public void ClearSelection() { Cancel(); SelectedId=null; }
     public void SetStyle(string color, double stroke)
     {

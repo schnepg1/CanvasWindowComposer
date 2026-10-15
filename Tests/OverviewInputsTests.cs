@@ -214,4 +214,29 @@ public class OverviewInputsTests
 
         Assert.Equal(1, h.Overview.SyncCameraCalls);
     }
+    [Fact]
+    public void AnnotationEditingDrainsGlobalInputAndDiscardsTheRestOfAnInterruptedDrag()
+    {
+        var h = new Harness();
+        h.Overview.TransitionTo(OverviewMode.Zooming);
+        h.Overview.CanvasInputSuspended = true;
+        h.Input.RaiseDragStarted();
+        h.Input.QueuePanAndRaise(30, 40);
+        h.Input.PendingZoom = true;
+        h.Input.RaiseInputAvailable();
+        h.Input.RaiseOverviewHotkey();
+        Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.Equal(0, h.Canvas.CamY);
+        Assert.Empty(h.Overview.RecordedDeltas);
+        h.Overview.CanvasInputSuspended = false;
+        h.Input.QueuePanAndRaise(5, 5); // Still part of the interrupted raw drag.
+        Assert.Equal(0, h.Canvas.CamX);
+        h.Input.PendingDragEnded = true;
+        h.Input.RaiseInputAvailable();
+        h.Input.QueuePanAndRaise(10, 20); // Next gesture is allowed.
+        Assert.Equal(-10, h.Canvas.CamX);
+        Assert.Equal(-20, h.Canvas.CamY);
+    }
+
 }
