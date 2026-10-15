@@ -159,7 +159,8 @@ internal sealed partial class OverviewManager
         foreach (var p in _passes)
             if (p.Visible) p.ShowAnnotations(OverviewAnnotationSnapshot.Create(zones, _camera.X, _camera.Y, _camera.Zoom, p.Screen.Bounds,
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
-                _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards, zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary));
+                _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards, zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, AnnotationHint));
+        RefreshAnnotationUi();
     }
 
     private bool HandleZoneKey(KeyEventArgs e)

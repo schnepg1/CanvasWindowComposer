@@ -1,0 +1,72 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace CanvasDesktop;
+
+internal sealed class AnnotationToolbar : Form
+{
+    private readonly Dictionary<AnnotationMode,ToolStripButton> _modes=[];
+    private readonly ToolStripLabel _status=new();
+    public event Action<AnnotationMode>? ModeRequested;
+    public event Action<string>? ColorRequested;
+    public event Action<double>? StrokeRequested;
+    public event Action? UndoRequested,RedoRequested,DeleteRequested,RetrySaveRequested;
+    protected override bool ShowWithoutActivation => true;
+    protected override CreateParams CreateParams { get { var cp=base.CreateParams; cp.ExStyle|=0x80; return cp; } }
+    public AnnotationToolbar()
+    {
+        FormBorderStyle=FormBorderStyle.None; ShowInTaskbar=false; TopMost=true; KeyPreview=true;
+        AutoScaleMode=AutoScaleMode.Dpi; AutoSize=true; AutoSizeMode=AutoSizeMode.GrowAndShrink;
+        StartPosition=FormStartPosition.Manual; BackColor=Color.FromArgb(28,34,46); Padding=new Padding(6);
+        var bar=new ToolStrip { Dock=DockStyle.None,GripStyle=ToolStripGripStyle.Hidden,BackColor=BackColor,ForeColor=Color.White,AutoSize=true };
+        Controls.Add(bar);
+        foreach(var mode in Enum.GetValues<AnnotationMode>())
+        {
+            var button=new ToolStripButton(mode==AnnotationMode.Navigate?"Windows":mode.ToString()) { DisplayStyle=ToolStripItemDisplayStyle.Text };
+            button.Click+=(_,_)=>ModeRequested?.Invoke(mode); _modes.Add(mode,button); bar.Items.Add(button);
+        }
+        bar.Items.Add(new ToolStripSeparator());
+        var colors=new ToolStripDropDownButton("Color");
+        foreach(var pair in new[]{("Gold","#FBBF24"),("White","#FFFFFF"),("Coral","#FB7185"),("Sky","#60A5FA"),("Mint","#34D399"),("Lilac","#C084FC")})
+            colors.DropDownItems.Add(pair.Item1,null,(_,_)=>ColorRequested?.Invoke(pair.Item2));
+        bar.Items.Add(colors);
+        var widths=new ToolStripDropDownButton("Stroke");
+        foreach(var width in new[]{1d,3d,6d}) widths.DropDownItems.Add(width.ToString(),null,(_,_)=>StrokeRequested?.Invoke(width));
+        bar.Items.Add(widths);
+        void Button(string title,Action action) => bar.Items.Add(title,null,(_,_)=>action());
+        Button("Undo",()=>UndoRequested?.Invoke()); Button("Redo",()=>RedoRequested?.Invoke()); Button("Delete",()=>DeleteRequested?.Invoke());
+        Button("Save",()=>RetrySaveRequested?.Invoke());
+        bar.Items.Add(_status);
+    }
+    public void UpdateState(AnnotationMode mode,string? status)
+    {
+        foreach(var pair in _modes) pair.Value.Checked=pair.Key==mode;
+        _status.Text=status is null?"":"Save / load warning"; _status.ToolTipText=status??"";
+    }
+}
+
+/// <summary>Separate focused editor; the passive drawing window remains click-through.</summary>
+internal sealed class AnnotationTextEditor : Form
+{
+    public TextBox Editor { get; } = new() { Multiline=true,AcceptsReturn=true,AcceptsTab=true,ScrollBars=ScrollBars.Vertical,
+        Dock=DockStyle.Fill,MaxLength=AnnotationDocument.MaximumTextLength,Font=new Font("Segoe UI",12),ImeMode=ImeMode.On };
+    public event Action<bool>? Finished;
+    public AnnotationTextEditor(string text)
+    {
+        Text="Canvas note — Ctrl+Enter to save, Esc to cancel"; ShowInTaskbar=false; TopMost=true;
+        StartPosition=FormStartPosition.Manual; FormBorderStyle=FormBorderStyle.SizableToolWindow;
+        MinimumSize=new Size(260,160); Size=new Size(380,220); KeyPreview=true;
+        Controls.Add(Editor); Editor.Text=text;
+        var save=new Button { Text="Save note · Ctrl+Enter",Dock=DockStyle.Bottom,Height=30 };
+        save.Click+=(_,_)=>Finished?.Invoke(true); Controls.Add(save);
+        KeyDown+=(_,e)=>
+        {
+            if(e.KeyCode==Keys.Escape || (e.Control && e.KeyCode==Keys.Enter))
+            { e.SuppressKeyPress=true; e.Handled=true; Finished?.Invoke(e.KeyCode==Keys.Enter); }
+        };
+        FormClosing+=(_,e)=> { if(e.CloseReason==CloseReason.UserClosing) { e.Cancel=true; Finished?.Invoke(false); } };
+        Shown+=(_,_)=> { Editor.Focus(); Editor.SelectionStart=Editor.TextLength; };
+    }
+}

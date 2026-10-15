@@ -75,6 +75,8 @@ internal sealed class TrayApp : ApplicationContext
             });
             _zoneUi = _lifecycle.Own(new ZoneUi(_workspace, _overview), ShutdownPhase.ReleaseUi, "Project area UI");
 
+            _overview.AttachAnnotations(_vds);
+
             // Constructed last so they can self-subscribe to canvas/input/desktops events.
             _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering), ShutdownPhase.ReleaseUi, "Minimap");
             _search = _lifecycle.Own(new SearchOverlay(_canvas, _wm, winApi, _input, _screens), ShutdownPhase.ReleaseUi, "Search overlay");

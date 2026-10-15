@@ -11,15 +11,15 @@ namespace CanvasDesktop;
 internal sealed record OverviewAnnotationSnapshot(
     IReadOnlyList<ZoneView> Zones, double CameraX, double CameraY, double Zoom, ScreenRect Screen,
     WorldRect? Preview, bool Drawing, IReadOnlyList<WorldRect> Ghosts,
-    IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle)
+    IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null)
 {
     public static OverviewAnnotationSnapshot Create(IReadOnlyList<ZoneView> zones,
         double x, double y, double zoom, System.Drawing.Rectangle screen, WorldRect? preview, bool drawing,
         IReadOnlyList<WorldRect>? ghosts = null, IReadOnlyList<PlaceholderAnnotation>? placeholders = null,
-        bool showHints = true, StartupIntroFrame? intro = null, bool showIntroTitle = false)
+        bool showHints = true, StartupIntroFrame? intro = null, bool showIntroTitle = false, string? toolHint = null)
         => new(zones.ToArray(), x, y, zoom, new(screen.X, screen.Y, screen.Width, screen.Height),
             preview, drawing, ghosts?.ToArray() ?? Array.Empty<WorldRect>(),
-            placeholders?.ToArray() ?? Array.Empty<PlaceholderAnnotation>(), showHints, intro, showIntroTitle);
+            placeholders?.ToArray() ?? Array.Empty<PlaceholderAnnotation>(), showHints, intro, showIntroTitle, toolHint);
 }
 
 internal readonly record struct OverviewAnnotationContext(
@@ -103,8 +103,8 @@ internal sealed class OverviewHudLayer : IOverviewAnnotationLayer
         if (context.Frame.Intro is { } intro && context.Frame.ShowIntroTitle)
             StartupIntroTitle.Draw(dc, context.Size, context.Dpi, intro);
         if (!context.Frame.ShowHints) return;
-        string hint = context.Frame.Drawing ? "Drag to mark a project area  ·  Esc to cancel"
-            : "Drag name: move group   Corners: resize   Ctrl+Z/Y: undo/redo   Z: areas   P: projects";
+        string hint = context.Frame.ToolHint ?? (context.Frame.Drawing ? "Drag to mark a project area  ·  Esc to cancel"
+            : "Drag name: move group   Corners: resize   Ctrl+Z/Y: undo/redo   Z: areas   P: projects");
         var text = context.Text(hint, 13, Brushes.White);
         dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(240, 23, 29, 41)), null,
             new Rect(20, 20, text.Width + 28, 36), 10, 10);
