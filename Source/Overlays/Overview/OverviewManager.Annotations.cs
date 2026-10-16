@@ -19,7 +19,7 @@ internal sealed partial class OverviewManager
     private AnnotationTextEditor? _annotationEditor;
     private long _annotationEditGeneration;
     private string? _annotationError;
-    public bool CanvasInputSuspended => _annotationEditor != null || (_annotationTool?.HasPendingInteraction == true);
+    public bool CanvasInputSuspended => _composerWindow != null || _annotationEditor != null || (_annotationTool?.HasPendingInteraction == true);
     internal AnnotationDocument? Annotations => _annotationDocument;
     internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
@@ -32,9 +32,10 @@ internal sealed partial class OverviewManager
         _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
         _annotationDocument=_annotationStore.Document;
         _annotationTool=new(_annotationDocument,_annotationDesktop);
-        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive);
+        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id));
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool);
-        _drawingLayers=[_annotationLayer];
+        _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
+        _drawingLayers=[_annotationLayer, _composerLayer];
         foreach(var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
         _tools.SetTool(_annotationRouter);
         _annotationDocument.Changed+=OnAnnotationsChanged;
@@ -43,7 +44,9 @@ internal sealed partial class OverviewManager
     }
     private void OnAnnotationsChanged()
     {
-        _annotationStore?.Save(); RefreshToolPreview();
+        _annotationStore?.Save();
+        _composerWindow?.CanvasChanged(CurrentComposerNotes());
+        RefreshToolPreview();
     }
     private void OnAnnotationDesktopChanged()
     {
@@ -80,6 +83,7 @@ internal sealed partial class OverviewManager
         {
             _annotationToolbar=new();
             _annotationToolbar.ModeRequested+=SelectAnnotationMode;
+            _annotationToolbar.ComposerRequested+=() => OpenCanvasComposer();
             _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);
             _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Selected?.Color ?? _annotationTool.Color,stroke);
             _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
@@ -115,11 +119,11 @@ internal sealed partial class OverviewManager
     }
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
-        if(_annotationEditor!=null) return true;
+        if(_annotationEditor!=null || _composerWindow!=null) return true;
         if(_annotationTool==null || _annotationTool.Mode==AnnotationMode.Navigate) return false;
         if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) AnnotationHistory(e.KeyCode==Keys.Y || e.Shift);
         else if(e.KeyCode==Keys.Delete || e.KeyCode==Keys.Back) DeleteAnnotation();
-        else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { Kind:AnnotationKind.Text } text) QueueAnnotationTextEdit(text);
+        else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { } text && text.Kind != AnnotationKind.Arrow && text.Text.Length > 0) QueueAnnotationTextEdit(text);
         else
         {
             // Annotation mode owns typing/navigation keys; project-area shortcuts stay in Windows mode.
@@ -167,6 +171,7 @@ internal sealed partial class OverviewManager
     }
     private void DisposeAnnotations()
     {
+        CancelCanvasComposer();
         CancelAnnotationEdit();
         if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
         if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;

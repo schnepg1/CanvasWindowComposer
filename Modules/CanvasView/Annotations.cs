@@ -17,6 +17,7 @@ public sealed class AnnotationDocument
     private readonly List<CanvasAnnotation> _items = [];
     private readonly Dictionary<Guid, (List<CanvasAnnotation[]> Undo, List<CanvasAnnotation[]> Redo)> _history = [];
     public IReadOnlyList<CanvasAnnotation> Items => _items.AsReadOnly();
+    public long Revision { get; private set; }
     public event Action? Changed;
     public AnnotationDocument(IEnumerable<CanvasAnnotation>? items = null)
     {
@@ -45,6 +46,24 @@ public sealed class AnnotationDocument
         if (!_history.TryGetValue(desktop, out var h)) _history[desktop] = h = ([], []);
         return h;
     }
+    private void NotifyChanged() { Revision++; Changed?.Invoke(); }
+
+    /// <summary>Validate the entire transaction before changing anything. One history step and notification.</summary>
+    public bool ApplyBatch(long expectedRevision, Guid desktop, IReadOnlyList<CanvasAnnotation> upserts)
+    {
+        if (expectedRevision != Revision) throw new InvalidOperationException("The canvas changed. Generate a fresh preview.");
+        var batch = upserts.ToArray();
+        Validate(batch);
+        if (batch.Any(a => a.DesktopId != desktop)) throw new ArgumentException("The edit belongs to another desktop.");
+        var ids = batch.Select(a => a.Id).ToHashSet();
+        if (_items.Any(a => ids.Contains(a.Id) && a.DesktopId != desktop)) throw new ArgumentException("Cannot change another desktop.");
+        var next = _items.Select(a => batch.FirstOrDefault(b => b.Id == a.Id) ?? a).ToList();
+        next.AddRange(batch.Where(a => !_items.Any(b => b.Id == a.Id)));
+        Validate(next);
+        if (_items.SequenceEqual(next)) return false;
+        Remember(desktop); _items.Clear(); _items.AddRange(next); NotifyChanged(); return true;
+    }
+
     public void Put(CanvasAnnotation item)
     {
         var index = _items.FindIndex(a => a.Id == item.Id);
@@ -53,12 +72,12 @@ public sealed class AnnotationDocument
         var next = _items.Where(a => a.Id != item.Id).Append(item).ToArray(); Validate(next);
         Remember(item.DesktopId);
         if (index < 0) _items.Add(item); else _items[index] = item;
-        Changed?.Invoke();
+        NotifyChanged();
     }
     public void Delete(Guid desktop, Guid id)
     {
         if (!_items.Any(a => a.Id == id && a.DesktopId == desktop)) return;
-        Remember(desktop); _items.RemoveAll(a => a.Id == id); Changed?.Invoke();
+        Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged();
     }
     private CanvasAnnotation[] Snapshot(Guid desktop) => _items.Where(a => a.DesktopId == desktop).ToArray();
     private void Remember(Guid desktop)
@@ -73,7 +92,7 @@ public sealed class AnnotationDocument
         var snapshot = from[^1];
         if (_items.Count(a => a.DesktopId != desktop) + snapshot.Length > MaximumItems) return false;
         to.Add(Snapshot(desktop)); from.RemoveAt(from.Count - 1);
-        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot); Changed?.Invoke(); return true;
+        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot); NotifyChanged(); return true;
     }
 }
 

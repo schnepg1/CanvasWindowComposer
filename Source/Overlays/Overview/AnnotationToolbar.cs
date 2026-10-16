@@ -12,7 +12,7 @@ internal sealed class AnnotationToolbar : Form
     public event Action<AnnotationMode>? ModeRequested;
     public event Action<string>? ColorRequested;
     public event Action<double>? StrokeRequested;
-    public event Action? UndoRequested,RedoRequested,DeleteRequested,RetrySaveRequested;
+    public event Action? UndoRequested,RedoRequested,DeleteRequested,RetrySaveRequested,ComposerRequested;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams { get { var cp=base.CreateParams; cp.ExStyle|=0x80; return cp; } }
     public AnnotationToolbar()
@@ -38,6 +38,7 @@ internal sealed class AnnotationToolbar : Form
         void Button(string title,Action action) => bar.Items.Add(title,null,(_,_)=>action());
         Button("Undo",()=>UndoRequested?.Invoke()); Button("Redo",()=>RedoRequested?.Invoke()); Button("Delete",()=>DeleteRequested?.Invoke());
         Button("Save",()=>RetrySaveRequested?.Invoke());
+        Button("AI Compose",()=>ComposerRequested?.Invoke());
         bar.Items.Add(_status);
     }
     public void UpdateState(AnnotationMode mode,string? status)

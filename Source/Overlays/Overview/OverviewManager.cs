@@ -644,7 +644,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
-        if (_annotationEditor != null) return;
+        if (_annotationEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
@@ -781,10 +781,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
+        if (_composerWindow != null) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
-                && annotationTool.Hit(Pointer(pass,e)) is { Kind: AnnotationKind.Text } note)
+                && annotationTool.Hit(Pointer(pass,e)) is { } note && note.Kind != AnnotationKind.Arrow && note.Text.Length > 0)
             {
                 CancelInteraction(); annotationTool.Select(note.Id); QueueAnnotationTextEdit(note);
             }
