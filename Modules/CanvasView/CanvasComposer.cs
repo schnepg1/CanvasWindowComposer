@@ -95,7 +95,12 @@ public static class CanvasComposer
         double width = positions.Values.Select(r => r.X + r.Width).DefaultIfEmpty(0).Max();
         double heightTotal = positions.Values.Select(r => r.Y + r.Height).DefaultIfEmpty(0).Max();
         // Existing annotations may occupy their old footprint; unrelated objects remain obstacles.
-        var obstacles=context.Obstacles.Where(r => !reused.Values.Any(a => a.Bounds==r)).ToArray();
+        var obstacles=context.Obstacles.ToList();
+        foreach(var existing in reused.Values)
+        {
+            int index=obstacles.IndexOf(existing.Bounds);
+            if(index>=0) obstacles.RemoveAt(index); // Consume only this annotation's footprint, preserving coincident neighbours.
+        }
         var origin = FindSpace(context.Anchor, width, heightTotal, obstacles);
         var nodes = new Dictionary<string, CanvasAnnotation>();
         foreach (var node in plan.Nodes)

@@ -49,7 +49,7 @@ internal sealed partial class OverviewManager
         static CanvasRect Rect(WorldRect b) => new(b.X,b.Y,b.W,b.H);
         if (_annotationDocument != null)
             result.AddRange(_annotationDocument.Items.Where(a => a.DesktopId == _annotationDesktop())
-                .Select(a => new CanvasSelectionItem(new(CanvasItemKind.Annotation,a.Id),a.Bounds,a.Text)));
+                .Select(a => new CanvasSelectionItem(new(CanvasItemKind.Annotation,a.Id),a.Bounds,a.Text,Annotation:a)));
         if (_placeholderWorkspace != null)
             result.AddRange(_placeholderWorkspace.Document.Items.Where(i => i.DesktopId == _annotationDesktop() && !i.Bounds.PinnedToScreen)
                 .Select(i => new CanvasSelectionItem(new(CanvasItemKind.Window,i.Id),Rect(i.Bounds),i.Name.Length>0?i.Name:i.Title)));

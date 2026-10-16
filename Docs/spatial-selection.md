@@ -1,6 +1,6 @@
 # Spatial selection and canvas transformations
 
-In canvas overview, choose **Select** to drag a selection rectangle on empty canvas. It selects intersecting windows/cards and annotations. Hold **Ctrl** while drawing to add to the selection. **Ctrl-click** toggles individual items in both Select and Windows modes. Clicking an already selected item keeps the group; dragging it moves the group. Middle-drag pans; Windows mode also retains left-drag panning on empty space.
+In canvas overview, choose **Select** to drag a selection rectangle on empty canvas. It selects intersecting windows/cards and the actual geometry of annotations, excluding empty corners around arrows and ellipses. Hold **Ctrl** while drawing to add to the selection. **Ctrl-click** toggles individual items in both Select and Windows modes. Clicking an already selected item keeps the group; dragging it moves the group. Middle-drag pans; Windows mode also retains left-drag panning on empty space.
 
 Click a **project name** to select its tile, explicitly assigned saved windows, and annotations/windows whose centers lie inside the tile. Explicit members remain part of that project even when they are outside its boundary. Overlapping neighbouring tiles are independent. A selection rectangle must enclose a whole project tile to select the tile and expand its contents; a small marquee inside a large tile selects just the local objects. This uses existing saved window membership plus current spatial placement, and does not silently rewrite saved project memberships.
 

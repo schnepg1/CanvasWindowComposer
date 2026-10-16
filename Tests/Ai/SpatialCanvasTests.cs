@@ -135,4 +135,27 @@ public class SpatialCanvasTests
         var preview=CanvasComposer.Prepare(context,new("Summary",[new("new","note","Summary","#FFFFFF")],[],[]));
         Assert.Equal(reference,Assert.Single(preview.References));Assert.NotEqual(reference.Id,Assert.Single(preview.Items).Id);
     }
+
+    [Theory]
+    [InlineData(AnnotationKind.Arrow)]
+    [InlineData(AnnotationKind.Ellipse)]
+    public void EmptyShapeBoundingCornersAreExcludedFromMarqueeAndProximity(AnnotationKind kind)
+    {
+        var annotation=new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),kind,new(0,0),new(1000,1000));
+        var item=new CanvasSelectionItem(new(CanvasItemKind.Annotation,annotation.Id),annotation.Bounds,Annotation:annotation);
+        var selection=new CanvasSelection();
+        selection.Rectangle(new(5,930,20,20),[item]);Assert.Empty(selection.Ids);
+        selection.Nearby(new(10,940),20,[item]);Assert.Empty(selection.Ids);
+        selection.Rectangle(new(450,450,100,100),[item]);Assert.Equal(item.Key,Assert.Single(selection.Ids));
+        selection.Nearby(new(500,500),10,[item]);Assert.Equal(item.Key,Assert.Single(selection.Ids));
+    }
+
+    [Fact]
+    public void LocalLayoutRetainsCoincidentUnselectedObstacles()
+    {
+        var desktop=Guid.NewGuid();var note=new CanvasAnnotation(Guid.NewGuid(),desktop,AnnotationKind.Text,new(0,0),new(300,160),Text:"Selected");
+        var context=new ComposerContext(desktop,0,new(0,0),[note],[note.Bounds,note.Bounds]);
+        var preview=CanvasComposer.Prepare(context,new("Arrange",[new(note.Id.ToString(),"note",note.Text,note.Color)],[],[]));
+        Assert.False(CanvasSelection.Intersects(note.Bounds,Assert.Single(preview.Items).Bounds));
+    }
 }
