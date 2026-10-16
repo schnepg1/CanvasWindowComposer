@@ -24,7 +24,7 @@ windows; AI proposals have no process, file, network-tool or window-movement pow
 
 Examples: "Create a three-step roadmap", "Turn these checked notes into a dependency
 diagram", "Rewrite the selected note into a concise checklist". The model is not
-given arbitrary app contents, screenshots, file paths or other desktop notes.
+given arbitrary app contents, screenshots, launch targets or unchecked desktop notes.
 
 ## Contracts and boundaries
 

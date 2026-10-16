@@ -152,7 +152,7 @@ Select windows, annotations and project tiles together with rectangle selection,
 
 ### AI Canvas Composer
 
-Click **AI Compose** in overview to turn a prompt and explicitly checked notes into
+Click **AI Compose** in overview to turn a prompt and explicitly checked canvas context into
 an editable diagram or text rewrite. Choose an **OpenAI API key** or **ChatGPT plan**.
 Continue with ChatGPT opens browser sign-in, then offers saved accounts and their
 available models. API-key usage is billed separately; the connection never changes

@@ -21,7 +21,7 @@ internal sealed partial class OverviewManager
         if (_disposed || _annotationDocument == null || CurrentMode != OverviewMode.Zooming) return;
         if (_composerWindow != null) { _composerWindow.Activate(); return; }
         var selected=Selection.Ids;
-        Guid? selectedId = _annotationTool?.SelectedId;
+        Guid? selectedId = selected.Count==0?_annotationTool?.SelectedId:null;
         SelectAnnotationMode(AnnotationMode.Navigate);
         var owner = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
         if (owner == null) return;

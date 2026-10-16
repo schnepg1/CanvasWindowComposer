@@ -60,6 +60,9 @@ internal sealed partial class OverviewManager
     {
         if(_annotationTool==null) return;
         CancelInteraction(); _zoneTool.Cancel(); _annotationTool.SetMode(mode); _annotationError=null;
+        if (mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) Selection.Clear();
+        else if (mode==AnnotationMode.Select && Selection.Ids.Count==1 && Selection.Ids.First().Kind==CanvasItemKind.Annotation)
+            _annotationTool.Select(Selection.Ids.First().Id);
         _tools.SetTool(_annotationRouter); RefreshToolPreview(); FocusOverview();
     }
     private void FocusOverview()
@@ -153,6 +156,7 @@ internal sealed partial class OverviewManager
     private void OpenAnnotationTextEdit(CanvasAnnotation item)
     {
         CancelAnnotationEdit();
+        if (_annotationDocument!.Items.Any(a=>a.Id==item.Id)) Selection.Replace([new(CanvasItemKind.Annotation,item.Id)]);
         _annotationTool?.Select(item.Id);
         var point=new Point((int)Math.Round((item.Bounds.X-_camera.X)*_camera.Zoom),(int)Math.Round((item.Bounds.Y-_camera.Y)*_camera.Zoom));
         var pass=_passes.FirstOrDefault(p=>p.Screen.Bounds.Contains(point))??_passes[0];
@@ -165,7 +169,7 @@ internal sealed partial class OverviewManager
             string text=editor.Editor.Text;
             if(save && !string.IsNullOrWhiteSpace(text) && item.DesktopId==_annotationDesktop())
             {
-                try { _annotationDocument!.Put(item with { Text=text }); _annotationTool?.Select(item.Id); }
+                try { _annotationDocument!.Put(item with { Text=text }); Selection.Replace([new(CanvasItemKind.Annotation,item.Id)]); _annotationTool?.Select(item.Id); }
                 catch(ArgumentException ex) { MessageBox.Show(editor,ex.Message,"Canvas note"); return; }
             }
             CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview();

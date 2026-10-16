@@ -62,6 +62,9 @@ public class AnnotationOverviewIntegrationTests
                 // The actual Save button uses the same callback as Ctrl+Enter.
                 var save=overview.AnnotationEditor.Controls.OfType<Button>().Single();save.PerformClick();
                 Assert.Equal("Saved note",Assert.Single(overview.Annotations.Items).Text);Assert.Null(overview.AnnotationEditor);
+                Assert.Equal(new CanvasItemId(CanvasItemKind.Annotation,overview.Annotations.Items[0].Id),Assert.Single(overview.Selection.Ids));
+                overview.SelectAnnotationMode(AnnotationMode.Navigate);overview.SelectAnnotationMode(AnnotationMode.Select);
+                Assert.Equal(overview.Annotations.Items[0].Id,overview.AnnotationTool!.SelectedId);
                 overview.TransitionTo(OverviewMode.Hidden);Assert.Null(overview.AnnotationEditor);
             }
             finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
