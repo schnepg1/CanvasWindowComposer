@@ -5,13 +5,6 @@ using System.Text;
 
 namespace CanvasDesktop;
 
-internal interface IComposerCredentials
-{
-    string? Read();
-    void Write(string apiKey);
-    void Delete();
-}
-
 /// <summary>OS credential storage; secrets never enter workspace JSON, logs, or source-controlled config.</summary>
 internal sealed class ComposerCredentials : IComposerCredentials
 {

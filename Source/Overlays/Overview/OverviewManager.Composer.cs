@@ -8,7 +8,6 @@ namespace CanvasDesktop;
 
 internal sealed partial class OverviewManager
 {
-    private static readonly HttpClient ComposerHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(3) };
     private CanvasComposerWindow? _composerWindow;
     private ComposerPreviewLayer? _composerLayer;
     private readonly HashSet<Guid> _composerPreviewIds = [];
@@ -17,7 +16,7 @@ internal sealed partial class OverviewManager
     private IReadOnlyList<CanvasAnnotation> CurrentComposerNotes() => _annotationDocument?.Items
         .Where(a => a.DesktopId == _annotationDesktop() && a.Kind == AnnotationKind.Text).ToArray() ?? [];
 
-    internal void OpenCanvasComposer(ICanvasComposerProvider? provider = null, IComposerCredentials? credentials = null)
+    internal void OpenCanvasComposer(ICanvasComposerProvider? provider = null, IComposerCredentials? credentials = null, IChatGptAccounts? accounts = null)
     {
         if (_disposed || _annotationDocument == null || CurrentMode != OverviewMode.Zooming) return;
         if (_composerWindow != null) { _composerWindow.Activate(); return; }
@@ -25,7 +24,7 @@ internal sealed partial class OverviewManager
         SelectAnnotationMode(AnnotationMode.Navigate);
         var owner = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
         if (owner == null) return;
-        var form = new CanvasComposerWindow(provider ?? new OpenAiCanvasComposerProvider(ComposerHttp), credentials ?? new ComposerCredentials(),
+        var form = new CanvasComposerWindow(key => provider ?? new OpenAiCanvasComposerProvider(AiServices.Http, key), credentials ?? new ComposerCredentials(), accounts ?? AiServices.Accounts,
             BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId);
         _composerWindow = form;
         form.PreviewChanged += preview =>

@@ -7,12 +7,15 @@ windows; AI proposals have no process, file, network-tool or window-movement pow
 ## User flow
 
 1. Open interactive overview and click **AI Compose** on the annotation toolbar.
-2. Enter an OpenAI API key and a model ID supporting Responses Structured Outputs.
-   Saving the key is optional and uses Windows Credential Manager. API usage is
-   charged to that API account, separately from a ChatGPT subscription.
+2. Choose **OpenAI API key** or **ChatGPT plan**. For API access, enter a key
+   and a model ID supporting Responses Structured Outputs; Refresh models can
+   populate choices. Saving the key is optional and uses Windows Credential Manager.
+   For ChatGPT, choose **Continue with ChatGPT**, authorize plan usage in the system
+   browser, then select an account-specific model. Manage usage opens ChatGPT settings.
+   See [AI connections](ai-connections.md) for account lifecycle and storage.
 3. Write a request. Check the specific notes to share. Nothing is selected by
    default except a note explicitly selected before opening the composer.
-4. Generate. The request runs asynchronously with cancellation and a two-minute
+4. Generate. The request runs asynchronously with cancellation and a three-minute
    timeout. The canvas remains unchanged. A completed, validated response becomes
    translucent, editable-object previews on the canvas, framed beside the panel.
 5. Apply to commit the proposal as one annotation-history step, or discard/refine
@@ -24,7 +27,8 @@ given arbitrary app contents, screenshots, file paths or other desktop notes.
 
 ## Contracts and boundaries
 
-- `ICanvasComposerProvider` returns a `ComposerPlan`, never executable instructions.
+- `ICanvasComposerProvider` in `Modules/Ai` owns a connection and returns a
+  `ComposerPlan`, never executable instructions. It takes no credentials from the canvas.
 - The OpenAI adapter posts to the fixed public Responses endpoint with a strict
   JSON schema and `store:false`. It does not execute tool calls or save prompts.
 - Semantic plan: nodes (note/rectangle/ellipse, text, color), graph edges, and
@@ -61,16 +65,17 @@ given arbitrary app contents, screenshots, file paths or other desktop notes.
 
 ## Connection roadmap
 
-Keep the proposal/preview/edit contract shared; authentication and transports are
-separate adapters. The first PR exposes API-key access only. It does not pretend
-that a ChatGPT subscription is an API key or that ACP provides model entitlement.
+The API-key and ChatGPT-plan adapters share the proposal/preview/edit contract.
+Authentication, protected credentials, model discovery and HTTP transport live
+behind `Modules/Ai` interfaces. The desktop host supplies Windows storage and UI.
+Neither connection grants access to ChatGPT conversations or arbitrary app contents.
+ChatGPT plan requests stream through completion and use locally supplied context;
+there is no automatic fallback between plan usage and separately billed API keys.
 
-**Next adapter: Sign in with ChatGPT.** Evaluate the official OSS/local OAuth flow,
-including explicit plan-usage consent, stable host identity, refresh/revocation,
-account-specific model catalog and usage controls. This is a separate integration
-from API keys: current plan-usage requests require streaming and local history and
-have a distinct set of supported parameters/tools. No existing ChatGPT conversation
-history is granted by signing in. Paid/hosted distribution needs its own access path.
+**Delivered next adapter: Sign in with ChatGPT.** The composer supports browser
+OAuth, saved account/workspace registrations, refresh rotation, sign-out and model
+selection. Real account eligibility and end-to-end sign-in still require a manual
+Windows smoke check. See [AI connections](ai-connections.md).
 
 **Then ACP.** Add an optional external-agent connection using a pinned compatible
 agent runtime. Map session, streaming, cancellation and permission events to the
