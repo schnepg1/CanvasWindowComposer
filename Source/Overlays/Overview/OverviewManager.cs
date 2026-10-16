@@ -596,6 +596,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
+        if (HandleCanvasHistoryKey(e)) return;
         if (HandleAnnotationKey(e)) return;
         if (HandleZoneKey(e)) return;
         if (_tools.Active) { e.Handled = true; return; }
@@ -833,7 +834,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _wm.AutomaticParkingChanged -= OnPreviewChanged;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         if (_zones != null) _zones.Changed -= RefreshZoneAnnotations;
-        if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+        if (_placeholderWorkspace != null)
+        {
+            _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+            _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
+        }
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(DisposeAnnotations);

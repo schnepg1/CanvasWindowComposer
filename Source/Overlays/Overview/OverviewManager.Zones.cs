@@ -16,9 +16,14 @@ internal sealed partial class OverviewManager
 
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {
-        if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+        if (_placeholderWorkspace != null)
+        {
+            _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+            _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
+        }
         _placeholderWorkspace = workspace;
         workspace.Changed += RefreshPlaceholderTitles;
+        workspace.ZoneLayoutRecorded += OnZoneLayoutRecorded;
         RefreshPlaceholderTitles();
     }
 

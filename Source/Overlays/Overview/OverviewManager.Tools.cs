@@ -59,7 +59,6 @@ internal sealed partial class OverviewManager
     private void OnZoneToolCompleted(ZoneGestureResult result)
     {
         ApplyPointerCapture();
-        _selectionHistoryActive=false;
         if (result.Kind == ZoneGestureKind.Draw) ZoneDrawn?.Invoke(result.Bounds);
         else if (result.Kind == ZoneGestureKind.Move) ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
         else if (result.Kind == ZoneGestureKind.Resize) ZoneResizeRequested?.Invoke(result.ZoneId, result.Bounds);

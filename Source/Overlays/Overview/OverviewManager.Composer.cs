@@ -71,7 +71,6 @@ internal sealed partial class OverviewManager
         if (preview.References.Any(r=>!CurrentComposerReferences().Contains(r)))
             throw new InvalidOperationException("A shared window or project changed. Generate a fresh preview.");
         _annotationDocument.ApplyBatch(preview.Revision, preview.Desktop, preview.Items);
-        _selectionHistoryActive=true;
         return _annotationStore?.Status is {} warning ? "Applied in memory. " + warning : "Applied to canvas. Undo restores the entire previous state.";
     }
     private void FrameComposerPreview(ComposerPreview preview)

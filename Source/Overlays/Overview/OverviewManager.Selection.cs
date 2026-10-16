@@ -13,12 +13,6 @@ internal sealed partial class OverviewManager
     private IReadOnlyList<CanvasSelectionItem> _selectionRenderItems=[];
     internal CanvasSelectionTool? SelectionTool => _selectionTool;
     private readonly Dictionary<IntPtr, (Guid Id, uint Pid)> _selectionWindows = [];
-    private readonly HashSet<Guid> _selectionHistoryDesktops=[];
-    private bool _selectionHistoryActive
-    {
-        get => _selectionHistoryDesktops.Contains(_annotationDesktop());
-        set { if(value) _selectionHistoryDesktops.Add(_annotationDesktop()); else _selectionHistoryDesktops.Remove(_annotationDesktop()); }
-    }
     private double _selectionRadius = 1200;
     private (CanvasPoint Center, double Radius)? _proximityCircle;
 
@@ -165,7 +159,7 @@ internal sealed partial class OverviewManager
             AnnotationDocument.Validate(_annotationDocument.Items.Select(a => moved.FirstOrDefault(b => b.Id==a.Id)??a));
             bool external = savedWindowIds.Length+areaIds.Length+session.Count>0;
             _annotationDocument.ApplyBatch(_annotationDocument.Revision,_annotationDesktop(),moved,external?Place:null);
-            _selectionHistoryActive=true; _proximityCircle=null; RefreshZoneLayout();
+            _proximityCircle=null; RefreshZoneLayout();
             _annotationError=nativeWarning??_placeholderWorkspace?.Status;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { _annotationError=ex.Message; }

@@ -97,8 +97,8 @@ actually supports. Never silently switch from subscription usage to API billing.
 - Optional agent task cards with visible progress and results attached to an area.
 
 Direct selection moves now coordinate native-window, project-tile and annotation
-geometry as one annotation-history transaction. Legacy boundary resize retains
-project history. AI native-window arrangements still need a dedicated action batch;
+geometry as one annotation-history transaction. Canvas shortcuts and toolbar history
+merge annotation and project layout operations in chronological order. AI native-window arrangements still need a dedicated action batch;
 opening an external program is not reversible like moving a note.
 
 ## Official references (checked 15 October 2026)

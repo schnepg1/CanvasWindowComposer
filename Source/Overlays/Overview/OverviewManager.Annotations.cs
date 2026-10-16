@@ -46,6 +46,7 @@ internal sealed partial class OverviewManager
     private void OnAnnotationsChanged()
     {
         _annotationStore?.Save();
+        if (_annotationDocument!.LastChange==AnnotationChangeKind.Edit) _placeholderWorkspace?.ClearZoneRedoHistory(_annotationDocument.LastChangedDesktop);
         var available=SelectionItems().Select(i=>i.Key).ToHashSet();
         Selection.Replace(Selection.Ids.Where(available.Contains).ToArray());
         _composerWindow?.CanvasChanged(CurrentComposerNotes());
@@ -125,13 +126,13 @@ internal sealed partial class OverviewManager
     private void AnnotationHistory(bool redo)
     {
         CancelInteraction();
-        if (_annotationDocument?.Undo(_annotationDesktop(),redo)==false) _annotationError="No matching undo step is available. The group may have changed.";
+        if (!ReplayCanvasHistory(redo)) _annotationError=_placeholderWorkspace?.Status??"No matching undo step is available. The group may have changed.";
         RefreshZoneLayout(); RefreshToolPreview(); FocusOverview();
     }
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
         if(_annotationEditor!=null || _composerWindow!=null) return true;
-        if(_annotationTool==null || (_annotationTool.Mode==AnnotationMode.Navigate && !_selectionHistoryActive)) return false;
+        if(_annotationTool==null || _annotationTool.Mode==AnnotationMode.Navigate) return false;
         if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) AnnotationHistory(e.KeyCode==Keys.Y || e.Shift);
         else if(e.KeyCode==Keys.Delete || e.KeyCode==Keys.Back) DeleteAnnotation();
         else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { } text && text.Kind != AnnotationKind.Arrow && text.Text.Length > 0) QueueAnnotationTextEdit(text);

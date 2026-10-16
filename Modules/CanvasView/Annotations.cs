@@ -2,6 +2,7 @@ namespace CanvasDesktop.CanvasView;
 
 public enum AnnotationKind { Arrow, Rectangle, Ellipse, Text }
 public enum AnnotationMode { Navigate, Select, Arrow, Rectangle, Ellipse, Text }
+public enum AnnotationChangeKind { Edit, Undo, Redo }
 public sealed record CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
     CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "")
 {
@@ -15,10 +16,12 @@ public sealed class AnnotationDocument
     public const int MaximumItems = 2000;
     public const int MaximumTextLength = 10000;
     private readonly List<CanvasAnnotation> _items = [];
-    private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay = null);
+    private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay, long Order);
     private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
     public IReadOnlyList<CanvasAnnotation> Items => _items.AsReadOnly();
     public long Revision { get; private set; }
+    public AnnotationChangeKind LastChange { get; private set; }
+    public Guid LastChangedDesktop { get; private set; }
     public event Action? Changed;
     public AnnotationDocument(IEnumerable<CanvasAnnotation>? items = null)
     {
@@ -47,7 +50,14 @@ public sealed class AnnotationDocument
         if (!_history.TryGetValue(desktop, out var h)) _history[desktop] = h = ([], []);
         return h;
     }
-    private void NotifyChanged() { Revision++; Changed?.Invoke(); }
+    private void NotifyChanged(Guid desktop, AnnotationChangeKind kind=AnnotationChangeKind.Edit)
+    { LastChange=kind;LastChangedDesktop=desktop;Revision++;Changed?.Invoke(); }
+    public long HistoryOrder(Guid desktop,bool redo=false)
+    {
+        if(!_history.TryGetValue(desktop,out var h)) return 0;
+        var entries=redo?h.Redo:h.Undo;return entries.Count==0?0:entries[^1].Order;
+    }
+    public void ClearRedo(Guid desktop) { if(_history.TryGetValue(desktop,out var h))h.Redo.Clear(); }
 
     /// <summary>Validate the entire transaction before changing anything. One history step and notification.</summary>
     public bool ApplyBatch(long expectedRevision, Guid desktop, IReadOnlyList<CanvasAnnotation> upserts, Func<bool, bool>? replay = null)
@@ -63,7 +73,7 @@ public sealed class AnnotationDocument
         Validate(next);
         if (_items.SequenceEqual(next) && replay == null) return false;
         if (replay?.Invoke(true)==false) throw new InvalidOperationException("The selected group changed. Select it again.");
-        Remember(desktop, replay); _items.Clear(); _items.AddRange(next); NotifyChanged(); return true;
+        Remember(desktop, replay); _items.Clear(); _items.AddRange(next); NotifyChanged(desktop); return true;
     }
 
     public void Put(CanvasAnnotation item)
@@ -74,17 +84,17 @@ public sealed class AnnotationDocument
         var next = _items.Where(a => a.Id != item.Id).Append(item).ToArray(); Validate(next);
         Remember(item.DesktopId);
         if (index < 0) _items.Add(item); else _items[index] = item;
-        NotifyChanged();
+        NotifyChanged(item.DesktopId);
     }
     public void Delete(Guid desktop, Guid id)
     {
         if (!_items.Any(a => a.Id == id && a.DesktopId == desktop)) return;
-        Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged();
+        Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged(desktop);
     }
     private CanvasAnnotation[] Snapshot(Guid desktop) => _items.Where(a => a.DesktopId == desktop).ToArray();
     private void Remember(Guid desktop, Func<bool, bool>? replay = null)
     {
-        var h = History(desktop); h.Undo.Add(new(Snapshot(desktop), replay)); h.Redo.Clear();
+        var h = History(desktop); h.Undo.Add(new(Snapshot(desktop), replay,CanvasHistoryOrder.Next())); h.Redo.Clear();
         if (h.Undo.Count > 100) h.Undo.RemoveAt(0);
     }
     public bool Undo(Guid desktop, bool redo = false)
@@ -95,8 +105,8 @@ public sealed class AnnotationDocument
         if (_items.Count(a => a.DesktopId != desktop) + snapshot.Items.Length > MaximumItems) return false;
         // A companion validates all saved identities and positions before either half replays.
         if (snapshot.Replay?.Invoke(redo) == false) return false;
-        to.Add(new(Snapshot(desktop), snapshot.Replay)); from.RemoveAt(from.Count - 1);
-        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot.Items); NotifyChanged(); return true;
+        to.Add(new(Snapshot(desktop), snapshot.Replay,snapshot.Order)); from.RemoveAt(from.Count - 1);
+        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot.Items); NotifyChanged(desktop,redo?AnnotationChangeKind.Redo:AnnotationChangeKind.Undo); return true;
     }
 }
 

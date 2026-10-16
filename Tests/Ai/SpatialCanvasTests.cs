@@ -4,6 +4,22 @@ namespace CanvasDesktop.Tests;
 
 public class SpatialCanvasTests
 {
+    [Fact]
+    public void SharedHistoryOrderingRetainsOriginalOrderThroughUndoAndRedo()
+    {
+        var desktop=Guid.NewGuid();var doc=new AnnotationDocument();
+        var note=new CanvasAnnotation(Guid.NewGuid(),desktop,AnnotationKind.Text,new(0,0),new(100,100),Text:"First");
+        doc.Put(note);long first=doc.HistoryOrder(desktop);long project=CanvasHistoryOrder.Next();
+        doc.Put(note with { Text="Second" });long second=doc.HistoryOrder(desktop);
+        Assert.True(CanvasHistoryOrder.PreferAnnotations(second,project,false));
+        doc.Undo(desktop);Assert.Equal(first,doc.HistoryOrder(desktop));Assert.Equal(second,doc.HistoryOrder(desktop,true));
+        Assert.False(CanvasHistoryOrder.PreferAnnotations(first,project,false));
+        doc.Undo(desktop);Assert.True(CanvasHistoryOrder.PreferAnnotations(doc.HistoryOrder(desktop,true),project,true));
+        doc.Undo(desktop,true);Assert.False(CanvasHistoryOrder.PreferAnnotations(doc.HistoryOrder(desktop,true),project,true));
+        Assert.Equal(AnnotationChangeKind.Redo,doc.LastChange);Assert.Equal(desktop,doc.LastChangedDesktop);
+        doc.ClearRedo(desktop);Assert.Equal(0,doc.HistoryOrder(desktop,true));
+    }
+
     private static CanvasSelectionItem Item(CanvasItemKind kind, double x, double y, double w=100, double h=100)
         => new(new(kind,Guid.NewGuid()),new(x,y,w,h));
     private static CanvasPointer P(double x,double y,CanvasModifiers modifiers=CanvasModifiers.None)
