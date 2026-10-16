@@ -25,10 +25,12 @@ request is made just by signing in or refreshing the model list.
   OpenAI JWKS, issuer, audience, lifetime and nonce. A returning registration must
   match its verified subject. The active registration is updated after validation.
 - A successful identity-only grant is retained but cannot generate until ChatGPT
-  plan usage permission is granted. The app confirms first-time plan usage once.
+  plan usage permission is granted. Explicitly retrying that grant requests consent
+  again; ordinary sign-ins do not force consent. The app confirms first-time plan usage once.
 - Access tokens refresh near expiry, respecting the server's earliest refresh time.
   The app is single-instance; the connection service serializes renewal and saves
-  access/refresh token rotation together. Invalid refresh grants require reconnecting.
+  access/refresh token rotation together. Documented terminal refresh errors clear
+  unusable tokens and require reconnecting; transient failures retain the session.
 - Sign-out attempts renewable-session revocation, retries transient failures once,
   then clears local tokens while retaining the account/client mapping and host ID.
   If remote revocation was not confirmed, the UI directs users to ChatGPT settings.
@@ -93,5 +95,6 @@ Manual Windows checks before release:
 - https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions
 - https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
 - https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+- https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery
 - https://developers.openai.com/siwc/ui-ux-guidelines
 - https://www.nuget.org/packages/Microsoft.IdentityModel.JsonWebTokens/8.23.0

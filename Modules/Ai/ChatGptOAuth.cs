@@ -40,6 +40,9 @@ internal sealed class ChatGptOAuth(HttpClient http, IOAuthBrowser browser)
                 ["code_challenge_method"] = "S256", ["code_challenge"] = challenge
             };
             if (registeredClientId == null) parameters["agent_name_hint"] = "Canvas Window Composer";
+            // Explicit re-enable after an identity-only grant needs a new consent screen.
+            // Ordinary reconnects retain the normal returning-account experience.
+            if (existing?.Tokens is { CanUsePlan: false }) parameters["prompt"] = "consent";
             if (existing?.Tokens?.IdToken is { } hint) parameters["id_token_hint"] = hint;
             return new Uri(AuthorizeEndpoint + "?" + string.Join("&", parameters.Select(p => Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value))));
         }, cancellation).ConfigureAwait(false);
@@ -116,16 +119,21 @@ internal sealed class ChatGptOAuth(HttpClient http, IOAuthBrowser browser)
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest || response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            if ((int)response.StatusCode is >= 400 and < 500)
             {
                 try
                 {
                     using var error = await BoundedHttp.ReadJsonAsync(response, cancellation).ConfigureAwait(false);
-                    if (error.RootElement.TryGetProperty("error", out var code) && code.ValueKind == JsonValueKind.String)
+                    string? code = null;
+                    if (error.RootElement.TryGetProperty("error", out var returnedError))
                     {
-                        if (refresh && code.GetString() is "invalid_grant" or "invalid_client") throw new ExpiredChatGptSessionException();
-                        if (!refresh && code.GetString() == "invalid_grant") throw new ExpiredCodeException();
+                        if (returnedError.ValueKind == JsonValueKind.String) code = returnedError.GetString();
+                        else if (returnedError.ValueKind == JsonValueKind.Object && returnedError.TryGetProperty("code", out var nestedCode)
+                            && nestedCode.ValueKind == JsonValueKind.String) code = nestedCode.GetString();
                     }
+                    if (refresh && code is "invalid_grant" or "invalid_client" or "invalid_refresh_token" or "token_expired"
+                        or "refresh_token_expired" or "refresh_token_invalidated" or "refresh_token_reused") throw new ExpiredChatGptSessionException();
+                    if (!refresh && code == "invalid_grant") throw new ExpiredCodeException();
                 }
                 catch (JsonException) { }
             }

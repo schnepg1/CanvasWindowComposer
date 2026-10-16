@@ -50,6 +50,9 @@ public class ChatGptConnectionTests
         public string Subject = "subject-first", Scope = "openid email offline_access resource.invoke chatgpt.tokens.use.direct";
         public string? WrongNonce, WrongIssuer, WrongAudience;
         public bool BadSignature, ExpiredIdentity, InvalidRefresh, RevokeFails, ExpireFirstCode;
+        public string RefreshError = "invalid_grant";
+        public bool NestedRefreshError;
+        public HttpStatusCode RefreshStatus = HttpStatusCode.BadRequest;
         public string? Stream;
         public HttpStatusCode ModelStatus = HttpStatusCode.OK;
         public string? RequestBody, RequestToken;
@@ -81,7 +84,8 @@ public class ChatGptConnectionTests
                     if (TokenFields["grant_type"] == "refresh_token")
                     {
                         await Task.Yield();
-                        if (InvalidRefresh) return Json(new { error = "invalid_grant" }, HttpStatusCode.BadRequest);
+                        if (InvalidRefresh) return NestedRefreshError
+                            ? Json(new { error = new { code = RefreshError } }, RefreshStatus) : Json(new { error = RefreshError }, RefreshStatus);
                         return Json(new { access_token = "renewed-token", refresh_token = "rotated-refresh", token_type = "Bearer", expires_in = 3600, scope = Scope });
                     }
                     return Json(new { access_token = "access-token", refresh_token = "refresh-token", id_token = Identity(), token_type = "Bearer", expires_in = 3600, scope = Scope });
@@ -194,6 +198,21 @@ public class ChatGptConnectionTests
     }
 
     [Fact]
+    public async Task ExplicitPlanPermissionReenableRequestsConsentOnlyForTheDisabledGrant()
+    {
+        using var rig=new Rig();rig.Scope="openid email";
+        var first=await rig.Accounts.SignInAsync(null,CancellationToken.None);
+        Assert.False(first.PlanUsageEnabled);Assert.DoesNotContain("prompt",rig.Browser.Parameters);
+        rig.Scope="openid email offline_access resource.invoke chatgpt.tokens.use.direct";
+        var enabled=await rig.Accounts.SignInAsync(first.Id,CancellationToken.None);
+        Assert.True(enabled.PlanUsageEnabled);Assert.Equal("consent",rig.Browser.Parameters["prompt"]);
+        Assert.Equal("oaiapp_first",rig.Browser.Parameters["client_id"]);
+        Assert.Contains("chatgpt.tokens.use.direct",rig.Browser.Parameters["scope"]);
+        await rig.Accounts.SignInAsync(first.Id,CancellationToken.None);
+        Assert.DoesNotContain("prompt",rig.Browser.Parameters);
+    }
+
+    [Fact]
     public async Task SameEmailRegistrationsRemainDistinctAndPermissionIsRequired()
     {
         using var rig = new Rig();
@@ -221,15 +240,49 @@ public class ChatGptConnectionTests
         Assert.Equal("renewed-token", rig.RequestToken);
     }
 
-    [Fact]
-    public async Task InvalidRefreshClearsCredentialsAndNeverFallsBackToApiBilling()
+    [Theory]
+    [InlineData("invalid_grant",false)]
+    [InlineData("invalid_client",false)]
+    [InlineData("invalid_refresh_token",false)]
+    [InlineData("token_expired",false)]
+    [InlineData("refresh_token_expired",false)]
+    [InlineData("refresh_token_invalidated",false)]
+    [InlineData("refresh_token_reused",false)]
+    [InlineData("invalid_grant",true)]
+    [InlineData("invalid_client",true)]
+    [InlineData("invalid_refresh_token",true)]
+    [InlineData("token_expired",true)]
+    [InlineData("refresh_token_expired",true)]
+    [InlineData("refresh_token_invalidated",true)]
+    [InlineData("refresh_token_reused",true)]
+    public async Task InvalidRefreshClearsCredentialsAndNeverFallsBackToApiBilling(string error,bool nested)
     {
         using var rig = new Rig(); var account = await rig.Accounts.SignInAsync(null, CancellationToken.None);
         var saved = rig.Store.Value!; var registration = saved.Registrations[0];
         rig.Store.Value = saved with { Registrations = [registration with { Tokens = registration.Tokens! with { ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1) } }] };
-        rig.InvalidRefresh = true; rig.Reload();
+        rig.InvalidRefresh = true; rig.RefreshError=error;rig.NestedRefreshError=nested;
+        rig.RefreshStatus=nested?HttpStatusCode.Unauthorized:HttpStatusCode.BadRequest;rig.Reload();
         await Assert.ThrowsAnyAsync<AiConnectionException>(() => rig.Accounts.CreateProvider(account.Id).ListModelsAsync(CancellationToken.None));
         Assert.False(Assert.Single(rig.Accounts.Accounts).SignedIn); Assert.Equal(0, rig.ModelCalls); Assert.Null(rig.Store.Value.Registrations[0].Tokens);
+        int tokenCalls=rig.TokenCalls;
+        await Assert.ThrowsAnyAsync<AiConnectionException>(()=>rig.Accounts.CreateProvider(account.Id).ListModelsAsync(CancellationToken.None));
+        Assert.Equal(tokenCalls,rig.TokenCalls);
+    }
+
+    [Theory]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(503)]
+    public async Task TransientRefreshErrorsPreserveTheSavedSession(int status)
+    {
+        using var rig=new Rig();var account=await rig.Accounts.SignInAsync(null,CancellationToken.None);
+        var saved=rig.Store.Value!;var registration=saved.Registrations[0];
+        rig.Store.Value=saved with { Registrations=[registration with { Tokens=registration.Tokens! with { ExpiresAt=DateTimeOffset.UtcNow.AddSeconds(-1) } }] };
+        rig.InvalidRefresh=true;rig.RefreshError="server_error";rig.RefreshStatus=(HttpStatusCode)status;rig.Reload();
+        await Assert.ThrowsAnyAsync<AiConnectionException>(()=>rig.Accounts.CreateProvider(account.Id).ListModelsAsync(CancellationToken.None));
+        Assert.True(Assert.Single(rig.Accounts.Accounts).SignedIn);
+        Assert.Equal("refresh-token",rig.Store.Value.Registrations[0].Tokens!.RefreshToken);
+        Assert.Equal(0,rig.ModelCalls);
     }
 
     [Theory]
@@ -277,6 +330,7 @@ public class ChatGptConnectionTests
         using var body = JsonDocument.Parse(rig.RequestBody!); var root = body.RootElement;
         Assert.True(root.GetProperty("stream").GetBoolean()); Assert.False(root.GetProperty("store").GetBoolean());
         Assert.False(root.TryGetProperty("max_output_tokens", out _)); Assert.False(root.TryGetProperty("previous_response_id", out _));
+        Assert.False(root.TryGetProperty("prompt",out _));
         Assert.True(root.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean());
     }
 
