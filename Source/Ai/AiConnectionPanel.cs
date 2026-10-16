@@ -77,6 +77,7 @@ internal sealed class AiConnectionPanel : UserControl
         _layout.Controls.Add(modelRow, 0, 3); _layout.Controls.Add(_billing, 0, 4); Controls.Add(_layout);
         _source.SelectedIndexChanged += (_, _) =>
         {
+            if (_updating) return;
             CancelPending(); InvalidateConnection(); ClearModels(); UpdateMode();
             if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true) _ = RefreshModelsAsync();
         };
@@ -268,12 +269,17 @@ internal sealed class AiConnectionPanel : UserControl
         _epoch++; _operation?.Cancel(); _operation = null;
         if (!IsDisposed) { UpdateControls(); BusyChanged?.Invoke(); }
     }
-    internal void ShowUsageAction() { _usage.Font = new Font(_usage.Font, FontStyle.Bold); _usage.Focus(); }
+    internal void ShowUsageAction() { if (!_usage.Font.Bold) _usage.Font = new Font(_usage.Font, FontStyle.Bold); _usage.Focus(); }
     private void InvalidateConnection() => ConnectionChanged?.Invoke();
     private void Report(string message) { LastStatus = message; StatusChanged?.Invoke(message); }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _epoch++; _operation?.Cancel(); _operation = null; _key.Clear(); }
+        if (disposing)
+        {
+            _updating = true;
+            ConnectionChanged = null; BusyChanged = null; StatusChanged = null;
+            _epoch++; _operation?.Cancel(); _operation = null; _key.Clear();
+        }
         base.Dispose(disposing);
     }
 }

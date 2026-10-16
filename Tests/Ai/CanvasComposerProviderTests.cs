@@ -57,7 +57,7 @@ public class CanvasComposerProviderTests
     {
         var handler=new Handler { Respond=(_,_)=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content=new StringContent("secret body") }) };
         using var http=new HttpClient(handler);
-        var error=await Assert.ThrowsAsync<AiConnectionException>(()=>new OpenAiCanvasComposerProvider(http,"key").GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
+        var error=await Assert.ThrowsAsync<AiConnectionException>(()=>new OpenAiCanvasComposerProvider(http,"test-secret").GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
         Assert.Contains("401",error.Message);Assert.DoesNotContain("secret",error.Message);
     }
     [Fact]

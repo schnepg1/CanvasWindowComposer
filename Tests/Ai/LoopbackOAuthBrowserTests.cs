@@ -28,7 +28,8 @@ public class LoopbackOAuthBrowserTests
         var result = await browser.AuthorizeAsync(uri => { callback = uri; return new("https://auth.openai.com/"); }, deadline.Token);
         await requests!;
         Assert.Equal("127.0.0.1", result.Host); Assert.Equal("/auth/callback", result.AbsolutePath); Assert.Equal("?code=ok&state=state", result.Query);
-        using var rebound = new TcpListener(IPAddress.Loopback, result.Port); rebound.Start();
+        using var probe = new TcpClient();
+        await Assert.ThrowsAnyAsync<SocketException>(() => probe.ConnectAsync(IPAddress.Loopback, result.Port));
     }
 
     [Fact]

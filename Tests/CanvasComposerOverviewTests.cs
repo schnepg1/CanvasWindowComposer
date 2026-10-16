@@ -135,6 +135,17 @@ public class CanvasComposerOverviewTests
 
     [Fact]
     [Trait("Category","NativeRendering")]
+    public void ClosingComposerClearsSecretsWithoutReenteringConnectionEvents()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            overview.OpenCanvasComposer(new Provider(),new Credentials(),new Accounts());var window=overview.ComposerWindow!;Configure(window);
+            int changes=0;window.Connections.ConnectionChanged+=()=>changes++;
+            input.RaiseEscPressed();
+            Assert.Null(overview.ComposerWindow);Assert.Equal(0,changes);Assert.Empty(overview.Annotations!.Items);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
     public void AccountSwitchClearsModelsAndInvalidatesTheOldProposal()
         =>WithOverview((overview,desktops,input)=>
         {
