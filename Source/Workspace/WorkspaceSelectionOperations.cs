@@ -5,7 +5,10 @@ using System.Linq;
 namespace CanvasDesktop;
 
 internal sealed record WorkspaceSelectionPlacement(Guid Desktop, IReadOnlyList<ZoneItemPlacement> Items,
-    IReadOnlyList<ZoneItemPlacement> Areas);
+    IReadOnlyList<ZoneItemPlacement> Areas)
+{
+    public IReadOnlyDictionary<Guid, Guid[]> Membership { get; init; } = new Dictionary<Guid, Guid[]>();
+}
 
 internal sealed partial class WorkspaceService
 {
@@ -16,7 +19,8 @@ internal sealed partial class WorkspaceService
         return new(_desktop, Document.Items.Where(i => i.DesktopId == _desktop && items.Contains(i.Id))
             .Select(i => new ZoneItemPlacement(i.Id, i.Bounds)).ToArray(),
             Document.Zones.Where(z => z.DesktopId == _desktop && areas.Contains(z.Id))
-            .Select(z => new ZoneItemPlacement(z.Id, z.Bounds)).ToArray());
+            .Select(z => new ZoneItemPlacement(z.Id, z.Bounds)).ToArray())
+        { Membership=Document.Zones.Where(z=>z.DesktopId==_desktop && areas.Contains(z.Id)).ToDictionary(z=>z.Id,z=>z.ItemIds.OrderBy(id=>id).ToArray()) };
     }
 
     /// <summary>Validate the entire saved-ID batch before touching logical or native geometry.</summary>
@@ -33,7 +37,8 @@ internal sealed partial class WorkspaceService
                 && ZoneLayoutPlanner.SamePlacement(bounds, p.Bounds)
                 && after.Any(a => a.Id == p.Id && WorkspaceGeometry.ValidBounds(a.Bounds) && !a.Bounds.PinnedToScreen));
         }
-        if (!Valid(expected.Items, target.Items, Document.Items.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds))
+        if (expected.Membership.Any(p=>!Document.Zones.Any(z=>z.Id==p.Key && z.DesktopId==_desktop && z.ItemIds.OrderBy(id=>id).SequenceEqual(p.Value)))
+            || !Valid(expected.Items, target.Items, Document.Items.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds))
             || !Valid(expected.Areas, target.Areas, Document.Zones.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds)))
         { _status = "Selection changed. Select the group again before moving or undoing it."; return false; }
 

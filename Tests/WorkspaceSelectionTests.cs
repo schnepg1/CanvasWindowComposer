@@ -28,6 +28,7 @@ public class WorkspaceSelectionTests
         var bounds=b.Bounds;bounds.PinnedToScreen=true;b.Bounds=bounds;
         Assert.False(rig.Workspace.ApplySelectionPlacement(before,after));Assert.Equal(100,a.Bounds.X);Assert.Equal(800,b.Bounds.X);Assert.Equal(saves,rig.Store.Saves);
         bounds.PinnedToScreen=false;bounds.X++;b.Bounds=bounds;
+        var card=rig.Cards.Created.Single(c=>c.Item.Id==b.Id);rig.Canvas.SetWindow(card.Handle,bounds.X,bounds.Y,bounds.W,bounds.H);
         Assert.False(rig.Workspace.ApplySelectionPlacement(before,after));Assert.Equal(100,a.Bounds.X);
         rig.Workspace.Document.Items.Remove(b);Assert.False(rig.Workspace.ApplySelectionPlacement(before,after));Assert.Equal(100,a.Bounds.X);
     }
@@ -45,5 +46,15 @@ public class WorkspaceSelectionTests
         var a=Item(100);using var rig=new WorkspaceHarness(new WorkspaceDocument { Items=[a] });rig.Workspace.Start();
         var before=rig.Workspace.SelectionSnapshot([a.Id],[]);Assert.False(rig.Workspace.ApplySelectionPlacement(before,Translate(before,double.NaN)));
         rig.Desktops.SwitchTo(Guid.NewGuid());Assert.False(rig.Workspace.ApplySelectionPlacement(before,Translate(before,300)));Assert.Equal(100,a.Bounds.X);
+    }
+
+    [Fact]
+    public void ChangedProjectMembershipPreventsPartialGroupReplay()
+    {
+        var a=Item(100);var b=Item(800);var tile=new WorkspaceZone { Bounds=new WorldRect { W=1800,H=1000 },ItemIds=[a.Id] };
+        using var rig=new WorkspaceHarness(new WorkspaceDocument { Items=[a,b],Zones=[tile] });rig.Workspace.Start();
+        var before=rig.Workspace.SelectionSnapshot([a.Id],[tile.Id]);var after=Translate(before,300);
+        Assert.True(rig.Workspace.ApplySelectionPlacement(before,after));tile.ItemIds.Add(b.Id);
+        Assert.False(rig.Workspace.ApplySelectionPlacement(after,before));Assert.Equal(400,a.Bounds.X);Assert.Equal(800,b.Bounds.X);Assert.Equal(300,tile.Bounds.X);
     }
 }

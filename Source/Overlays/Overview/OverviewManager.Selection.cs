@@ -53,7 +53,7 @@ internal sealed partial class OverviewManager
         if (_placeholderWorkspace != null)
             result.AddRange(_placeholderWorkspace.Document.Items.Where(i => i.DesktopId == _annotationDesktop() && !i.Bounds.PinnedToScreen)
                 .Select(i => new CanvasSelectionItem(new(CanvasItemKind.Window,i.Id),Rect(i.Bounds),i.Name.Length>0?i.Name:i.Title)));
-        var mapped = _placeholderWorkspace?.GetOverviewItemIds() ?? new Dictionary<IntPtr,Guid>();
+        var mapped = _overviewItemIds;
         var visible = _windows.Windows.Where(w => !w.ScreenFixed).ToArray();
         foreach (var stale in _selectionWindows.Keys.Where(h => !visible.Any(w => w.HWnd == h)).ToArray()) _selectionWindows.Remove(stale);
         foreach (var w in visible)
@@ -83,7 +83,7 @@ internal sealed partial class OverviewManager
         if (index >= 0 && !_windows.Windows[index].ScreenFixed)
         {
             var handle = _windows.Windows[index].HWnd;
-            if (_placeholderWorkspace?.GetOverviewItemIds().TryGetValue(handle,out var id) == true) return new(CanvasItemKind.Window,id);
+            if (_overviewItemIds.TryGetValue(handle,out var id)) return new(CanvasItemKind.Window,id);
             SelectionItems();
             if (_selectionWindows.TryGetValue(handle,out var identity)) return new(CanvasItemKind.Window,identity.Id);
         }
@@ -115,7 +115,8 @@ internal sealed partial class OverviewManager
         try
         {
             var current = SelectionItems().ToDictionary(i => i.Key);
-            if (move.Before.Any(i => !current.TryGetValue(i.Key,out var now) || now.Bounds != i.Bounds))
+            if (move.Before.Any(i => !current.TryGetValue(i.Key,out var now) || now.Bounds != i.Bounds
+                || i.Key.Kind==CanvasItemKind.Project && !(i.Members??[]).ToHashSet().SetEquals(now.Members??[])))
                 throw new InvalidOperationException("The group changed during the drag. Select it again.");
             var moved = _annotationDocument.Items.Where(a => move.Before.Any(i => i.Key == new CanvasItemId(CanvasItemKind.Annotation,a.Id)))
                 .Select(a => a.Translate(move.Dx,move.Dy)).ToArray();
@@ -134,7 +135,7 @@ internal sealed partial class OverviewManager
                 }
                 if (before.Items.Concat(before.Areas).Any(p => !move.Before.Any(i => i.Key.Id==p.Id && i.Bounds==new CanvasRect(p.Bounds.X,p.Bounds.Y,p.Bounds.W,p.Bounds.H))))
                     throw new InvalidOperationException("The group changed during the drag. Select it again.");
-                after = new(before.Desktop,before.Items.Select(Translate).ToArray(),before.Areas.Select(Translate).ToArray());
+                after = before with { Items=before.Items.Select(Translate).ToArray(),Areas=before.Areas.Select(Translate).ToArray() };
             }
             else if (areaIds.Length > 0) throw new InvalidOperationException("Attach the workspace before moving project areas.");
             var session = new List<(IntPtr Handle, Guid Id, uint Pid, WorldRect Before, WorldRect After)>();
