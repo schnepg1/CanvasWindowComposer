@@ -9,6 +9,29 @@ public class SpatialSelectionOverviewTests
 {
     [Fact]
     [Trait("Category","NativeRendering")]
+    public void SessionMoveCanUndoAfterMinimizingAndReopeningOverview()
+        =>WorkspaceViewTests.OnSta(()=>
+        {
+            var folder=Path.Combine(Path.GetTempPath(),"session-selection-"+Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var source=new Form();var canvas=new Canvas();var api=new FakeWindowApi();var input=new FakeInputRouter();var config=new FakeAppConfig { EnableStartupIntro=false };
+                api.AddWindow(source.Handle,100,200,600,400);canvas.SetWindow(source.Handle,100,200,600,400);
+                using var wm=new WindowManager(canvas,api,config,input,new FakeClock());using var overview=new OverviewManager(canvas,wm,api,input,config);
+                var desktops=new FakeVirtualDesktops();overview.AttachAnnotations(desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
+                var window=Assert.Single(overview.SelectionItems(),i=>i.Key.Kind==CanvasItemKind.Window);
+                overview.Selection.Replace([window.Key]);overview.MoveSelection(new([window],300,0));Assert.Equal(400,canvas.Windows[source.Handle].X);
+                canvas.CollapseWindow(source.Handle);overview.TransitionTo(OverviewMode.Hidden);overview.TransitionTo(OverviewMode.Zooming);
+                overview.SelectAnnotationMode(AnnotationMode.Select);
+                Assert.True(overview.Annotations!.Undo(desktops.CurrentDesktopId));Assert.Equal(100,canvas.Windows[source.Handle].X);
+                Assert.Equal(WindowState.Minimized,canvas.GetWindowState(source.Handle));Assert.Equal(WindowState.Minimized,api.NativeStateCalls[^1].state);
+                Assert.Equal(canvas.WorldToScreen(canvas.Windows[source.Handle]),api.NativeStateCalls[^1].rect);
+            }
+            finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
     public void MixedSelectionMovesAsOneSavedUndoStepAndDesktopSwitchClearsIt()
         =>WorkspaceViewTests.OnSta(()=>
         {

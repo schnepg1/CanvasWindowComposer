@@ -55,7 +55,7 @@ internal sealed partial class OverviewManager
                 .Select(i => new CanvasSelectionItem(new(CanvasItemKind.Window,i.Id),Rect(i.Bounds),i.Name.Length>0?i.Name:i.Title)));
         var mapped = _overviewItemIds;
         var visible = _windows.Windows.Where(w => !w.ScreenFixed).ToArray();
-        foreach (var stale in _selectionWindows.Keys.Where(h => !visible.Any(w => w.HWnd == h)).ToArray()) _selectionWindows.Remove(stale);
+        foreach (var stale in _selectionWindows.Keys.Where(h => !_mainCanvas.HasWindow(h) || _win32.GetWindowProcessId(h)!=_selectionWindows[h].Pid).ToArray()) _selectionWindows.Remove(stale);
         foreach (var w in visible)
         {
             if (mapped.ContainsKey(w.HWnd)) continue;
