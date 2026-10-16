@@ -60,6 +60,10 @@ responses. The ChatGPT adapter uses the public Responses endpoint with `store:fa
 bounds wire/event/output size, and requires `response.completed` plus a completed,
 valid proposal before any preview. Refusals, interrupted streams and error events
 never apply partial content. Raw service errors and credentials are not shown or logged.
+HTTP and stream failures share code-based recovery: only a confirmed plan/app usage
+limit highlights Manage usage. Unsupported requests, eligibility restrictions and
+temporary outages get their own guidance. Safe status/code/request-ID diagnostics
+remain available without retaining raw error messages or credentials.
 
 ## Protected storage
 

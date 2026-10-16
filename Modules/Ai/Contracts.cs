@@ -36,7 +36,11 @@ public interface IComposerCredentials
     void Delete();
 }
 
-public class AiConnectionException(string message, bool manageUsage = false) : Exception(message)
+public class AiConnectionException(string message, bool manageUsage = false, int? httpStatus = null,
+    string? serviceCode = null, string? requestId = null) : Exception(message)
 {
     public bool ManageUsage { get; } = manageUsage;
+    public int? HttpStatus { get; } = httpStatus;
+    public string? ServiceCode { get; } = serviceCode;
+    public string? RequestId { get; } = requestId;
 }

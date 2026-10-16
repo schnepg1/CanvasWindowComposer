@@ -82,7 +82,7 @@ public sealed class OpenAiCanvasComposerProvider : ICanvasComposerProvider
         request.Content = JsonContent.Create(body);
         progress?.Report("Request sent. Waiting for the model…");
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
-        CheckStatus(response);
+        await CheckStatusAsync(response, cancellation).ConfigureAwait(false);
         using var data = _planUsage
             ? await ComposerEventStream.ReadAsync(response, progress, cancellation).ConfigureAwait(false)
             : await BoundedHttp.ReadJsonAsync(response, cancellation).ConfigureAwait(false);
@@ -110,7 +110,7 @@ public sealed class OpenAiCanvasComposerProvider : ICanvasComposerProvider
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
-        CheckStatus(response);
+        await CheckStatusAsync(response, cancellation).ConfigureAwait(false);
         using var json = await BoundedHttp.ReadJsonAsync(response, cancellation).ConfigureAwait(false);
         var models = new System.Collections.Generic.List<AiModel>();
         foreach (var item in json.RootElement.GetProperty(_planUsage ? "models" : "data").EnumerateArray())
@@ -124,13 +124,18 @@ public sealed class OpenAiCanvasComposerProvider : ICanvasComposerProvider
         return models.AsReadOnly();
     }
 
-    private void CheckStatus(HttpResponseMessage response)
+    private async Task CheckStatusAsync(HttpResponseMessage response, CancellationToken cancellation)
     {
         if (response.IsSuccessStatusCode) return;
         int status = (int)response.StatusCode;
-        if (_planUsage && status == 429) throw new AiConnectionException("ChatGPT usage limit reached. Choose Manage usage to review your limits.", true);
-        if (_planUsage) throw new AiConnectionException($"ChatGPT returned HTTP {status}. Reconnect for an expired session, or check model access and plan usage. No API-key request was made.", true);
-        throw new AiConnectionException($"OpenAI returned HTTP {status}. Check your API key, model access and API billing.");
+        if (_planUsage)
+        {
+            JsonDocument? error = null;
+            try { error = await BoundedHttp.ReadJsonAsync(response, cancellation).ConfigureAwait(false); }
+            catch (JsonException) { }
+            using (error) { throw ChatGptErrors.Failure(error?.RootElement, response); }
+        }
+        throw new AiConnectionException($"OpenAI returned HTTP {status}. Check your API key, model access and API billing.", httpStatus: status);
     }
 
 }

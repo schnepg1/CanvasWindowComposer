@@ -55,6 +55,8 @@ public class ChatGptConnectionTests
         public HttpStatusCode RefreshStatus = HttpStatusCode.BadRequest;
         public string? Stream;
         public HttpStatusCode ModelStatus = HttpStatusCode.OK;
+        public string? ModelErrorCode;
+        public bool DirectAdmissionError;
         public string? RequestBody, RequestToken;
         public Dictionary<string, string>? TokenFields;
         public Rig()
@@ -96,6 +98,12 @@ public class ChatGptConnectionTests
                     return Json(new { keys = new[] { new { kty = "RSA", use = "sig", alg = "RS256", kid = "key-1", n = Base64UrlEncoder.Encode(key.Modulus!), e = Base64UrlEncoder.Encode(key.Exponent!) } } });
                 case "/v1/models":
                     ModelCalls++; RequestToken = request.Headers.Authorization?.Parameter;
+                    if (ModelStatus!=HttpStatusCode.OK)
+                    {
+                        var failure=DirectAdmissionError?Json(new { detail="private-diagnostic" },ModelStatus)
+                            :Json(new { error=new { code=ModelErrorCode,message="private-diagnostic" } },ModelStatus);
+                        failure.Headers.Add("x-request-id","req-test");return failure;
+                    }
                     return Json(new { models = new[] { new { slug = "account-model", display_name = "Account model", visibility = "list" }, new { slug = "hidden-model", display_name = "Hidden", visibility = "hidden" } } }, ModelStatus);
                 case "/v1/responses":
                     ResponseCalls++; RequestToken = request.Headers.Authorization?.Parameter;
@@ -221,7 +229,8 @@ public class ChatGptConnectionTests
         var second = await rig.Accounts.SignInAsync(null, CancellationToken.None);
         Assert.Equal(2, rig.Accounts.Accounts.Count); Assert.NotEqual(first.Label, second.Label);
         Assert.True(second.SignedIn); Assert.False(second.PlanUsageEnabled);
-        await Assert.ThrowsAsync<AiConnectionException>(() => rig.Accounts.CreateProvider(second.Id).ListModelsAsync(CancellationToken.None));
+        var permission=await Assert.ThrowsAsync<AiConnectionException>(() => rig.Accounts.CreateProvider(second.Id).ListModelsAsync(CancellationToken.None));
+        Assert.False(permission.ManageUsage);
         Assert.Equal(0, rig.ModelCalls);
     }
 
@@ -344,13 +353,63 @@ public class ChatGptConnectionTests
         using var rig = new Rig(); var account = await rig.Accounts.SignInAsync(null, CancellationToken.None); rig.Stream = stream;
         var error = await Record.ExceptionAsync(() => rig.Accounts.CreateProvider(account.Id).GenerateAsync("account-model", "Roadmap", Context(), null, CancellationToken.None));
         Assert.NotNull(error); Assert.DoesNotContain("secret", error.Message);
+        if(error is AiConnectionException connection)Assert.False(connection.ManageUsage);
     }
 
     [Fact]
     public async Task UsageLimitIsActionableAndNeverMakesAnApiKeyRequest()
     {
         using var rig = new Rig(); var account = await rig.Accounts.SignInAsync(null, CancellationToken.None); rig.ModelStatus = HttpStatusCode.TooManyRequests;
+        rig.ModelErrorCode="subscription_sharing_usage_limit_exceeded";
         var error = await Assert.ThrowsAsync<AiConnectionException>(() => rig.Accounts.CreateProvider(account.Id).ListModelsAsync(CancellationToken.None));
         Assert.True(error.ManageUsage); Assert.Contains("Manage usage", error.Message); Assert.Equal(1, rig.ModelCalls);
+    }
+
+    [Theory]
+    [InlineData("error","subscription_sharing_usage_limit_exceeded",true)]
+    [InlineData("error","subscription_sharing_unsupported_capability",false)]
+    [InlineData("error","subscription_sharing_usage_unavailable",false)]
+    [InlineData("response.failed","subscription_sharing_usage_limit_exceeded",true)]
+    [InlineData("response.failed","subscription_sharing_unsupported_capability",false)]
+    [InlineData("response.incomplete","subscription_sharing_usage_unavailable",false)]
+    [InlineData("error","unrecognized_error",false)]
+    public async Task StreamFailuresUseStructuredRecoveryWithoutExposingServiceMessages(string type,string code,bool usage)
+    {
+        using var rig=new Rig();var account=await rig.Accounts.SignInAsync(null,CancellationToken.None);
+        object payload=type=="error"?new { type,code,message="private-diagnostic" }
+            :new { type,response=new { status="failed",error=new { code,message="private-diagnostic" } } };
+        rig.Stream="data: "+JsonSerializer.Serialize(payload)+"\n\n";
+        var error=await Assert.ThrowsAsync<AiConnectionException>(()=>rig.Accounts.CreateProvider(account.Id).GenerateAsync("account-model","Roadmap",Context(),null,CancellationToken.None));
+        Assert.Equal(usage,error.ManageUsage);Assert.Equal(code,error.ServiceCode);Assert.Equal(200,error.HttpStatus);
+        Assert.DoesNotContain("private-diagnostic",error.Message);Assert.True(Assert.Single(rig.Accounts.Accounts).SignedIn);
+        if(code.EndsWith("unsupported_capability"))Assert.Contains("compatible",error.Message);
+        if(code.EndsWith("usage_unavailable"))Assert.Contains("temporarily",error.Message);
+    }
+
+    [Theory]
+    [InlineData(400,"subscription_sharing_unsupported_capability")]
+    [InlineData(503,"subscription_sharing_usage_unavailable")]
+    [InlineData(403,"subscription_sharing_user_not_eligible")]
+    [InlineData(401,"subscription_sharing_invalid_user")]
+    [InlineData(429,"rate_limit_exceeded")]
+    [InlineData(429,null)]
+    public async Task NonUsageHttpErrorsKeepActualDiagnosticsAndNeverHighlightUsage(int status,string? code)
+    {
+        using var rig=new Rig();var account=await rig.Accounts.SignInAsync(null,CancellationToken.None);
+        rig.ModelStatus=(HttpStatusCode)status;rig.ModelErrorCode=code;
+        var error=await Assert.ThrowsAsync<AiConnectionException>(()=>rig.Accounts.CreateProvider(account.Id).ListModelsAsync(CancellationToken.None));
+        Assert.False(error.ManageUsage);Assert.Equal(status,error.HttpStatus);Assert.Equal(code,error.ServiceCode);
+        Assert.Equal("req-test",error.RequestId);Assert.DoesNotContain("private-diagnostic",error.Message);
+        Assert.True(Assert.Single(rig.Accounts.Accounts).SignedIn);Assert.Equal(1,rig.ModelCalls);
+    }
+
+    [Fact]
+    public async Task DirectAdmissionDetailDoesNotBecomeAUsageErrorOrEraseCredentials()
+    {
+        using var rig=new Rig();var account=await rig.Accounts.SignInAsync(null,CancellationToken.None);
+        rig.ModelStatus=HttpStatusCode.ServiceUnavailable;rig.DirectAdmissionError=true;
+        var error=await Assert.ThrowsAsync<AiConnectionException>(()=>rig.Accounts.CreateProvider(account.Id).ListModelsAsync(CancellationToken.None));
+        Assert.False(error.ManageUsage);Assert.Equal(503,error.HttpStatus);Assert.Null(error.ServiceCode);
+        Assert.DoesNotContain("private-diagnostic",error.Message);Assert.True(Assert.Single(rig.Accounts.Accounts).SignedIn);
     }
 }

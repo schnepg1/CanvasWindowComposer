@@ -42,7 +42,7 @@ internal static class ComposerEventStream
             }
             if (type == "response.refusal.delta") throw new InvalidDataException("The model declined this request. Try rephrasing it.");
             if (type is "error" or "response.failed" or "response.incomplete")
-                throw new AiConnectionException("ChatGPT could not complete this request. Check your connection, model and usage settings; nothing was applied.", true);
+                throw ChatGptErrors.Failure(root, response, incomplete: type == "response.incomplete");
             if (type == "response.completed")
                 return JsonDocument.Parse(root.GetProperty("response").GetRawText());
         }

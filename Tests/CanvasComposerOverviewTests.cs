@@ -18,9 +18,10 @@ public class CanvasComposerOverviewTests
     private sealed class Provider : ICanvasComposerProvider
     {
         public int Requests;
+        public IReadOnlyList<AiModel> Models=[new("test-model","Test model")];
         public ComposerContext? Received;
         public Func<Task<ComposerPlan>> Respond=()=>Task.FromResult(Plan());
-        public Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<AiModel>>([new("test-model","Test model")]);
+        public Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken token) => Task.FromResult(Models);
         public Task<ComposerPlan> GenerateAsync(string model,string prompt,ComposerContext context,IProgress<string>? progress,CancellationToken token)
         { Requests++;Received=context;return Respond(); }
     }
@@ -142,6 +143,20 @@ public class CanvasComposerOverviewTests
             int changes=0;window.Connections.ConnectionChanged+=()=>changes++;
             input.RaiseEscPressed();
             Assert.Null(overview.ComposerWindow);Assert.Equal(0,changes);Assert.Empty(overview.Annotations!.Items);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void ModelSelectionInvalidatesProposalEvenWhenDisplayNamesAreIdentical()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            var chat=new Provider { Models=[new("first","Same name"),new("second","Same name")] };
+            var accounts=new Accounts(chat) { AccountsList=[new("account","Account",true,true,false)] };
+            overview.OpenCanvasComposer(new Provider(),new Credentials(),accounts);var window=overview.ComposerWindow!;Configure(window);
+            window.Connections.SourceBox.SelectedIndex=1;PumpUntil(()=>!window.Busy);
+            window.GenerateButton.PerformClick();PumpUntil(()=>!window.Busy);Assert.True(window.ApplyButton.Enabled);
+            window.ModelBox.SelectedIndex=1;
+            Assert.False(window.ApplyButton.Enabled);Assert.Empty(overview.Annotations!.Items);
         });
 
     [Fact]

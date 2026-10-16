@@ -89,6 +89,7 @@ internal sealed class AiConnectionPanel : UserControl
         };
         _key.TextChanged += (_, _) => { if (!_updating) { ClearModels(); InvalidateConnection(); } };
         _model.TextChanged += (_, _) => { if (!_updating) InvalidateConnection(); };
+        _model.SelectedIndexChanged += (_, _) => { if (!_updating) InvalidateConnection(); };
         _signIn.Click += async (_, _) => await SignInAsync();
         _signOut.Click += async (_, _) => await SignOutAsync();
         _refresh.Click += async (_, _) => await RefreshModelsAsync();
@@ -112,13 +113,14 @@ internal sealed class AiConnectionPanel : UserControl
 
     internal (ICanvasComposerProvider Provider, string Model) PrepareRequest()
     {
+        _usage.ResetFont();
         if (Busy) throw new AiConnectionException("Wait for the connection operation to finish.");
         string model = _model.SelectedItem is AiModel selected && _model.Text == selected.DisplayName ? selected.Id : _model.Text.Trim();
         if (string.IsNullOrWhiteSpace(model)) throw new AiConnectionException("Choose or enter a model first.");
         if (ChatGpt)
         {
             var account = SelectedAccount;
-            if (account?.SignedIn != true || !account.PlanUsageEnabled) throw new AiConnectionException("Connect a ChatGPT account with plan usage enabled.", true);
+            if (account?.SignedIn != true || !account.PlanUsageEnabled) throw new AiConnectionException("Connect a ChatGPT account with plan usage enabled.");
             if (_model.SelectedItem is not AiModel) throw new AiConnectionException("Refresh models and choose one available to this ChatGPT account.");
             return (_accounts.CreateProvider(account.Id), model);
         }
@@ -207,6 +209,8 @@ internal sealed class AiConnectionPanel : UserControl
             if (!IsDisposed && epoch == _epoch)
             {
                 Report(ex is AiConnectionException ? ex.Message : "The connection could not complete. Check your network and try again.");
+                _usage.ResetFont();
+                if (ex is AiConnectionException { ManageUsage: true }) ShowUsageAction();
                 ReloadAccounts(SelectedAccount?.Id);
             }
         }
@@ -267,10 +271,10 @@ internal sealed class AiConnectionPanel : UserControl
     internal void CancelPending()
     {
         _epoch++; _operation?.Cancel(); _operation = null;
-        if (!IsDisposed) { UpdateControls(); BusyChanged?.Invoke(); }
+        if (!IsDisposed) { _usage.ResetFont(); UpdateControls(); BusyChanged?.Invoke(); }
     }
     internal void ShowUsageAction() { if (!_usage.Font.Bold) _usage.Font = new Font(_usage.Font, FontStyle.Bold); _usage.Focus(); }
-    private void InvalidateConnection() => ConnectionChanged?.Invoke();
+    private void InvalidateConnection() { _usage.ResetFont(); ConnectionChanged?.Invoke(); }
     private void Report(string message) { LastStatus = message; StatusChanged?.Invoke(message); }
     protected override void Dispose(bool disposing)
     {

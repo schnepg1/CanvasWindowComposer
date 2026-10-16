@@ -97,7 +97,7 @@ public sealed class ChatGptAccounts : IChatGptAccounts
         {
             var account = Find(accountId);
             var tokens = account.Tokens ?? throw new ExpiredChatGptSessionException();
-            if (!tokens.CanUsePlan) throw new AiConnectionException("ChatGPT plan usage is not enabled. Choose Continue with ChatGPT to grant permission.", true);
+            if (!tokens.CanUsePlan) throw new AiConnectionException("ChatGPT plan usage is not enabled. Choose Continue with ChatGPT to grant permission.");
             var now = DateTimeOffset.UtcNow;
             if (tokens.ExpiresAt <= now.AddMinutes(2) && tokens.EarliestRefreshAt <= now)
             {
@@ -106,7 +106,7 @@ public sealed class ChatGptAccounts : IChatGptAccounts
                 Put(account with { Tokens = tokens });
             }
             if (tokens.ExpiresAt <= now) throw new ExpiredChatGptSessionException();
-            if (!tokens.CanUsePlan) throw new AiConnectionException("ChatGPT plan permission changed. Reconnect your account.", true);
+            if (!tokens.CanUsePlan) throw new AiConnectionException("ChatGPT plan permission changed. Reconnect your account.");
             return tokens.AccessToken;
         }
         finally { _gate.Release(); }
