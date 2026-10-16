@@ -147,6 +147,7 @@ internal sealed partial class OverviewManager
                     throw new InvalidOperationException("A selected window changed. Select it again.");
                 session.Add((pair.Key,pair.Value.Id,pair.Value.Pid,b,destination));
             }
+            string? nativeWarning=null;
             bool Place(bool redo)
             {
                 if (_annotationDesktop() != desktop) return false;
@@ -155,7 +156,9 @@ internal sealed partial class OverviewManager
                     if (mapped?.ContainsKey(p.Handle)==true || !_selectionWindows.TryGetValue(p.Handle,out var identity) || identity.Id!=p.Id || _win32.GetWindowProcessId(p.Handle)!=p.Pid
                         || !_mainCanvas.Windows.TryGetValue(p.Handle,out var b) || !ZoneLayoutPlanner.SamePlacement(b,redo?p.Before:p.After)) return false;
                 if (before != null && after != null && !_placeholderWorkspace!.ApplySelectionPlacement(redo?before:after,redo?after:before)) return false;
-                foreach (var p in session) { var b=redo?p.After:p.Before; _mainCanvas.SetWindow(p.Handle,b.X,b.Y,b.W,b.H); }
+                bool accepted=CanvasWindowPlacement.ApplySelection(_mainCanvas,_win32,session.Select(p=>(p.Handle,redo?p.After:p.Before)).ToArray());
+                nativeWarning=accepted?null:"The group moved, but Windows could not update some restore positions.";
+                _annotationError=nativeWarning??_placeholderWorkspace?.Status;
                 _wm.Reproject(true); RefreshZoneLayout(); return true;
             }
             // Validate the complete annotation batch before applying the workspace half.
@@ -163,7 +166,7 @@ internal sealed partial class OverviewManager
             bool external = savedWindowIds.Length+areaIds.Length+session.Count>0;
             _annotationDocument.ApplyBatch(_annotationDocument.Revision,_annotationDesktop(),moved,external?Place:null);
             _selectionHistoryActive=true; _proximityCircle=null; RefreshZoneLayout();
-            _annotationError=_placeholderWorkspace?.Status;
+            _annotationError=nativeWarning??_placeholderWorkspace?.Status;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { _annotationError=ex.Message; }
         RefreshToolPreview();
