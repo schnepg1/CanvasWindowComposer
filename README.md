@@ -149,9 +149,10 @@ See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
 ### AI Canvas Composer
 
 Click **AI Compose** in overview to turn a prompt and explicitly checked notes into
-an editable diagram or text rewrite. Enter an OpenAI API key and a model ID that
-supports Structured Outputs; API usage is billed to your API account. Saving the
-key in Windows Credential Manager is optional. Inspect the translucent preview,
-then Apply or discard it. A complete proposal is one undo step. ChatGPT sign-in and
-ACP are planned as separate connections; this version uses API keys only.
+an editable diagram or text rewrite. Choose an **OpenAI API key** or **ChatGPT plan**.
+Continue with ChatGPT opens browser sign-in, then offers saved accounts and their
+available models. API-key usage is billed separately; the connection never changes
+automatically. Inspect the translucent preview, then Apply or discard it. A complete
+proposal is one undo step. See [AI connections](Docs/ai-connections.md) for setup.
+ACP remains a future adapter.
 See [AI composer design and roadmap](Docs/ai-canvas-composer.md).

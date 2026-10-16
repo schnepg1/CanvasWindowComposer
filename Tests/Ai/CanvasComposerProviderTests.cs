@@ -1,4 +1,4 @@
-using CanvasDesktop;
+using CanvasDesktop.Ai;
 using CanvasDesktop.CanvasView;
 using System.Net;
 using System.Net.Http;
@@ -26,8 +26,8 @@ public class CanvasComposerProviderTests
         var handler=new Handler(); string? body=null; string? key=null; Uri? uri=null;
         handler.Respond=async (request,token)=>
         { body=await request.Content!.ReadAsStringAsync(token);key=request.Headers.Authorization?.Parameter;uri=request.RequestUri;return Response(); };
-        using var http=new HttpClient(handler);var provider=new OpenAiCanvasComposerProvider(http);
-        var result=await provider.GenerateAsync("test-key","test-model","Make a roadmap",Context(),CancellationToken.None);
+        using var http=new HttpClient(handler);var provider=new OpenAiCanvasComposerProvider(http,"test-key");
+        var result=await provider.GenerateAsync("test-model","Make a roadmap",Context(),null,CancellationToken.None);
         Assert.Equal("Plan",result.Summary);Assert.Equal("test-key",key);Assert.Equal("https://api.openai.com/v1/responses",uri!.ToString());
         using var json=JsonDocument.Parse(body!);var root=json.RootElement;
         Assert.False(root.GetProperty("store").GetBoolean());Assert.True(root.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean());
@@ -41,33 +41,33 @@ public class CanvasComposerProviderTests
     public async Task IncompleteResultsNeverBecomePlans(string status)
     {
         var handler=new Handler { Respond=(_,_)=>Task.FromResult(Response(status)) };using var http=new HttpClient(handler);
-        await Assert.ThrowsAsync<InvalidDataException>(()=>new OpenAiCanvasComposerProvider(http).GenerateAsync("key","model","prompt",Context(),CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(()=>new OpenAiCanvasComposerProvider(http,"key").GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
     }
     [Fact]
     public async Task RefusalAndMalformedPlanAreRejected()
     {
         var handler=new Handler { Respond=(_,_)=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content=new StringContent("""{"status":"completed","output":[{"content":[{"type":"refusal","refusal":"No"}]}]}""") }) };
-        using var http=new HttpClient(handler);var provider=new OpenAiCanvasComposerProvider(http);
-        await Assert.ThrowsAsync<InvalidDataException>(()=>provider.GenerateAsync("key","model","prompt",Context(),CancellationToken.None));
+        using var http=new HttpClient(handler);var provider=new OpenAiCanvasComposerProvider(http,"key");
+        await Assert.ThrowsAsync<InvalidDataException>(()=>provider.GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
         handler.Respond=(_,_)=>Task.FromResult(Response(text:"not json"));
-        await Assert.ThrowsAsync<JsonException>(()=>provider.GenerateAsync("key","model","prompt",Context(),CancellationToken.None));
+        await Assert.ThrowsAsync<JsonException>(()=>provider.GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
     }
     [Fact]
     public async Task HttpFailureDoesNotExposeResponseBodyOrApiKey()
     {
         var handler=new Handler { Respond=(_,_)=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content=new StringContent("secret body") }) };
         using var http=new HttpClient(handler);
-        var error=await Assert.ThrowsAsync<HttpRequestException>(()=>new OpenAiCanvasComposerProvider(http).GenerateAsync("test-secret","model","prompt",Context(),CancellationToken.None));
+        var error=await Assert.ThrowsAsync<AiConnectionException>(()=>new OpenAiCanvasComposerProvider(http,"key").GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
         Assert.Contains("401",error.Message);Assert.DoesNotContain("secret",error.Message);
     }
     [Fact]
     public async Task CancellationReachesHttpAndOversizedInputNeverMakesARequest()
     {
         int requests=0;var handler=new Handler { Respond=async (_,token)=>{requests++;await Task.Delay(Timeout.Infinite,token);return Response();} };
-        using var http=new HttpClient(handler);var provider=new OpenAiCanvasComposerProvider(http);
-        using var cts=new CancellationTokenSource();var task=provider.GenerateAsync("key","model","prompt",Context(),cts.Token);cts.Cancel();
+        using var http=new HttpClient(handler);var provider=new OpenAiCanvasComposerProvider(http,"key");
+        using var cts=new CancellationTokenSource();var task=provider.GenerateAsync("model","prompt",Context(),null,cts.Token);cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>task);
-        await Assert.ThrowsAsync<ArgumentException>(()=>provider.GenerateAsync("key","model",new string('x',8001),Context(),CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(()=>provider.GenerateAsync("model",new string('x',8001),Context(),null,CancellationToken.None));
         Assert.Equal(1,requests);
     }
     [Fact]
@@ -75,6 +75,6 @@ public class CanvasComposerProviderTests
     {
         var handler=new Handler { Respond=(_,_)=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content=new StringContent(new string('x',1024*1024+1)) }) };
         using var http=new HttpClient(handler);
-        await Assert.ThrowsAsync<InvalidDataException>(()=>new OpenAiCanvasComposerProvider(http).GenerateAsync("key","model","prompt",Context(),CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(()=>new OpenAiCanvasComposerProvider(http,"key").GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
     }
 }

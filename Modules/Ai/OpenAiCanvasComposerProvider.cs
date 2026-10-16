@@ -10,16 +10,20 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CanvasDesktop;
+using CanvasDesktop.CanvasView;
 
-internal interface ICanvasComposerProvider
-{
-    Task<ComposerPlan> GenerateAsync(string apiKey, string model, string prompt, ComposerContext context, CancellationToken cancellation);
-}
+namespace CanvasDesktop.Ai;
 
 /// <summary>Explicit API-key adapter. The provider returns data and has no canvas mutation capability.</summary>
-internal sealed class OpenAiCanvasComposerProvider(HttpClient http) : ICanvasComposerProvider
+public sealed class OpenAiCanvasComposerProvider : ICanvasComposerProvider
 {
+    private readonly HttpClient http;
+    private readonly Func<CancellationToken, Task<string>> _token;
+    private readonly bool _planUsage;
+    public OpenAiCanvasComposerProvider(HttpClient http, string apiKey)
+        : this(http, _ => Task.FromResult(apiKey), false) { }
+    internal OpenAiCanvasComposerProvider(HttpClient http, Func<CancellationToken, Task<string>> token, bool planUsage)
+    { this.http = http; _token = token; _planUsage = planUsage; }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
     private const string Instructions = """
@@ -50,14 +54,15 @@ internal sealed class OpenAiCanvasComposerProvider(HttpClient http) : ICanvasCom
         }
         """;
 
-    public async Task<ComposerPlan> GenerateAsync(string apiKey, string model, string prompt, ComposerContext context, CancellationToken cancellation)
+    public async Task<ComposerPlan> GenerateAsync(string model, string prompt, ComposerContext context, IProgress<string>? progress, CancellationToken cancellation)
     {
-        if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Length > 4096 || apiKey.Any(char.IsControl)) throw new ArgumentException("Enter a valid API key.");
         if (string.IsNullOrWhiteSpace(model) || model.Length > 200 || model.Any(char.IsControl)) throw new ArgumentException("Enter a model ID that supports Structured Outputs.");
         if (string.IsNullOrWhiteSpace(prompt) || prompt.Length > 8000) throw new ArgumentException("Enter a request of up to 8,000 characters.");
         if (context.SharedAnnotations.Count > CanvasComposer.MaximumContextItems
             || context.SharedAnnotations.Sum(a => a.Text.Length) > CanvasComposer.MaximumContextCharacters)
             throw new ArgumentException("Share up to 20 notes and 32,000 characters per request.");
+        string apiKey = await _token(cancellation).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Length > 65536 || apiKey.Any(char.IsControl)) throw new AiConnectionException("Connect your account or enter a valid API key.");
         using var schema = JsonDocument.Parse(PlanSchema);
         var input = JsonSerializer.Serialize(new
         {
@@ -66,27 +71,21 @@ internal sealed class OpenAiCanvasComposerProvider(HttpClient http) : ICanvasCom
         });
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/responses");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
-        request.Content = JsonContent.Create(new
+        var body = new System.Collections.Generic.Dictionary<string, object>
         {
-            model = model.Trim(), store = false, stream = false, max_output_tokens = 12000,
-            instructions = Instructions,
-            input = new[] { new { role = "user", content = input } },
-            text = new { format = new { type = "json_schema", name = "canvas_proposal", strict = true, schema = schema.RootElement } }
-        });
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
-        if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"OpenAI returned HTTP {(int)response.StatusCode}. Check your API key, model access and API billing.");
-        if (response.Content.Headers.ContentLength > 1024 * 1024) throw new InvalidDataException("The AI response was too large.");
-        using var stream = await response.Content.ReadAsStreamAsync(cancellation);
-        using var memory = new MemoryStream();
-        var buffer = new byte[8192];
-        int count;
-        while ((count = await stream.ReadAsync(buffer, cancellation)) > 0)
-        {
-            if (memory.Length + count > 1024 * 1024) throw new InvalidDataException("The AI response was too large.");
-            memory.Write(buffer, 0, count);
-        }
-        using var data = JsonDocument.Parse(memory.ToArray());
+            ["model"] = model.Trim(), ["store"] = false, ["stream"] = _planUsage,
+            ["instructions"] = Instructions,
+            ["input"] = new[] { new { role = "user", content = input } },
+            ["text"] = new { format = new { type = "json_schema", name = "canvas_proposal", strict = true, schema = schema.RootElement } }
+        };
+        if (!_planUsage) body["max_output_tokens"] = 12000;
+        request.Content = JsonContent.Create(body);
+        progress?.Report("Request sent. Waiting for the model…");
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
+        CheckStatus(response);
+        using var data = _planUsage
+            ? await ComposerEventStream.ReadAsync(response, progress, cancellation).ConfigureAwait(false)
+            : await BoundedHttp.ReadJsonAsync(response, cancellation).ConfigureAwait(false);
         var root = data.RootElement;
         if (!root.TryGetProperty("status", out var status) || status.GetString() != "completed")
             throw new InvalidDataException("Generation did not finish. No canvas changes were made.");
@@ -104,4 +103,34 @@ internal sealed class OpenAiCanvasComposerProvider(HttpClient http) : ICanvasCom
         return JsonSerializer.Deserialize<ComposerPlan>(result.ToString(), Json)
             ?? throw new InvalidDataException("The model did not return a canvas proposal.");
     }
+    public async Task<IReadOnlyList<AiModel>> ListModelsAsync(CancellationToken cancellation)
+    {
+        string token = await _token(cancellation).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsControl)) throw new AiConnectionException("Connect your account or enter a valid API key.");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
+        CheckStatus(response);
+        using var json = await BoundedHttp.ReadJsonAsync(response, cancellation).ConfigureAwait(false);
+        var models = new System.Collections.Generic.List<AiModel>();
+        foreach (var item in json.RootElement.GetProperty(_planUsage ? "models" : "data").EnumerateArray())
+        {
+            if (_planUsage && (!item.TryGetProperty("visibility", out var visibility) || visibility.GetString() != "list")) continue;
+            string? id = item.GetProperty(_planUsage ? "slug" : "id").GetString();
+            string? label = _planUsage && item.TryGetProperty("display_name", out var name) ? name.GetString() : id;
+            if (!string.IsNullOrWhiteSpace(id) && id.Length <= 200 && !id.Any(char.IsControl)) models.Add(new(id, label ?? id));
+            if (models.Count > 2000) throw new InvalidDataException("The model catalog was too large.");
+        }
+        return models.AsReadOnly();
+    }
+
+    private void CheckStatus(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode) return;
+        int status = (int)response.StatusCode;
+        if (_planUsage && status == 429) throw new AiConnectionException("ChatGPT usage limit reached. Choose Manage usage to review your limits.", true);
+        if (_planUsage) throw new AiConnectionException($"ChatGPT returned HTTP {status}. Reconnect for an expired session, or check model access and plan usage. No API-key request was made.", true);
+        throw new AiConnectionException($"OpenAI returned HTTP {status}. Check your API key, model access and API billing.");
+    }
+
 }

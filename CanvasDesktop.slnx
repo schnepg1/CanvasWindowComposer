@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="CanvasDesktop.csproj" />
   <Project Path="Modules/CanvasView/CanvasDesktop.CanvasView.csproj" />
+  <Project Path="Modules/Ai/CanvasDesktop.Ai.csproj" />
   <Project Path="Tests/CanvasDesktop.Tests.csproj" />
+  <Project Path="Tests/Ai/CanvasDesktop.Ai.Tests.csproj" />
 </Solution>

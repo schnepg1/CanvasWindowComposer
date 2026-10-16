@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="Ai\**" />
     <Using Include="Xunit" />
     <!-- WPF's SDK removes the default IO/HTTP implicit imports. Preserve the existing test imports. -->
     <Using Include="System.IO" />
