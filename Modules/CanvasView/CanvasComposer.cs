@@ -4,9 +4,17 @@ public sealed record ComposerNode(string Id, string Kind, string Text, string Co
 public sealed record ComposerEdge(string From, string To, string Color);
 public sealed record ComposerEdit(string Id, string Text);
 public sealed record ComposerPlan(string Summary, ComposerNode[] Nodes, ComposerEdge[] Edges, ComposerEdit[] Edits);
+public sealed record ComposerReference(Guid Id, string Kind, string Title, CanvasRect Bounds);
 public sealed record ComposerContext(Guid Desktop, long Revision, CanvasPoint Anchor,
-    IReadOnlyList<CanvasAnnotation> SharedAnnotations, IReadOnlyList<CanvasRect> Obstacles);
-public sealed record ComposerPreview(Guid Desktop, long Revision, string Summary, IReadOnlyList<CanvasAnnotation> Items);
+    IReadOnlyList<CanvasAnnotation> SharedAnnotations, IReadOnlyList<CanvasRect> Obstacles)
+{
+    public IReadOnlyList<ComposerReference> SharedReferences { get; init; } = [];
+    public bool PreserveWording { get; init; }
+}
+public sealed record ComposerPreview(Guid Desktop, long Revision, string Summary, IReadOnlyList<CanvasAnnotation> Items)
+{
+    public IReadOnlyList<ComposerReference> References { get; init; } = [];
+}
 
 /// <summary>Provider-independent validation and deterministic world-space layout. No model-generated coordinates.</summary>
 public static class CanvasComposer
@@ -23,18 +31,29 @@ public static class CanvasComposer
             || plan.Nodes.Length > MaximumNodes || plan.Edges.Length > MaximumEdges || plan.Edits.Length > MaximumContextItems
             || plan.Nodes.Length + plan.Edits.Length == 0)
             throw new ArgumentException("The response does not contain a supported canvas proposal.");
+        var shared = context.SharedAnnotations.ToDictionary(a => a.Id);
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in plan.Nodes)
             if (node is null || string.IsNullOrWhiteSpace(node.Id) || node.Id.Length > 64 || !nodeIds.Add(node.Id)
                 || node.Kind is not ("note" or "rectangle" or "ellipse") || !AnnotationDocument.ValidColor(node.Color)
-                || string.IsNullOrWhiteSpace(node.Text) || node.Text.Length > 2000)
+                || node.Text is null || (!(Guid.TryParse(node.Id,out var sharedId) && shared.ContainsKey(sharedId)) && (string.IsNullOrWhiteSpace(node.Text) || node.Text.Length > 2000)))
                 throw new ArgumentException("Invalid diagram node.");
         var edges = new HashSet<(string, string)>();
         foreach (var edge in plan.Edges)
             if (edge is null || !nodeIds.Contains(edge.From) || !nodeIds.Contains(edge.To) || edge.From == edge.To
                 || !edges.Add((edge.From, edge.To)) || !AnnotationDocument.ValidColor(edge.Color))
                 throw new ArgumentException("Invalid diagram connection.");
-        var shared = context.SharedAnnotations.ToDictionary(a => a.Id);
+        var reused = new Dictionary<string,CanvasAnnotation>();
+        foreach (var node in plan.Nodes)
+        {
+            if (!Guid.TryParse(node.Id,out var existingId)) continue;
+            if (!shared.TryGetValue(existingId,out var existing) || existing.DesktopId!=context.Desktop || existing.Kind==AnnotationKind.Arrow)
+                throw new ArgumentException("The proposal tried to arrange an object outside the shared context.");
+            reused.Add(node.Id,existing);
+        }
+        if (context.PreserveWording && (plan.Edits.Length>0 || plan.Edges.Length>0 || reused.Count!=plan.Nodes.Length
+            || !reused.Values.Select(a=>a.Id).ToHashSet().SetEquals(shared.Values.Where(a=>a.Kind!=AnnotationKind.Arrow).Select(a=>a.Id))))
+            throw new ArgumentException("Layout-only proposals must reuse every checked note or shape and cannot add or rewrite objects.");
         var edited = new HashSet<Guid>();
         var output = new List<CanvasAnnotation>();
         foreach (var edit in plan.Edits)
@@ -42,7 +61,7 @@ public static class CanvasComposer
             if (edit is null || !Guid.TryParse(edit.Id, out var id) || !edited.Add(id)
                 || !shared.TryGetValue(id, out var item) || item.DesktopId != context.Desktop
                 || item.Kind != AnnotationKind.Text || string.IsNullOrWhiteSpace(edit.Text)
-                || edit.Text.Length > AnnotationDocument.MaximumTextLength)
+                || reused.Values.Any(a => a.Id==id) || edit.Text.Length > AnnotationDocument.MaximumTextLength)
                 throw new ArgumentException("The proposal tried to edit a note outside the shared context.");
             output.Add(item with { Text = edit.Text });
         }
@@ -67,13 +86,17 @@ public static class CanvasComposer
         {
             int column = rank[node.Id];
             // Height follows text length; wrapping is estimated locally, never taken from model coordinates.
-            double height = Math.Clamp(60 + Math.Ceiling(node.Text.Length / 28.0) * 24, 160, 1800);
+            double height = reused.TryGetValue(node.Id,out var original) ? original.Bounds.Height : Math.Clamp(60 + Math.Ceiling(node.Text.Length / 28.0) * 24, 160, 1800);
             double y = positions.Where(p => rank[p.Key] == column).Select(p => p.Value.Y + p.Value.Height + 60).DefaultIfEmpty(0).Max();
-            positions[node.Id] = new(column * 400, y, 300, height);
+            double x=Enumerable.Range(0,column).Sum(c => plan.Nodes.Where(n => rank[n.Id]==c)
+                .Select(n => reused.TryGetValue(n.Id,out var size)?size.Bounds.Width:300).DefaultIfEmpty(300).Max()+100);
+            positions[node.Id] = new(x, y, reused.TryGetValue(node.Id,out var sized)?sized.Bounds.Width:300, height);
         }
         double width = positions.Values.Select(r => r.X + r.Width).DefaultIfEmpty(0).Max();
         double heightTotal = positions.Values.Select(r => r.Y + r.Height).DefaultIfEmpty(0).Max();
-        var origin = FindSpace(context.Anchor, width, heightTotal, context.Obstacles);
+        // Existing annotations may occupy their old footprint; unrelated objects remain obstacles.
+        var obstacles=context.Obstacles.Where(r => !reused.Values.Any(a => a.Bounds==r)).ToArray();
+        var origin = FindSpace(context.Anchor, width, heightTotal, obstacles);
         var nodes = new Dictionary<string, CanvasAnnotation>();
         foreach (var node in plan.Nodes)
         {
@@ -81,6 +104,8 @@ public static class CanvasComposer
             var item = new CanvasAnnotation(Guid.NewGuid(), context.Desktop,
                 node.Kind == "rectangle" ? AnnotationKind.Rectangle : node.Kind == "ellipse" ? AnnotationKind.Ellipse : AnnotationKind.Text,
                 new(origin.X + r.X, origin.Y + r.Y), new(origin.X + r.X + r.Width, origin.Y + r.Y + r.Height), node.Color, 3, node.Text);
+            if (reused.TryGetValue(node.Id,out var original))
+                item=original.Translate(item.A.X-original.Bounds.X,item.A.Y-original.Bounds.Y);
             nodes.Add(node.Id, item); output.Add(item);
         }
         foreach (var edge in plan.Edges)
@@ -89,8 +114,20 @@ public static class CanvasComposer
             output.Add(new(Guid.NewGuid(), context.Desktop, AnnotationKind.Arrow,
                 Boundary(from, Center(to.Bounds)), Boundary(to, Center(from.Bounds)), edge.Color));
         }
+        foreach (var arrow in context.SharedAnnotations.Where(a => a.Kind==AnnotationKind.Arrow))
+        {
+            CanvasPoint Follow(CanvasPoint endpoint)
+            {
+                var match=reused.FirstOrDefault(pair => CanvasSelection.Contains(new(pair.Value.Bounds.X-24,pair.Value.Bounds.Y-24,pair.Value.Bounds.Width+48,pair.Value.Bounds.Height+48),endpoint));
+                if (match.Value==null) return endpoint;
+                var arranged=nodes[match.Key];
+                return new(endpoint.X+arranged.Bounds.X-match.Value.Bounds.X,endpoint.Y+arranged.Bounds.Y-match.Value.Bounds.Y);
+            }
+            var linked=arrow with { A=Follow(arrow.A),B=Follow(arrow.B) };
+            if (linked!=arrow) output.Add(linked);
+        }
         AnnotationDocument.Validate(output);
-        return new(context.Desktop, context.Revision, plan.Summary, output.AsReadOnly());
+        return new(context.Desktop, context.Revision, plan.Summary, output.AsReadOnly()) { References=context.SharedReferences.ToArray() };
     }
 
     private static CanvasPoint Center(CanvasRect r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);

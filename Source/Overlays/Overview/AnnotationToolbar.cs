@@ -9,6 +9,9 @@ internal sealed class AnnotationToolbar : Form
 {
     private readonly Dictionary<AnnotationMode,ToolStripButton> _modes=[];
     private readonly ToolStripLabel _status=new();
+    private readonly ToolStripDropDownButton _nearby=new("Nearby");
+    private readonly NumericUpDown _radius=new() { Minimum=1,Maximum=100000,Increment=100,Value=1200,Width=100,AccessibleName="Selection radius in canvas units" };
+    public event Action<double>? NearbyRequested;
     public event Action<AnnotationMode>? ModeRequested;
     public event Action<string>? ColorRequested;
     public event Action<double>? StrokeRequested;
@@ -39,12 +42,18 @@ internal sealed class AnnotationToolbar : Form
         Button("Undo",()=>UndoRequested?.Invoke()); Button("Redo",()=>RedoRequested?.Invoke()); Button("Delete",()=>DeleteRequested?.Invoke());
         Button("Save",()=>RetrySaveRequested?.Invoke());
         Button("AI Compose",()=>ComposerRequested?.Invoke());
+        var radiusHost=new ToolStripControlHost(_radius);
+        _nearby.DropDownItems.Add(new ToolStripLabel("Radius in canvas units"));
+        _nearby.DropDownItems.Add(radiusHost);
+        _nearby.DropDownItems.Add("Select around camera",null,(_,_)=>NearbyRequested?.Invoke((double)_radius.Value));
+        bar.Items.Add(_nearby);
         bar.Items.Add(_status);
     }
-    public void UpdateState(AnnotationMode mode,string? status)
+    public void SetSelectionRadius(double radius) => _radius.Value=(decimal)Math.Clamp(radius,1,100000);
+    public void UpdateState(AnnotationMode mode,string? status,int selectedCount=0)
     {
         foreach(var pair in _modes) pair.Value.Checked=pair.Key==mode;
-        _status.Text=status is null?"":"Save / load warning"; _status.ToolTipText=status??"";
+        _status.Text=status is null?$"{selectedCount} selected":"Warning"; _status.ToolTipText=status??"";
     }
 }
 

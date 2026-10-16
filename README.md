@@ -146,6 +146,10 @@ while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape can
 editing. Drawings save automatically per virtual desktop and return after restart.
 See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
 
+### Spatial selection
+
+Select windows, annotations and project tiles together with rectangle selection, Ctrl-click or a configurable radius around the camera. Drag the group with ghost previews and one-step undo, or open AI Compose to review the selection as context. Click a project name to include its assigned windows and spatial contents. See [spatial selection](Docs/spatial-selection.md).
+
 ### AI Canvas Composer
 
 Click **AI Compose** in overview to turn a prompt and explicitly checked notes into

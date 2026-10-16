@@ -781,17 +781,18 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
-        if (_composerWindow != null) return;
+        if (_composerWindow != null || (Control.ModifierKeys & Keys.Control) != 0) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
                 && annotationTool.Hit(Pointer(pass,e)) is { } note && note.Kind != AnnotationKind.Arrow && note.Text.Length > 0)
             {
                 CancelInteraction(); annotationTool.Select(note.Id); QueueAnnotationTextEdit(note);
+                return;
             }
-            return;
+            if (annotationTool.Mode!=AnnotationMode.Select) return;
         }
-        if (e.Button != MouseButtons.Left || _tools.ToolHasPendingInteraction || (Control.ModifierKeys & Keys.Shift) != 0) return;
+        if (e.Button != MouseButtons.Left || (_tools.ToolHasPendingInteraction && _selectionTool?.HasPendingInteraction != true) || (Control.ModifierKeys & (Keys.Shift|Keys.Control)) != 0) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;

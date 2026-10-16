@@ -19,6 +19,7 @@ internal sealed partial class OverviewManager
         var attached = new List<IOverviewAnnotationLayer>();
         if (_annotationLayer != null) attached.Add(_annotationLayer);
         if (_composerLayer != null) attached.Add(_composerLayer);
+        if (_selectionLayer != null) attached.Add(_selectionLayer);
         if (layers != null) attached.AddRange(layers);
         _drawingLayers = attached;
         foreach (var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
@@ -58,6 +59,7 @@ internal sealed partial class OverviewManager
     private void OnZoneToolCompleted(ZoneGestureResult result)
     {
         ApplyPointerCapture();
+        _selectionHistoryActive=false;
         if (result.Kind == ZoneGestureKind.Draw) ZoneDrawn?.Invoke(result.Bounds);
         else if (result.Kind == ZoneGestureKind.Move) ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
         else if (result.Kind == ZoneGestureKind.Resize) ZoneResizeRequested?.Invoke(result.ZoneId, result.Bounds);
@@ -92,6 +94,7 @@ internal sealed partial class OverviewManager
         if (_composerWindow != null) { CancelCanvasComposer(); RefreshToolPreview(); FocusOverview(); return; }
         if (_annotationEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
         if (CancelInteraction()) return;
+        if (Selection.Ids.Count > 0) { Selection.Clear(); _proximityCircle=null; RefreshToolPreview(); return; }
         if (_annotationTool is { Mode: not AnnotationMode.Navigate }) { SelectAnnotationMode(AnnotationMode.Navigate); return; }
         TransitionTo(OverviewMode.Hidden);
     }

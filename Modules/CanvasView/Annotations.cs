@@ -15,7 +15,8 @@ public sealed class AnnotationDocument
     public const int MaximumItems = 2000;
     public const int MaximumTextLength = 10000;
     private readonly List<CanvasAnnotation> _items = [];
-    private readonly Dictionary<Guid, (List<CanvasAnnotation[]> Undo, List<CanvasAnnotation[]> Redo)> _history = [];
+    private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay = null);
+    private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
     public IReadOnlyList<CanvasAnnotation> Items => _items.AsReadOnly();
     public long Revision { get; private set; }
     public event Action? Changed;
@@ -41,7 +42,7 @@ public sealed class AnnotationDocument
     }
     private static bool ValidPoint(CanvasPoint p) => double.IsFinite(p.X) && double.IsFinite(p.Y) && Math.Abs(p.X) <= 10000000 && Math.Abs(p.Y) <= 10000000;
     public static bool ValidColor(string? s) => s is { Length: 7 } && s[0] == '#' && s.AsSpan(1).IndexOfAnyExcept("0123456789ABCDEFabcdef") < 0;
-    private (List<CanvasAnnotation[]> Undo, List<CanvasAnnotation[]> Redo) History(Guid desktop)
+    private (List<HistoryState> Undo, List<HistoryState> Redo) History(Guid desktop)
     {
         if (!_history.TryGetValue(desktop, out var h)) _history[desktop] = h = ([], []);
         return h;
@@ -49,7 +50,7 @@ public sealed class AnnotationDocument
     private void NotifyChanged() { Revision++; Changed?.Invoke(); }
 
     /// <summary>Validate the entire transaction before changing anything. One history step and notification.</summary>
-    public bool ApplyBatch(long expectedRevision, Guid desktop, IReadOnlyList<CanvasAnnotation> upserts)
+    public bool ApplyBatch(long expectedRevision, Guid desktop, IReadOnlyList<CanvasAnnotation> upserts, Func<bool, bool>? replay = null)
     {
         if (expectedRevision != Revision) throw new InvalidOperationException("The canvas changed. Generate a fresh preview.");
         var batch = upserts.ToArray();
@@ -60,8 +61,9 @@ public sealed class AnnotationDocument
         var next = _items.Select(a => batch.FirstOrDefault(b => b.Id == a.Id) ?? a).ToList();
         next.AddRange(batch.Where(a => !_items.Any(b => b.Id == a.Id)));
         Validate(next);
-        if (_items.SequenceEqual(next)) return false;
-        Remember(desktop); _items.Clear(); _items.AddRange(next); NotifyChanged(); return true;
+        if (_items.SequenceEqual(next) && replay == null) return false;
+        if (replay?.Invoke(true)==false) throw new InvalidOperationException("The selected group changed. Select it again.");
+        Remember(desktop, replay); _items.Clear(); _items.AddRange(next); NotifyChanged(); return true;
     }
 
     public void Put(CanvasAnnotation item)
@@ -80,9 +82,9 @@ public sealed class AnnotationDocument
         Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged();
     }
     private CanvasAnnotation[] Snapshot(Guid desktop) => _items.Where(a => a.DesktopId == desktop).ToArray();
-    private void Remember(Guid desktop)
+    private void Remember(Guid desktop, Func<bool, bool>? replay = null)
     {
-        var h = History(desktop); h.Undo.Add(Snapshot(desktop)); h.Redo.Clear();
+        var h = History(desktop); h.Undo.Add(new(Snapshot(desktop), replay)); h.Redo.Clear();
         if (h.Undo.Count > 100) h.Undo.RemoveAt(0);
     }
     public bool Undo(Guid desktop, bool redo = false)
@@ -90,9 +92,11 @@ public sealed class AnnotationDocument
         var h = History(desktop); var from = redo ? h.Redo : h.Undo; var to = redo ? h.Undo : h.Redo;
         if (from.Count == 0) return false;
         var snapshot = from[^1];
-        if (_items.Count(a => a.DesktopId != desktop) + snapshot.Length > MaximumItems) return false;
-        to.Add(Snapshot(desktop)); from.RemoveAt(from.Count - 1);
-        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot); NotifyChanged(); return true;
+        if (_items.Count(a => a.DesktopId != desktop) + snapshot.Items.Length > MaximumItems) return false;
+        // A companion validates all saved identities and positions before either half replays.
+        if (snapshot.Replay?.Invoke(redo) == false) return false;
+        to.Add(new(Snapshot(desktop), snapshot.Replay)); from.RemoveAt(from.Count - 1);
+        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot.Items); NotifyChanged(); return true;
     }
 }
 
