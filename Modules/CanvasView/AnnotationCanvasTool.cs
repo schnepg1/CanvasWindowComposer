@@ -85,6 +85,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     public void Cancel() { _active=false; _creating=false; Preview=null; _original=null; _handle=-1; }
     public CanvasCursor CursorAt(CanvasPointer p) => Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)?CanvasCursor.Crosshair
         : Selected is {} item && HandleAt(item,p)>=0?CanvasCursor.ResizeNorthWestSouthEast:CanvasCursor.Default;
+    public bool HasHandleAt(CanvasPointer p) => Selected is {} item && HandleAt(item, p) >= 0;
     private static int HandleAt(CanvasAnnotation item,CanvasPointer p)
     {
         var local=p.View.LocalToDip(p.Position); var handles=AnnotationGeometry.Handles(item);

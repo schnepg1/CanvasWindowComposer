@@ -14,18 +14,19 @@ internal sealed partial class OverviewManager
     internal CanvasComposerWindow? ComposerWindow => _composerWindow;
 
     private IReadOnlyList<CanvasAnnotation> CurrentComposerNotes() => _annotationDocument?.Items
-        .Where(a => a.DesktopId == _annotationDesktop() && a.Kind == AnnotationKind.Text).ToArray() ?? [];
+        .Where(a => a.DesktopId == _annotationDesktop()).ToArray() ?? [];
 
     internal void OpenCanvasComposer(ICanvasComposerProvider? provider = null, IComposerCredentials? credentials = null, IChatGptAccounts? accounts = null)
     {
         if (_disposed || _annotationDocument == null || CurrentMode != OverviewMode.Zooming) return;
         if (_composerWindow != null) { _composerWindow.Activate(); return; }
-        Guid? selectedId = _annotationTool?.SelectedId;
+        var selected=Selection.Ids;
+        Guid? selectedId = selected.Count==0?_annotationTool?.SelectedId:null;
         SelectAnnotationMode(AnnotationMode.Navigate);
         var owner = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
         if (owner == null) return;
         var form = new CanvasComposerWindow(key => provider ?? new OpenAiCanvasComposerProvider(AiServices.Http, key), credentials ?? new ComposerCredentials(), accounts ?? AiServices.Accounts,
-            BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId);
+            BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId, selected, CurrentComposerReferences());
         _composerWindow = form;
         form.PreviewChanged += preview =>
         {
@@ -41,25 +42,34 @@ internal sealed partial class OverviewManager
         form.Location = new(area.Right - form.Width - 12, area.Top + 24);
         form.Show(owner); form.Activate();
     }
-    private ComposerContext BuildComposerContext(IReadOnlyList<CanvasAnnotation> shared)
+    private IReadOnlyList<ComposerReference> CurrentComposerReferences() => SelectionItems().Where(i => i.Key.Kind!=CanvasItemKind.Annotation)
+        .Select(i=>new ComposerReference(i.Key.Id,i.Key.Kind==CanvasItemKind.Window?"window":"project",i.Title,i.Bounds)).ToArray();
+
+    private ComposerContext BuildComposerContext(IReadOnlyList<CanvasAnnotation> shared, IReadOnlyList<ComposerReference> references)
     {
-        if (_annotationDocument == null || shared.Count > CanvasComposer.MaximumContextItems
-            || shared.Sum(a => a.Text.Length) > CanvasComposer.MaximumContextCharacters)
-            throw new ArgumentException("Share up to 20 notes and 32,000 characters.");
+        if (_annotationDocument == null || shared.Count+references.Count > CanvasComposer.MaximumContextItems
+            || shared.Sum(a => a.Text.Length)+references.Sum(r=>r.Title.Length) > CanvasComposer.MaximumContextCharacters)
+            throw new ArgumentException("Share up to 20 context items and 32,000 characters.");
         var desktop = _annotationDesktop();
         foreach (var item in shared)
-            if (item.DesktopId != desktop || item.Kind != AnnotationKind.Text || !_annotationDocument.Items.Contains(item))
+            if (item.DesktopId != desktop || !_annotationDocument.Items.Contains(item))
                 throw new InvalidOperationException("A shared note changed. Reopen the composer and try again.");
+        var available=CurrentComposerReferences();
+        if (references.Any(r=>!available.Contains(r))) throw new InvalidOperationException("A shared window or project changed. Reopen the composer.");
         var primary = _screens.PrimaryWorkingArea;
         var anchor = _camera.WorldFromVirtual(primary.X + 80, primary.Y + 100);
         var obstacles = _annotationDocument.Items.Where(a => a.DesktopId == desktop).Select(a => a.Bounds)
             .Concat(_windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H))).ToArray();
-        return new(desktop, _annotationDocument.Revision, new(anchor.x, anchor.y), shared.ToArray(), obstacles);
+        var selected=shared.Select(a=>a.Bounds).Concat(references.Select(r=>r.Bounds)).ToArray();
+        var origin=selected.Length==0?new CanvasPoint(anchor.x,anchor.y):new CanvasPoint(selected.Min(r=>r.X),selected.Min(r=>r.Y));
+        return new(desktop, _annotationDocument.Revision, origin, shared.ToArray(), obstacles) { SharedReferences=references.ToArray() };
     }
     private string ApplyComposerPreview(ComposerPreview preview)
     {
         if (_annotationDocument == null || _annotationDesktop() != preview.Desktop || CurrentMode != OverviewMode.Zooming)
             throw new InvalidOperationException("The desktop changed. Generate a fresh preview.");
+        if (preview.References.Any(r=>!CurrentComposerReferences().Contains(r)))
+            throw new InvalidOperationException("A shared window or project changed. Generate a fresh preview.");
         _annotationDocument.ApplyBatch(preview.Revision, preview.Desktop, preview.Items);
         return _annotationStore?.Status is {} warning ? "Applied in memory. " + warning : "Applied to canvas. Undo restores the entire previous state.";
     }

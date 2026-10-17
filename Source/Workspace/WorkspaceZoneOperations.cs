@@ -7,6 +7,10 @@ namespace CanvasDesktop;
 internal sealed partial class WorkspaceService : IZoneLayoutCommands
 {
     private readonly ZoneLayoutHistory _zoneHistory = new();
+    internal event Action<Guid>? ZoneLayoutRecorded;
+    internal long ZoneHistoryOrder(bool redo) => _zoneHistory.Order(_desktop,redo);
+    internal void ClearZoneRedoHistory(Guid desktop) => _zoneHistory.ClearRedo(desktop);
+    private void RecordZoneLayout(ZoneLayoutEdit edit) { _zoneHistory.Record(_desktop,edit);ZoneLayoutRecorded?.Invoke(_desktop); }
     public bool CanUndoZoneLayout => _zoneHistory.Peek(_desktop, false) != null;
     public bool CanRedoZoneLayout => _zoneHistory.Peek(_desktop, true) != null;
     /// <summary>
@@ -23,7 +27,7 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
 
         if (dx == 0 && dy == 0) return true;
         var edit = new ZoneLayoutEdit(Zones.Snapshot(plan!), plan!, Zones.Membership(id));
-        return ApplyZoneLayout(plan!, () => _zoneHistory.Record(_desktop, edit));
+        return ApplyZoneLayout(plan!, () => RecordZoneLayout(edit));
     }
 
     public bool ResizeZone(Guid id, WorldRect bounds)
@@ -34,7 +38,7 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
         var before = Zones.Snapshot(plan!);
         if (ZoneLayoutPlanner.SamePlacement(before.Bounds, plan!.Bounds)) return true;
         var edit = new ZoneLayoutEdit(before, plan, null);
-        return ApplyZoneLayout(plan, () => _zoneHistory.Record(_desktop, edit));
+        return ApplyZoneLayout(plan, () => RecordZoneLayout(edit));
     }
 
     public bool UndoZoneLayout() => ReplayZoneLayout(false);

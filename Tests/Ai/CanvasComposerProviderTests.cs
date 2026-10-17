@@ -77,4 +77,25 @@ public class CanvasComposerProviderTests
         using var http=new HttpClient(handler);
         await Assert.ThrowsAsync<InvalidDataException>(()=>new OpenAiCanvasComposerProvider(http,"key").GenerateAsync("model","prompt",Context(),null,CancellationToken.None));
     }
+
+    [Fact]
+    public async Task ExplicitSpatialContextIncludesKindsAndBoundsButNeverTheLocalObstacleList()
+    {
+        string? body=null;
+        var handler=new Handler { Respond=async(request,token)=>{body=await request.Content!.ReadAsStringAsync(token);return Response();} };
+        var context=Context() with
+        {
+            SharedAnnotations=[new(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Rectangle,new(-200,50),new(200,350),Text:"Milestone")],
+            SharedReferences=[new(Guid.NewGuid(),"window","Guardian editor",new(400,50,800,600))],
+            Obstacles=[new(987654,0,100,100)],PreserveWording=true
+        };
+        using var http=new HttpClient(handler);
+        await new OpenAiCanvasComposerProvider(http,"key").GenerateAsync("model","Improve layout",context,null,CancellationToken.None);
+        using var json=JsonDocument.Parse(body!);
+        using var input=JsonDocument.Parse(json.RootElement.GetProperty("input")[0].GetProperty("content").GetString()!);
+        Assert.True(input.RootElement.GetProperty("layoutOnly").GetBoolean());
+        Assert.Equal("rectangle",input.RootElement.GetProperty("sharedNotes")[0].GetProperty("kind").GetString());
+        Assert.Equal("Guardian editor",input.RootElement.GetProperty("sharedPlaces")[0].GetProperty("title").GetString());
+        Assert.DoesNotContain("987654",body);Assert.DoesNotContain("ExecutablePath",body);Assert.DoesNotContain("Target",body);
+    }
 }

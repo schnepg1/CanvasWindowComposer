@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
@@ -15,9 +16,14 @@ internal sealed partial class OverviewManager
 
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {
-        if (_placeholderWorkspace != null) _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+        if (_placeholderWorkspace != null)
+        {
+            _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
+            _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
+        }
         _placeholderWorkspace = workspace;
         workspace.Changed += RefreshPlaceholderTitles;
+        workspace.ZoneLayoutRecorded += OnZoneLayoutRecorded;
         RefreshPlaceholderTitles();
     }
 
@@ -150,6 +156,7 @@ internal sealed partial class OverviewManager
     {
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
         bool zooming = CurrentMode == OverviewMode.Zooming;
+        _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];
         var zones = !zooming || _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
         if (_zoneTool.Gesture.MovingId is { } movingId && _zoneTool.Gesture.Preview is { } moved)
         {

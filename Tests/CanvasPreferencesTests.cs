@@ -65,5 +65,27 @@ public class CanvasPreferencesTests : IDisposable
         Assert.Equal(original, config.Preferences);
     }
 
+    [Fact]
+    public void SelectionRadiusRoundTripsWithoutChangingBooleanPreferences()
+    {
+        using var config=new AppConfig(directory:_directory);config.Load();var preferences=config.Preferences;
+        config.SetSelectionRadius(2400);
+        config.SavePreferences(preferences with { StartupIntro=false });
+        using var reopened=new AppConfig(directory:_directory);reopened.Load();
+        Assert.Equal(2400,reopened.SelectionRadius);Assert.Equal(preferences with { StartupIntro=false },reopened.Preferences);
+        Assert.Throws<ArgumentOutOfRangeException>(()=>config.SetSelectionRadius(double.NaN));
+        Assert.Equal(2400,config.SelectionRadius);
+    }
+
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("-50")]
+    [InlineData("100001")]
+    public void InvalidSelectionRadiusUsesTheDefault(string radius)
+    {
+        Directory.CreateDirectory(_directory);File.WriteAllText(Path.Combine(_directory,"config.ini"),"SelectionRadius="+radius);
+        using var config=new AppConfig(directory:_directory);config.Load();Assert.Equal(1200,config.SelectionRadius);
+    }
+
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
 }
