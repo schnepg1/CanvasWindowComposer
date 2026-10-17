@@ -2,7 +2,7 @@
 
 > **Note:** This project is in very early development. Expect rough edges, bugs, and breaking changes.
 
-Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-click drag to pan all windows, Alt+scroll to zoom.
+Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-click drag to pan all windows; open the overview to navigate with a mouse or trackpad.
 
 ![Panning](Docs/canvasdesktop-pan.gif)
 
@@ -12,7 +12,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 
 - **Pan** — Middle-click drag on desktop, or Alt+middle-click anywhere
 - **Inertia** — Fling to keep sliding, smooth deceleration
-- **Zoom** — Alt+scroll to zoom in/out around the cursor
+- **Zoom** — Pinch, Ctrl+scroll, or use + / - in the overview
 - **Fuzzy search** — Alt+S to find and jump to any window
 - **Minimap** — Canvas overview, fades after inactivity
 - **Virtual desktops** — Independent canvas per desktop
@@ -29,7 +29,10 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Middle-click drag on desktop | Pan all windows |
 | Alt + middle-click drag anywhere | Pan (works over windows) |
 | Alt + Q | Toggle overview (map-view) |
-| Alt + scroll | Zoom in/out around cursor (opens overview if closed) |
+| Alt + scroll on desktop | Open overview |
+| Two-finger scroll in overview | Pan vertically or horizontally |
+| Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
+| Ctrl + scroll, Alt + scroll, or + / - in overview | Zoom without a pinch gesture |
 | Alt + S | Fuzzy window search |
 | Shift + left-drag in overview | Draw a project area |
 | Drag an area corner in overview | Resize its boundary without moving members |
@@ -47,7 +50,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 
 **The overview is a fake desktop made of live DWM thumbnails.** When you pan or press Alt+Q, a borderless form per monitor comes up with a D3D11 swap chain. Instead of rendering window contents ourselves, we call `DwmRegisterThumbnail` for the desktop wallpaper (Progman/WorkerW), every canvas-managed window, and the taskbar(s) — DWM then composites live thumbnails onto the form. We only push destination rects when the camera moves; the thumbnails stay in sync at the source window's own frame rate, with no pixel copy. The real windows stay parked wherever `SetWindowRgn` clipped them — the overview is a view on top of that state, not a replacement for it.
 
-**Pan and zoom share one camera, the overview adds a second on top.** In *panning* mode the overlay is click-through (`WS_EX_TRANSPARENT`), so middle-click drag keeps driving the real canvas camera and all the thumbnails reflow in real time — including windows that would otherwise be clipped off-screen. In *zooming* mode (Alt+Q / Alt+scroll) click-through goes off and an HLSL shader draws an adaptive grid, scale marks, and a nebula parallax; a second *overview camera* decouples from the canvas camera so you can zoom out further than the real screen would allow for a map-level view. Clicking a thumbnail (or arrow-keys + Enter) recenters the canvas on that window and closes the overlay.
+**Pan and zoom share one camera, the overview adds a second on top.** In *panning* mode the overlay is click-through (`WS_EX_TRANSPARENT`), so middle-click drag keeps driving the real canvas camera and all the thumbnails reflow in real time — including windows that would otherwise be clipped off-screen. In *zooming* mode (Alt+Q / Alt+scroll) click-through goes off and an HLSL shader draws an adaptive grid, scale marks, and a nebula parallax; a second *overview camera* decouples from the canvas camera so you can zoom out further than the real screen would allow for a map-level view. Scrolling pans the overview; pinching or Ctrl+scroll zooms it. Clicking a thumbnail (or arrow-keys + Enter) recenters the canvas on that window and closes the overlay.
 
 ## Config
 

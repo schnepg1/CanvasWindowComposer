@@ -56,7 +56,7 @@ internal sealed class OverviewOverlay : Form
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonDown;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseMoved;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonUp;
-    public Action<OverviewOverlay, MouseEventArgs>? OnWheel;
+    public Action<OverviewOverlay, int, int, int, bool, bool>? OnWheel;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseDoubleClicked;
     public Action<OverviewOverlay>? OnCaptureLost;
 
@@ -93,7 +93,6 @@ internal sealed class OverviewOverlay : Form
         MouseDown += (s, e) => OnMouseButtonDown?.Invoke(this, e);
         MouseMove += (s, e) => OnMouseMoved?.Invoke(this, e);
         MouseUp += (s, e) => OnMouseButtonUp?.Invoke(this, e);
-        MouseWheel += (s, e) => OnWheel?.Invoke(this, e);
         MouseDoubleClick += (s, e) => OnMouseDoubleClicked?.Invoke(this, e);
         MouseCaptureChanged += (_, _) => { if (!Capture) OnCaptureLost?.Invoke(this); };
     }
@@ -177,6 +176,14 @@ internal sealed class OverviewOverlay : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg is OverviewNavigationInput.MouseWheelMessage or OverviewNavigationInput.MouseHorizontalWheelMessage)
+        {
+            var wheel = OverviewNavigationInput.DecodeWheel(m.Msg, m.WParam, m.LParam);
+            var client = PointToClient(new Point(wheel.ScreenX, wheel.ScreenY));
+            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control);
+            m.Result = IntPtr.Zero;
+            return;
+        }
         if (m.Msg == (int)PInvoke.WM_DPICHANGED)
         {
             // lParam points to a RECT with the suggested new window rect at the new DPI
