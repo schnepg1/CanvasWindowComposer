@@ -35,7 +35,23 @@ internal sealed partial class OverviewManager
         };
     }
 
-    private void OnSelectionWindowRemoving(IntPtr handle) => _selectionWindows.Remove(handle);
+    private void OnSelectionWindowRemoving(IntPtr handle)
+    {
+        if (!_selectionWindows.TryGetValue(handle,out var identity)) return;
+        // Cancel before pruning: a marquee cancellation restores its previous selection.
+        if (_selectionTool?.HasPendingInteraction == true)
+        {
+            _selectionTool.Cancel();
+            CancelInteraction();
+        }
+        _selectionWindows.Remove(handle);
+        var key = new CanvasItemId(CanvasItemKind.Window,identity.Id);
+        Selection.Replace(Selection.Ids.Where(id => id != key));
+        _selectionRenderItems = _selectionRenderItems.Where(item => item.Key != key).ToArray();
+        // WindowRemoving runs before the canvas drops the handle. Avoid rebuilding
+        // SelectionItems here, which would assign that closing window a new identity.
+        RefreshAnnotationUi();
+    }
 
     internal IReadOnlyList<CanvasSelectionItem> SelectionItems()
     {

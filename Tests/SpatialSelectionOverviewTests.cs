@@ -7,6 +7,43 @@ namespace CanvasDesktop.Tests;
 [Collection("ShellViews")]
 public class SpatialSelectionOverviewTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category","NativeRendering")]
+    public void ClosingSessionWindowPrunesSelectionAndCannotBeRestoredByMarqueeCancellation(bool startMarquee)
+        =>WorkspaceViewTests.OnSta(()=>
+        {
+            var folder=Path.Combine(Path.GetTempPath(),"closed-selection-"+Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var source=new Form();var canvas=new Canvas();var api=new FakeWindowApi();var input=new FakeInputRouter();var config=new FakeAppConfig { EnableStartupIntro=false };
+                api.AddWindow(source.Handle,100,200,600,400);canvas.SetWindow(source.Handle,100,200,600,400);
+                using var wm=new WindowManager(canvas,api,config,input,new FakeClock());using var overview=new OverviewManager(canvas,wm,api,input,config);
+                var desktops=new FakeVirtualDesktops();overview.AttachAnnotations(desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
+                overview.SelectAnnotationMode(AnnotationMode.Select);
+                var window=Assert.Single(overview.SelectionItems(),i=>i.Key.Kind==CanvasItemKind.Window);
+                overview.Selection.Replace([window.Key]);
+                if(startMarquee)
+                {
+                    var view=new CanvasViewTransform(0,0,1,new(0,0,1920,1080));
+                    Assert.True(overview.SelectionTool!.PointerDown(new(0,new(1500,900),CanvasPointerButton.Left,CanvasModifiers.Control,view)));
+                }
+                int changes=0;overview.Selection.Changed+=()=>changes++;
+                wm.RemoveWindow(source.Handle);
+                Assert.Empty(overview.Selection.Ids);Assert.Equal(1,changes);
+                Assert.False(overview.SelectionTool!.HasPendingInteraction);
+                overview.SelectionTool.Cancel();Assert.Empty(overview.Selection.Ids);
+                Assert.DoesNotContain(overview.SelectionItems(),i=>i.Key==window.Key);
+                var note=new CanvasAnnotation(Guid.NewGuid(),desktops.CurrentDesktopId,AnnotationKind.Text,new(800,300),new(1100,500),Text:"Keep working");
+                overview.Annotations!.Put(note);
+                var noteKey=new CanvasItemId(CanvasItemKind.Annotation,note.Id);
+                overview.Selection.Pick(noteKey,overview.SelectionItems(),true);
+                Assert.Equal(noteKey,Assert.Single(overview.Selection.Ids));
+            }
+            finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
+        });
+
     [Fact]
     [Trait("Category","NativeRendering")]
     public void KeyboardHistoryOrdersProjectAnnotationAndGroupEditsAndClearsBothRedoBranches()
