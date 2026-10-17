@@ -27,7 +27,7 @@ primary can recover from its backup, preserving a copy of the damaged file.
 
 Opening and closing the tutorial without navigating preserves the saved desktop
 camera. Practising navigation uses the normal camera behaviour. Temporary flight
-positions do not drive automatic window parking. Ordinary startup behaviour is
+positions and the stationary tutorial reading view do not drive automatic window parking. Ordinary startup behaviour is
 unchanged after the first presentation. Notes are visible in interactive overview,
 including the tutorial reveal; they do not overlay the live desktop.
 

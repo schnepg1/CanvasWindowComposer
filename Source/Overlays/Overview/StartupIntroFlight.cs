@@ -106,8 +106,8 @@ internal sealed class StartupIntroFlight
             : Ease((t - 0.5) / 0.45) * (1 - Ease((t - 1.55) / 0.55));
         double spacing = _reducedMotion ? 1 : 1 + 3 * Ease(t / 2.1);
 
-        // Return the actual saved values, rather than a numerically approximate
-        // interpolation, at both endpoints and throughout reduced-motion mode.
+        // Keep exact endpoints. Reduced motion stays at the reading target throughout
+        // the fade; ordinary intros keep the saved camera as their target.
         if (_reducedMotion || complete)
             return new(_landing.X, _landing.Y, _landing.Zoom, title, spacing, reveal, complete);
         if (t <= 0) return new(_saved.X, _saved.Y, _saved.Zoom, title, spacing, reveal, false);

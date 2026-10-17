@@ -9,6 +9,7 @@ internal sealed partial class OverviewManager
     private TutorialPersistence? _tutorialStore;
     private TutorialAnnotationLayer? _tutorialLayer;
     private CanvasCamera? _tutorialIntroLanding;
+    private bool _tutorialReading;
     internal TutorialPersistence.DesktopNotes? CurrentTutorial => _tutorialStore?.ForDesktop(_annotationDesktop());
     internal CanvasCamera OverviewView => new(_camera.X,_camera.Y,_camera.Zoom);
     public bool TutorialNotesVisible => CurrentTutorial?.Visible == true;
@@ -71,6 +72,7 @@ internal sealed partial class OverviewManager
         _camera.SetTo(view.X,view.Y,view.Zoom);
         // Opening/closing a help view without navigating must not replace the desktop camera.
         _startupIntroLanded=true;
+        _tutorialReading=true;
         foreach(var pass in _passes)pass.Grid?.UpdateCamera(view.X,view.Y,view.Zoom);
         _tutorialStore?.MarkPresented();
         ReconcileVisuals();
@@ -95,9 +97,10 @@ internal sealed partial class OverviewManager
 
     public void HideTutorialNotes()
     {
-        if(_disposed || _tutorialStore==null) return;
+        if(_disposed || _tutorialStore==null || CurrentTutorial==null) return;
         if(IsStartupIntroActive)FinishStartupIntro(refresh:false);
         _tutorialStore.SetVisible(_annotationDesktop(),false);
+        _tutorialStore.MarkPresented();
         if(CurrentMode!=OverviewMode.Hidden)RefreshToolPreview();
     }
 }
