@@ -174,7 +174,8 @@ internal sealed partial class OverviewManager
             // Validate the complete annotation batch before applying the workspace half.
             AnnotationDocument.Validate(_annotationDocument.Items.Select(a => moved.FirstOrDefault(b => b.Id==a.Id)??a));
             bool external = savedWindowIds.Length+areaIds.Length+session.Count>0;
-            _annotationDocument.ApplyBatch(_annotationDocument.Revision,_annotationDesktop(),moved,external?Place:null);
+            bool committed=_annotationDocument.ApplyBatch(_annotationDocument.Revision,_annotationDesktop(),moved,external?Place:null);
+            if(committed && (move.Dx!=0 || move.Dy!=0) && move.Before.Any(i=>i.Key.Kind==CanvasItemKind.Window))ObserveTourWindow();
             _proximityCircle=null; RefreshZoneLayout();
             _annotationError=nativeWarning??_placeholderWorkspace?.Status;
         }

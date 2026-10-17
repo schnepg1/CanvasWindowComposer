@@ -10,10 +10,10 @@ namespace CanvasDesktop;
 internal sealed class TutorialPersistence
 {
     internal sealed record DesktopNotes(Guid DesktopId, TutorialLayout Layout, bool Visible = true);
-    internal sealed record State(int Version = 1, bool Presented = false, DesktopNotes[]? Desktops = null);
+    internal sealed record State(int Version = 2, bool Presented = false, DesktopNotes[]? Desktops = null, TutorialTourProgress[]? Tours = null);
     private readonly string _path;
     private bool _canSave = true;
-    internal State Data { get; private set; } = new(Desktops: []);
+    internal State Data { get; private set; } = new(Desktops: [], Tours: []);
     internal string? Status { get; private set; }
     internal bool CanPresent => _canSave && !Data.Presented;
     internal TutorialPersistence(string path)
@@ -31,14 +31,14 @@ internal sealed class TutorialPersistence
                 {
                     // A downgrade must never replace newer data with an older backup.
                     if(raw.RootElement.ValueKind==JsonValueKind.Object && raw.RootElement.TryGetProperty("Version",out var version)
-                        && version.ValueKind==JsonValueKind.Number && version.TryGetInt32(out int number) && number!=1)
+                        && version.ValueKind==JsonValueKind.Number && (!version.TryGetInt32(out int number) || number is < 1 or > 2))
                     {
                         _canSave=false;Status="This tutorial file was written by an unsupported version. Existing files are preserved.";
                         return;
                     }
                 }
                 var state=JsonSerializer.Deserialize<State>(json);
-                if(state is null || state.Version!=1 || state.Desktops is null || state.Desktops.Length>100 || state.Desktops.Any(d=>d is null)
+                if(state is null || state.Version is < 1 or > 2 || state.Desktops is null || state.Desktops.Length>100 || state.Desktops.Any(d=>d is null)
                     || state.Desktops.Select(d=>d.DesktopId).Distinct().Count()!=state.Desktops.Length)
                     throw new InvalidDataException("Unsupported tutorial state.");
                 foreach(var notes in state.Desktops)
@@ -49,7 +49,11 @@ internal sealed class TutorialPersistence
                         throw new InvalidDataException("Invalid tutorial layout.");
                     AnnotationDocument.Validate(layout.Items);
                 }
-                Data=state;
+                var tours=state.Tours??[];
+                if(tours.Length>100 || tours.Any(t=>t is null) || tours.Select(t=>t.DesktopId).Distinct().Count()!=tours.Length)
+                    throw new InvalidDataException("Invalid tutorial progress.");
+                foreach(var tour in tours)TutorialTour.Validate(tour);
+                Data=state with { Version=2,Tours=tours };
                 if(candidate!=path) RestoreBackup(candidate);
                 return;
             }
@@ -85,6 +89,13 @@ internal sealed class TutorialPersistence
     internal void SetVisible(Guid desktop,bool visible)
     {
         Data=Data with { Desktops=(Data.Desktops??[]).Select(d=>d.DesktopId==desktop?d with { Visible=visible }:d).ToArray() };
+        Save();
+    }
+    internal TutorialTourProgress? TourForDesktop(Guid desktop) => Data.Tours?.FirstOrDefault(t=>t.DesktopId==desktop);
+    internal void SetTour(TutorialTourProgress progress)
+    {
+        TutorialTour.Validate(progress);
+        Data=Data with { Tours=(Data.Tours??[]).Where(t=>t.DesktopId!=progress.DesktopId).Append(progress).ToArray() };
         Save();
     }
     internal void MarkPresented() { Data=Data with { Presented=true }; Save(); }

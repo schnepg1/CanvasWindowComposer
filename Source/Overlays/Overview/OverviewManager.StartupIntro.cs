@@ -137,6 +137,7 @@ internal sealed partial class OverviewManager
         {
             if (tutorialLanding is {} landing) LandOnTutorial(landing);
             else ReconcileVisuals();
+            OfferTutorialTour();
         }
     }
 

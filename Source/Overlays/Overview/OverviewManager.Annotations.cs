@@ -45,6 +45,7 @@ internal sealed partial class OverviewManager
     }
     private void OnAnnotationsChanged()
     {
+        ObserveTourNotes();
         _annotationStore?.Save();
         if (_annotationDocument!.LastChange==AnnotationChangeKind.Edit) _placeholderWorkspace?.ClearZoneRedoHistory(_annotationDocument.LastChangedDesktop);
         var available=SelectionItems().Select(i=>i.Key).ToHashSet();
@@ -54,12 +55,14 @@ internal sealed partial class OverviewManager
     }
     private void OnAnnotationDesktopChanged()
     {
+        PauseGuidedTutorial();
         CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Navigate);
         RefreshToolPreview();
     }
     internal void SelectAnnotationMode(AnnotationMode mode)
     {
         if(_annotationTool==null) return;
+        StopTutorialTravel();
         CancelInteraction(); _zoneTool.Cancel(); _annotationTool.SetMode(mode); _annotationError=null;
         if (mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) Selection.Clear();
         else if (mode==AnnotationMode.Select && Selection.Ids.Count==1 && Selection.Ids.First().Kind==CanvasItemKind.Annotation)

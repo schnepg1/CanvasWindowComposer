@@ -171,6 +171,7 @@ internal sealed partial class OverviewManager
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards, zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, AnnotationHint));
         RefreshAnnotationUi();
+        RefreshTourUi();
     }
 
     private bool HandleZoneKey(KeyEventArgs e)

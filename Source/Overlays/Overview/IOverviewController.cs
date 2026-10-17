@@ -15,6 +15,8 @@ internal interface IOverviewController
     void TransitionTo(OverviewMode target, bool syncCameraOnClose = true);
     void HandleEscape();
     bool CanvasInputSuspended => false;
+    bool GuidedTutorialActive => false;
+    void PanGuidedTutorial(int x,int y) { }
     bool CancelInteraction();
     bool StartupIntroInputSuppressed => false;
     bool TrySkipStartupIntro() => false;

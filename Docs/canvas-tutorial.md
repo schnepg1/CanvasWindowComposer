@@ -1,52 +1,68 @@
-# On-canvas tutorial (stage 1)
+# On-canvas tutorial and guided tour
 
-The first startup with no previous tutorial presentation creates a small neighbourhood
-of text notes and arrows near a visible managed window. With no visible managed windows,
-a sample canvas card provides the landmark; no applications are launched. The search
-avoids managed windows, personal annotations and project areas without moving them.
+The first startup creates a small neighbourhood of text notes and arrows near a
+visible managed window. With no visible windows, a sample canvas card provides the
+landmark; the tutorial never launches applications. Placement avoids windows,
+personal annotations and project areas without moving them.
 
-The cinematic intro reveals the tutorial artwork and settles on the first note at a
-readable zoom. The first note explains mouse/trackpad panning; arrows lead to zoom,
-window navigation and annotation notes. Notes reflect disabled Alt+Q/Alt-pan shortcuts
-at creation. Reduced-motion mode fades at a stationary reading position. Disabling
-the startup intro also disables its automatic tutorial landing; the tutorial remains
-available manually from the tray.
+The cinematic intro lands at readable camera controls. Choose **Start tour** for
+guidance, or **Explore myself** to keep exploring freely. Dismissing or completing
+the tour suppresses future automatic invitations on that desktop. Disabling the
+startup intro also disables its automatic landing; the tour remains available
+from **Tray → Tutorial → Start / resume guided tour**. **Restart guided tour** begins
+at the first stop with fresh practice checks. Returning to the notes remains
+available independently of the guided tour.
 
-**Tray → Tutorial → Return to tutorial notes** reveals and frames the first note.
-**Hide tutorial notes** hides this desktop's tutorial artwork. Existing notes keep
-their positions and IDs across revisits and restarts. A primary-DPI change scales
-the neighbourhood around its existing origin, preserving IDs, visibility and the
-real-window connector endpoint. Explicitly returning to the
-tutorial on another virtual desktop creates a separate local neighbourhood. The
-first-run presentation flag is application-wide, so switching desktops never
-forces another intro tutorial. Existing installations get this once when updating.
+## Guided stops
 
-Tutorials reuse annotation artwork but live in `tutorial.json`, separate from
-`annotations.json` and personal undo/redo. They are read-only examples. Progress,
-visibility, desktop identity, layout and DPI scale use atomic saves with a backup;
-unreadable/future files are preserved and suppress automatic onboarding. A corrupt
-primary can recover from its backup, preserving a copy of the damaged file and
-repairing the primary atomically. A newer-version file never falls back to an older backup.
+1. Pan: middle-drag or trackpad two-finger scroll; 64 DIPs of movement checks the exercise.
+2. Zoom: pinch, Ctrl/Alt+scroll or +/−; an accumulated 12% logarithmic zoom change checks it.
+3. Windows: drag a window or double-click a window/card. Returning to a real window pauses the tour.
+4. Notes: create and save a new Text note. Editing an existing note, undo or redo does not count.
+5. Make it your workspace: a short overview of project areas, the project navigator and returning to the desktop.
 
-Opening and closing the tutorial without navigating preserves the saved desktop
-camera. Practising navigation uses the normal camera behaviour. Temporary flight
-positions and the stationary tutorial reading view do not drive automatic window parking. Ordinary startup behaviour is
-unchanged after the first presentation. Notes are visible in interactive overview,
-including the tutorial reveal; they do not overlay the live desktop.
+Each stop has **Back**, **Next** (or **I understand — continue**), **Recenter** and
+**Skip tour**. Practice never advances the camera automatically, and no exercise
+is mandatory. **Finish** leaves the notes available. Instructions stay on the
+canvas; progress and navigation buttons stay readable in a screen-space panel.
+Tab from the canvas focuses the controls; standard buttons support Tab, Enter and access keys. The panel hides while drawing
+or editing text, and returns afterward.
 
-Stage 1 intentionally has no guided checkpoints, Back/Next controls, action detection
-or resumable tour steps. The tutorial layout and separate document can support those
-in stage 2.
+Transitions take 0.7 seconds. Navigation input stops travel without dismissing
+the tour; a keyboard press stopping travel is consumed. Reduced-motion settings
+and the Windows animation preference use immediate stationary transitions.
+Animation is never counted as practice. Escape first stops travel, then pauses
+the tour (after cancelling active drawing/text editing), and a later Escape
+returns to the desktop. Closing overview, switching virtual desktops, changing
+displays or shutting down pauses the tour and releases its timer/UI resources.
+Reopening overview offers Resume; there is no automatic camera flight on resume
+until the user chooses it. Skip leaves the notes available for free exploration.
+
+Guided travel and practice pans use only the overview camera, preserve the desktop
+camera on close, and do not drive automatic window parking. Moving an actual window
+or creating a personal note is a real user edit. Held global pan gestures started
+in the tour are drained through release if the tour closes, so they cannot leak
+into the desktop camera. Ordinary free exploration keeps the existing camera behaviour.
+
+## Saved data
+
+Tutorial artwork lives in `tutorial.json`, separate from personal drawings and their
+undo/redo. Layouts, visibility and tour progress are desktop-local. The startup reveal
+flag remains application-wide. Layout identities and origin survive restarts and
+DPI changes. Notes are read-only examples; personal practice notes use the ordinary
+annotation document and save automatically.
+
+Format version 2 adds the step, checked exercises and paused/completed/dismissed status.
+Version 1 files migrate without losing artwork, IDs or visibility. Atomic saves and
+backup recovery preserve damaged data and repair the primary. Future versions never
+fall back to an older backup. Save errors are shown in the tour panel.
 
 ## Verification
 
-Automated coverage checks collision-free placement, distant-window exclusion, empty
-canvas, negative monitor origins, DPI scaling, shortcut variants, first-run/visibility
-persistence, corrupted data and backup recovery, landing/skip camera endpoints, text
-fit and WPF rendering, and native overview integration without personal history edits.
-
-Windows manual smoke check: start with a fresh tutorial file and one window; let the
-intro complete, practise mouse and trackpad movement, follow the arrows, hide/revisit,
-restart, switch desktops, and test reduced motion. Repeat with no windows and a
-crowded canvas, and at 100%/200% DPI. Confirm personal notes and real window layout
-are preserved on opening/closing without navigation.
+Tests cover placement, DPI/text fit/rendering, persistence/recovery/version migration,
+tour state transitions, acknowledgement without exercises, camera interruption,
+practice versus animation, pause/resume across desktop switches, global pan ownership,
+real note creation, and native overview integration. Windows CI builds, tests and
+publishes. A manual Windows walkthrough should check mouse/trackpad gestures, keyboard
+focus, readable panel placement at 100%/200% DPI, restart/resume, text editing, reduced
+motion, and leaving the tour while a pan gesture is held.

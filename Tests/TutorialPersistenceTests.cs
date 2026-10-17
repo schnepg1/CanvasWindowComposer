@@ -56,7 +56,7 @@ public class TutorialPersistenceTests
             var store=new TutorialPersistence(path);
             store.SetLayout(desktop,TutorialLayout.Create(desktop,new(0,0,1920,1080),[],[]));store.MarkPresented();
             string backup=File.ReadAllText(path+".bak");
-            const string future="{\"Version\":2,\"NewerSchema\":{\"keep\":true}}";
+            const string future="{\"Version\":3,\"NewerSchema\":{\"keep\":true}}";
             File.WriteAllText(path,future);
             var loaded=new TutorialPersistence(path);Assert.False(loaded.CanPresent);Assert.NotNull(loaded.Status);
             loaded.MarkPresented();loaded.SetVisible(desktop,true);
@@ -82,6 +82,25 @@ public class TutorialPersistenceTests
             Assert.Equal(layout.Items.Select(a=>a.Id),notes.Layout.Items.Select(a=>a.Id));
             Assert.Equal(layout.Welcome.X,notes.Layout.Welcome.X);Assert.Equal(layout.Welcome.Y,notes.Layout.Welcome.Y);
             Assert.Equal(2,notes.Layout.Scale);Assert.Equal(layout.Welcome.Width*2,notes.Layout.Welcome.Width);
+        }
+        finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
+    }
+
+    [Fact]
+    public void StageOneFilesUpgradeWithoutLosingArtworkAndTourProgressSurvivesRestart()
+    {
+        string folder=Path.Combine(Path.GetTempPath(),"canvas-tour-upgrade-"+Guid.NewGuid().ToString("N"));
+        try
+        {
+            string path=Path.Combine(folder,"tutorial.json");var desktop=Guid.NewGuid();
+            var store=new TutorialPersistence(path);var layout=TutorialLayout.Create(desktop,new(0,0,1920,1080),[],[]);
+            store.SetLayout(desktop,layout);store.SetVisible(desktop,false);store.MarkPresented();
+            var json=System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;json["Version"]=1;json.AsObject().Remove("Tours");File.WriteAllText(path,json.ToJsonString());
+            var migrated=new TutorialPersistence(path);Assert.False(migrated.CanPresent);Assert.Equal(2,migrated.Data.Version);
+            Assert.False(migrated.ForDesktop(desktop)!.Visible);Assert.Equal(layout.Items,migrated.ForDesktop(desktop)!.Layout.Items);
+            migrated.SetTour(new(desktop,2,3,TutorialTourStatus.Paused));
+            var reloaded=new TutorialPersistence(path);Assert.Equal(2,reloaded.TourForDesktop(desktop)!.Step);Assert.Equal(3,reloaded.TourForDesktop(desktop)!.Practised);
+            Assert.False(reloaded.ForDesktop(desktop)!.Visible);Assert.Equal(layout.Items,reloaded.ForDesktop(desktop)!.Layout.Items);
         }
         finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
     }

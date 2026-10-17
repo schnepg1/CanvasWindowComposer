@@ -157,6 +157,8 @@ internal sealed class TrayApp : ApplicationContext
                 _settingsWindow.Show(); _settingsWindow.Activate();
             }));
             var tutorialMenu = new ToolStripMenuItem("Tutorial");
+            tutorialMenu.DropDownItems.Add("Start / resume guided tour", null, (_, _) => _overview.StartGuidedTutorial());
+            tutorialMenu.DropDownItems.Add("Restart guided tour", null, (_, _) => _overview.StartGuidedTutorial(restart:true));
             tutorialMenu.DropDownItems.Add("Return to tutorial notes", null, (_, _) => _overview.ShowTutorialNotes());
             var hideTutorial = new ToolStripMenuItem("Hide tutorial notes", null, (_, _) => _overview.HideTutorialNotes());
             tutorialMenu.DropDownItems.Add(hideTutorial);
