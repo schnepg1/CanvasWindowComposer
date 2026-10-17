@@ -34,6 +34,10 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ApplicationLifecycle _lifecycle = new(failure => Log($"Shutdown step '{failure.Step}' failed: {failure.Error}"));
     private readonly Control _dispatcher;
     private bool _enabled = true;
+    private AppUpdateController? _updates;
+    private UpdateWindow? _updateWindow;
+    private Action? _pendingUpdate;
+    private string? _notifiedUpdate;
 
     public TrayApp(IClock? clock = null, IScreens? screens = null)
     {
@@ -159,6 +163,8 @@ internal sealed class TrayApp : ApplicationContext
             tutorialMenu.DropDownOpening += (_, _) => hideTutorial.Enabled = _overview.TutorialNotesVisible;
             menu.Items.Add(tutorialMenu);
             menu.Items.Add(openConfigItem);
+            var updateItem = new ToolStripMenuItem("Check for updates…", null, (_, _) => ShowUpdates());
+            menu.Items.Add(updateItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(workspaceItem);
             menu.Items.Add(new ToolStripMenuItem("Project Areas…", null, (_, _) => _zoneUi.Show()));
@@ -181,6 +187,20 @@ internal sealed class TrayApp : ApplicationContext
             _trayIcon.ContextMenuStrip = menu;
             _trayIcon.Visible = true;
 
+            _updates = new AppUpdateController(new VelopackUpdateBackend(), _config);
+            _lifecycle.Register(ShutdownPhase.Quiesce, "Cancel update requests", _updates.Dispose);
+            _lifecycle.Register(ShutdownPhase.ReleaseUi, "Update window", () => _updateWindow?.Dispose());
+            _updates.Changed += () =>
+            {
+                if (_lifecycle.IsStopping) return;
+                updateItem.Text = _updates.Available == null ? "Check for updates…" : "Update available…";
+                if (_updates.Available is {} release && _notifiedUpdate != release.Version)
+                {
+                    _notifiedUpdate = release.Version;
+                    _trayIcon.ShowBalloonTip(5000, "Canvas update available", $"Version {release.Version} is available. Open Updates from the tray menu.", ToolTipIcon.Info);
+                }
+            };
+
             _workspace.Start();
             _wm.Reproject();
             // Normal Windows logoff/shutdown also uses the save-and-recover exit path.
@@ -193,6 +213,7 @@ internal sealed class TrayApp : ApplicationContext
             _dispatcher.BeginInvoke((Action)(() =>
             {
                 if (!_lifecycle.IsStopping && _enabled) _overview.TryStartStartupIntro();
+                if (!_lifecycle.IsStopping) _updates.CheckAutomatically(_clock.TickCount64);
             }));
         }
         catch
@@ -207,6 +228,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (_lifecycle.IsStopping) return;
         if (Program.ShutdownSignal?.WaitOne(0) == true) { OnExit(sender, e); return; }
+        _updates?.CheckAutomatically(_clock.TickCount64);
         _wm.Tick();
         _workspace.Tick();
     }
@@ -250,6 +272,38 @@ internal sealed class TrayApp : ApplicationContext
         if (_lifecycle.IsStopping) return;
         Shutdown();
         ExitThread();
+    }
+
+    private void ShowUpdates()
+    {
+        if (_updates == null || _lifecycle.IsStopping) return;
+        if (_updateWindow == null)
+        {
+            _updateWindow = new UpdateWindow(_updates, _config, RequestUpdateRestart);
+            _updateWindow.FormClosed += (_, _) => _updateWindow = null;
+        }
+        _updateWindow.Show(); _updateWindow.Activate();
+    }
+
+    private void RequestUpdateRestart()
+    {
+        if (_updates?.ApplyAfterExit is not {} apply || _lifecycle.IsStopping) return;
+        // Leave the running session intact if the user has unfinished editing or saving fails.
+        if (!_overview.PrepareForUpdate(out var message) || !_workspace.SaveNow())
+        {
+            MessageBox.Show(message ?? _workspace.Status ?? "The workspace could not be saved. The update will wait.", "Canvas update");
+            return;
+        }
+        _pendingUpdate = apply;
+        OnExit(this, EventArgs.Empty);
+    }
+
+    internal void SchedulePendingUpdate()
+    {
+        if (_pendingUpdate == null) return;
+        if (!AppUpdateHandoff.TrySchedule(_lifecycle, _pendingUpdate))
+            ApplicationErrorDialog.ShowError(new InvalidOperationException("The update was not installed because shutdown or desktop recovery failed. Restart Canvas normally and check the log."), "Update postponed", true);
+        _pendingUpdate = null;
     }
 
     private void Shutdown()
@@ -307,14 +361,14 @@ internal sealed class TrayApp : ApplicationContext
     }
 
     internal static readonly string LogPath = Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory, "canvas_debug.log");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CanvasWindowComposer", "Logs", "canvas_debug.log");
 
     internal static void Log(string msg)
         => TryLog(msg);
 
     internal static bool TryLog(string msg)
     {
-        try { File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n"); return true; }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!); File.AppendAllText(LogPath, $"[{DateTimeOffset.Now:O}] {msg}\n"); return true; }
         catch { return false; }
     }
 }

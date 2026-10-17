@@ -34,6 +34,20 @@ internal static class WorkspaceStartup
         else key.DeleteValue(ValueName, throwOnMissingValue: false);
     }
 
+    internal static void RemoveForCurrentExecutable()
+    {
+        // Never delete startup belonging to another checkout/installation.
+        if (Enabled()) SetEnabled(false);
+    }
+
+    internal static void MigrateLegacyInstallation()
+    {
+        var previous = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs", "CanvasWindowComposer", "CanvasDesktop.exe");
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+        if (string.Equals(key?.GetValue(ValueName) as string, StartupCommand(previous), StringComparison.OrdinalIgnoreCase)) SetEnabled(true);
+    }
+
     // Pure validation seam: migration may never mutate another installation,
     // another user's task, or an action containing extra arguments.
     internal static bool IsOwnedLegacyTask(string xml, string executable, string userName, string userSid, out bool enabled)

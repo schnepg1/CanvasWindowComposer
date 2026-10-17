@@ -1,0 +1,81 @@
+name: Prepare Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 1.13.0-preview.1 or 1.13.0'
+        required: true
+        type: string
+      channel:
+        description: 'Update channel'
+        type: choice
+        options: [preview, stable]
+        default: preview
+      create_draft:
+        description: 'Upload a signed draft GitHub Release for manual review'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  prepare:
+    # Release artifacts are built from main, never arbitrary feature branches.
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: true
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - run: dotnet restore CanvasDesktop.slnx --locked-mode
+      - run: dotnet build CanvasDesktop.slnx -c Release --no-restore
+      - run: dotnet test CanvasDesktop.slnx -c Release --no-build --no-restore
+      - name: Package application
+        shell: pwsh
+        env:
+          VPK_SIGN_PARAMS: ${{ secrets.VPK_SIGN_PARAMS }}
+          VPK_AZURE_TRUSTED_SIGN_FILE: ${{ secrets.VPK_AZURE_TRUSTED_SIGN_FILE }}
+          VPK_SIGN_TEMPLATE: ${{ secrets.VPK_SIGN_TEMPLATE }}
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          REQUIRE_SIGNING: ${{ inputs.create_draft }}
+        run: |
+          $certificate = $null
+          $pfx = Join-Path $env:RUNNER_TEMP 'canvas-signing.pfx'
+          try {
+            if ($env:WINDOWS_SIGNING_PFX_BASE64) {
+              [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_SIGNING_PFX_BASE64))
+              $password = ConvertTo-SecureString $env:WINDOWS_SIGNING_PASSWORD -AsPlainText -Force
+              $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+              $env:VPK_SIGN_PARAMS = "/sha1 $($certificate.Thumbprint) /s My /fd sha256 /td sha256 /tr http://timestamp.digicert.com"
+            }
+            ./Tools/Deployment/Build-Release.ps1 -Version $env:RELEASE_VERSION -Channel $env:RELEASE_CHANNEL -RequireSigning:($env:REQUIRE_SIGNING -eq 'true')
+          } finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+            if ($certificate) { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force }
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-${{ inputs.channel }}-release
+          path: artifacts/release
+      - name: Create draft release
+        if: inputs.create_draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem artifacts/release -File | ForEach-Object FullName)
+          $options = @('release', 'create', "v$env:RELEASE_VERSION", '--repo', $env:GITHUB_REPOSITORY, '--target', $env:GITHUB_SHA, '--draft', '--title', "Canvas $env:RELEASE_VERSION", '--generate-notes')
+          if ($env:RELEASE_CHANNEL -eq 'preview') { $options += '--prerelease' }
+          & gh @options @assets
+          if ($LASTEXITCODE) { throw 'Draft release creation failed.' }

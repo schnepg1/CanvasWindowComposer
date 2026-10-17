@@ -115,6 +115,11 @@
           "SharpGen.Runtime": "2.4.2-beta"
         }
       },
+      "Velopack": {
+        "type": "Transitive",
+        "resolved": "1.2.161",
+        "contentHash": "OpHNacIumnkhaaX3ZlQ/TCR4YPOJvud2/PAOoWb6o+mIrLwIVA275I5wAgt4q/1O2VrJeDwR1qFQyqzG4lUArg=="
+      },
       "Vortice.D3DCompiler": {
         "type": "Transitive",
         "resolved": "3.8.3",
@@ -202,6 +207,7 @@
         "dependencies": {
           "CanvasDesktop.Ai": "[1.0.0, )",
           "CanvasDesktop.CanvasView": "[1.0.0, )",
+          "Velopack": "[1.2.161, )",
           "Vortice.D3DCompiler": "[3.8.3, )",
           "Vortice.Direct3D11": "[3.8.3, )"
         }

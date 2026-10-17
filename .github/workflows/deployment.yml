@@ -1,0 +1,56 @@
+name: Windows installation and launcher
+on:
+  pull_request:
+    paths:
+      - 'Start-Canvas.cmd'
+      - 'Tools/Start-Canvas.ps1'
+      - 'Tools/Deployment/**'
+      - 'Install/**'
+      - 'Source/Application/**'
+      - 'Source/Workspace/WorkspaceStartup.cs'
+      - 'CanvasDesktop.csproj'
+      - '**/packages.lock.json'
+      - '.config/**'
+      - '.github/workflows/deployment.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deployment-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: true
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - run: dotnet restore CanvasDesktop.slnx --locked-mode
+      - name: Exercise development launcher with Windows PowerShell 5.1
+        shell: powershell
+        run: ./Tools/Deployment/Test-Launcher.ps1
+      - name: Install and upgrade in an ephemeral CI profile
+        shell: pwsh
+        run: ./Tools/Deployment/Test-InstallUpgrade.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: unsigned-deployment-smoke
+          retention-days: 3
+          compression-level: 0
+          path: artifacts/release
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: startup-diagnostics
+          retention-days: 3
+          path: ~/AppData/Local/CanvasWindowComposer/Logs
+          if-no-files-found: ignore

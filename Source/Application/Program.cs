@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -17,6 +18,10 @@ internal static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Installer hooks must run before the single-instance mutex or desktop services.
+        // Downloading an update never authorizes an unattended restart.
+        Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false)
+            .OnBeforeUninstallFastCallback(_ => WorkspaceStartup.RemoveForCurrentExecutable()).Run();
         bool Has(string argument) => Array.Exists(args, a => a.Equals(argument, StringComparison.OrdinalIgnoreCase));
         if (Has("--exit"))
         {
@@ -37,15 +42,28 @@ internal static class Program
             catch (UnauthorizedAccessException) { Environment.ExitCode = 1; }
             return;
         }
-        if (Has("--diagnostics"))
+        if (Has("--diagnostics") || Has("--diagnostics-file"))
         {
-            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+            var report = System.Text.Json.JsonSerializer.Serialize(new
             {
                 Framework = RuntimeInformation.FrameworkDescription,
+                RuntimeDirectory = RuntimeEnvironment.GetRuntimeDirectory(),
+                AppVersion = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
                 Elevated = ProcessPrivileges.IsElevated(),
                 Executable = Environment.ProcessPath,
                 StartupEnabled = WorkspaceStartup.Enabled()
-            }));
+            });
+            int index = Array.FindIndex(args, a => a == "--diagnostics-file");
+            if (index >= 0)
+            {
+                try
+                {
+                    if (index + 1 >= args.Length || !System.IO.Path.IsPathFullyQualified(args[index + 1])) throw new ArgumentException("Supply an absolute diagnostic output path.");
+                    System.IO.File.WriteAllText(args[index + 1], report);
+                }
+                catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+            }
+            else Console.WriteLine(report);
             return;
         }
         if (Has("--enable-startup"))
@@ -67,6 +85,12 @@ internal static class Program
             return;
         }
 
+        try
+        {
+            if (new VelopackUpdateBackend().Installed) WorkspaceStartup.MigrateLegacyInstallation();
+        }
+        catch (Exception ex) { ApplicationErrorDialog.ShowError(ex, "Installed startup migration"); Environment.ExitCode = 1; return; }
+
         SetProcessDpiAwarenessContext((IntPtr)(-4)); // PER_MONITOR_AWARE_V2
         using var mutex = new Mutex(true, InstanceMutexName, out bool createdNew);
         if (!createdNew)
@@ -86,8 +110,10 @@ internal static class Program
         ShutdownSignal = shutdown;
         try
         {
-            using var app = new TrayApp();
-            Application.Run(app);
+            var app = new TrayApp();
+            using (app) Application.Run(app);
+            // All desktop recovery and disposal has completed before starting Update.exe.
+            app.SchedulePendingUpdate();
         }
         catch (Exception ex)
         {
