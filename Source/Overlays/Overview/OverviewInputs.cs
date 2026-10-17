@@ -13,7 +13,7 @@ internal sealed class OverviewInputs : IDisposable
     private readonly IOverviewController _overview;
     private readonly IInputRouter _input;
     private readonly Canvas _canvas;
-    private bool _disposed, _discardIntroDrag;
+    private bool _disposed, _discardIntroDrag, _guidedDrag;
 
     public OverviewInputs(IOverviewController overview, IInputRouter input, Canvas canvas)
     {
@@ -78,7 +78,8 @@ internal sealed class OverviewInputs : IDisposable
             _discardIntroDrag = true;
             return;
         }
-        _overview.TransitionTo(OverviewMode.Panning);
+        _guidedDrag=_overview.GuidedTutorialActive;
+        if (!_guidedDrag) _overview.TransitionTo(OverviewMode.Panning);
     }
 
     private void OnMouseButtonDown()
@@ -104,6 +105,13 @@ internal sealed class OverviewInputs : IDisposable
     private void OnCanvasInput()
     {
         if (_disposed) return;
+        // A gesture started in the tour must never leak into the real desktop after pause/close.
+        if (_guidedDrag && !_overview.GuidedTutorialActive)
+        {
+            _input.TryDrainPanDelta(out _,out _);_input.TryDrainZoom();
+            if(_input.TryDrainDragEnded())_guidedDrag=false;
+            return;
+        }
         if (_overview.CanvasInputSuspended || _overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed || _discardIntroDrag)
         {
             _input.TryDrainPanDelta(out _, out _);
@@ -113,12 +121,15 @@ internal sealed class OverviewInputs : IDisposable
         }
         if (_input.TryDrainPanDelta(out int dx, out int dy))
         {
-            _canvas.Pan(dx, dy);
-            _overview.RecordPanDelta(dx, dy);
+            if (_overview.GuidedTutorialActive) _overview.PanGuidedTutorial(dx,dy);
+            else { _canvas.Pan(dx, dy);_overview.RecordPanDelta(dx, dy); }
         }
 
         if (_input.TryDrainDragEnded())
-            _overview.ReleaseInertia();
+        {
+            _guidedDrag=false;
+            if(!_overview.GuidedTutorialActive)_overview.ReleaseInertia();
+        }
 
         if (_input.TryDrainZoom())
         {

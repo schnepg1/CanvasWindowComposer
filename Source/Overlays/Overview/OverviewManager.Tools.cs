@@ -91,6 +91,9 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (StopTutorialTravel()) { RefreshTourUi();return; }
+        if (_annotationEditor==null && _composerWindow==null && GuidedTutorialActive && !_tools.Active)
+        { PauseGuidedTutorial();FocusOverview();return; }
         if (_composerWindow != null) { CancelCanvasComposer(); RefreshToolPreview(); FocusOverview(); return; }
         if (_annotationEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
         if (CancelInteraction()) return;

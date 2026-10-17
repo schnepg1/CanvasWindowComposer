@@ -92,7 +92,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         RefreshTutorialScale();
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
-        var proximityCamera = _tutorialReading && _startupIntroLanded
+        var proximityCamera = _tutorialReading && (_startupIntroLanded || GuidedTutorialActive)
             ? _mainCanvas.Camera : new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
         _wm.SetOverviewViewport(proximityCamera,
             _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
@@ -335,6 +335,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         CancelInertia();
 
         OverviewMode from = CurrentMode;
+        if (target != OverviewMode.Zooming && GuidedTutorialActive)
+        {
+            PauseGuidedTutorial();syncCameraOnClose=false;
+        }
+        if (target != OverviewMode.Zooming) { _tutorialOfferVisible=false;_tourPanel?.Hide(); }
         if (!_state.SetMode(target)) return;
 
         BeforeModeChanged?.Invoke(from, target);
@@ -382,6 +387,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         // Attach frame tick to the first pass's grid (drives inertia)
         if (_passes.Count > 0 && _passes[0].Grid != null)
             _passes[0].Grid!.OnFrameTick = OnGridFrameTick;
+        OfferTutorialTour();
 
         foreach (var p in _passes)
             p.Grid?.Start(_camera.X, _camera.Y, _camera.Zoom);
@@ -389,6 +395,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        _tourPanel?.Hide();
         _tutorialReading = false;
         _previewRefreshQueued = false;
         ClearCardTransitions();
@@ -594,7 +601,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
-        if (TrySkipStartupIntro()) { e.SuppressKeyPress = true; e.Handled = true; return; }
+        if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
 
         if (e.KeyCode == Keys.Escape)
@@ -659,6 +666,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (StopTutorialTravel()) RefreshTourUi();
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled)
         {
@@ -742,6 +750,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
 
             _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
+            if(dx!=0 || dy!=0)ObserveTourWindow();
             ReconcileVisuals();
         }
         else if (_tools.Kind == CanvasInteractionKind.Pan)
@@ -788,6 +797,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void PanOverview(double virtualDx, double virtualDy)
     {
         if (virtualDx == 0 && virtualDy == 0) return;
+        StopTutorialTravel();ObserveTourPan(virtualDx,virtualDy);
         _startupIntroLanded = false;
         double worldDx = virtualDx / _camera.Zoom;
         double worldDy = virtualDy / _camera.Zoom;
@@ -802,7 +812,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void ZoomOverview(int virtualX, int virtualY, double notches)
     {
-        if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) return;
+        StopTutorialTravel();
+        double before=_camera.Zoom;
+        if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
+        if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
         _startupIntroLanded = false;
         foreach (var p in _passes)
             p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
@@ -842,6 +855,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void GoToWindow(IntPtr hWnd, WorldRect world)
     {
+        ObserveTourWindow();
         if (_placeholderWorkspace?.LiveCardItem(hWnd) is { } itemId)
         {
             TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
@@ -872,6 +886,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(DisposeGuidedTutorial);
         Attempt(DisposeAnnotations);
         Attempt(() => FinishStartupIntro(refresh: false));
         Attempt(() =>

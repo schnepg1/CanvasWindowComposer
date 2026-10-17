@@ -11,6 +11,9 @@ internal sealed class FakeOverviewController : IOverviewController
     public OverviewMode CurrentMode { get; private set; } = OverviewMode.Hidden;
 
     public bool CanvasInputSuspended { get; set; }
+    public bool GuidedTutorialActive { get; set; }
+    public List<(int x,int y)> TutorialPan = new();
+    public void PanGuidedTutorial(int x,int y) => TutorialPan.Add((x,y));
     public bool StartupIntroActive;
     public bool ConsumeIntroGesture;
     public bool StartupIntroInputSuppressed => ConsumeIntroGesture;

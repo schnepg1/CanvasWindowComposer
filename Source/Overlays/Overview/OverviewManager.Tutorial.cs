@@ -37,7 +37,7 @@ internal sealed partial class OverviewManager
             _tutorialStore!.SetLayout(_annotationDesktop(),layout);
             if(_tutorialReading && _startupIntroLanded)
             {
-                var view=TutorialReadingView(layout);_camera.SetTo(view.X,view.Y,view.Zoom);
+                var view=_tour?.Active==true?TourTarget():TutorialReadingView(layout);_camera.SetTo(view.X,view.Y,view.Zoom);
                 foreach(var pass in _passes)pass.Grid?.UpdateCamera(view.X,view.Y,view.Zoom);
             }
         }
@@ -60,13 +60,14 @@ internal sealed partial class OverviewManager
         return layout;
     }
 
-    internal CanvasCamera TutorialReadingView(TutorialLayout layout)
+    internal CanvasCamera TutorialReadingView(TutorialLayout layout) => TutorialReadingView(layout,layout.Welcome);
+
+    private CanvasCamera TutorialReadingView(TutorialLayout layout,CanvasRect note)
     {
         var area=_screens.PrimaryWorkingArea;
         // Reserve space for the top hint and bottom toolbars. Fit the first note, never the whole desktop.
-        double margin=32*layout.Scale, top=80*layout.Scale, bottom=120*layout.Scale;
+        double margin=32*layout.Scale, top=64*layout.Scale, bottom=200*layout.Scale;
         double width=Math.Max(1,area.Width-2*margin),height=Math.Max(1,area.Height-top-bottom);
-        var note=layout.Welcome;
         double zoom=Math.Clamp(Math.Min(width/note.Width,height/note.Height),OverviewCamera.ZoomMin,OverviewCamera.ZoomMax);
         double x=area.X+area.Width/2.0, y=area.Y+top+height/2;
         return new(note.X+note.Width/2-x/zoom,note.Y+note.Height/2-y/zoom,zoom);
@@ -104,6 +105,7 @@ internal sealed partial class OverviewManager
         try
         {
             if(IsStartupIntroActive)FinishStartupIntro(refresh:false);
+            PauseGuidedTutorial();
             CancelInteraction();
             Warmup();
             var layout=EnsureTutorialLayout();
@@ -118,6 +120,7 @@ internal sealed partial class OverviewManager
     public void HideTutorialNotes()
     {
         if(_disposed || _tutorialStore==null || CurrentTutorial==null) return;
+        PauseGuidedTutorial();
         if(IsStartupIntroActive)FinishStartupIntro(refresh:false);
         _tutorialStore.SetVisible(_annotationDesktop(),false);
         _tutorialStore.MarkPresented();
