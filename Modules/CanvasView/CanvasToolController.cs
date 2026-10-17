@@ -3,7 +3,7 @@ namespace CanvasDesktop.CanvasView;
 public enum CanvasPointerButton { None, Left, Middle, Right }
 [Flags]
 public enum CanvasModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
-public enum CanvasCursor { Default, Crosshair, ResizeNorthWestSouthEast, ResizeNorthEastSouthWest }
+public enum CanvasCursor { Default, Crosshair, ResizeNorthWestSouthEast, ResizeNorthEastSouthWest, ResizeNorthSouth, ResizeEastWest, Move }
 public enum CanvasInteractionKind { None, Tool, Pan, Window }
 
 public readonly record struct CanvasPointer(int SurfaceId, CanvasPoint Position,

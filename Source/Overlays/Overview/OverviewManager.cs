@@ -704,6 +704,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             CanvasCursor.Crosshair => Cursors.Cross,
             CanvasCursor.ResizeNorthWestSouthEast => Cursors.SizeNWSE,
             CanvasCursor.ResizeNorthEastSouthWest => Cursors.SizeNESW,
+            CanvasCursor.ResizeNorthSouth => Cursors.SizeNS,
+            CanvasCursor.ResizeEastWest => Cursors.SizeWE,
+            CanvasCursor.Move => Cursors.SizeAll,
             _ => Cursors.Default
         };
         if (_tools.Kind == CanvasInteractionKind.Window && _dragIndex >= 0 && _dragIndex < _windows.Count)

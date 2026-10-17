@@ -157,6 +157,9 @@ internal sealed partial class OverviewManager
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
         bool zooming = CurrentMode == OverviewMode.Zooming;
         _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];
+        if (_annotationTool?.Preview is {} annotationPreview)
+            _selectionRenderItems=_selectionRenderItems.Select(i=>i.Key.Kind==CanvasItemKind.Annotation && i.Key.Id==annotationPreview.Id
+                ?i with { Bounds=annotationPreview.Bounds }:i).ToArray();
         var zones = !zooming || _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
         if (_zoneTool.Gesture.MovingId is { } movingId && _zoneTool.Gesture.Preview is { } moved)
         {

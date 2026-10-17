@@ -108,4 +108,68 @@ public class CanvasAnnotationTests
         doc.Delete(Desktop,items[0].Id);var other=Item() with { DesktopId=Guid.NewGuid() };doc.Put(other);
         Assert.False(doc.Undo(Desktop));Assert.Equal(AnnotationDocument.MaximumItems,doc.Items.Count);
     }
+    [Theory]
+    [InlineData(.25,1)]
+    [InlineData(.5,1.5)]
+    [InlineData(1,2)]
+    [InlineData(2,1)]
+    public void LargerResizeTargetsKeepGrabOffsetAcrossZoomAndDpi(double zoom,double dpi)
+    {
+        var view=new CanvasViewTransform(40,60,zoom,new(-1920,-200,1920,1080),dpi,dpi);
+        foreach (var kind in Enum.GetValues<AnnotationKind>())
+        {
+            var item=new CanvasAnnotation(Guid.NewGuid(),Desktop,kind,new(1000,700),new(1600,1100),Text:"Note");
+            var doc=new AnnotationDocument([item]);var tool=new AnnotationCanvasTool(doc,()=>Desktop);
+            tool.SetMode(AnnotationMode.Select);tool.Select(item.Id);
+            var grip=AnnotationGeometry.Handles(item)[kind==AnnotationKind.Arrow?1:2];
+            var position=view.WorldToLocal(grip);
+            // Outside the old 8-DIP target, inside the new 14-DIP target.
+            var down=new CanvasPointer(0,new(position.X+10*dpi,position.Y),CanvasPointerButton.Left,CanvasModifiers.None,view);
+            Assert.True(tool.HasHandleAt(down));
+            tool.PointerDown(down);tool.PointerUp(down);
+            Assert.Equal(item,Assert.Single(doc.Items));Assert.False(doc.Undo(Desktop));
+            tool.PointerDown(down);
+            tool.PointerUp(down with { Position=new(down.Position.X+60*zoom,down.Position.Y+40*zoom) });
+            var resized=Assert.Single(doc.Items);
+            Assert.Equal(new CanvasPoint(1660,1140),resized.B);
+            Assert.Equal(item.A,resized.A);
+            Assert.True(doc.Undo(Desktop));Assert.Equal(item,Assert.Single(doc.Items));
+        }
+    }
+
+    [Theory]
+    [InlineData(4,CanvasCursor.ResizeNorthSouth)]
+    [InlineData(5,CanvasCursor.ResizeEastWest)]
+    [InlineData(6,CanvasCursor.ResizeNorthSouth)]
+    [InlineData(7,CanvasCursor.ResizeEastWest)]
+    public void FullEdgesResizeOneAxisAndShowDirectionalCursor(int handle,CanvasCursor cursor)
+    {
+        var item=new CanvasAnnotation(Guid.NewGuid(),Desktop,AnnotationKind.Text,new(100,100),new(500,400),Text:"Note");
+        var doc=new AnnotationDocument([item]);var tool=new AnnotationCanvasTool(doc,()=>Desktop);
+        tool.SetMode(AnnotationMode.Select);tool.Select(item.Id);
+        var grip=AnnotationGeometry.Handles(item)[handle];
+        // Use the edge well away from both the corners and midpoint grips.
+        var point=handle is 4 or 6?new CanvasPoint(grip.X+70,grip.Y+6):new CanvasPoint(grip.X+6,grip.Y+60);
+        var down=Pointer(point.X,point.Y);
+        Assert.True(tool.HasHandleAt(down));Assert.Equal(cursor,tool.CursorAt(down));
+        tool.PointerDown(down);tool.PointerUp(Pointer(point.X+30,point.Y+20));
+        var resized=Assert.Single(doc.Items).Bounds;
+        Assert.Equal(handle is 4 or 6?400:handle==5?430:370,resized.Width);
+        Assert.Equal(handle is 5 or 7?300:handle==6?320:280,resized.Height);
+        tool.SetMode(AnnotationMode.Navigate);Assert.False(tool.HasHandleAt(down));
+    }
+
+    [Fact]
+    public void ResizeCancellationAndCrossingTheOppositeCornerAreStable()
+    {
+        var item=Item(AnnotationKind.Text) with { Text="Note" };
+        var doc=new AnnotationDocument([item]);var tool=new AnnotationCanvasTool(doc,()=>Desktop);
+        tool.SetMode(AnnotationMode.Select);tool.Select(item.Id);
+        tool.PointerDown(Pointer(10,20));tool.PointerMove(Pointer(140,150));tool.Cancel();
+        Assert.Equal(item,Assert.Single(doc.Items));Assert.False(doc.Undo(Desktop));
+        tool.PointerDown(Pointer(10,20));tool.PointerUp(Pointer(140,150));
+        Assert.Equal(new CanvasRect(110,120,30,30),Assert.Single(doc.Items).Bounds);
+        Assert.True(doc.Undo(Desktop));Assert.Equal(item,Assert.Single(doc.Items));
+    }
+
 }

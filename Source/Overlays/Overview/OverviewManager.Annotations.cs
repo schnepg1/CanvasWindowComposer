@@ -161,7 +161,7 @@ internal sealed partial class OverviewManager
         _annotationTool?.Select(item.Id);
         var point=new Point((int)Math.Round((item.Bounds.X-_camera.X)*_camera.Zoom),(int)Math.Round((item.Bounds.Y-_camera.Y)*_camera.Zoom));
         var pass=_passes.FirstOrDefault(p=>p.Screen.Bounds.Contains(point))??_passes[0];
-        var editor=new AnnotationTextEditor(item.Text); _annotationEditor=editor;
+        var editor=new AnnotationTextEditor(item); _annotationEditor=editor;
         var area=pass.Screen.WorkingArea;
         editor.Location=new Point(Math.Clamp(point.X,area.Left,Math.Max(area.Left,area.Right-editor.Width)),Math.Clamp(point.Y,area.Top,Math.Max(area.Top,area.Bottom-editor.Height)));
         editor.Finished+=save=>
