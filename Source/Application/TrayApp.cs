@@ -76,6 +76,7 @@ internal sealed class TrayApp : ApplicationContext
             _zoneUi = _lifecycle.Own(new ZoneUi(_workspace, _overview), ShutdownPhase.ReleaseUi, "Project area UI");
 
             _overview.AttachAnnotations(_vds);
+            _overview.AttachTutorial();
 
             // Constructed last so they can self-subscribe to canvas/input/desktops events.
             _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering), ShutdownPhase.ReleaseUi, "Minimap");
@@ -151,6 +152,12 @@ internal sealed class TrayApp : ApplicationContext
                 }
                 _settingsWindow.Show(); _settingsWindow.Activate();
             }));
+            var tutorialMenu = new ToolStripMenuItem("Tutorial");
+            tutorialMenu.DropDownItems.Add("Return to tutorial notes", null, (_, _) => _overview.ShowTutorialNotes());
+            var hideTutorial = new ToolStripMenuItem("Hide tutorial notes", null, (_, _) => _overview.HideTutorialNotes());
+            tutorialMenu.DropDownItems.Add(hideTutorial);
+            tutorialMenu.DropDownOpening += (_, _) => hideTutorial.Enabled = _overview.TutorialNotesVisible;
+            menu.Items.Add(tutorialMenu);
             menu.Items.Add(openConfigItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(workspaceItem);

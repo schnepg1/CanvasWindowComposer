@@ -90,7 +90,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private int _dragStartVx, _dragStartVy;
     private void ReconcileVisuals()
     {
-        _wm.SetOverviewViewport(new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom),
+        RefreshTutorialScale();
+        // A stationary tutorial landing is a help view, not a request to park the user's apps.
+        var proximityCamera = _tutorialReading && _startupIntroLanded
+            ? _mainCanvas.Camera : new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
+        _wm.SetOverviewViewport(proximityCamera,
             _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
         if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
         {
@@ -220,6 +224,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         {
             var pass = new OverviewOverlay(screen);
             pass.SetDrawingLayers(_drawingLayers);
+            pass.DpiChanged += (_, _) =>
+            {
+                if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+            };
             pass.OnKey = HandleKeyDown;
             pass.OnMouseButtonDown = HandleMouseDown;
             pass.OnMouseMoved = HandleMouseMove;
@@ -381,6 +389,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        _tutorialReading = false;
         _previewRefreshQueued = false;
         ClearCardTransitions();
         CancelInteraction();

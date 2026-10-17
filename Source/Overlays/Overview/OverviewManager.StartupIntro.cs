@@ -29,7 +29,8 @@ internal sealed partial class OverviewManager
             if (_passes.Count == 0 || _passes.Exists(p => p.Grid == null)) return false;
             var nearby = new List<WorldRect>(_mainCanvas.Windows.Values);
             bool reduced = _appConfig.ReduceStartupMotion || _prefersReducedStartupMotion();
-            _startupFlight = new StartupIntroFlight(_mainCanvas.Camera, _screens.PrimaryBounds, nearby, reduced);
+            _tutorialIntroLanding = PrepareStartupTutorial();
+            _startupFlight = new StartupIntroFlight(_mainCanvas.Camera, _screens.PrimaryBounds, nearby, reduced, _tutorialIntroLanding);
             _startupIntroFrame = _startupFlight.Sample(0);
             _parkingWasSuspended = _wm.SuspendAutomaticParking;
             _wm.SuspendAutomaticParking = true;
@@ -113,6 +114,8 @@ internal sealed partial class OverviewManager
             if (!keepInputFilter) ClearStartupIntroInputFilter();
             return;
         }
+        var tutorialLanding = _tutorialIntroLanding;
+        _tutorialIntroLanding = null;
         _startupFlight = null;
         _startupIntroFrame = null;
         _startupIntroClock.Stop();
@@ -130,7 +133,11 @@ internal sealed partial class OverviewManager
             pass.SetModeStyle(CurrentMode == OverviewMode.Panning, CurrentMode == OverviewMode.Panning);
             pass.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
         }
-        if (refresh && !_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+        if (refresh && !_disposed && CurrentMode != OverviewMode.Hidden)
+        {
+            if (tutorialLanding is {} landing) LandOnTutorial(landing);
+            else ReconcileVisuals();
+        }
     }
 
     private void FailStartupIntro(Exception ex)

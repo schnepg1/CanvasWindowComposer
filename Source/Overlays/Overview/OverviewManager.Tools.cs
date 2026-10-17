@@ -17,6 +17,7 @@ internal sealed partial class OverviewManager
         if (tool == null) _annotationTool?.SetMode(AnnotationMode.Navigate);
         _tools.SetTool(tool ?? _annotationRouter ?? _zoneTool);
         var attached = new List<IOverviewAnnotationLayer>();
+        if (_tutorialLayer != null) attached.Add(_tutorialLayer);
         if (_annotationLayer != null) attached.Add(_annotationLayer);
         if (_composerLayer != null) attached.Add(_composerLayer);
         if (_selectionLayer != null) attached.Add(_selectionLayer);

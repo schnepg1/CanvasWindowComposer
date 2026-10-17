@@ -16,14 +16,14 @@ internal sealed class StartupIntroFlight
     public const double DurationSeconds = 3.5;
     public const double ReducedMotionDurationSeconds = 0.45;
 
-    private readonly CanvasCamera _saved;
+    private readonly CanvasCamera _saved, _landing;
     private readonly bool _reducedMotion;
     private readonly double _screenCenterX, _screenCenterY;
     private readonly double _pullbackZoom;
     private readonly double _panX, _panY, _arcX, _arcY;
 
     public StartupIntroFlight(CanvasCamera savedCamera, ScreenRect primaryScreen,
-        IReadOnlyList<WorldRect> nearbyWindows, bool reducedMotion = false)
+        IReadOnlyList<WorldRect> nearbyWindows, bool reducedMotion = false, CanvasCamera? landing = null)
     {
         if (!double.IsFinite(savedCamera.X) || !double.IsFinite(savedCamera.Y) ||
             !double.IsFinite(savedCamera.Zoom) || savedCamera.Zoom < OverviewCamera.ZoomMin ||
@@ -32,6 +32,10 @@ internal sealed class StartupIntroFlight
                 "The saved camera must be finite and within overview zoom limits.");
 
         _saved = savedCamera;
+        _landing = landing ?? savedCamera;
+        if (!double.IsFinite(_landing.X) || !double.IsFinite(_landing.Y) || !double.IsFinite(_landing.Zoom)
+            || _landing.Zoom < OverviewCamera.ZoomMin || _landing.Zoom > OverviewCamera.ZoomMax)
+            throw new ArgumentOutOfRangeException(nameof(landing));
         _reducedMotion = reducedMotion;
         _pullbackZoom = Math.Min(savedCamera.Zoom, 0.4);
 
@@ -102,14 +106,15 @@ internal sealed class StartupIntroFlight
             : Ease((t - 0.5) / 0.45) * (1 - Ease((t - 1.55) / 0.55));
         double spacing = _reducedMotion ? 1 : 1 + 3 * Ease(t / 2.1);
 
-        // Return the actual saved values, rather than a numerically approximate
-        // interpolation, at both endpoints and throughout reduced-motion mode.
-        if (_reducedMotion || t <= 0 || complete)
-            return new(_saved.X, _saved.Y, _saved.Zoom, title, spacing, reveal, complete);
+        // Keep exact endpoints. Reduced motion stays at the reading target throughout
+        // the fade; ordinary intros keep the saved camera as their target.
+        if (_reducedMotion || complete)
+            return new(_landing.X, _landing.Y, _landing.Zoom, title, spacing, reveal, complete);
+        if (t <= 0) return new(_saved.X, _saved.Y, _saved.Zoom, title, spacing, reveal, false);
 
         double zoom = t <= 2.6
             ? Lerp(_saved.Zoom, _pullbackZoom, Ease((t - 0.5) / 0.7))
-            : Lerp(_pullbackZoom, _saved.Zoom, Ease((t - 2.6) / 0.9));
+            : Lerp(_pullbackZoom, _landing.Zoom, Ease((t - 2.6) / 0.9));
         zoom = Math.Clamp(zoom, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
 
         // Each segment has zero first and second derivatives at its endpoints.
@@ -122,6 +127,9 @@ internal sealed class StartupIntroFlight
         double centerScale = 1 / _saved.Zoom - 1 / zoom;
         double x = _saved.X + _screenCenterX * centerScale + dx;
         double y = _saved.Y + _screenCenterY * centerScale + dy;
+        double settle = Ease((t - 2.1) / 1.4);
+        x += (_landing.X - _saved.X - _screenCenterX * (1 / _saved.Zoom - 1 / _landing.Zoom)) * settle;
+        y += (_landing.Y - _saved.Y - _screenCenterY * (1 / _saved.Zoom - 1 / _landing.Zoom)) * settle;
         return new(x, y, zoom, title, spacing, reveal, false);
     }
 
