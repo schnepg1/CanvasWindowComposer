@@ -68,6 +68,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
     public bool DisableMouseCurve { get; private set; }
     public bool DisableZoomHotkey { get; private set; }
+    public bool CheckForUpdates { get; private set; } = true;
+    public string UpdateChannel { get; private set; } = "stable";
+    public bool HasUpdateChannel { get; private set; }
 
     public AppConfig(IClock? clock = null, string? directory = null)
     {
@@ -99,6 +102,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
             DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
             DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
+            CheckForUpdates = GetBool(values, "CheckForUpdates", defaultValue: true);
+            UpdateChannel = values.TryGetValue("UpdateChannel", out var channel) && channel == "preview" ? "preview" : "stable";
+            HasUpdateChannel = channel is "stable" or "preview";
         }
     }
 
@@ -120,6 +126,17 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             ObjectDisposedException.ThrowIf(_disposed,this);
             WriteStrings(new(StringComparer.OrdinalIgnoreCase) { ["SelectionRadius"]=radius.ToString(System.Globalization.CultureInfo.InvariantCulture) });
             SelectionRadius=radius;
+        }
+    }
+
+    public void SetUpdates(bool enabled, string channel)
+    {
+        if (channel is not ("stable" or "preview")) throw new ArgumentException("Choose stable or preview updates.", nameof(channel));
+        lock (_watcherGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            WriteStrings(new(StringComparer.OrdinalIgnoreCase) { ["CheckForUpdates"] = enabled ? "true" : "false", ["UpdateChannel"] = channel });
+            CheckForUpdates = enabled; UpdateChannel = channel; HasUpdateChannel = true;
         }
     }
 
@@ -250,6 +267,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
 ; Radius for explicit camera-proximity selection, in world/canvas units (1..100000)
 ;SelectionRadius=1200
+
+; Installed builds check for updates without downloading or restarting automatically
+;CheckForUpdates=true
+;UpdateChannel=stable
 
 ; Disable the Alt+Q overview/zoom global hotkey
 ; (frees Alt+Q for other apps; the overview is still reachable via pan)

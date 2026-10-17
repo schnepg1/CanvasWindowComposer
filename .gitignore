@@ -32,6 +32,8 @@ native/build/
 publish*/
 Install/publish-fd/
 Install/CanvasWindowComposer-Setup.exe
+artifacts/
+.canvas-launch.lock
 
 ## Perf traces (large binary captures + analysis scripts/notes)
 Tracing/

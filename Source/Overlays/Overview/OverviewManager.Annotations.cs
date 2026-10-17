@@ -192,6 +192,17 @@ internal sealed partial class OverviewManager
         if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
         _annotationToolbar?.Dispose(); _annotationToolbar=null;
     }
+
+    internal bool PrepareForUpdate(out string? message)
+    {
+        message = null;
+        if (_annotationEditor != null || _composerWindow != null)
+        { message = "Finish or cancel the open note or AI proposal before restarting to update."; return false; }
+        CancelInteraction();
+        if (_annotationStore?.Save() == false)
+        { message = _annotationStore.Status ?? "Canvas notes could not be saved. The update will wait."; return false; }
+        return true;
+    }
 }
 
 internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotations, ZoneCanvasTool zones, CanvasSelectionTool selection, Action annotationCompleted) : ICanvasTool

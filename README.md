@@ -65,11 +65,19 @@ A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first 
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
 
-## Requirements
+## Install and update
+
+Use a self-contained Windows x64 installer from a published release when available.
+It includes .NET; users do not need Git, the SDK or a separate runtime. Open Updates
+from the tray to check, download and restart safely. Preview and stable channels
+are separate. See [startup and distribution](Docs/startup-and-distribution.md) for
+release preparation, signing, migration and support logs.
+
+## Development requirements
 
 - Windows 10/11
-- .NET 10 Desktop Runtime (SDK 10.0.401 or a compatible patch for development)
-- NSIS (for installer, optional)
+- .NET SDK selected by `global.json` (10.0.401 or a compatible patch in that feature band)
+- Built-in Windows PowerShell 5.1 for `Start-Canvas.cmd`
 
 ## Build
 
@@ -78,7 +86,9 @@ A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first 
 This working copy includes automatic workspace saves, clickable placeholders for
 closed apps, Explorer folder targets, a saved-workspace manager, and opt-in startup
 restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitations.
-Run `Start-Canvas.cmd`; exit any older running instance first.
+Run `Start-Canvas.cmd`; exit any older running instance first. This development
+launcher rebuilds current sources on each run, so a successful `git pull` is used.
+Use `Start-Canvas.cmd --diagnose` for dependency checks and copyable startup logs.
 
 On a normal exit, the canvas layout is saved before real windows are brought
 back into physical monitor working areas. Starting Canvas again reapplies the
@@ -113,7 +123,7 @@ dotnet test Tests/CanvasDesktop.Tests.csproj -c Release --no-build --no-restore
 dotnet build
 
 # Installer (optional)
-Install\build-installer.bat
+Install\build-installer.bat 1.13.0-preview.1 preview
 ```
 
 ## Author

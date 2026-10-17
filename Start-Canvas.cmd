@@ -1,15 +1,14 @@
 @echo off
 setlocal
-pushd "%~dp0"
-if /I "%~1"=="--build" goto build
-if exist "publish-workspace\CanvasDesktop.exe" goto launch
-:build
-dotnet publish CanvasDesktop.csproj -c Release -o publish-workspace
-if errorlevel 1 (
-    popd
-    pause
-    exit /b 1
+set "canvas_args=%*"
+set "canvas_args=%canvas_args:--build=-Build%"
+set "canvas_args=%canvas_args:--diagnose=-Diagnose%"
+set "canvas_args=%canvas_args:--no-launch=-NoLaunch%"
+set "canvas_args=%canvas_args:--no-dialog=-NoDialog%"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Tools\Start-Canvas.ps1" %canvas_args%
+set "canvas_exit=%errorlevel%"
+if not "%canvas_exit%"=="0" (
+    echo Canvas did not start. Error details are in the startup log and the copyable dialog.
+    if not defined CANVAS_NO_PAUSE pause
 )
-:launch
-start "" /d "%~dp0publish-workspace" "%~dp0publish-workspace\CanvasDesktop.exe"
-popd
+exit /b %canvas_exit%
