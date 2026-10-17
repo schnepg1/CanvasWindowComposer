@@ -25,7 +25,7 @@ Each stop has **Back**, **Next** (or **I understand — continue**), **Recenter*
 **Skip tour**. Practice never advances the camera automatically, and no exercise
 is mandatory. **Finish** leaves the notes available. Instructions stay on the
 canvas; progress and navigation buttons stay readable in a screen-space panel.
-Standard buttons support Tab, Enter and access keys. The panel hides while drawing
+Tab from the canvas focuses the controls; standard buttons support Tab, Enter and access keys. The panel hides while drawing
 or editing text, and returns afterward.
 
 Transitions take 0.7 seconds. Navigation input stops travel without dismissing

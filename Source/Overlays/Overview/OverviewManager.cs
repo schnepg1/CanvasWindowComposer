@@ -603,6 +603,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
+        if (HandleTutorialControlKey(e)) return;
 
         if (e.KeyCode == Keys.Escape)
         {

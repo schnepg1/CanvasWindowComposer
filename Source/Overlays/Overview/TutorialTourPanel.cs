@@ -55,7 +55,7 @@ internal sealed class TutorialTourPanel : Form
         _status.Text=error??(tour.Travelling?"Moving to the next note. Any navigation input stops the movement."
             :tour.Practised?"✓ You've got it. Continue when you're ready."
             :tour.Step==TutorialStep.Projects?"Shift-drag creates a project area. P opens the project navigator. Esc returns to your desktop."
-            :"Try the controls on the note, or choose ‘I understand — continue’. ");
+            :"Try the controls or choose ‘I understand — continue’. Tab focuses tour controls. ");
         _start.Visible=_explore.Visible=false;
         _back.Visible=_next.Visible=_skip.Visible=_recenter.Visible=true;
         _back.Enabled=!tour.Travelling && tour.Progress.Step>0;

@@ -154,6 +154,16 @@ internal sealed partial class OverviewManager
         _tourKnownNotes.UnionWith(notes);
         if(created && _tour.ObserveNote())SaveTourProgress();
     }
+    private bool HandleTutorialControlKey(KeyEventArgs e)
+    {
+        if(e.KeyCode!=Keys.Tab || e.Control || e.Alt || _tools.Active || _annotationEditor!=null || _composerWindow!=null
+            || (!GuidedTutorialActive && !_tutorialOfferVisible))return false;
+        RefreshTourUi();
+        if(_tourPanel is not { Visible:true })return false;
+        _tourPanel.Activate();_tourPanel.SelectNextControl(null,!e.Shift,true,true,false);
+        e.Handled=true;e.SuppressKeyPress=true;return true;
+    }
+
     private void RefreshTourUi()
     {
         bool offer=_tutorialOfferVisible && _tutorialOfferDesktop==_annotationDesktop();
@@ -178,6 +188,8 @@ internal sealed partial class OverviewManager
                     else if(_tutorialOfferVisible)SkipGuidedTutorial();
                     e.Handled=true;e.SuppressKeyPress=true;
                 }
+                else if(e.KeyCode is Keys.Oemplus or Keys.Add or Keys.OemMinus or Keys.Subtract)
+                    HandleKeyDown(pass,e);
             };
         }
         if(GuidedTutorialActive)_tourPanel.UpdateTour(_tour!,_tutorialStore?.Status);
