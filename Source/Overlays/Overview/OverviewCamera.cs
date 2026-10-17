@@ -41,7 +41,7 @@ internal sealed class OverviewCamera
     }
 
     /// <summary>Pan in virtual-screen pixels; converted to world via current zoom.</summary>
-    public void PanByVirtual(int virtualDx, int virtualDy)
+    public void PanByVirtual(double virtualDx, double virtualDy)
     {
         X -= virtualDx / Zoom;
         Y -= virtualDy / Zoom;

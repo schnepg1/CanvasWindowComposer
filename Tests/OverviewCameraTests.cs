@@ -33,6 +33,16 @@ public class OverviewCameraTests
     }
 
     [Fact]
+    public void PanByVirtual_PreservesSmallTrackpadDeltas()
+    {
+        var cam = MakeCamera();
+        cam.SetTo(20, 30, 0.5);
+        cam.PanByVirtual(0.25, -0.5);
+        Assert.Equal(19.5, cam.X);
+        Assert.Equal(31, cam.Y);
+    }
+
+    [Fact]
     public void ZoomToCursor_ChangesZoomAndKeepsCursorFixed()
     {
         var cam = MakeCamera();

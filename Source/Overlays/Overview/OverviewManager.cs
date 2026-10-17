@@ -27,7 +27,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     public event Action<OverviewMode, OverviewMode>? AfterModeChanged;
 
     private const double ExtentsPaddingRatio = 0.1;
-    private const double MouseWheelDeltaPerNotch = 120.0;
     private static readonly string[] MyDockFinderProcessHints =
     {
         "mydockfinder",
@@ -584,7 +583,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     // ==================== INPUT ====================
 
-    private void HandleKeyDown(OverviewOverlay _, KeyEventArgs e)
+    private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
         if (TrySkipStartupIntro()) { e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
@@ -596,6 +595,19 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
+        if (_annotationEditor != null || _composerWindow != null) return;
+        if (e.KeyCode is Keys.Oemplus or Keys.Add or Keys.OemMinus or Keys.Subtract)
+        {
+            if (!_tools.Active)
+            {
+                var center = pass.Screen.Bounds;
+                double notches = e.KeyCode is Keys.Oemplus or Keys.Add ? 1 : -1;
+                ZoomOverview(center.Left + center.Width / 2, center.Top + center.Height / 2, notches);
+            }
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            return;
+        }
         if (HandleAnnotationKey(e)) return;
         if (HandleZoneKey(e)) return;
         if (_tools.Active) { e.Handled = true; return; }
@@ -726,17 +738,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _panStartVx = vx;
             _panStartVy = vy;
 
-            double worldDx = dx / _camera.Zoom;
-            double worldDy = dy / _camera.Zoom;
-            if (dx != 0 || dy != 0) _startupIntroLanded = false;
-            _camera.PanByVirtual(dx, dy);
-
-            foreach (var p in _passes)
-            {
-                p.Grid?.AccumulatePan(worldDx, worldDy);
-                p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-            }
-            ReconcileVisuals();
+            PanOverview(dx, dy);
         }
     }
 
@@ -759,21 +761,38 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
-    private void HandleMouseWheel(OverviewOverlay pass, MouseEventArgs e)
+    private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control)
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
+        if (_composerWindow != null) return;
+        bool zoomModifier = control || (Control.ModifierKeys & Keys.Alt) != 0;
+        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier);
+        if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
+        else PanOverview(panX, panY);
+    }
 
-        double notches = e.Delta / MouseWheelDeltaPerNotch;
-        int vx = e.X + pass.OriginX;
-        int vy = e.Y + pass.OriginY;
-
-        if (!_camera.ZoomToCursor(vx, vy, notches)) return;
+    private void PanOverview(double virtualDx, double virtualDy)
+    {
+        if (virtualDx == 0 && virtualDy == 0) return;
         _startupIntroLanded = false;
+        double worldDx = virtualDx / _camera.Zoom;
+        double worldDy = virtualDy / _camera.Zoom;
+        _camera.PanByVirtual(virtualDx, virtualDy);
+        foreach (var p in _passes)
+        {
+            p.Grid?.AccumulatePan(worldDx, worldDy);
+            p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
+        }
+        ReconcileVisuals();
+    }
 
+    private void ZoomOverview(int virtualX, int virtualY, double notches)
+    {
+        if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) return;
+        _startupIntroLanded = false;
         foreach (var p in _passes)
             p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-
         ReconcileVisuals();
     }
 
