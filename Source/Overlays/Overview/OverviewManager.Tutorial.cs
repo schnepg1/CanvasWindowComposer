@@ -35,8 +35,9 @@ internal sealed partial class OverviewManager
             var layout=notes.Layout.WithScale(TutorialDpiScale);
             if(ReferenceEquals(layout,notes.Layout)) return;
             _tutorialStore!.SetLayout(_annotationDesktop(),layout);
-            if(_tutorialReading && _startupIntroLanded)
+            if(_tutorialReading && (_startupIntroLanded || GuidedTutorialActive))
             {
+                StopTutorialTravel();
                 var view=_tour?.Active==true?TourTarget():TutorialReadingView(layout);_camera.SetTo(view.X,view.Y,view.Zoom);
                 foreach(var pass in _passes)pass.Grid?.UpdateCamera(view.X,view.Y,view.Zoom);
             }

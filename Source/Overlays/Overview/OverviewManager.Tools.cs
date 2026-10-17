@@ -77,6 +77,7 @@ internal sealed partial class OverviewManager
 
     public bool CancelInteraction()
     {
+        StopTutorialTravel();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
         bool cancelled = CancelCanvasComposer();
         cancelled |= CancelAnnotationEdit();
