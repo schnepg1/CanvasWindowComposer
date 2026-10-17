@@ -139,6 +139,14 @@ animation preference also selects the reduced-motion version automatically.
 
 Configuration keys: `EnableStartupIntro=true`, `ReduceStartupMotion=false`.
 
+### On-canvas tutorial
+
+On the first tutorial-enabled startup, notes and arrows are placed beside your visible
+windows and the intro lands at a readable camera-controls note. Explore the nearby
+zoom, window and drawing instructions at your own pace. Use **Tray → Tutorial** to
+hide the notes or return to them. Tutorial notes save separately from your own drawings.
+See [on-canvas tutorial](Docs/canvas-tutorial.md) for behaviour and limitations.
+
 ### Canvas annotations
 
 In canvas overview, use the toolbar to draw arrows, rectangles and ellipses, or
