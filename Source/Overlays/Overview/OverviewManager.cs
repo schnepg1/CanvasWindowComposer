@@ -90,6 +90,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private int _dragStartVx, _dragStartVy;
     private void ReconcileVisuals()
     {
+        RefreshTutorialScale();
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
         var proximityCamera = _tutorialReading && _startupIntroLanded
             ? _mainCanvas.Camera : new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
@@ -223,6 +224,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         {
             var pass = new OverviewOverlay(screen);
             pass.SetDrawingLayers(_drawingLayers);
+            pass.DpiChanged += (_, _) =>
+            {
+                if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+            };
             pass.OnKey = HandleKeyDown;
             pass.OnMouseButtonDown = HandleMouseDown;
             pass.OnMouseMoved = HandleMouseMove;

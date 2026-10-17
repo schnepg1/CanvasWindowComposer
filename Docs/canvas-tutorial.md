@@ -14,7 +14,9 @@ available manually from the tray.
 
 **Tray → Tutorial → Return to tutorial notes** reveals and frames the first note.
 **Hide tutorial notes** hides this desktop's tutorial artwork. Existing notes keep
-their positions and IDs across revisits and restarts. Explicitly returning to the
+their positions and IDs across revisits and restarts. A primary-DPI change scales
+the neighbourhood around its existing origin, preserving IDs, visibility and the
+real-window connector endpoint. Explicitly returning to the
 tutorial on another virtual desktop creates a separate local neighbourhood. The
 first-run presentation flag is application-wide, so switching desktops never
 forces another intro tutorial. Existing installations get this once when updating.
@@ -23,7 +25,8 @@ Tutorials reuse annotation artwork but live in `tutorial.json`, separate from
 `annotations.json` and personal undo/redo. They are read-only examples. Progress,
 visibility, desktop identity, layout and DPI scale use atomic saves with a backup;
 unreadable/future files are preserved and suppress automatic onboarding. A corrupt
-primary can recover from its backup, preserving a copy of the damaged file.
+primary can recover from its backup, preserving a copy of the damaged file and
+repairing the primary atomically. A newer-version file never falls back to an older backup.
 
 Opening and closing the tutorial without navigating preserves the saved desktop
 camera. Practising navigation uses the normal camera behaviour. Temporary flight

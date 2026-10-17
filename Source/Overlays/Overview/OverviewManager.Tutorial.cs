@@ -25,8 +25,28 @@ internal sealed partial class OverviewManager
         if(_tutorialStore.Status is {} error)TrayApp.Log(error);
     }
 
+    private double TutorialDpiScale => Math.Clamp((_passes.FirstOrDefault(p=>p.Screen.Primary)?.DeviceDpi??96)/96.0,1,4);
+
+    private void RefreshTutorialScale()
+    {
+        if(CurrentTutorial is not {} notes) return;
+        try
+        {
+            var layout=notes.Layout.WithScale(TutorialDpiScale);
+            if(ReferenceEquals(layout,notes.Layout)) return;
+            _tutorialStore!.SetLayout(_annotationDesktop(),layout);
+            if(_tutorialReading && _startupIntroLanded)
+            {
+                var view=TutorialReadingView(layout);_camera.SetTo(view.X,view.Y,view.Zoom);
+                foreach(var pass in _passes)pass.Grid?.UpdateCamera(view.X,view.Y,view.Zoom);
+            }
+        }
+        catch(Exception ex) { TrayApp.Log("Tutorial sizing could not be refreshed: "+ex.Message); }
+    }
+
     private TutorialLayout EnsureTutorialLayout()
     {
+        RefreshTutorialScale();
         if(CurrentTutorial is {} existing) return existing.Layout;
         var screen=_screens.PrimaryWorkingArea;
         var camera=_mainCanvas.Camera;
@@ -34,7 +54,7 @@ internal sealed partial class OverviewManager
         var windows=_mainCanvas.Windows.Values.Where(w=>!w.PinnedToScreen).Select(w=>new CanvasRect(w.X,w.Y,w.W,w.H)).ToArray();
         var content=_annotationDocument!.Items.Where(a=>a.DesktopId==_annotationDesktop()).Select(a=>a.Bounds)
             .Concat(_zones?.Items.Select(z=>new CanvasRect(z.Bounds.X,z.Bounds.Y,z.Bounds.W,z.Bounds.H))??[]).ToArray();
-        double dpi=(_passes.FirstOrDefault(p=>p.Screen.Primary)?.DeviceDpi??96)/96.0;
+        double dpi=TutorialDpiScale;
         var layout=TutorialLayout.Create(_annotationDesktop(),viewport,windows,content,dpi,!_appConfig.DisableZoomHotkey,!_appConfig.DisableAltPan);
         _tutorialStore!.SetLayout(_annotationDesktop(),layout);
         return layout;

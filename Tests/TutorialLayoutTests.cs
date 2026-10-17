@@ -26,7 +26,7 @@ public class TutorialLayoutTests
     public void EmptyDesktopGetsSampleLandmarkAndNeverRequiresAnApplicationToLaunch()
     {
         var layout=TutorialLayout.Create(Desktop,View,[],[]);
-        Assert.Single(layout.Items.Where(a=>a.Kind==AnnotationKind.Rectangle));
+        Assert.Single(layout.Items,a=>a.Kind==AnnotationKind.Rectangle);
         Assert.Equal(4,layout.Items.Count(a=>a.Kind==AnnotationKind.Text));
         Assert.Equal(layout.Items[0].Bounds,layout.Welcome);
     }
@@ -38,6 +38,23 @@ public class TutorialLayoutTests
         Assert.DoesNotContain(layout.Items,a=>a.Text.Contains("Alt+Q") || a.Text.Contains("Alt+middle"));
         Assert.Contains(layout.Items,a=>a.Text.Contains("Ctrl+scroll"));
         Assert.Contains(layout.Items,a=>a.Text.Contains("two fingers"));
+    }
+
+    [Theory]
+    [InlineData(1,2)]
+    [InlineData(2,1)]
+    public void DpiMigrationPreservesOriginIdentityAndRealWindowConnector(double initial,double next)
+    {
+        var layout=TutorialLayout.Create(Desktop,View,[new(100,100,800,500)],[],initial);
+        var updated=layout.WithScale(next);
+        Assert.Equal(layout.Items.Select(a=>a.Id),updated.Items.Select(a=>a.Id));
+        Assert.Equal(layout.Welcome.X,updated.Welcome.X);Assert.Equal(layout.Welcome.Y,updated.Welcome.Y);
+        Assert.Equal(next/initial*layout.Welcome.Width,updated.Welcome.Width);
+        var originalArrow=layout.Items.Single(a=>a.Id==layout.LandmarkConnectorId);
+        Assert.Equal(originalArrow.B,updated.Items.Single(a=>a.Id==layout.LandmarkConnectorId).B);
+        var restored=updated.WithScale(initial);
+        Assert.Equal(layout.Welcome,restored.Welcome);
+        Assert.Same(updated,updated.WithScale(next));
     }
 
     [Theory]

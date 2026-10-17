@@ -1,7 +1,7 @@
 namespace CanvasDesktop.CanvasView;
 
 /// <summary>A stable neighbourhood of ordinary annotation artwork, independent of native windows.</summary>
-public sealed record TutorialLayout(CanvasAnnotation[] Items, CanvasRect Welcome, double Scale)
+public sealed record TutorialLayout(CanvasAnnotation[] Items, CanvasRect Welcome, double Scale, Guid? LandmarkConnectorId = null, bool SampleLandmark = false)
 {
     public static TutorialLayout Create(Guid desktop, CanvasRect viewport, IReadOnlyList<CanvasRect> windows,
         IReadOnlyList<CanvasRect> otherContent, double scale = 1, bool overviewHotkey = true, bool altPan = true)
@@ -39,7 +39,10 @@ public sealed record TutorialLayout(CanvasAnnotation[] Items, CanvasRect Welcome
             items.Add(new(Guid.NewGuid(),desktop,AnnotationKind.Text,new(r.X,r.Y),new(r.X+r.Width,r.Y+r.Height),color,3,text));
             return r;
         }
-        void Arrow(CanvasPoint a, CanvasPoint b) => items.Add(new(Guid.NewGuid(),desktop,AnnotationKind.Arrow,a,b,"#60A5FA",3));
+        Guid Arrow(CanvasPoint a, CanvasPoint b)
+        {
+            var id=Guid.NewGuid();items.Add(new(id,desktop,AnnotationKind.Arrow,a,b,"#60A5FA",3));return id;
+        }
         var welcome=Note(0,0,390,340,
             "1  •  Move around\n\nYour desktop has more space than you think.\n\nMiddle-drag to pan. On a trackpad, scroll with two fingers.\n\nFollow the arrows to explore.\n\nTray → Tutorial: return or hide notes.","#FBBF24");
         var zoom=Note(430,0,390,340,
@@ -54,10 +57,23 @@ public sealed record TutorialLayout(CanvasAnnotation[] Items, CanvasRect Welcome
         // Connect the neighbourhood to its landmark without drawing through the instruction cards.
         var from=new CanvasPoint(Math.Clamp(anchor.X+anchor.Width/2,place.X,place.X+w), Math.Clamp(anchor.Y+anchor.Height/2,place.Y,place.Y+h));
         var to=new CanvasPoint(Math.Clamp(place.X+w/2,anchor.X,anchor.X+anchor.Width),Math.Clamp(place.Y+h/2,anchor.Y,anchor.Y+anchor.Height));
-        Arrow(from,to);
+        var landmarkConnector=Arrow(from,to);
         if(sample) items.Add(new(Guid.NewGuid(),desktop,AnnotationKind.Rectangle,new(anchor.X,anchor.Y),new(anchor.X+anchor.Width,anchor.Y+anchor.Height),"#60A5FA",3,"Your canvas\n\nOpen an app, then return here to see it on the canvas."));
         AnnotationDocument.Validate(items);
-        return new(items.ToArray(),welcome,scale);
+        return new(items.ToArray(),welcome,scale,landmarkConnector,sample);
+    }
+
+    /// <summary>Keep the neighbourhood origin, identities and real-window arrow endpoint when DPI changes.</summary>
+    public TutorialLayout WithScale(double scale)
+    {
+        if(!double.IsFinite(scale) || scale is < 1 or > 4) throw new ArgumentOutOfRangeException(nameof(scale));
+        if(Math.Abs(scale-Scale)<.001) return this;
+        double ratio=scale/Scale;
+        CanvasPoint Project(CanvasPoint p)=>new(Welcome.X+(p.X-Welcome.X)*ratio,Welcome.Y+(p.Y-Welcome.Y)*ratio);
+        var items=Items.Select(a=>a with { A=Project(a.A),
+            B=a.Id==LandmarkConnectorId && !SampleLandmark?a.B:Project(a.B) }).ToArray();
+        AnnotationDocument.Validate(items);
+        return this with { Items=items,Welcome=items[0].Bounds,Scale=scale };
     }
 
     public static bool Intersects(CanvasRect a, CanvasRect b) => a.X < b.X+b.Width && a.X+a.Width > b.X && a.Y < b.Y+b.Height && a.Y+a.Height > b.Y;

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace CanvasDesktop;
@@ -25,7 +26,18 @@ internal sealed class TutorialPersistence
             try
             {
                 if(new FileInfo(candidate).Length>4*1024*1024) throw new InvalidDataException("Tutorial file is too large.");
-                var state=JsonSerializer.Deserialize<State>(File.ReadAllText(candidate));
+                string json=File.ReadAllText(candidate);
+                using(var raw=JsonDocument.Parse(json))
+                {
+                    // A downgrade must never replace newer data with an older backup.
+                    if(raw.RootElement.ValueKind==JsonValueKind.Object && raw.RootElement.TryGetProperty("Version",out var version)
+                        && version.ValueKind==JsonValueKind.Number && version.TryGetInt32(out int number) && number!=1)
+                    {
+                        _canSave=false;Status="This tutorial file was written by an unsupported version. Existing files are preserved.";
+                        return;
+                    }
+                }
+                var state=JsonSerializer.Deserialize<State>(json);
                 if(state is null || state.Version!=1 || state.Desktops is null || state.Desktops.Length>100 || state.Desktops.Any(d=>d is null)
                     || state.Desktops.Select(d=>d.DesktopId).Distinct().Count()!=state.Desktops.Length)
                     throw new InvalidDataException("Unsupported tutorial state.");
@@ -38,8 +50,7 @@ internal sealed class TutorialPersistence
                     AnnotationDocument.Validate(layout.Items);
                 }
                 Data=state;
-                // Do not overwrite a damaged primary when recovering its backup.
-                if(candidate!=path && File.Exists(path)) File.Copy(path,path+".corrupt-"+Guid.NewGuid().ToString("N"));
+                if(candidate!=path) RestoreBackup(candidate);
                 return;
             }
             catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException or InvalidDataException)
@@ -47,10 +58,28 @@ internal sealed class TutorialPersistence
         }
         if(failure!=null) { _canSave=false;Status="Tutorial notes could not be loaded. Existing files are preserved: "+failure.Message; }
     }
+    private void RestoreBackup(string backup)
+    {
+        if(File.Exists(_path))
+        {
+            // Stable names avoid duplicate damage archives if repair itself cannot complete.
+            string hash=Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(_path)));
+            string damaged=_path+".corrupt-"+hash;
+            if(!File.Exists(damaged)) File.Copy(_path,damaged);
+        }
+        string temp=_path+".recovery";
+        try
+        {
+            byte[] bytes=File.ReadAllBytes(backup);
+            using(var file=new FileStream(temp,FileMode.Create,FileAccess.Write,FileShare.None)) { file.Write(bytes);file.Flush(true); }
+            File.Move(temp,_path,overwrite:true); // Keep the known-good backup intact.
+        }
+        finally { try { if(File.Exists(temp))File.Delete(temp); } catch(IOException) {} catch(UnauthorizedAccessException) {} }
+    }
     internal DesktopNotes? ForDesktop(Guid id) => Data.Desktops?.FirstOrDefault(d=>d.DesktopId==id);
     internal void SetLayout(Guid desktop,TutorialLayout layout)
     {
-        Data=Data with { Desktops=(Data.Desktops??[]).Where(d=>d.DesktopId!=desktop).Append(new(desktop,layout)).ToArray() };
+        Data=Data with { Desktops=(Data.Desktops??[]).Where(d=>d.DesktopId!=desktop).Append(new(desktop,layout,ForDesktop(desktop)?.Visible??true)).ToArray() };
         Save();
     }
     internal void SetVisible(Guid desktop,bool visible)
