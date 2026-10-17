@@ -24,14 +24,14 @@ function Invoke-DotNet([string[]]$Arguments) {
 try {
     New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
     $log = Join-Path $logDirectory ('startup-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '.log')
-    Write-Detail 'Canvas development launcher — builds from this source checkout.'
+    Write-Detail 'Canvas development launcher - builds from this source checkout.'
     Write-Detail "Repository: $root"
     Write-Detail "Log: $log"
     if ([Environment]::OSVersion.Platform -ne 'Win32NT') { throw 'Canvas requires Windows 10/11.' }
     Set-Location -LiteralPath $root
     $required = (Get-Content -Raw -LiteralPath (Join-Path $root 'global.json') | ConvertFrom-Json).sdk.version
     $script:dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
-    if (!$script:dotnet) { throw "The .NET SDK is missing. This launcher compiles Canvas and requires SDK $required (or a compatible patch in the same SDK feature band). Installing only the Desktop Runtime is insufficient. Download: https://dotnet.microsoft.com/download/dotnet/10.0 — alternatively install a self-contained Canvas release." }
+    if (!$script:dotnet) { throw "The .NET SDK is missing. This launcher compiles Canvas and requires SDK $required (or a compatible patch in the same SDK feature band). Installing only the Desktop Runtime is insufficient. Download: https://dotnet.microsoft.com/download/dotnet/10.0 - alternatively install a self-contained Canvas release." }
     # --version resolves global.json; --list-sdks alone cannot detect an incompatible SDK.
     Write-Detail "Required SDK: $required (global.json)"
     $ErrorActionPreference = 'Continue'
@@ -79,7 +79,7 @@ try {
         try {
             Add-Type -AssemblyName System.Windows.Forms
             $form = New-Object Windows.Forms.Form
-            $form.Text = 'Canvas — Startup problem'; $form.Width = 820; $form.Height = 540; $form.StartPosition = 'CenterScreen'
+            $form.Text = 'Canvas - Startup problem'; $form.Width = 820; $form.Height = 540; $form.StartPosition = 'CenterScreen'
             $details = New-Object Windows.Forms.TextBox
             $details.Multiline = $true; $details.ReadOnly = $true; $details.ScrollBars = 'Both'; $details.Dock = 'Fill'; $details.Text = $report
             $copy = New-Object Windows.Forms.Button

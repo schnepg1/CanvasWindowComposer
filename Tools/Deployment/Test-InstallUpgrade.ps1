@@ -34,7 +34,9 @@ try {
     & "$PSScriptRoot/Build-Release.ps1" -Version '0.0.1-preview.1' -Channel preview -OutputDirectory 'artifacts/smoke-first'
     $setup = @(Get-ChildItem (Join-Path $root 'artifacts/smoke-first') -Filter '*Setup.exe')[0].FullName
     $first = Join-Path $temp 'first.json'
-    Run-Checked $setup "--silent --installto `"$install`" -- --diagnostics-file `"$first`""
+    Run-Checked $setup "--silent --installto `"$install`""
+    # Silent Setup deliberately does not launch the app. Use its stable launcher.
+    Run-Checked (Join-Path $install 'Update.exe') "start -- --diagnostics-file `"$first`""
     Wait-Report $first '0.0.1-preview.1'
     & "$PSScriptRoot/Build-Release.ps1" -Version '0.0.2-preview.1' -Channel preview -OutputDirectory 'artifacts/release'
     $package = @(Get-ChildItem (Join-Path $root 'artifacts/release') -Filter '*-full.nupkg')[0].FullName

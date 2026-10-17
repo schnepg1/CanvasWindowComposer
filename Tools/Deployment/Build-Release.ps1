@@ -13,6 +13,10 @@ try {
     if ($RequireSigning -and !$env:VPK_SIGN_PARAMS -and !$env:VPK_AZURE_TRUSTED_SIGN_FILE -and !$env:VPK_SIGN_TEMPLATE) { throw 'Release signing is required. Configure a Velopack signing provider before publishing.' }
     $output = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
     $publish = Join-Path $root 'artifacts/publish-win-x64'
+    $artifactRoot = [IO.Path]::GetFullPath((Join-Path $root 'artifacts')) + [IO.Path]::DirectorySeparatorChar
+    if (!$output.StartsWith($artifactRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $output.StartsWith($publish, [StringComparison]::OrdinalIgnoreCase) -or
+        $publish.StartsWith($output, [StringComparison]::OrdinalIgnoreCase)) { throw 'Choose a dedicated output directory inside artifacts, separate from publish-win-x64.' }
     # Clean both so another version/channel can never be uploaded accidentally.
     foreach ($path in @($publish, $output)) {
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
