@@ -174,4 +174,26 @@ public class CanvasComposerOverviewTests
             window.GenerateButton.PerformClick();PumpUntil(()=>!window.Busy);
             Assert.False(window.ApplyButton.Enabled);Assert.Equal(1,chat.Requests);Assert.Empty(overview.Annotations!.Items);
         });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void SharedSelectionStartsCheckedAndLayoutActionPreservesExistingNotes()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            var a=new CanvasAnnotation(Guid.NewGuid(),desktops.CurrentDesktopId,AnnotationKind.Text,new(600,300),new(900,460),Text:"Exact wording");
+            var b=a with { Id=Guid.NewGuid(),A=new(1200,300),B=new(1500,460),Text="Second note" };
+            overview.Annotations!.ApplyBatch(0,desktops.CurrentDesktopId,[a,b]);
+            var project=new WorkspaceZone { Name="Guardian",DesktopId=desktops.CurrentDesktopId,Bounds=new WorldRect { X=0,Y=0,W=2000,H=1000 } };
+            overview.AttachZones(new ZoneService(new WorkspaceDocument { Zones=[project] },()=>desktops.CurrentDesktopId,()=>true));
+            overview.Selection.Pick(new(CanvasItemKind.Project,project.Id),overview.SelectionItems(),false);
+            var provider=new Provider { Respond=()=>Task.FromResult(new ComposerPlan("Arranged",[new(a.Id.ToString(),"note","Ignored rewrite","#FFFFFF"),new(b.Id.ToString(),"note","Ignored","#FFFFFF")],[],[])) };
+            overview.OpenCanvasComposer(provider,new Credentials(),new Accounts());var window=overview.ComposerWindow!;Configure(window);
+            Assert.Equal(3,window.ContextBox.CheckedItems.Count);window.ActionBox.SelectedIndex=4;
+            window.GenerateButton.PerformClick();PumpUntil(()=>!window.Busy);
+            Assert.True(provider.Received!.PreserveWording);Assert.Equal(2,provider.Received.SharedAnnotations.Count);Assert.Equal("Guardian",Assert.Single(provider.Received.SharedReferences).Title);Assert.True(window.ApplyButton.Enabled);
+            Assert.Equal(new[]{a,b},overview.Annotations.Items);
+            window.ApplyButton.PerformClick();Assert.Equal(2,overview.Annotations.Items.Count);
+            Assert.Equal(a.Text,overview.Annotations.Items.Single(n=>n.Id==a.Id).Text);
+            Assert.True(overview.Annotations.Undo(desktops.CurrentDesktopId));Assert.Equal(new[]{a,b},overview.Annotations.Items);
+        });
 }

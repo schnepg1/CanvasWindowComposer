@@ -31,7 +31,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (Mode==AnnotationMode.Select)
         {
             var selected=Selected;
-            _handle=selected is null?-1:HandleAt(selected,p);
+            _handle=selected is null?-1:AnnotationGeometry.HandleAt(selected,p);
             _original=_handle>=0?selected:Hit(p);
             SelectedId=_original?.Id; Preview=_original; return true;
         }
@@ -52,15 +52,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         }
         if (_original is not {} original) return;
         if (_handle<0) { Preview=original.Translate(end.X-_start.X,end.Y-_start.Y); return; }
-        if (original.Kind==AnnotationKind.Arrow)
-        {
-            var fixedPoint=_handle==0?original.B:original.A;
-            if (p.Modifiers.HasFlag(CanvasModifiers.Shift)) end=AnnotationGeometry.Constrain(fixedPoint,end,true);
-            Preview=_handle==0?original with { A=end }:original with { B=end }; return;
-        }
-        var opposite=AnnotationGeometry.Handles(original)[(_handle+2)%4];
-        if (p.Modifiers.HasFlag(CanvasModifiers.Shift)) end=AnnotationGeometry.Constrain(opposite,end,false);
-        Preview=original with { A=opposite,B=end };
+        Preview=AnnotationGeometry.Resize(original,_handle,new(end.X-_start.X,end.Y-_start.Y),p.Modifiers.HasFlag(CanvasModifiers.Shift));
     }
     public void PointerUp(CanvasPointer p)
     {
@@ -83,13 +75,23 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     public void Select(Guid id) { Cancel(); SelectedId=document.Items.Any(a=>a.Id==id && a.DesktopId==desktop())?id:null; }
     public void Delete() { if (Selected is {} item) document.Delete(desktop(),item.Id); ClearSelection(); }
     public void Cancel() { _active=false; _creating=false; Preview=null; _original=null; _handle=-1; }
-    public CanvasCursor CursorAt(CanvasPointer p) => Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)?CanvasCursor.Crosshair
-        : Selected is {} item && HandleAt(item,p)>=0?CanvasCursor.ResizeNorthWestSouthEast:CanvasCursor.Default;
-    private static int HandleAt(CanvasAnnotation item,CanvasPointer p)
+    public CanvasCursor CursorAt(CanvasPointer p)
     {
-        var local=p.View.LocalToDip(p.Position); var handles=AnnotationGeometry.Handles(item);
-        for(int i=0;i<handles.Length;i++)
-            if(AnnotationGeometry.Distance(local,p.View.LocalToDip(p.View.WorldToLocal(handles[i])))<=8) return i;
-        return -1;
+        if (Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return CanvasCursor.Crosshair;
+        if (Mode == AnnotationMode.Navigate) return CanvasCursor.Default;
+        if (Selected is {} item)
+        {
+            int handle = _active ? _handle : AnnotationGeometry.HandleAt(item,p);
+            if (handle >= 0)
+                return item.Kind == AnnotationKind.Arrow ? CanvasCursor.Crosshair : handle switch
+                {
+                    0 or 2 => CanvasCursor.ResizeNorthWestSouthEast,
+                    1 or 3 => CanvasCursor.ResizeNorthEastSouthWest,
+                    4 or 6 => CanvasCursor.ResizeNorthSouth,
+                    _ => CanvasCursor.ResizeEastWest
+                };
+        }
+        return Hit(p) != null ? CanvasCursor.Move : CanvasCursor.Default;
     }
+    public bool HasHandleAt(CanvasPointer p) => Mode == AnnotationMode.Select && Selected is {} item && AnnotationGeometry.HandleAt(item, p) >= 0;
 }

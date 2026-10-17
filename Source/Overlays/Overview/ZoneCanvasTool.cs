@@ -24,6 +24,8 @@ internal sealed class ZoneCanvasTool : ICanvasTool
 
     public void Arm() => Gesture.Arm();
 
+    public bool IsBoundaryGesture(CanvasPointer p) => Gesture.Armed || p.Modifiers.HasFlag(CanvasModifiers.Shift) || HitCorner(p) != null;
+
     public bool PointerDown(CanvasPointer pointer)
     {
         if (!_enabled() || pointer.Button != CanvasPointerButton.Left) return false;

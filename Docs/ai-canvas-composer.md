@@ -1,6 +1,6 @@
 # AI Canvas Composer
 
-The first feature slice turns a request and explicitly checked canvas notes into
+The first feature slice turns a request and explicitly checked canvas annotations and place metadata into
 editable annotations. The existing desktop/window manager continues to own native
 windows; AI proposals have no process, file, network-tool or window-movement powers.
 
@@ -13,8 +13,9 @@ windows; AI proposals have no process, file, network-tool or window-movement pow
    For ChatGPT, choose **Continue with ChatGPT**, authorize plan usage in the system
    browser, then select an account-specific model. Manage usage opens ChatGPT settings.
    See [AI connections](ai-connections.md) for account lifecycle and storage.
-3. Write a request. Check the specific notes to share. Nothing is selected by
-   default except a note explicitly selected before opening the composer.
+3. Write a request or choose a transformation action. The current canvas selection
+   starts checked; review annotation text and window/project metadata before sending.
+   With no canvas selection, nothing starts checked. See [spatial selection](spatial-selection.md).
 4. Generate. The request runs asynchronously with cancellation and a three-minute
    timeout. The canvas remains unchanged. A completed, validated response becomes
    translucent, editable-object previews on the canvas, framed beside the panel.
@@ -23,7 +24,7 @@ windows; AI proposals have no process, file, network-tool or window-movement pow
 
 Examples: "Create a three-step roadmap", "Turn these checked notes into a dependency
 diagram", "Rewrite the selected note into a concise checklist". The model is not
-given arbitrary app contents, screenshots, file paths or other desktop notes.
+given arbitrary app contents, screenshots, launch targets or unchecked desktop notes.
 
 ## Contracts and boundaries
 
@@ -32,7 +33,9 @@ given arbitrary app contents, screenshots, file paths or other desktop notes.
 - The OpenAI adapter posts to the fixed public Responses endpoint with a strict
   JSON schema and `store:false`. It does not execute tool calls or save prompts.
 - Semantic plan: nodes (note/rectangle/ellipse, text, color), graph edges, and
-  text-only edits to explicitly shared existing notes. No generated coordinates.
+  text-only edits to explicitly shared existing notes. Reusing a shared annotation UUID
+  as a node arranges that object while preserving wording, dimensions and style.
+  Window/project metadata is reference-only. No generated coordinates.
 - `CanvasComposer.Prepare` validates references, scope, enums, colors and limits;
   topological columns (stable grid fallback for cycles) place the nodes. A local
   free-space search avoids existing annotations and native window bounds. Arrows
@@ -48,7 +51,7 @@ given arbitrary app contents, screenshots, file paths or other desktop notes.
   Late/cancelled responses cannot re-enable Apply. Camera pan/zoom does not change
   document revision; users may inspect a proposal in world space.
 - HTTP responses are bounded to 1 MiB, requests to 8,000 prompt characters plus
-  20 checked notes / 32,000 context characters. A proposal can contain 40 nodes,
+  20 checked context items / 32,000 context characters. A proposal can contain 40 nodes,
   60 edges and 20 note edits, within the existing 2,000-annotation document limit.
   Refusals, incomplete responses and unsupported models fail without canvas edits.
 - Only completed edits trigger existing atomic annotation persistence. Save failures
@@ -93,9 +96,10 @@ actually supports. Never silently switch from subscription usage to API billing.
 - Explicit file/browser integrations with source links on generated notes.
 - Optional agent task cards with visible progress and results attached to an area.
 
-Native windows, project areas and annotations have separate histories today. A
-cross-domain arrangement feature must introduce a coordinated transaction/history
-boundary; opening an external program is not reversible like moving a note.
+Direct selection moves now coordinate native-window, project-tile and annotation
+geometry as one annotation-history transaction. Canvas shortcuts and toolbar history
+merge annotation and project layout operations in chronological order. AI native-window arrangements still need a dedicated action batch;
+opening an external program is not reversible like moving a note.
 
 ## Official references (checked 15 October 2026)
 

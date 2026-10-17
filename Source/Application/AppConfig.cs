@@ -17,6 +17,7 @@ internal interface IAppConfig
     bool EnableFlipRendering => false;
     bool EnableStartupIntro => true;
     bool ReduceStartupMotion => false;
+    double SelectionRadius => 1200;
     bool ShowScreenFixedWindowsDuringPan { get; }
 
     /// <summary>
@@ -56,6 +57,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     private bool _disposed;
     private long _lastReloadTick;
 
+    public double SelectionRadius { get; private set; } = 1200;
     public bool DisableSearch { get; private set; }
     public bool DisableAltPan { get; private set; }
     public bool DisableGreedyDraw { get; private set; } = true;
@@ -86,6 +88,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
             var values = ParseIni(_configPath);
 
+            SelectionRadius = values.TryGetValue("SelectionRadius",out var radius) && double.TryParse(radius,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out var parsed) && double.IsFinite(parsed) && parsed>=1 && parsed<=100000 ? parsed : 1200;
             DisableSearch = GetBool(values, "DisableSearch", defaultValue: false);
             DisableAltPan = GetBool(values, "DisableAltPan", defaultValue: false);
             DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
@@ -106,6 +109,17 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             WriteBool("ShowScreenFixedWindowsDuringPan", value);
             ShowScreenFixedWindowsDuringPan = value;
+        }
+    }
+
+    public void SetSelectionRadius(double radius)
+    {
+        if (!double.IsFinite(radius) || radius<1 || radius>100000) throw new ArgumentOutOfRangeException(nameof(radius));
+        lock (_watcherGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed,this);
+            WriteStrings(new(StringComparer.OrdinalIgnoreCase) { ["SelectionRadius"]=radius.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            SelectionRadius=radius;
         }
     }
 
@@ -234,6 +248,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Windows animation preferences are also respected
 ;ReduceStartupMotion=false
 
+; Radius for explicit camera-proximity selection, in world/canvas units (1..100000)
+;SelectionRadius=1200
+
 ; Disable the Alt+Q overview/zoom global hotkey
 ; (frees Alt+Q for other apps; the overview is still reachable via pan)
 ;DisableZoomHotkey=false
@@ -273,6 +290,13 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
     private void WriteValues(Dictionary<string, bool> values)
     {
+        var strings=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in values) strings[pair.Key]=pair.Value.ToString().ToLowerInvariant();
+        WriteStrings(strings);
+    }
+
+    private void WriteStrings(Dictionary<string, string> values)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_configPath))!);
         if (!File.Exists(_configPath))
             WriteDefault();
@@ -291,11 +315,11 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 continue;
 
             string existingKey = line[..eq].Trim();
-            if (!values.TryGetValue(existingKey, out bool value))
+            if (!values.TryGetValue(existingKey, out string? value))
                 continue;
 
             // Update duplicates too: the reader uses the last occurrence.
-            lines[i] = $"{existingKey}={value.ToString().ToLowerInvariant()}";
+            lines[i] = $"{existingKey}={value}";
             remaining.Remove(existingKey);
         }
 
@@ -305,7 +329,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             updated.AddRange(lines);
             updated.Add("");
             foreach (string key in remaining)
-                updated.Add($"{key}={values[key].ToString().ToLowerInvariant()}");
+                updated.Add($"{key}={values[key]}");
             lines = updated.ToArray();
         }
 

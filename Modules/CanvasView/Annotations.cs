@@ -2,6 +2,7 @@ namespace CanvasDesktop.CanvasView;
 
 public enum AnnotationKind { Arrow, Rectangle, Ellipse, Text }
 public enum AnnotationMode { Navigate, Select, Arrow, Rectangle, Ellipse, Text }
+public enum AnnotationChangeKind { Edit, Undo, Redo }
 public sealed record CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
     CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "")
 {
@@ -15,9 +16,12 @@ public sealed class AnnotationDocument
     public const int MaximumItems = 2000;
     public const int MaximumTextLength = 10000;
     private readonly List<CanvasAnnotation> _items = [];
-    private readonly Dictionary<Guid, (List<CanvasAnnotation[]> Undo, List<CanvasAnnotation[]> Redo)> _history = [];
+    private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay, long Order);
+    private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
     public IReadOnlyList<CanvasAnnotation> Items => _items.AsReadOnly();
     public long Revision { get; private set; }
+    public AnnotationChangeKind LastChange { get; private set; }
+    public Guid LastChangedDesktop { get; private set; }
     public event Action? Changed;
     public AnnotationDocument(IEnumerable<CanvasAnnotation>? items = null)
     {
@@ -41,15 +45,22 @@ public sealed class AnnotationDocument
     }
     private static bool ValidPoint(CanvasPoint p) => double.IsFinite(p.X) && double.IsFinite(p.Y) && Math.Abs(p.X) <= 10000000 && Math.Abs(p.Y) <= 10000000;
     public static bool ValidColor(string? s) => s is { Length: 7 } && s[0] == '#' && s.AsSpan(1).IndexOfAnyExcept("0123456789ABCDEFabcdef") < 0;
-    private (List<CanvasAnnotation[]> Undo, List<CanvasAnnotation[]> Redo) History(Guid desktop)
+    private (List<HistoryState> Undo, List<HistoryState> Redo) History(Guid desktop)
     {
         if (!_history.TryGetValue(desktop, out var h)) _history[desktop] = h = ([], []);
         return h;
     }
-    private void NotifyChanged() { Revision++; Changed?.Invoke(); }
+    private void NotifyChanged(Guid desktop, AnnotationChangeKind kind=AnnotationChangeKind.Edit)
+    { LastChange=kind;LastChangedDesktop=desktop;Revision++;Changed?.Invoke(); }
+    public long HistoryOrder(Guid desktop,bool redo=false)
+    {
+        if(!_history.TryGetValue(desktop,out var h)) return 0;
+        var entries=redo?h.Redo:h.Undo;return entries.Count==0?0:entries[^1].Order;
+    }
+    public void ClearRedo(Guid desktop) { if(_history.TryGetValue(desktop,out var h))h.Redo.Clear(); }
 
     /// <summary>Validate the entire transaction before changing anything. One history step and notification.</summary>
-    public bool ApplyBatch(long expectedRevision, Guid desktop, IReadOnlyList<CanvasAnnotation> upserts)
+    public bool ApplyBatch(long expectedRevision, Guid desktop, IReadOnlyList<CanvasAnnotation> upserts, Func<bool, bool>? replay = null)
     {
         if (expectedRevision != Revision) throw new InvalidOperationException("The canvas changed. Generate a fresh preview.");
         var batch = upserts.ToArray();
@@ -60,8 +71,9 @@ public sealed class AnnotationDocument
         var next = _items.Select(a => batch.FirstOrDefault(b => b.Id == a.Id) ?? a).ToList();
         next.AddRange(batch.Where(a => !_items.Any(b => b.Id == a.Id)));
         Validate(next);
-        if (_items.SequenceEqual(next)) return false;
-        Remember(desktop); _items.Clear(); _items.AddRange(next); NotifyChanged(); return true;
+        if (_items.SequenceEqual(next) && replay == null) return false;
+        if (replay?.Invoke(true)==false) throw new InvalidOperationException("The selected group changed. Select it again.");
+        Remember(desktop, replay); _items.Clear(); _items.AddRange(next); NotifyChanged(desktop); return true;
     }
 
     public void Put(CanvasAnnotation item)
@@ -72,17 +84,17 @@ public sealed class AnnotationDocument
         var next = _items.Where(a => a.Id != item.Id).Append(item).ToArray(); Validate(next);
         Remember(item.DesktopId);
         if (index < 0) _items.Add(item); else _items[index] = item;
-        NotifyChanged();
+        NotifyChanged(item.DesktopId);
     }
     public void Delete(Guid desktop, Guid id)
     {
         if (!_items.Any(a => a.Id == id && a.DesktopId == desktop)) return;
-        Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged();
+        Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged(desktop);
     }
     private CanvasAnnotation[] Snapshot(Guid desktop) => _items.Where(a => a.DesktopId == desktop).ToArray();
-    private void Remember(Guid desktop)
+    private void Remember(Guid desktop, Func<bool, bool>? replay = null)
     {
-        var h = History(desktop); h.Undo.Add(Snapshot(desktop)); h.Redo.Clear();
+        var h = History(desktop); h.Undo.Add(new(Snapshot(desktop), replay,CanvasHistoryOrder.Next())); h.Redo.Clear();
         if (h.Undo.Count > 100) h.Undo.RemoveAt(0);
     }
     public bool Undo(Guid desktop, bool redo = false)
@@ -90,14 +102,20 @@ public sealed class AnnotationDocument
         var h = History(desktop); var from = redo ? h.Redo : h.Undo; var to = redo ? h.Undo : h.Redo;
         if (from.Count == 0) return false;
         var snapshot = from[^1];
-        if (_items.Count(a => a.DesktopId != desktop) + snapshot.Length > MaximumItems) return false;
-        to.Add(Snapshot(desktop)); from.RemoveAt(from.Count - 1);
-        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot); NotifyChanged(); return true;
+        if (_items.Count(a => a.DesktopId != desktop) + snapshot.Items.Length > MaximumItems) return false;
+        // A companion validates all saved identities and positions before either half replays.
+        if (snapshot.Replay?.Invoke(redo) == false) return false;
+        to.Add(new(Snapshot(desktop), snapshot.Replay,snapshot.Order)); from.RemoveAt(from.Count - 1);
+        _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot.Items); NotifyChanged(desktop,redo?AnnotationChangeKind.Redo:AnnotationChangeKind.Undo); return true;
     }
 }
 
 public static class AnnotationGeometry
 {
+    // DIPs, shared with painting: controls remain usable while the artwork zooms.
+    public const double HandleSize = 12;
+    public const double HandleHitRadius = 14;
+    public const double EdgeHitTolerance = 8;
     public static double Distance(CanvasPoint a, CanvasPoint b) => Math.Sqrt((a.X-b.X)*(a.X-b.X)+(a.Y-b.Y)*(a.Y-b.Y));
     public static CanvasPoint Constrain(CanvasPoint start, CanvasPoint end, bool arrow)
     {
@@ -126,10 +144,66 @@ public static class AnnotationGeometry
             return Math.Pow((p.X-x-w/2)/(w/2+8),2)+Math.Pow((p.Y-y-h/2)/(h/2+8),2)<=1;
         return p.X>=x-8 && p.Y>=y-8 && p.X<=x+w+8 && p.Y<=y+h+8;
     }
+    public static int HandleAt(CanvasAnnotation item, CanvasPointer pointer)
+    {
+        var local = pointer.View.LocalToDip(pointer.Position);
+        var handles = Handles(item);
+        int nearest = -1;
+        double distance = HandleHitRadius;
+        for (int i = 0; i < handles.Length; i++)
+        {
+            double candidate = Distance(local, pointer.View.LocalToDip(pointer.View.WorldToLocal(handles[i])));
+            if (candidate <= distance) { nearest = i; distance = candidate; }
+        }
+        if (nearest >= 0 || item.Kind == AnnotationKind.Arrow) return nearest;
+        var r = pointer.View.WorldToDip(item.Bounds);
+        // The whole edge is a grab target, not just its midpoint.
+        if (local.X >= r.X && local.X <= r.X+r.Width)
+        {
+            if (Math.Abs(local.Y-r.Y) <= EdgeHitTolerance) return 4;
+            if (Math.Abs(local.Y-r.Y-r.Height) <= EdgeHitTolerance) return 6;
+        }
+        if (local.Y >= r.Y && local.Y <= r.Y+r.Height)
+        {
+            if (Math.Abs(local.X-r.X-r.Width) <= EdgeHitTolerance) return 5;
+            if (Math.Abs(local.X-r.X) <= EdgeHitTolerance) return 7;
+        }
+        return -1;
+    }
+
+    public static CanvasAnnotation Resize(CanvasAnnotation original, int handle, CanvasPoint delta, bool constrain)
+    {
+        if (delta == default) return original;
+        var grip = Handles(original)[handle];
+        var end = new CanvasPoint(grip.X+delta.X, grip.Y+delta.Y);
+        if (original.Kind == AnnotationKind.Arrow)
+        {
+            var fixedPoint = handle == 0 ? original.B : original.A;
+            if (constrain) end = Constrain(fixedPoint, end, true);
+            return handle == 0 ? original with { A=end } : original with { B=end };
+        }
+        if (handle < 4)
+        {
+            var opposite = Handles(original)[(handle+2)%4];
+            if (constrain) end = Constrain(opposite, end, false);
+            return original with { A=opposite, B=end };
+        }
+        var r = original.Bounds;
+        return handle switch
+        {
+            4 => original with { A=new(r.X,end.Y), B=new(r.X+r.Width,r.Y+r.Height) },
+            5 => original with { A=new(r.X,r.Y), B=new(end.X,r.Y+r.Height) },
+            6 => original with { A=new(r.X,r.Y), B=new(r.X+r.Width,end.Y) },
+            _ => original with { A=new(end.X,r.Y), B=new(r.X+r.Width,r.Y+r.Height) }
+        };
+    }
+
     public static CanvasPoint[] Handles(CanvasAnnotation item)
     {
         if (item.Kind==AnnotationKind.Arrow) return [item.A,item.B];
         var r=item.Bounds;
-        return [new(r.X,r.Y),new(r.X+r.Width,r.Y),new(r.X+r.Width,r.Y+r.Height),new(r.X,r.Y+r.Height)];
+        return [new(r.X,r.Y),new(r.X+r.Width,r.Y),new(r.X+r.Width,r.Y+r.Height),new(r.X,r.Y+r.Height),
+            new(r.X+r.Width/2,r.Y),new(r.X+r.Width,r.Y+r.Height/2),
+            new(r.X+r.Width/2,r.Y+r.Height),new(r.X,r.Y+r.Height/2)];
     }
 }
