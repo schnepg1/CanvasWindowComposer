@@ -79,4 +79,56 @@ public class CanvasAnnotationRenderingTests
             Assert.True(Render("Finish") > Render(""));
         });
 
+    [Theory]
+    [InlineData(AnnotationKind.Arrow)]
+    [InlineData(AnnotationKind.Rectangle)]
+    [InlineData(AnnotationKind.Ellipse)]
+    [InlineData(AnnotationKind.Text)]
+    public void WholeArtworkTracksCameraScaleAndPosition(AnnotationKind kind)
+        => WorkspaceViewTests.OnSta(()=>
+        {
+            var desktop=Guid.NewGuid();
+            var item=new CanvasAnnotation(Guid.NewGuid(),desktop,kind,new(50,60),new(250,180),Text:"Zoom with me");
+            var document=new AnnotationDocument([item]);
+            var surface=new OverviewAnnotationSurface();
+            surface.SetDrawingLayers([new CanvasAnnotationLayer(document,new AnnotationCanvasTool(document,()=>desktop),()=>desktop,()=>true)]);
+            surface.Measure(new Size(300,220));surface.Arrange(new Rect(0,0,300,220));
+            (int Width,int Height,int Left) Extent(double x,double y,double zoom)
+            {
+                surface.Update(OverviewAnnotationSnapshot.Create([],x,y,zoom,new(0,0,300,220),null,false,showHints:false));
+                surface.UpdateLayout();var bitmap=new RenderTargetBitmap(300,220,96,96,PixelFormats.Pbgra32);bitmap.Render(surface);
+                var bytes=new byte[300*220*4];bitmap.CopyPixels(bytes,1200,0);
+                var points=Enumerable.Range(0,300*220).Where(i=>bytes[i*4+3]>0).ToArray();
+                return (points.Max(i=>i%300)-points.Min(i=>i%300)+1,points.Max(i=>i/300)-points.Min(i=>i/300)+1,points.Min(i=>i%300));
+            }
+            var full=Extent(0,0,1);var small=Extent(0,0,.5);var panned=Extent(20,0,.5);
+            Assert.InRange(small.Width,full.Width*.45,full.Width*.55);
+            Assert.InRange(small.Height,full.Height*.45,full.Height*.55);
+            Assert.InRange(small.Left-panned.Left,9,11);
+        });
+
+    [Fact]
+    public void EditorPreviewsTheCardAndKeepsItsWrappingWhenTheDialogResizes()
+        => WorkspaceViewTests.OnSta(()=>
+        {
+            var item=new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,new(50,60),new(290,180),"#C084FC",3,"A card that wraps\nSecond line");
+            using var editor=new AnnotationTextEditor(item);
+            editor.Show();System.Windows.Forms.Application.DoEvents();
+            var host=editor.Controls.OfType<System.Windows.Forms.Integration.ElementHost>().Single();
+            var root=(FrameworkElement)host.Child;
+            root.UpdateLayout();
+            Assert.Equal(AnnotationVisual.TextBounds(item).Width,editor.Editor.ActualWidth);
+            double textWidth=editor.Editor.ActualWidth;
+            editor.Width+=160;System.Windows.Forms.Application.DoEvents();root.UpdateLayout();
+            Assert.Equal(textWidth,editor.Editor.ActualWidth);
+            Assert.Equal(item.Text,editor.Editor.Text);
+            if (Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is {} workspace)
+            {
+                Directory.CreateDirectory(Path.Combine(workspace,"TestResults"));
+                var bitmap=new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth),(int)Math.Ceiling(root.ActualHeight),96,96,PixelFormats.Pbgra32);
+                bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var output=File.Create(Path.Combine(workspace,"TestResults","annotation-editor-preview.png"));encoder.Save(output);
+            }
+        });
+
 }

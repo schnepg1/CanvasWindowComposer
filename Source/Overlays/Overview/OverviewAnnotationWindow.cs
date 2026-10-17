@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace CanvasDesktop;
 
@@ -52,7 +53,6 @@ internal sealed class OverviewAnnotationWindow : Window
 
     public void Update(OverviewAnnotationSnapshot frame)
     {
-        _drawing.Update(frame);
         var screen = new System.Drawing.Rectangle(frame.Screen.X, frame.Screen.Y, frame.Screen.Width, frame.Screen.Height);
         bool opening = !IsVisible;
         if (opening) Show();
@@ -63,6 +63,13 @@ internal sealed class OverviewAnnotationWindow : Window
                 screen.X, screen.Y, screen.Width, screen.Height,
                 SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
         }
+        _drawing.Update(frame);
+        // The host runs a WinForms message loop. During a wheel/mouse-message burst,
+        // WPF's deferred render can otherwise trail the synchronous DWM thumbnails.
+        // Complete layout and service render-priority work for this camera frame;
+        // do not drain lower-priority input or use Application.DoEvents().
+        _drawing.UpdateLayout();
+        Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
     }
 
 }

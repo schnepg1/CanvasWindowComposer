@@ -144,6 +144,10 @@ notes to edit, and **Windows** to return to window navigation. Shift constrains
 shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edits
 while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
 editing. Drawings save automatically per virtual desktop and return after restart.
+Notes open in a card preview with matching colors, proportions, typography and wrapping.
+Save with Ctrl+Enter or cancel with Esc. Selected drawings have larger corner/endpoint
+grips; notes and shapes also resize from their sides. Grip sizes stay readable as you zoom.
+
 See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
 
 ### Spatial selection

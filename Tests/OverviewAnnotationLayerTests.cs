@@ -49,4 +49,33 @@ public class OverviewAnnotationLayerTests
         zones.Clear(); cards.Clear(); ghosts.Clear();
         Assert.Single(frame.Zones); Assert.Single(frame.Placeholders); Assert.Single(frame.Ghosts);
     }
+    private sealed class CameraRecorder : IOverviewAnnotationLayer
+    {
+        public CanvasDesktop.CanvasView.CanvasViewTransform? LastView { get; private set; }
+        public void Draw(DrawingContext dc,OverviewAnnotationContext context) => LastView=context.View;
+    }
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void CameraFramesRenderBeforeUpdateReturnsDuringInputBursts()
+        => WorkspaceViewTests.OnSta(()=>
+        {
+            var layer=new CameraRecorder();var window=new OverviewAnnotationWindow(IntPtr.Zero);
+            try
+            {
+                window.SetDrawingLayers([layer]);
+                for (int i=0;i<24;i++)
+                {
+                    double zoom=1-i*.025;
+                    window.Update(OverviewAnnotationSnapshot.Create([],i*3,i*2,zoom,new(0,0,300,220),null,false,showHints:false));
+                    // No DoEvents, sleep, bitmap render or layout call in the test:
+                    // the native-window camera update must flush its own WPF frame.
+                    Assert.NotNull(layer.LastView);
+                    Assert.Equal(zoom,layer.LastView.Value.Zoom);
+                    Assert.Equal(i*3,layer.LastView.Value.CameraX);
+                }
+            }
+            finally { window.Close(); }
+        });
+
 }

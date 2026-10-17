@@ -112,6 +112,10 @@ public sealed class AnnotationDocument
 
 public static class AnnotationGeometry
 {
+    // DIPs, shared with painting: controls remain usable while the artwork zooms.
+    public const double HandleSize = 12;
+    public const double HandleHitRadius = 14;
+    public const double EdgeHitTolerance = 8;
     public static double Distance(CanvasPoint a, CanvasPoint b) => Math.Sqrt((a.X-b.X)*(a.X-b.X)+(a.Y-b.Y)*(a.Y-b.Y));
     public static CanvasPoint Constrain(CanvasPoint start, CanvasPoint end, bool arrow)
     {
@@ -140,10 +144,66 @@ public static class AnnotationGeometry
             return Math.Pow((p.X-x-w/2)/(w/2+8),2)+Math.Pow((p.Y-y-h/2)/(h/2+8),2)<=1;
         return p.X>=x-8 && p.Y>=y-8 && p.X<=x+w+8 && p.Y<=y+h+8;
     }
+    public static int HandleAt(CanvasAnnotation item, CanvasPointer pointer)
+    {
+        var local = pointer.View.LocalToDip(pointer.Position);
+        var handles = Handles(item);
+        int nearest = -1;
+        double distance = HandleHitRadius;
+        for (int i = 0; i < handles.Length; i++)
+        {
+            double candidate = Distance(local, pointer.View.LocalToDip(pointer.View.WorldToLocal(handles[i])));
+            if (candidate <= distance) { nearest = i; distance = candidate; }
+        }
+        if (nearest >= 0 || item.Kind == AnnotationKind.Arrow) return nearest;
+        var r = pointer.View.WorldToDip(item.Bounds);
+        // The whole edge is a grab target, not just its midpoint.
+        if (local.X >= r.X && local.X <= r.X+r.Width)
+        {
+            if (Math.Abs(local.Y-r.Y) <= EdgeHitTolerance) return 4;
+            if (Math.Abs(local.Y-r.Y-r.Height) <= EdgeHitTolerance) return 6;
+        }
+        if (local.Y >= r.Y && local.Y <= r.Y+r.Height)
+        {
+            if (Math.Abs(local.X-r.X-r.Width) <= EdgeHitTolerance) return 5;
+            if (Math.Abs(local.X-r.X) <= EdgeHitTolerance) return 7;
+        }
+        return -1;
+    }
+
+    public static CanvasAnnotation Resize(CanvasAnnotation original, int handle, CanvasPoint delta, bool constrain)
+    {
+        if (delta == default) return original;
+        var grip = Handles(original)[handle];
+        var end = new CanvasPoint(grip.X+delta.X, grip.Y+delta.Y);
+        if (original.Kind == AnnotationKind.Arrow)
+        {
+            var fixedPoint = handle == 0 ? original.B : original.A;
+            if (constrain) end = Constrain(fixedPoint, end, true);
+            return handle == 0 ? original with { A=end } : original with { B=end };
+        }
+        if (handle < 4)
+        {
+            var opposite = Handles(original)[(handle+2)%4];
+            if (constrain) end = Constrain(opposite, end, false);
+            return original with { A=opposite, B=end };
+        }
+        var r = original.Bounds;
+        return handle switch
+        {
+            4 => original with { A=new(r.X,end.Y), B=new(r.X+r.Width,r.Y+r.Height) },
+            5 => original with { A=new(r.X,r.Y), B=new(end.X,r.Y+r.Height) },
+            6 => original with { A=new(r.X,r.Y), B=new(r.X+r.Width,end.Y) },
+            _ => original with { A=new(end.X,r.Y), B=new(r.X+r.Width,r.Y+r.Height) }
+        };
+    }
+
     public static CanvasPoint[] Handles(CanvasAnnotation item)
     {
         if (item.Kind==AnnotationKind.Arrow) return [item.A,item.B];
         var r=item.Bounds;
-        return [new(r.X,r.Y),new(r.X+r.Width,r.Y),new(r.X+r.Width,r.Y+r.Height),new(r.X,r.Y+r.Height)];
+        return [new(r.X,r.Y),new(r.X+r.Width,r.Y),new(r.X+r.Width,r.Y+r.Height),new(r.X,r.Y+r.Height),
+            new(r.X+r.Width/2,r.Y),new(r.X+r.Width,r.Y+r.Height/2),
+            new(r.X+r.Width/2,r.Y+r.Height),new(r.X,r.Y+r.Height/2)];
     }
 }

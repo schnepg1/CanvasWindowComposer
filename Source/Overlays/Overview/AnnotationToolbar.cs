@@ -56,27 +56,3 @@ internal sealed class AnnotationToolbar : Form
         _status.Text=status is null?$"{selectedCount} selected":"Warning"; _status.ToolTipText=status??"";
     }
 }
-
-/// <summary>Separate focused editor; the passive drawing window remains click-through.</summary>
-internal sealed class AnnotationTextEditor : Form
-{
-    public TextBox Editor { get; } = new() { Multiline=true,AcceptsReturn=true,AcceptsTab=true,ScrollBars=ScrollBars.Vertical,
-        Dock=DockStyle.Fill,MaxLength=AnnotationDocument.MaximumTextLength,Font=new Font("Segoe UI",12),ImeMode=ImeMode.On };
-    public event Action<bool>? Finished;
-    public AnnotationTextEditor(string text)
-    {
-        Text="Canvas note — Ctrl+Enter to save, Esc to cancel"; ShowInTaskbar=false; TopMost=true;
-        StartPosition=FormStartPosition.Manual; FormBorderStyle=FormBorderStyle.SizableToolWindow;
-        MinimumSize=new Size(260,160); Size=new Size(380,220); KeyPreview=true;
-        Controls.Add(Editor); Editor.Text=text;
-        var save=new Button { Text="Save note · Ctrl+Enter",Dock=DockStyle.Bottom,Height=30 };
-        save.Click+=(_,_)=>Finished?.Invoke(true); Controls.Add(save);
-        KeyDown+=(_,e)=>
-        {
-            if(e.KeyCode==Keys.Escape || (e.Control && e.KeyCode==Keys.Enter))
-            { e.SuppressKeyPress=true; e.Handled=true; Finished?.Invoke(e.KeyCode==Keys.Enter); }
-        };
-        FormClosing+=(_,e)=> { if(e.CloseReason==CloseReason.UserClosing) { e.Cancel=true; Finished?.Invoke(false); } };
-        Shown+=(_,_)=> { Editor.Focus(); Editor.SelectionStart=Editor.TextLength; };
-    }
-}
