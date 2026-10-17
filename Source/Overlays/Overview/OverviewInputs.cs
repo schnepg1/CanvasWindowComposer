@@ -115,7 +115,7 @@ internal sealed class OverviewInputs : IDisposable
         if (_overview.CanvasInputSuspended || _overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed || _discardIntroDrag)
         {
             _input.TryDrainPanDelta(out _, out _);
-            if (_input.TryDrainDragEnded()) _discardIntroDrag = false;
+            if (_input.TryDrainDragEnded()) { _discardIntroDrag = false;_guidedDrag=false; }
             _input.TryDrainZoom();
             return;
         }

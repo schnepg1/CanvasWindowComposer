@@ -63,6 +63,17 @@ public class TutorialTourTests
         Assert.Equal(middle,flight.Sample(.35));
     }
     [Fact]
+    public void EndingAPanWhileAnEditorOwnsInputDoesNotSuppressLaterNavigation()
+    {
+        var canvas=new Canvas();var input=new FakeInputRouter();var overview=new FakeOverviewController { GuidedTutorialActive=true };
+        using var binding=new OverviewInputs(overview,input,canvas);overview.TransitionTo(OverviewMode.Zooming);
+        input.RaiseDragStarted();overview.CanvasInputSuspended=true;
+        input.PendingDragEnded=true;input.RaiseInputAvailable();
+        overview.GuidedTutorialActive=false;overview.CanvasInputSuspended=false;
+        input.PendingZoom=true;input.RaiseInputAvailable();Assert.Equal(OverviewMode.Hidden,overview.CurrentMode);
+    }
+
+    [Fact]
     public void GlobalPracticePanNeverMutatesTheDesktopAndCancelledHeldGesturesAreDrained()
     {
         var canvas=new Canvas();canvas.SetCamera(123,456);var saved=canvas.Camera;
