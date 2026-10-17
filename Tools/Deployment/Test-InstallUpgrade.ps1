@@ -11,6 +11,7 @@ $files = @(
     (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'CanvasWindowComposer\AI\chatgpt.dat')
 )
 $created = @()
+$uninstalled = $false
 function Run-Checked([string]$Exe, [string]$Arguments) {
     $p = Start-Process -FilePath $Exe -ArgumentList $Arguments -PassThru
     if (!$p.WaitForExit(120000)) { throw "Timed out: $Exe" }
@@ -47,12 +48,13 @@ try {
         if ((Get-Content -Raw -LiteralPath $file).Trim() -ne 'canvas upgrade preservation fixture') { throw "Update modified user data: $file" }
     }
     Run-Checked (Join-Path $install 'Update.exe') 'uninstall --silent'
+    $uninstalled = $true
     foreach ($file in $files) { if (!(Test-Path -LiteralPath $file)) { throw "Uninstall removed user data: $file" } }
     Write-Host 'Fresh installation, bundled runtime, upgrade, restart and user-data preservation passed.'
 } finally {
     # Only our own files and installation; no real user's data is deleted.
     foreach ($file in $created) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
-    if (Test-Path -LiteralPath (Join-Path $install 'Update.exe')) {
+    if (!$uninstalled -and (Test-Path -LiteralPath (Join-Path $install 'Update.exe'))) {
         Run-Checked (Join-Path $install 'Update.exe') 'uninstall --silent'
     }
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

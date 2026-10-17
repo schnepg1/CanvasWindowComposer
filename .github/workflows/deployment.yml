@@ -44,6 +44,13 @@ jobs:
         with:
           name: unsigned-deployment-smoke
           retention-days: 3
-          path: |
-            artifacts/release
-            ~/AppData/Local/CanvasWindowComposer/Logs
+          compression-level: 0
+          path: artifacts/release
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: startup-diagnostics
+          retention-days: 3
+          path: ~/AppData/Local/CanvasWindowComposer/Logs
+          if-no-files-found: ignore
