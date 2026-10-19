@@ -216,8 +216,13 @@ invalidation, encoded-versus-raw pixel comparison and snapshot ownership after f
 disposal. Existing readiness and cached-source lifetime tests also remain in place.
 
 Fourth-pass local validation: locked restore and Release cross-compilation of the
-desktop test project succeeded with zero warnings/errors. Full execution of these
-new Windows regressions is pending on the PR workflow.
+desktop test project succeeded with zero warnings/errors. Code revision `3d3aaab`
+passed its [Windows build/test workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39328231493):
+Release build with zero warnings/errors, **853 desktop tests and 81 AI tests passed**,
+and publish succeeded. Its [installer/launcher workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39328231608)
+also passed.
+
+DWM resource use while registrations are hidden still needs hardware measurement.
 No Surface GPU saving or input-latency percentage has been measured. Full-window
 `DrawToBitmap` remains necessary when a detailed card's appearance changes; text
 layout, clipping and separate DWM/WPF/Direct3D presentation remain potential costs.
