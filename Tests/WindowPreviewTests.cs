@@ -216,7 +216,8 @@ public class WindowPreviewTests
             {
                 thumbnails.Reconcile(); Assert.Contains((IntPtr)1, dwm.Sources);
                 thumbnails.SimplifyDuringMotion = true; thumbnails.Reconcile();
-                Assert.DoesNotContain((IntPtr)1, dwm.Sources);
+                Assert.DoesNotContain((IntPtr)1, dwm.VisibleSources);
+                Assert.Contains((IntPtr)1, dwm.Sources); // Kept hidden for reuse while it remains in view.
                 Assert.Contains((IntPtr)987, dwm.Sources); Assert.Contains((IntPtr)3, dwm.Sources);
                 Assert.Equal(new[] { (IntPtr)3 }, liveSources);
                 Assert.True(thumbnails.HasVisibleSource((IntPtr)2)); Assert.False(thumbnails.HasLiveSource((IntPtr)2));

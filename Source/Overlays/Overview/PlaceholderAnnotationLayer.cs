@@ -9,6 +9,14 @@ namespace CanvasDesktop;
 /// <summary>Placeholder cards and labels preserve thumbnail occlusion and fade semantics.</summary>
 internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
 {
+    private static readonly Brush CardFill = FrozenBrush(Color.FromRgb(28, 34, 46));
+    private static readonly Brush LabelFill = FrozenBrush(Color.FromRgb(23, 31, 46));
+    private static readonly Pen Outline = OutlinePen(Color.FromRgb(80, 103, 137), 1);
+    private static readonly Pen PriorityOutline = OutlinePen(Color.FromRgb(147, 197, 253), 2);
+    private static readonly Typeface LabelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+
+    private static Brush FrozenBrush(Color color) { var brush = new SolidColorBrush(color); brush.Freeze(); return brush; }
+    private static Pen OutlinePen(Color color, double width) { var pen = new Pen(FrozenBrush(color), width); pen.Freeze(); return pen; }
     public IReadOnlyList<PlaceholderLabel> Labels { get; private set; } = Array.Empty<PlaceholderLabel>();
     public void Clear() => Labels = Array.Empty<PlaceholderLabel>();
     public void Draw(DrawingContext dc, OverviewAnnotationContext context)
@@ -28,17 +36,16 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             // Annotations sit above DWM. Cut out higher windows so card
             // snapshots preserve the overview's native thumbnail z-order.
             if (card.Occluders != null)
-                foreach (var above in card.Occluders)
+                for (int i = 0; i < card.Occluders.Count; i++)
                 {
-                    var covered = context.Project(above);
+                    var covered = context.Project(card.Occluders[i]);
                     if (covered.IntersectsWith(rect))
                         visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
                 }
             dc.PushClip(visible);
             dc.PushOpacity(card.Opacity);
             if (imageOpacity < 1)
-                dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(28, 34, 46)),
-                    new Pen(new SolidColorBrush(Color.FromRgb(80, 103, 137)), 1), rect, 6, 6);
+                dc.DrawRoundedRectangle(CardFill, Outline, rect, 6, 6);
             if (card.Image != null && imageOpacity > 0)
             {
                 dc.PushOpacity(imageOpacity);
@@ -64,11 +71,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         {
             dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
             var rect = label.Rect;
-            var border = new SolidColorBrush(label.Card.Priority ? Color.FromRgb(147, 197, 253) : Color.FromRgb(80, 103, 137));
-            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(23, 31, 46)),
-                new Pen(border, label.Card.Priority ? 2 : 1), rect, 10, 10);
+            dc.DrawRoundedRectangle(LabelFill, label.Card.Priority ? PriorityOutline : Outline, rect, 10, 10);
             var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                LabelTypeface,
                 label.FontSize, Brushes.WhiteSmoke, context.Dpi.PixelsPerDip)
             {
                 MaxTextWidth = rect.Width - 24, MaxTextHeight = rect.Height - 16,

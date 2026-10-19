@@ -40,7 +40,7 @@ public class CanvasPerformanceIntegrationTests
             void Zoom() { pass.OnWheel!(pass, 200, 200, -30, false, true); overview.TickGesturePreviews(); }
             Zoom();
             Assert.Equal(lowQuality, overview.GesturePreviewsActive);
-            Assert.Equal(!lowQuality, dwm.Sources.Contains(source.Handle));
+            Assert.Equal(!lowQuality, dwm.VisibleSources.Contains(source.Handle));
             if (lowQuality)
             {
                 var card = Assert.Single(overview.GesturePreviewCards);
@@ -95,8 +95,10 @@ public class CanvasPerformanceIntegrationTests
             Assert.Equal(200, canvas.Windows[source.Handle].X);
         });
 
-    [Fact]
-    public void FailedLiveRestorationRetainsATitleCardUntilRegistrationCanBeRetried()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailedLiveRestorationRetainsATitleCardUntilSourceCanBeRetried(bool retainedRegistration)
         => WorkspaceViewTests.OnSta(() =>
         {
             using var source = new Form();
@@ -109,13 +111,50 @@ public class CanvasPerformanceIntegrationTests
             using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: dwm);
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            if (!retainedRegistration) dwm.FailedHides.Add(source.Handle);
             pass.OnWheel!(pass, 200, 200, -30, false, true); overview.TickGesturePreviews();
-            dwm.FailedSources.Add(source.Handle);
+            if (retainedRegistration) dwm.FailedShows.Add(source.Handle);
+            else dwm.FailedSources.Add(source.Handle);
             clock.Advance(180); overview.TickGesturePreviews();
             Assert.False(overview.GesturePreviewsActive);
             Assert.Equal("Notes", Assert.Single(overview.GesturePreviewCards).Title);
-            dwm.FailedSources.Clear(); clock.Advance(250); overview.TickGesturePreviews();
-            Assert.Contains(source.Handle, dwm.Sources); Assert.Empty(overview.GesturePreviewCards);
+            dwm.FailedSources.Clear(); dwm.FailedShows.Clear(); clock.Advance(250); overview.TickGesturePreviews();
+            Assert.Contains(source.Handle, dwm.VisibleSources); Assert.Empty(overview.GesturePreviewCards);
+            Assert.Equal(retainedRegistration ? 1 : 2, dwm.Registrations.Count(r => r.Source == source.Handle));
+        });
+
+    [Fact]
+    public void GestureOverlapDataSharesOneFrameArrayAndOlderFramesStayDetached()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var first = new Form(); using var second = new Form(); using var third = new Form();
+            var handles = new[] { first.Handle, second.Handle, third.Handle };
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+            var clock = new FakeClock(); var dwm = new FakeDwmThumbnailApi();
+            var config = new FakeAppConfig { EnableStartupIntro = false, LowQualityMode = true };
+            for (int i = 0; i < handles.Length; i++)
+            {
+                api.AddWindow(handles[i], 80 + 220 * i, 100, 120, 100, title: $"Window {i}");
+                canvas.SetWindow(handles[i], 80 + 220 * i, 100, 120, 100);
+            }
+            using var wm = new WindowManager(canvas, api, config, input, clock);
+            using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: dwm);
+            overview.TransitionTo(OverviewMode.Zooming);
+            var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            pass.OnWheel!(pass, 200, 200, -30, false, true); overview.TickGesturePreviews();
+            var before = overview.GesturePreviewCards.ToArray();
+            Assert.Equal(3, before.Length);
+            var prefixes = before.Select(card => Assert.IsType<ArraySegment<WorldRect>>(card.Occluders)).ToArray();
+            Assert.Equal(new[] { 0, 1, 2 }, prefixes.Select(p => p.Count));
+            Assert.All(prefixes, p => Assert.Same(prefixes[0].Array, p.Array));
+            double oldX = prefixes[1][0].X;
+            canvas.SetWindow(handles[0], 110, 100, 120, 100);
+            overview.RefreshZoneLayout();
+            var after = overview.GesturePreviewCards.ToArray();
+            var next = Assert.IsType<ArraySegment<WorldRect>>(after[1].Occluders);
+            Assert.NotSame(prefixes[1].Array, next.Array);
+            Assert.Equal(oldX, prefixes[1][0].X);
+            Assert.Equal(110, next[0].X);
         });
 
     [Fact]

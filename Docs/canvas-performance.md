@@ -22,7 +22,7 @@ that Surface have not yet been collected.
 | 3 | Frozen previews or outlines during gestures | Implemented in the second pass: existing snapshots or title cards during low-quality pan/zoom/window drags, with live restoration after settling |
 | 4 | Remove repeated process/identity work during camera motion | Implemented in the third pass: shared cached workspace maps, indexed bindings, and no full parked-process scan on steady camera frames |
 | 5 | Update only changed preview destinations | Implemented: unchanged integer destinations skip native updates, including stationary neighbours during a drag |
-| 6 | Reduce thumbnail registration churn, card allocations and bitmap conversions | Not started |
+| 6 | Reduce thumbnail registration churn, card allocations and bitmap conversions | Implemented in the fourth pass: hidden-registration reuse, failure-tolerant stacking, shared overlap data and direct snapshot pixels |
 | 7 | Compare presentation backends; prototype a unified scene if needed | Not started; existing experimental flip option remains separate |
 
 ## Implemented on 19 October 2026
@@ -85,8 +85,9 @@ all three systems display an atomic frame or eliminate the observed stagger.
 - Gesture rendering does not call `PrintWindow`, request capture, generate a new
   placeholder bitmap, or minimize a window. Previously cached images may reflect
   an earlier application state; this is not a fresh screenshot at gesture start.
-- Uncached movable DWM sources are removed while cards represent them. Cached
-  sources remain static, and pinned/screen-fixed windows remain live. Visible
+- Uncached movable DWM sources are hidden while cards represent them. The fourth
+  pass below retains already registered sources only while their geometry stays
+  in view. Cached sources remain static, and pinned/screen-fixed windows remain live. Visible
   source preparation therefore no longer unclips uncached off-screen windows
   merely to draw their live contents during a low-quality gesture.
 - Desktop panning, including inertia, stays lightweight for that Panning session.
@@ -109,8 +110,8 @@ no additional setting beyond the existing Low quality mode.
 Existing automatic off-screen minimization is independent. Enabling that resource
 policy can still minimize eligible distant applications after its own delay. The
 gesture controller neither changes that policy nor promises to stop applications'
-own background rendering. Entering/leaving gesture mode can re-register sources;
-broader registration-churn optimization remains priority 6.
+own background rendering. The fourth pass below avoids re-registration across
+unchanged gesture source lifetimes; actual source replacements still re-register.
 
 ## Third pass: identity work outside steady camera frames, 19 October 2026
 
@@ -151,8 +152,75 @@ This removes CPU/native-query work and allocation pressure; Surface GPU/frame-ti
 savings are still unmeasured. Initial overview entry, zoom crossings that change
 card mode, lifecycle changes, native actions and periodic captures can still inspect
 processes. Runtime eligibility still makes native/virtual-desktop queries per
-visibility pass. This is not a zero-native-call render loop. Registration churn,
-annotation allocations and image conversion remain priority 6.
+visibility pass. This is not a zero-native-call render loop. The fourth pass below
+addresses registration churn, annotation allocations and image conversion.
+
+## Fourth pass: reusable thumbnails and cheaper card frames, 19 October 2026
+
+Priority 5 was completed in the first pass: unchanged integer destinations skip
+native thumbnail-property updates, including stationary neighbours during a drag.
+This fourth pass implements priority 6. These resource/architecture fixes apply in
+both quality modes; the existing Low quality mode alone controls gesture visuals.
+
+### Thumbnail lifetimes and drawing order
+
+- Low-quality gestures hide an existing uncached thumbnail with `fVisible=false`
+  instead of destroying its registration. While hidden it receives no geometry
+  updates and is excluded from live-source preparation and readiness checks.
+  Restoration submits current geometry and visibility together. Repeated gestures
+  can reuse the same registration when the window/source/order stays compatible.
+- Retention is limited to already registered sources whose geometry remains in the
+  current monitor view. New uncached gesture sources are not registered; leaving
+  the view, removal/replacement, a failed hide, overview close and disposal release
+  registrations. A failed hide falls back to unregistering, so lightweight mode
+  cannot silently leave that native preview visible.
+- Target source handles are resolved once per window per reconciliation and reused
+  across monitor passes. Missing cached surfaces remain unavailable; they never
+  fall back to the original app.
+- Reconciliation waits for a required new registration to succeed before replacing
+  the higher registration suffix. A failing or unavailable lower source therefore
+  leaves healthy higher windows registered. When it becomes available, the suffix
+  is rebuilt once in the correct DWM order. Necessary reorder/source-change
+  registrations are retained; DWM does not expose arbitrary thumbnail insertion.
+- Bringing an already topmost source forward is a no-op. Taskbars are cycled only
+  on monitor passes that appended a source, and registration initializes their
+  current visibility instead of repushing visibility to all unchanged passes.
+
+### Card data and pixels
+
+- Each annotation frame uses one detached world-rectangle array. Cards borrow
+  read-only prefix views for the higher windows that occlude them. The copied world
+  data grows linearly with window count instead of copying every higher rectangle
+  into every card. Painting still checks overlap/clip geometry; this is not a
+  spatial-index optimization or a claim that all draw work is linear.
+- Monitor snapshots detach card/zone/ghost lists once per frame and share that data
+  across viewports. A later camera frame allocates separate geometry, preserving
+  older submitted frames. Card-transition inputs are value records; its seen and
+  removal collections are reused. Card brushes/pens are frozen and shared.
+- Placeholder snapshots copy premultiplied 32-bit pixels directly from the rendered
+  bitmap into an owned, frozen WPF bitmap. PNG compression, the memory stream and
+  decoding have been removed from production snapshot creation. Snapshot resolution,
+  card artwork, text, clipping and transition timing are retained.
+- Updating saved world coordinates no longer invalidates an unchanged card image
+  or repaints its controls. Visible text/icon/state changes invalidate it; native
+  size and DPI changes are checked on lookup. Explicit release, distant cards and
+  form disposal retain their existing image-release behavior. Gesture lookups still
+  borrow cached images without creating a screenshot.
+
+New regressions cover ten gesture cycles with no new application registrations,
+no hidden geometry pushes, retained-source readiness, off-screen cleanup, no new
+uncached gesture registrations, failed-hide cleanup, failed lower/replacement
+sources with stable neighbours, recovery ordering, topmost/reorder behavior, shared
+occlusion data with detached older frames, geometry-only snapshot reuse, visual
+invalidation, encoded-versus-raw pixel comparison and snapshot ownership after form
+disposal. Existing readiness and cached-source lifetime tests also remain in place.
+
+Fourth-pass local validation: locked restore and Release cross-compilation of the
+desktop test project succeeded with zero warnings/errors. Full execution of these
+new Windows regressions is pending on the PR workflow.
+No Surface GPU saving or input-latency percentage has been measured. Full-window
+`DrawToBitmap` remains necessary when a detailed card's appearance changes; text
+layout, clipping and separate DWM/WPF/Direct3D presentation remain potential costs.
 
 ## Verification
 
