@@ -91,13 +91,16 @@ A short smoke run (also run in Windows CI) is:
 | --- | --- |
 | StationaryOverview | Stationary view at the requested zoom after a 300 ms setup/settle period |
 | OverviewPan | Held middle-button pan through the production overview input callbacks |
-| ZoomBursts | Alternating Ctrl-wheel bursts, with pauses that exercise low-quality restoration |
+| ZoomBursts | Fixed zoom targets at 0/40/80 ms of each 500 ms cycle, alternating out/back with pauses for low-quality restoration |
 | WindowDrag | Held drag of the first owned window through the production pointer callbacks |
 | Panning | Layered desktop-pan mode, following the main canvas at zoom 1 |
 
 The tool invokes the controller's input callbacks; it does not synthesize OS-wide
 mouse/keyboard input. Requested zoom is applied via the production wheel scale,
 with integer-delta rounding. `CameraStart` / `CameraEnd` are the actual values.
+Wheel bursts follow the same target trajectory rather than emitting more deltas
+on faster pump loops. Late pumps catch up to the current target; `ZoomBurstTargets`
+records which targets were submitted, so missed steps remain visible in the report.
 The current workload still omits saved-workspace cards and the minimap; low-quality
 gesture cards are exercised, but this is not a complete full-app scene benchmark.
 

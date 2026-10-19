@@ -283,6 +283,8 @@ stationary overview, held overview pan, wheel bursts, owned-window drag and laye
 desktop pan. Desktop pan stays at native zoom 1. Reports include requested/actual
 backends, actual cameras, per-engine GPU data, operation timings and UI-pump
 p50/p95/p99. Fallback is identified explicitly. See the [harness instructions](../Tools/PerformanceHarness/README.md).
+Wheel bursts use fixed time-based zoom targets, with emitted targets recorded;
+they do not increase the number of wheel deltas on faster pump loops.
 
 The harness now builds with the solution. Its stale lock file was updated only to
 include the application's already-pinned Velopack dependency. Windows CI runs a
@@ -303,8 +305,15 @@ Fifth-pass local Release compilation of the solution (including the harness)
 succeeded with zero warnings/errors. New tests cover detached renderer snapshots,
 a slow snapshot consumer, shared annotation submission, coherent camera projection,
 reentrant camera input, comparison options, wheel setup and percentile reporting.
-The portable suite passed 27 tests on Linux. Windows execution / comparison-smoke
-results are pending.
+The portable suite initially passed 27 tests on Linux. Code revision `4964b1f`
+passed its [Windows build/test workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39331428838):
+zero build warnings/errors, **870 desktop tests and 81 AI tests**, publish, and the
+four-configuration comparison smoke run. The retained reports contain 20 phase rows
+and confirm the requested backend in all four cases. Its
+[installer/launcher workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39331428861)
+also passed. Inspection of those reports prompted the fixed-target wheel workload
+above; validation of that follow-up is pending. CI results do not rank Surface
+performance or validate final displayed pixels.
 
 ## Verification
 

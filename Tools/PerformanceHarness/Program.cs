@@ -117,6 +117,8 @@ internal static class Program
                 var latencies = new List<double>();
                 var inputPumpMs = new List<double>();
                 var startCamera = overview.ViewCamera;
+                var zoomBursts = new PresentationZoomBursts(startCamera.Zoom);
+                var zoomTargets = new List<double>();
                 int pointerX = pass?.Width / 2 ?? 0, pointerY = pass?.Height / 2 ?? 0;
                 MouseButtons held = MouseButtons.None;
                 if (phase == "WindowDrag")
@@ -147,8 +149,12 @@ internal static class Program
                     if (held != MouseButtons.None)
                         pass!.OnMouseMoved!(pass, new(held, 0, pointerX + (int)(Math.Sin(elapsed * 2) * 100),
                             pointerY + (int)(Math.Sin(elapsed * 3) * 50), 0));
-                    if (phase == "ZoomBursts" && elapsed % .5 < .12)
-                        pass!.OnWheel!(pass, pointerX, pointerY, (int)(elapsed / .5) % 2 == 0 ? -30 : 30, false, true);
+                    if (phase == "ZoomBursts" && zoomBursts.NextTarget(elapsed) is { } targetZoom)
+                    {
+                        zoomTargets.Add(targetZoom);
+                        int wheelDelta = PresentationProfile.WheelDelta(overview.ViewCamera.Zoom, targetZoom);
+                        if (wheelDelta != 0) pass!.OnWheel!(pass, pointerX, pointerY, wheelDelta, false, true);
+                    }
                     if (phase == "Restoration" && elapsed - lastCycle >= 0.5)
                     {
                         VerifyOwnership();
@@ -174,6 +180,7 @@ internal static class Program
                 var after = processes.Select(Capture).ToArray();
                 results.Add(new { Repeat = repeat + 1, Phase = phase, DurationSeconds = duration,
                     CameraStart = startCamera, CameraEnd = endCamera,
+                    ZoomBurstTargets = zoomTargets.ToArray(),
                     InputPumpMs = TimingSummary.From(inputPumpMs),
                     Processes = after.Select((sample, i) => new { Role = i == 0 ? "CanvasHarness" : i == 1 ? "Workload" : "DWM", sample.Pid, sample.Name, sample.Error,
                         CpuOneCorePercent = sample.CpuMs.HasValue && baseline[i].CpuMs.HasValue

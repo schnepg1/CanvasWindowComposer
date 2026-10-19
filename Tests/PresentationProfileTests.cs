@@ -42,4 +42,28 @@ public class PresentationProfileTests
         Assert.Equal(100, samples[0]); // The caller's recording stays detached from sorting.
         Assert.Equal(new TimingSummary(1, 7, 7, 7, 7), TimingSummary.From([7]));
     }
+
+    [Fact]
+    public void ZoomBurstsFollowFixedTargetsAndLeaveIdleTimeForRestoration()
+    {
+        var burst = new PresentationZoomBursts(.5);
+        Assert.Equal(.4875, burst.NextTarget(0));
+        Assert.Null(burst.NextTarget(.01));
+        Assert.Equal(.475, burst.NextTarget(.045));
+        Assert.Equal(.4625, burst.NextTarget(.09));
+        Assert.Null(burst.NextTarget(.3));
+        Assert.Equal(.475, burst.NextTarget(.5));
+        Assert.Equal(.4875, burst.NextTarget(.545));
+        Assert.Equal(.5, burst.NextTarget(.59));
+        Assert.Null(burst.NextTarget(.95));
+    }
+
+    [Fact]
+    public void LateZoomPumpsCatchUpWithoutReplayingStaleInputsAndRespectMinimumZoom()
+    {
+        var burst = new PresentationZoomBursts(.5);
+        Assert.Equal(.4625, burst.NextTarget(.3));
+        Assert.Equal(.5, burst.NextTarget(.9));
+        Assert.Equal(.05, new PresentationZoomBursts(.05).NextTarget(0));
+    }
 }

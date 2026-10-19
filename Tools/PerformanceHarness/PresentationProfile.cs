@@ -32,3 +32,22 @@ internal sealed record TimingSummary(int Samples, double? P50, double? P95, doub
         return new(sorted.Length, At(.5), At(.95), At(.99), sorted[^1]);
     }
 }
+
+// Sample a fixed trajectory rather than sending another wheel delta on every
+// pump iteration. Slower backends catch up to the current target without adding
+// a stale-input backlog; idle portions do not keep the gesture active.
+internal sealed class PresentationZoomBursts(double baseZoom)
+{
+    private int _step = -1;
+
+    public double? NextTarget(double elapsed)
+    {
+        int cycle = (int)(elapsed / .5);
+        int index = Math.Min(2, (int)((elapsed - cycle * .5) / .04));
+        int step = cycle * 3 + index;
+        if (step == _step) return null;
+        _step = step;
+        int depth = cycle % 2 == 0 ? index + 1 : 2 - index;
+        return Math.Clamp(baseZoom * (1 - .025 * depth), .05, 1);
+    }
+}
