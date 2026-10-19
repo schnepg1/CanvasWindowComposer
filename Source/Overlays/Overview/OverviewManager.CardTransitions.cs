@@ -8,15 +8,14 @@ internal sealed partial class OverviewManager
 {
     private readonly OverviewCardTransitions _cardTransitions = new();
     private IReadOnlyDictionary<IntPtr, Guid> _overviewItemIds = new Dictionary<IntPtr, Guid>();
-    private readonly Dictionary<IntPtr, IntPtr> _cardSources = new();
+    private IReadOnlyDictionary<IntPtr, IntPtr> _cardSources = WorkspaceOverviewSnapshot.Empty.CardSources;
     private Timer? _cardAnimationTimer;
 
     private void RefreshCardIdentities()
     {
-        _overviewItemIds = _placeholderWorkspace?.GetOverviewItemIds() ?? new Dictionary<IntPtr, Guid>();
-        _cardSources.Clear();
-        if (_placeholderWorkspace == null) return;
-        foreach (var pair in _placeholderWorkspace.GetRepresentedWindows()) _cardSources[pair.Value] = pair.Key;
+        var snapshot = _placeholderWorkspace?.GetOverviewSnapshot() ?? WorkspaceOverviewSnapshot.Empty;
+        _overviewItemIds = snapshot.ItemIds;
+        _cardSources = snapshot.CardSources;
     }
 
     private bool CanShowUnderlay(IntPtr source)
@@ -60,7 +59,7 @@ internal sealed partial class OverviewManager
     {
         _cardAnimationTimer?.Stop();
         _cardTransitions.Clear();
-        _cardSources.Clear();
-        _overviewItemIds = new Dictionary<IntPtr, Guid>();
+        _cardSources = WorkspaceOverviewSnapshot.Empty.CardSources;
+        _overviewItemIds = WorkspaceOverviewSnapshot.Empty.ItemIds;
     }
 }

@@ -20,7 +20,7 @@ that Surface have not yet been collected.
 | 1 | Reduce expensive background rendering | Implemented: simple, static-on-idle low quality grid; normal visuals retained |
 | 2 | Coordinate camera updates | First pass implemented: one pending UI camera frame across monitor passes; a unified presentation boundary remains future work |
 | 3 | Frozen previews or outlines during gestures | Implemented in the second pass: existing snapshots or title cards during low-quality pan/zoom/window drags, with live restoration after settling |
-| 4 | Remove repeated process/identity work during camera motion | Partial: removed the duplicate identity-map refresh within the same reconciliation; event-maintained identity mappings remain to be designed |
+| 4 | Remove repeated process/identity work during camera motion | Implemented in the third pass: shared cached workspace maps, indexed bindings, and no full parked-process scan on steady camera frames |
 | 5 | Update only changed preview destinations | Implemented: unchanged integer destinations skip native updates, including stationary neighbours during a drag |
 | 6 | Reduce thumbnail registration churn, card allocations and bitmap conversions | Not started |
 | 7 | Compare presentation backends; prototype a unified scene if needed | Not started; existing experimental flip option remains separate |
@@ -67,8 +67,8 @@ a promise that all GPU activity stops while the camera is idle.
   integer rectangle is also skipped. Failed updates remain retryable, and fresh
   thumbnail registrations still receive their initial properties.
 - `RefreshZoneAnnotations` reuses the identity mappings prepared by its caller
-  instead of rebuilding them a second time in the same reconciliation. This does
-  **not** yet remove process inspection from the entire camera path.
+  instead of rebuilding them a second time in the same reconciliation. The third
+  pass below also removes repeated process inspection from steady camera frames.
 
 The background, DWM previews and WPF annotations still have separate presentation
 systems. Batching submissions reduces redundant work; it does not guarantee that
@@ -112,6 +112,48 @@ gesture controller neither changes that policy nor promises to stop applications
 own background rendering. Entering/leaving gesture mode can re-register sources;
 broader registration-churn optimization remains priority 6.
 
+## Third pass: identity work outside steady camera frames, 19 October 2026
+
+These are architectural changes and apply in both quality modes without a setting:
+
+- Workspace rendering shares one immutable snapshot containing live-window item
+  IDs, live-to-placeholder mappings and placeholder-to-source mappings. Overview
+  camera frames and card-animation ticks reuse the same dictionaries instead of
+  building two dictionaries, opening processes twice and copying the reverse map.
+- Snapshot rebuilds validate a binding once for all three maps. Workspace captures,
+  card creation/removal, native minimize/restore events, binding changes and virtual
+  desktop switches invalidate it. Only the active desktop's items are published.
+  Native lifecycle changes during a rebuild discard that incomplete publication.
+- Steady render reads check the native PID and visibility without opening the
+  process or reading its executable/start time. Changed PIDs, hidden windows and
+  destroyed handles retire a stale association even if a native event was missed.
+  Same-PID process reuse can leave cosmetic metadata until an event or the regular
+  two-second workspace capture. Render snapshots never authorize native commands:
+  focus, close, linking, placement and parking/restore retain fresh identity checks.
+- Saved-item binding lookup uses an index instead of scanning every live window
+  for every saved item. Bind, unbind, replacement, removal and clear maintain that
+  index and a revision used by the snapshot cache. Removed entries retain their
+  former item ID long enough for the existing final-geometry save.
+- Camera-only automatic-parking passes update proximity and check native PID/style.
+  They no longer reopen every parked process or run `CanAutomaticallyMinimize`
+  (which enumerates owned windows) for every frame. Periodic reconciliation still
+  detects new dialog/ineligibility conditions. An actual restore, manual-restore
+  handling or final transition to native positioning validates identity first.
+
+Regression tests exercise 120 camera frames in each quality mode with shared map
+instances and no additional process inspections; another 120-frame parked-window
+burst checks both process and parking-eligibility query counts. Safety coverage
+includes PID replacement, same-PID process reuse before restoration/actions,
+missed hide/destroy events, card replacement, desktop switches, periodic refresh
+and index consistency after an old binding is removed.
+
+This removes CPU/native-query work and allocation pressure; Surface GPU/frame-time
+savings are still unmeasured. Initial overview entry, zoom crossings that change
+card mode, lifecycle changes, native actions and periodic captures can still inspect
+processes. Runtime eligibility still makes native/virtual-desktop queries per
+visibility pass. This is not a zero-native-call render loop. Registration churn,
+annotation allocations and image conversion remain priority 6.
+
 ## Verification
 
 Added regression coverage for:
@@ -144,18 +186,26 @@ no local Windows test pass is claimed.
 PR #14's first implementation (`f0247d2`) completed automatic code review with no
 findings. Its [Windows build/test run](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39280900660)
 completed successfully: Release build with zero warnings/errors, **813 desktop
-tests and 81 AI tests passed**, and publish succeeded. The new gesture changes
-require their own validation; those first-pass results do not establish that the
-second pass passed review or Windows tests.
+tests and 81 AI tests passed**, and publish succeeded. Automatic code review has
+not rerun on the later passes.
 
 Second-pass local checks with .NET SDK 10.0.401: locked restore and Release
 cross-compilation of the desktop test project succeeded with **zero warnings and
 errors**. A temporary portable test project linking the repository's actual
 `GesturePreviewPolicy`, `OverviewFrameScheduler`, `GridFrameSchedule` and their
 test files passed **14 tests** on Linux. This validates the timing and scheduling
-logic, not the WinForms/WPF/DWM integration. Full Windows execution of the new
-gesture regressions and installer checks remains pending on GitHub; Surface GPU
-and interaction-latency measurements remain pending.
+logic, not the WinForms/WPF/DWM integration. The second-pass revision `7d09393`
+subsequently passed its [Windows build/test workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39285454646):
+Release build with zero warnings/errors, **822 desktop tests and 81 AI tests passed**,
+and publish succeeded. Its [installer/launcher workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39285454645)
+also passed. These results predate the third-pass changes.
+
+Third-pass local validation: locked restore and Release cross-compilation of the
+desktop test project succeeded with **zero warnings/errors**. The portable suite
+now also links the actual binding registry and its new tests: **16 tests passed**
+on Linux. Full Windows
+execution of the new workspace/parking regressions and Surface GPU/interaction
+latency measurements remain pending.
 
 ## Surface / Windows follow-up
 

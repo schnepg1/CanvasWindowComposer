@@ -40,14 +40,18 @@ internal sealed partial class WindowManager
             && _win32.CanAutomaticallyMinimize(handle)
             && (!_parkingExcluded.TryGetValue(handle, out var excluded) || _visibility.GetToken(handle) != excluded);
 
-    private void ProcessAutomaticParking(bool allowNewParking = true)
+    private void ProcessAutomaticParking(bool cameraOnly = false)
     {
         if (_disposed || SuspendAutomaticParking) return;
         if (_parking.Count == 0 && !_config.EnableAutomaticMinimization) return;
         long now = _clock.TickCount64;
         foreach (var (handle, record) in new List<KeyValuePair<IntPtr, ParkingRecord>>(_parking))
         {
-            if (!IsParkingIdentityCurrent(record.Token)) { ForgetStaleParking(handle); continue; }
+            // Camera motion only updates proximity. Full process inspection belongs
+            // to periodic reconciliation or the native action about to be taken.
+            bool current = !cameraOnly ? IsParkingIdentityCurrent(record.Token)
+                : _win32.GetWindowProcessId(handle) == record.Token.Identity.ProcessId;
+            if (!current) { ForgetStaleParking(handle); continue; }
             bool minimized = (_win32.GetWindowStyle(handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0;
             if (record.Phase == ParkingPhase.Minimizing) continue; // Reentrant event during ShowWindow.
             if (record.Phase == ParkingPhase.Parked && !minimized)
@@ -61,17 +65,21 @@ internal sealed partial class WindowManager
                 { RestoreAutomaticWindow(handle, record); continue; }
                 if (now - record.RestoredAt >= CachedRestoreTransitionMs)
                 {
+                    if (!IsParkingIdentityCurrent(record.Token)) { ForgetStaleParking(handle); continue; }
                     ForgetParking(handle); _parkingRetry[handle] = now + ParkingRetryMs;
                     ReprojectWindow(handle);
                 }
                 continue;
             }
             bool shouldRestore = record.Recovery || !_config.EnableAutomaticMinimization
-                || !IsParkingCandidate(handle) || _visibility.Get(handle)?.ShouldRestore == true;
+                || !_canvas.Windows.TryGetValue(handle, out var world)
+                || world.State != WindowState.Normal || world.PinnedToScreen
+                || _visibility.Get(handle)?.ShouldRestore == true
+                || (!cameraOnly && !IsParkingCandidate(handle));
             if (shouldRestore && now >= record.RetryAt) RestoreAutomaticWindow(handle, record);
         }
 
-        if (!allowNewParking || !_config.EnableAutomaticMinimization || (SuspendProjection && !_overviewViewport.HasValue)) return;
+        if (cameraOnly || !_config.EnableAutomaticMinimization || (SuspendProjection && !_overviewViewport.HasValue)) return;
         foreach (var handle in new List<IntPtr>(_canvas.Windows.Keys))
         {
             if (_parking.ContainsKey(handle)) continue;
