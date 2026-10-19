@@ -58,6 +58,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
+    internal CanvasCamera ViewCamera => new(_camera.X, _camera.Y, _camera.Zoom);
+
     // MMCSS registration for the UI thread while the overview is open —
     // keeps WM_PAINT / mouse-message dispatch on near-realtime scheduling.
     // Released on Hide.
@@ -88,15 +90,31 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private int _panStartVx, _panStartVy;
     private int _dragIndex = -1;
     private int _dragStartVx, _dragStartVy;
+    private bool _reconcilingVisuals;
+    private CanvasCamera? _sceneCamera;
+    private CanvasCamera SceneCamera => _sceneCamera ?? ViewCamera;
     private void ReconcileVisuals()
     {
+        // Native/WPF calls may reenter the UI thread. Complete this immutable
+        // camera frame before servicing a newer invalidation.
+        if (_reconcilingVisuals) { _visualFrames.Request(); return; }
+        _reconcilingVisuals = true;
+        try { ReconcileVisualFrame(); }
+        finally { _sceneCamera = null; _reconcilingVisuals = false; }
+    }
+
+    private void ReconcileVisualFrame()
+    {
         _visualFrames.Cancel();
-        UpdateGridCamera();
         UpdateGesturePreviews();
         RefreshTutorialScale();
+        var camera = ViewCamera;
+        _sceneCamera = camera;
+        double panX = _visualPanX, panY = _visualPanY;
+        _visualPanX = _visualPanY = 0;
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
         var proximityCamera = _tutorialReading && (_startupIntroLanded || GuidedTutorialActive)
-            ? _mainCanvas.Camera : new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
+            ? _mainCanvas.Camera : camera;
         _wm.SetOverviewViewport(proximityCamera,
             _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
         if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
@@ -105,8 +123,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             RefreshOverviewWindows();
         }
         RefreshCardIdentities();
-        _thumbnails.Reconcile();
+        _thumbnails.Reconcile(camera);
         RefreshZoneAnnotations();
+        // Publish the GPU background camera after DWM properties and the staged
+        // annotation scene. This avoids waking it with a partially submitted view.
+        if (!_disposed && CurrentMode != OverviewMode.Hidden) UpdateGridCamera(camera, panX, panY);
     }
 
     private bool _previewRefreshQueued;

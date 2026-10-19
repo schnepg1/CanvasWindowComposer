@@ -63,7 +63,6 @@ internal sealed partial class OverviewManager
             foreach (var pass in _passes)
             {
                 pass.SetIntroOpacity(frame.RevealOpacity);
-                pass.Grid?.UpdateCamera(frame.X, frame.Y, frame.Zoom);
             }
             ReconcileVisuals();
         }
@@ -131,7 +130,6 @@ internal sealed partial class OverviewManager
             if (pass.IsDisposed) continue;
             pass.SetIntroOpacity(1);
             pass.SetModeStyle(CurrentMode == OverviewMode.Panning, CurrentMode == OverviewMode.Panning);
-            pass.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
         }
         if (refresh && !_disposed && CurrentMode != OverviewMode.Hidden)
         {

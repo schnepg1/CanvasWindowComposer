@@ -39,7 +39,7 @@ internal sealed class GridRenderer : IDisposable
     private const int MonitorStructBytes = 16;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct GridConstants
+    internal struct GridConstants
     {
         public float CamX, CamY;
         public float Zoom;
@@ -466,6 +466,7 @@ float4 PSMain(VSOut input) : SV_Target
     private volatile float _passOffX, _passOffY;
     private volatile int _isPrimary;
     private readonly float[] _monitors = new float[MonitorBufferCapacity * 4];
+    private readonly float[] _uploadMonitors = new float[MonitorBufferCapacity * 4];
     private volatile int _monitorCount;
     private readonly object _snapshotLock = new();
 
@@ -560,36 +561,38 @@ float4 PSMain(VSOut input) : SV_Target
         RequestFrame();
     }
 
+    // The UI only shares managed state. Map/Unmap/Present must never run under
+    // this lock: a busy driver must not hold up publishing the next camera.
+    internal GridConstants CaptureSnapshot(Span<float> monitors)
+    {
+        lock (_snapshotLock)
+        {
+            _monitors.AsSpan(0, _monitorCount * 4).CopyTo(monitors);
+            return new GridConstants
+            {
+                CamX = _renderCamX, CamY = _renderCamY, Zoom = _renderZoom,
+                ScreenW = _width, ScreenH = _height, Time = (float)_clock.Elapsed.TotalSeconds,
+                DpiScale = _dpiScale, PanAccumX = _panAccumX, PanAccumY = _panAccumY,
+                PassOffX = _passOffX, PassOffY = _passOffY, MonitorCount = _monitorCount,
+                IsPrimary = _isPrimary, LowQuality = LowQuality ? 1 : 0
+            };
+        }
+    }
+
     private bool RenderFrame()
     {
         if (_context == null || _swapChain == null) return false;
         long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
-        lock (_snapshotLock)
+        var constants = CaptureSnapshot(_uploadMonitors);
+        var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
+        Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
+        _context.Unmap(_constantBuffer!);
+        if (constants.MonitorCount > 0)
         {
-            var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
-            var constants = new GridConstants
-            {
-                CamX = _renderCamX, CamY = _renderCamY,
-                Zoom = _renderZoom,
-                ScreenW = _width, ScreenH = _height,
-                Time = (float)_clock.Elapsed.TotalSeconds,
-                DpiScale = _dpiScale,
-                PanAccumX = _panAccumX, PanAccumY = _panAccumY,
-                PassOffX = _passOffX, PassOffY = _passOffY,
-                MonitorCount = _monitorCount,
-                IsPrimary = _isPrimary,
-                LowQuality = LowQuality ? 1 : 0
-            };
-            Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
-            _context.Unmap(_constantBuffer!);
-
-            if (_monitorCount > 0)
-            {
-                var mapped = _context.Map(_monitorBuffer!, MapMode.WriteDiscard);
-                Marshal.Copy(_monitors, 0, mapped.DataPointer, _monitorCount * 4);
-                _context.Unmap(_monitorBuffer!);
-            }
+            var mapped = _context.Map(_monitorBuffer!, MapMode.WriteDiscard);
+            Marshal.Copy(_uploadMonitors, 0, mapped.DataPointer, constants.MonitorCount * 4);
+            _context.Unmap(_monitorBuffer!);
         }
 
         _context.OMSetRenderTargets(_rtv!);
@@ -609,7 +612,10 @@ float4 PSMain(VSOut input) : SV_Target
             _context.ClearRenderTargetView(_rtv!, new Vortice.Mathematics.Color4(0, 0, 0, 0));
         }
 
+        PerformanceDiagnostics.Shared.Complete("GridUploadAndDraw", IntPtr.Zero, frameStarted, true);
+        long presentStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
+        PerformanceDiagnostics.Shared.Complete("GridPresentCall", IntPtr.Zero, presentStarted, present.Success, present.Code);
         PerformanceDiagnostics.Shared.Complete("GridFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
         present.CheckError();
         OnFrameTick?.Invoke();

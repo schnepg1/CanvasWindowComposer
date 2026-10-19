@@ -88,7 +88,6 @@ internal sealed partial class OverviewManager
         var fit = ZoneGeometry.Fit(zone.Bounds, _screens.PrimaryWorkingArea);
         _startupIntroLanded = false;
         _camera.SetTo(fit.X, fit.Y, fit.Zoom);
-        foreach (var p in _passes) p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
         ReconcileVisuals();
     }
 
@@ -100,6 +99,7 @@ internal sealed partial class OverviewManager
             CancelInteraction();
         }
         if (CurrentMode == OverviewMode.Hidden) return;
+        var camera = SceneCamera;
         var inputs = new List<OverviewCardInput>();
         List<PlaceholderAnnotation>? gestureCards = null;
         bool hasRestoreFallback = false;
@@ -112,10 +112,10 @@ internal sealed partial class OverviewManager
             bool visible = !entry.ScreenFixed && _passes.Exists(pass =>
             {
                 var b = pass.Screen.Bounds;
-                return (entry.World.X - _camera.X) * _camera.Zoom < b.Right
-                    && (entry.World.X + entry.World.W - _camera.X) * _camera.Zoom > b.Left
-                    && (entry.World.Y - _camera.Y) * _camera.Zoom < b.Bottom
-                    && (entry.World.Y + entry.World.H - _camera.Y) * _camera.Zoom > b.Top;
+                return (entry.World.X - camera.X) * camera.Zoom < b.Right
+                    && (entry.World.X + entry.World.W - camera.X) * camera.Zoom > b.Left
+                    && (entry.World.Y - camera.Y) * camera.Zoom < b.Bottom
+                    && (entry.World.Y + entry.World.H - camera.Y) * camera.Zoom > b.Top;
             });
             bool priority = i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder
                 || (_tools.Kind == CanvasInteractionKind.Window && i == _dragIndex);
@@ -157,8 +157,8 @@ internal sealed partial class OverviewManager
             if (entry.ScreenFixed)
             {
                 var rect = _win32.GetWindowRect(entry.HWnd);
-                occluders[i] = new WorldRect { X = _camera.X + rect.x / _camera.Zoom,
-                    Y = _camera.Y + rect.y / _camera.Zoom, W = rect.w / _camera.Zoom, H = rect.h / _camera.Zoom };
+                occluders[i] = new WorldRect { X = camera.X + rect.x / camera.Zoom,
+                    Y = camera.Y + rect.y / camera.Zoom, W = rect.w / camera.Zoom, H = rect.h / camera.Zoom };
             }
             else occluders[i] = entry.World;
         }
@@ -184,6 +184,7 @@ internal sealed partial class OverviewManager
     private void RefreshToolPreview()
     {
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
+        var camera = SceneCamera;
         bool zooming = CurrentMode == OverviewMode.Zooming;
         _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];
         if (_annotationTool?.Preview is {} annotationPreview)
@@ -196,17 +197,23 @@ internal sealed partial class OverviewManager
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
         }
         OverviewAnnotationSnapshot? frame = null;
+        OverviewOverlay? firstPass = null;
         foreach (var p in _passes)
             if (p.Visible)
             {
                 // Detach the lists once; each monitor only changes viewport data.
-                frame ??= OverviewAnnotationSnapshot.Create(zones, _camera.X, _camera.Y, _camera.Zoom, p.Screen.Bounds,
+                frame ??= OverviewAnnotationSnapshot.Create(zones, camera.X, camera.Y, camera.Zoom, p.Screen.Bounds,
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
                 zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, AnnotationHint);
                 var b = p.Screen.Bounds;
-                p.ShowAnnotations(frame with { Screen = new(b.X, b.Y, b.Width, b.Height), ShowIntroTitle = p.Screen.Primary });
+                p.StageAnnotations(frame with { Screen = new(b.X, b.Y, b.Width, b.Height), ShowIntroTitle = p.Screen.Primary });
+                firstPass ??= p;
             }
+        // Every annotation window is owned by this UI thread/Dispatcher. Prepare
+        // all viewports, then service render-priority work once for the whole frame.
+        foreach (var p in _passes) if (p.Visible) p.PrepareAnnotations();
+        firstPass?.FlushAnnotations();
         RefreshAnnotationUi();
         RefreshTourUi();
     }

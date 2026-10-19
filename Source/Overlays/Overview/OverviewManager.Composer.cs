@@ -85,7 +85,6 @@ internal sealed partial class OverviewManager
         _camera.SetTo(left + width / 2 - (screen.X + availableWidth / 2) / zoom,
             top + height / 2 - (screen.Y + screen.Height / 2) / zoom, zoom);
         _startupIntroLanded = false;
-        foreach (var pass in _passes) pass.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
         ReconcileVisuals();
     }
     private bool CancelCanvasComposer()

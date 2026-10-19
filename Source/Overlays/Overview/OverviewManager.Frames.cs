@@ -29,12 +29,10 @@ internal sealed partial class OverviewManager
         _visualFrameTimer.Start();
     }
 
-    private void UpdateGridCamera()
+    private void UpdateGridCamera(CanvasCamera camera, double dx, double dy)
     {
-        double dx = _visualPanX, dy = _visualPanY;
-        _visualPanX = _visualPanY = 0;
         foreach (var pass in _passes)
-            pass.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom, dx, dy);
+            pass.Grid?.UpdateCamera(camera.X, camera.Y, camera.Zoom, dx, dy);
     }
 
     private void CancelVisualFrame()

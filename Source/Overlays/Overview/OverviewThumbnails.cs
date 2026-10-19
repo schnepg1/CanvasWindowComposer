@@ -174,11 +174,12 @@ internal sealed class OverviewThumbnails
     /// window list, then update props on desktop, taskbar, and window
     /// thumbnails. Call after any camera / mode / window-list change.
     /// </summary>
-    public void Reconcile()
+    public void Reconcile(CanvasCamera? view = null)
     {
-        UpdateDesktop();
+        var camera = view ?? new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
+        UpdateDesktop(camera.Zoom);
 
-        ComputeTarget();
+        ComputeTarget(camera);
         _liveSources.Clear();
         foreach (var target in _scratchTargetByPass.Values)
             foreach (var entry in target)
@@ -194,7 +195,7 @@ internal sealed class OverviewThumbnails
 
         UpdateTaskbars();
 
-        UpdateWindowRects();
+        UpdateWindowRects(camera);
     }
 
     /// <summary>
@@ -316,13 +317,13 @@ internal sealed class OverviewThumbnails
     /// Opacity is the same for all passes (driven by mode + camera zoom), so
     /// we track a single "last applied" value and fan out on change.
     /// </summary>
-    private void UpdateDesktop()
+    private void UpdateDesktop(double zoom)
     {
         var cfg = _state.CurrentConfig;
         byte opacity = cfg.DesktopOpacity;
         if (_state.CurrentMode == OverviewMode.Zooming)
         {
-            double t = (_camera.Zoom - OverviewCamera.ZoomMin) / (OverviewCamera.ZoomMax - OverviewCamera.ZoomMin);
+            double t = (zoom - OverviewCamera.ZoomMin) / (OverviewCamera.ZoomMax - OverviewCamera.ZoomMin);
             t = Math.Clamp(t, 0.0, 1.0);
             double min = DesktopOpacityZoomedMin;
             double max = cfg.DesktopOpacity;
@@ -486,14 +487,14 @@ internal sealed class OverviewThumbnails
     /// be registered on each pass, in z-descending order (bottom-most first,
     /// topmost last — matching DWM registration order for correct stacking).
     /// </summary>
-    private void ComputeTarget()
+    private void ComputeTarget(CanvasCamera camera)
     {
         foreach (var kv in _scratchTargetByPass)
             kv.Value.Clear();
 
-        double zoom = _camera.Zoom;
-        double camX = _camera.X;
-        double camY = _camera.Y;
+        double zoom = camera.Zoom;
+        double camX = camera.X;
+        double camY = camera.Y;
 
         // _windows is z-ascending (index 0 = topmost). Build per-pass lists
         // in that order, then reverse once at the end to flip to z-descending.
@@ -647,11 +648,11 @@ internal sealed class OverviewThumbnails
             }
     }
 
-    private void UpdateWindowRects()
+    private void UpdateWindowRects(CanvasCamera camera)
     {
-        double zoom = _camera.Zoom;
-        double camX = _camera.X;
-        double camY = _camera.Y;
+        double zoom = camera.Zoom;
+        double camX = camera.X;
+        double camY = camera.Y;
 
         if (camX == _lastPushedCamX && camY == _lastPushedCamY && zoom == _lastPushedZoom)
             return;

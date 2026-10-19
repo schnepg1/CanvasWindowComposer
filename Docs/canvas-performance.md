@@ -18,12 +18,12 @@ that Surface have not yet been collected.
 | Priority | Topic | Current status |
 | --- | --- | --- |
 | 1 | Reduce expensive background rendering | Implemented: simple, static-on-idle low quality grid; normal visuals retained |
-| 2 | Coordinate camera updates | First pass implemented: one pending UI camera frame across monitor passes; a unified presentation boundary remains future work |
+| 2 | Coordinate camera updates | One pending UI camera frame, immutable per-frame camera and shared annotation submission; one physical presentation boundary remains future work |
 | 3 | Frozen previews or outlines during gestures | Implemented in the second pass: existing snapshots or title cards during low-quality pan/zoom/window drags, with live restoration after settling |
 | 4 | Remove repeated process/identity work during camera motion | Implemented in the third pass: shared cached workspace maps, indexed bindings, and no full parked-process scan on steady camera frames |
 | 5 | Update only changed preview destinations | Implemented: unchanged integer destinations skip native updates, including stationary neighbours during a drag |
 | 6 | Reduce thumbnail registration churn, card allocations and bitmap conversions | Implemented in the fourth pass: hidden-registration reuse, failure-tolerant stacking, shared overlap data and direct snapshot pixels |
-| 7 | Compare presentation backends; prototype a unified scene if needed | Not started; existing experimental flip option remains separate |
+| 7 | Compare presentation backends; prototype a unified scene if needed | Fifth pass: shared frame submission and backend matrix implemented; Surface ranking / unified GPU-scene migration still require measurements |
 
 ## Implemented on 19 October 2026
 
@@ -227,6 +227,85 @@ No Surface GPU saving or input-latency percentage has been measured. Full-window
 `DrawToBitmap` remains necessary when a detailed card's appearance changes; text
 layout, clipping and separate DWM/WPF/Direct3D presentation remain potential costs.
 
+## Fifth pass: coordinated submission and backend comparison, 19 October 2026
+
+### Findings and backend decision
+
+The existing application uses the GPU, but it does not have one scene/present call:
+
+| Layer | Submission path | Relevant boundary |
+| --- | --- | --- |
+| Grid/background | D3D11 fullscreen shader per monitor HWND | Independent render-thread swap chain / vsync Present |
+| Window previews | DWM thumbnails targeting those HWNDs | Individual native property updates, composed by DWM |
+| Cards, text, zones and drawings | Separate transparent WPF windows | UI layout/retained drawing, WPF rendering, then DWM composition |
+
+Changing the grid swap effect alone cannot make the three paths atomic. Flip can
+reduce presentation copies in a suitable host, but Microsoft documents restrictions
+on other APIs drawing into the same HWND. This application's thumbnail destination,
+WinForms painting and layered-mode transitions make final-composition parity a
+measurement/visual-validation requirement. Existing native tests establish API
+acceptance with both backends, not final pixels on every device. Compatibility
+remains the default and the existing experimental flip setting remains available.
+
+Primary references: [DXGI flip model](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model),
+[D3D11 Map](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-map),
+and [WPF dispatcher priorities](https://learn.microsoft.com/en-us/dotnet/api/system.windows.threading.dispatcherpriority).
+The host-specific compatibility concern above is an inference from those API
+constraints and this source layout, not evidence that flip fails on all machines.
+
+### Architecture changes in both quality modes
+
+- A visual reconciliation captures one camera and pending parallax delta for the
+  frame. DWM culling/destinations, WPF annotations and grid publication use that
+  snapshot. A reentrant reconciliation requests a subsequent frame; it does not
+  start a nested render or substitute newer camera state halfway through a frame.
+- Annotation windows stage all monitor scenes, prepare all layouts, and share one
+  render-priority dispatcher flush. Existing single-window `Update` remains
+  synchronous. The grid receives its new camera after thumbnail/annotation
+  submission; direct early grid-camera updates in intro/tutorial/navigation paths
+  were removed in favor of that common boundary.
+- Grid and minimap take detached managed snapshots under short state locks. D3D
+  Map/Unmap/upload/draw/Present run after those locks are released, so a driver
+  stall no longer holds the lock used by UI camera/snapshot publishers. Upload
+  arrays are reused; the minimap has one additional bounded ~511 KiB upload buffer.
+- Diagnostics separate upload/command submission from the `Present` call and record
+  the shared annotation flush. These are CPU wall-time boundaries, not GPU timers
+  or proof of a physical frame appearing.
+
+This coordinates CPU submission. DWM, WPF and per-monitor swap chains still present
+independently; no cross-monitor atomic frame or elimination of all stagger is claimed.
+
+### Repeatable comparison and remaining migration gate
+
+`Tools/PerformanceHarness/Compare-Presentation.ps1` compares compatibility/flip,
+normal/low quality and zoom 1/.5/.25 with rotated/reversed case order. It exercises
+stationary overview, held overview pan, wheel bursts, owned-window drag and layered
+desktop pan. Desktop pan stays at native zoom 1. Reports include requested/actual
+backends, actual cameras, per-engine GPU data, operation timings and UI-pump
+p50/p95/p99. Fallback is identified explicitly. See the [harness instructions](../Tools/PerformanceHarness/README.md).
+
+The harness now builds with the solution. Its stale lock file was updated only to
+include the application's already-pinned Velopack dependency. Windows CI runs a
+short four-configuration matrix and retains the reports with test artifacts.
+Synthetic gesture cards are exercised; full saved workspaces and the minimap remain
+outside that workload. UI-pump samples exclude pacing sleeps and final pointer
+release and do not measure input-to-displayed-pixel or GPU execution latency.
+
+A unified GPU scene would be a separate migration for live-window texture sourcing,
+text, cards, clip/z-order handling, DPI, input and resource lifetimes. This pass does
+not replace live previews with repeated screenshots or enable an unmeasured backend
+by default. Use Surface measurements and final-composition validation to decide
+whether that migration is justified. The current changes fix demonstrated source
+architecture costs and provide a reproducible comparison; a Surface winner and
+hardware performance percentages are still unknown.
+
+Fifth-pass local Release compilation of the solution (including the harness)
+succeeded with zero warnings/errors. New tests cover detached renderer snapshots,
+a slow snapshot consumer, shared annotation submission, coherent camera projection,
+reentrant camera input, comparison options, wheel setup and percentile reporting.
+The portable suite passed 27 tests on Linux. Windows execution / comparison-smoke
+results are pending.
+
 ## Verification
 
 Added regression coverage for:
@@ -248,9 +327,10 @@ Added regression coverage for:
   and reopening, and retaining a card across a failed live-registration retry.
 
 `Tools/PerformanceHarness` accepts `--low-quality` and reports `LowQualityMode`.
-It does not modify the installed user's settings. Its existing scenarios use the
-default overview zoom and omit the workspace-card layer, so they do not establish
-the zoomed-out nebula saving or full-app gesture latency.
+It does not modify the installed user's settings. The new presentation profile
+adds zoom selection and gesture scenarios; the original non-presentation suite
+retains its visibility/restoration workloads. Full saved workspaces remain outside
+the harness, so neither profile establishes full-app gesture latency.
 
 Local validation: `git diff --check`. This editing environment is Linux; it cannot
 execute the Windows Desktop tests. Windows validation runs through the PR workflow;

@@ -28,8 +28,9 @@ internal static class Program
         string Option(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith(name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
         int count = int.Parse(Option("--count", "8")), repeats = int.Parse(Option("--repeats", "3"));
         double seconds = double.Parse(Option("--seconds", "5"), System.Globalization.CultureInfo.InvariantCulture);
-        if (count < 1 || count > 100 || repeats < 1 || repeats > 20 || seconds < 1 || seconds > 60)
+        if (count < 1 || count > 100 || repeats < 1 || repeats > 20 || !double.IsFinite(seconds) || seconds < 1 || seconds > 60)
             throw new ArgumentException("Use count 1..100, repeats 1..20 and seconds 1..60.");
+        var presentation = PresentationProfile.Parse(args);
         string output = Path.GetFullPath(Option("--output", "performance-baseline.json"));
         using var workload = new OwnedWorkload(count, args.Contains("--always-work"));
         var target = workload.Process;
@@ -61,7 +62,7 @@ internal static class Program
                 throw new InvalidOperationException("Workload HWND identities did not match the owned process.");
             bool includeOverview = !args.Contains("--skip-overview");
             if (includeOverview) { GridRenderer.CompileShaders(); overview.Warmup(); }
-            string[] phases = includeOverview
+            string[] phases = presentation.Only ? PresentationProfile.Phases : includeOverview
                 ? ["Visible", "OffScreenDefault", "Clipped", "Minimized", "StationaryOverview", "Panning", "Restoration"]
                 : ["Visible", "OffScreenDefault", "Clipped", "Minimized", "Restoration"];
             var working = Screen.PrimaryScreen!.WorkingArea;
@@ -77,7 +78,8 @@ internal static class Program
                 diagnostics.Reset();
                 overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
                 wm.Reset();
-                config.DisableGreedyDraw = phase is not ("Clipped" or "StationaryOverview" or "Panning");
+                bool overviewPhase = PresentationProfile.IsOverview(phase);
+                config.DisableGreedyDraw = phase != "Clipped" && !overviewPhase;
                 for (int i = 0; i < handles.Length; i++)
                 {
                     var world = worlds[i];
@@ -91,7 +93,17 @@ internal static class Program
                         canvas.CollapseWindow(handles[i]);
                     }
                 }
-                if (phase is "StationaryOverview" or "Panning") overview.TransitionTo(phase == "Panning" ? OverviewMode.Panning : OverviewMode.Zooming);
+                OverviewOverlay? pass = null;
+                if (overviewPhase)
+                {
+                    overview.TransitionTo(OverviewMode.Zooming);
+                    pass = overview.MonitorHandles.Select(h => (OverviewOverlay)Control.FromHandle(h)!).First(p => p.Screen.Primary);
+                    // Desktop panning follows the main canvas at native zoom 1.
+                    int delta = phase == "Panning" ? 0 : PresentationProfile.WheelDelta(overview.ViewCamera.Zoom, presentation.Zoom);
+                    if (delta != 0) pass.OnWheel!(pass, pass.Width / 2, pass.Height / 2, delta, false, true);
+                    overview.TickGesturePreviews();
+                    if (phase == "Panning") overview.TransitionTo(OverviewMode.Panning);
+                }
                 PumpUntil(() => interrupted, 0.3);
                 var preparation = diagnostics.Snapshot();
                 var nativeWindows = handles.Select(h =>
@@ -103,18 +115,40 @@ internal static class Program
                 using var gpu = new GpuCounters();
                 var baseline = processes.Select(Capture).ToArray();
                 var latencies = new List<double>();
+                var inputPumpMs = new List<double>();
+                var startCamera = overview.ViewCamera;
+                int pointerX = pass?.Width / 2 ?? 0, pointerY = pass?.Height / 2 ?? 0;
+                MouseButtons held = MouseButtons.None;
+                if (phase == "WindowDrag")
+                {
+                    var rect = startCamera.Project(canvas.Windows[handles[0]]);
+                    var center = new Point(rect.X + rect.W / 2, rect.Y + rect.H / 2);
+                    pass = overview.MonitorHandles.Select(h => (OverviewOverlay)Control.FromHandle(h)!)
+                        .First(p => p.Screen.Bounds.Contains(center));
+                    pointerX = center.X - pass.OriginX; pointerY = center.Y - pass.OriginY;
+                    held = MouseButtons.Left;
+                }
+                else if (phase == "OverviewPan") held = MouseButtons.Middle;
+                if (held != MouseButtons.None) pass!.OnMouseButtonDown!(pass, new(held, 1, pointerX, pointerY, 0));
                 long started = Stopwatch.GetTimestamp();
                 double lastCycle = -1;
                 bool restored = false;
                 Console.WriteLine($"Repeat {repeat + 1}: {phase} ({seconds}s)");
                 while (Stopwatch.GetElapsedTime(started).TotalSeconds < seconds && !interrupted)
                 {
+                    VerifyOwnership();
+                    long pumpStarted = Stopwatch.GetTimestamp();
                     double elapsed = Stopwatch.GetElapsedTime(started).TotalSeconds;
                     if (phase == "Panning")
                     {
                         canvas.SetCamera(Math.Sin(elapsed * 2) * 100, Math.Cos(elapsed * 2) * 50);
                         overview.SyncCamera();
                     }
+                    if (held != MouseButtons.None)
+                        pass!.OnMouseMoved!(pass, new(held, 0, pointerX + (int)(Math.Sin(elapsed * 2) * 100),
+                            pointerY + (int)(Math.Sin(elapsed * 3) * 50), 0));
+                    if (phase == "ZoomBursts" && elapsed % .5 < .12)
+                        pass!.OnWheel!(pass, pointerX, pointerY, (int)(elapsed / .5) % 2 == 0 ? -30 : 30, false, true);
                     if (phase == "Restoration" && elapsed - lastCycle >= 0.5)
                     {
                         VerifyOwnership();
@@ -129,26 +163,39 @@ internal static class Program
                         if (!restored) latencies.Add(Stopwatch.GetElapsedTime(restoreStarted).TotalMilliseconds);
                         restored = !restored; lastCycle = elapsed;
                     }
-                    Application.DoEvents(); Thread.Sleep(10);
+                    Application.DoEvents();
+                    if (overviewPhase) inputPumpMs.Add(Stopwatch.GetElapsedTime(pumpStarted).TotalMilliseconds);
+                    Thread.Sleep(10);
                 }
+                // Capture the phase before release/cleanup adds a final native move.
                 double duration = Stopwatch.GetElapsedTime(started).TotalSeconds;
+                var phaseDiagnostics = diagnostics.Snapshot();
+                var endCamera = overview.ViewCamera;
                 var after = processes.Select(Capture).ToArray();
                 results.Add(new { Repeat = repeat + 1, Phase = phase, DurationSeconds = duration,
+                    CameraStart = startCamera, CameraEnd = endCamera,
+                    InputPumpMs = TimingSummary.From(inputPumpMs),
                     Processes = after.Select((sample, i) => new { Role = i == 0 ? "CanvasHarness" : i == 1 ? "Workload" : "DWM", sample.Pid, sample.Name, sample.Error,
                         CpuOneCorePercent = sample.CpuMs.HasValue && baseline[i].CpuMs.HasValue
                             ? (sample.CpuMs - baseline[i].CpuMs) / (duration * 10) : null,
                         sample.WorkingSetBytes, sample.PrivateBytes }),
                     GpuEngines = gpu.Read(processes.Select(p => p.Id).ToHashSet()), gpu.UnavailableReason,
                     NativeWindows = nativeWindows, PreparationDiagnostics = preparation,
-                    RestoreBatchApiLatencyMs = latencies.ToArray(), Diagnostics = diagnostics.Snapshot() });
+                    RestoreBatchApiLatencyMs = latencies.ToArray(), Diagnostics = phaseDiagnostics });
+                if (held != MouseButtons.None)
+                {
+                    VerifyOwnership();
+                    pass!.OnMouseButtonUp!(pass, new(held, 1, pointerX, pointerY, 0));
+                }
             }
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-            File.WriteAllText(output, JsonSerializer.Serialize(new { SchemaVersion = 1, CapturedUtc = DateTime.UtcNow,
+            File.WriteAllText(output, JsonSerializer.Serialize(new { SchemaVersion = 2, CapturedUtc = DateTime.UtcNow,
                 OS = RuntimeInformation.OSDescription, Framework = RuntimeInformation.FrameworkDescription,
                 LogicalProcessors = Environment.ProcessorCount, WindowCount = count, Repeats = repeats, SecondsPerPhase = seconds,
                 Workload = args.Contains("--always-work") ? "always-work" : "cooperative-minimize",
                 FlipRenderingRequested = config.EnableFlipRendering, RenderingBackends = overview.RenderingBackends,
                 LowQualityMode = config.LowQualityMode,
+                PresentationOnly = presentation.Only, RequestedOverviewZoom = presentation.Zoom,
                 Monitors = Screen.AllScreens.Select(s => new { s.Bounds, s.WorkingArea }), Interrupted = interrupted, Results = results,
                 Limits = "Synthetic GDI/timer workload; DWM includes unrelated desktop activity. CPU is percent of one core. GPU values are separate engine counters, not an overall sum. Restore timing is API acknowledgement, not first painted frame." }, Json));
             Console.WriteLine(output);
