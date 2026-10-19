@@ -148,6 +148,15 @@ tests and 81 AI tests passed**, and publish succeeded. The new gesture changes
 require their own validation; those first-pass results do not establish that the
 second pass passed review or Windows tests.
 
+Second-pass local checks with .NET SDK 10.0.401: locked restore and Release
+cross-compilation of the desktop test project succeeded with **zero warnings and
+errors**. A temporary portable test project linking the repository's actual
+`GesturePreviewPolicy`, `OverviewFrameScheduler`, `GridFrameSchedule` and their
+test files passed **14 tests** on Linux. This validates the timing and scheduling
+logic, not the WinForms/WPF/DWM integration. Full Windows execution of the new
+gesture regressions and installer checks remains pending on GitHub; Surface GPU
+and interaction-latency measurements remain pending.
+
 ## Surface / Windows follow-up
 
 Use the same power mode, applications/documents, window count, DPI, resolution,

@@ -101,7 +101,7 @@ internal sealed partial class OverviewManager
         }
         if (CurrentMode == OverviewMode.Hidden) return;
         var inputs = new List<OverviewCardInput>();
-        var gestureCards = new List<PlaceholderAnnotation>();
+        List<PlaceholderAnnotation>? gestureCards = null;
         bool hasRestoreFallback = false;
         var occluders = new List<WorldRect>();
         for (int i = 0; i < _windows.Count; i++)
@@ -127,7 +127,7 @@ internal sealed partial class OverviewManager
                 bool cachedThumbnail = _thumbnails.HasVisibleSource(entry.HWnd)
                     || (_cardSources.TryGetValue(entry.HWnd, out var cachedSource) && _thumbnails.HasVisibleSource(cachedSource));
                 if (cachedThumbnail) image = null;
-                gestureCards.Add(new(entry.HWnd, GestureTitle(entry.HWnd), entry.World, priority,
+                (gestureCards ??= new()).Add(new(entry.HWnd, GestureTitle(entry.HWnd), entry.World, priority,
                     image, occluders.ToArray(), ImageOpacity: image != null || cachedThumbnail ? 1 : 0,
                     LabelOpacity: image != null ? 0 : 1));
                 hasRestoreFallback |= restoreFallback;
@@ -164,11 +164,12 @@ internal sealed partial class OverviewManager
         if (GesturePreviewsActive)
         {
             _cardAnimationTimer?.Stop();
-            cards = gestureCards;
+            cards = gestureCards is { } moving ? moving : Array.Empty<PlaceholderAnnotation>();
         }
         else
         {
-            cards = _cardTransitions.Update(inputs, Environment.TickCount64).Concat(gestureCards).ToArray();
+            var normalCards = _cardTransitions.Update(inputs, Environment.TickCount64);
+            cards = gestureCards == null ? normalCards : normalCards.Concat(gestureCards).ToArray();
             UpdateCardAnimationTimer();
         }
         RetryGestureRestoration(hasRestoreFallback);
