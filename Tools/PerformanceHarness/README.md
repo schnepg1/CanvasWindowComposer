@@ -45,6 +45,12 @@ skips that work while minimized. Both invalidate/draw animated GDI content while
 normal. These two modes deliberately test different application responses to
 minimization; they do not simulate every application's rendering pipeline.
 
+`--low-quality` selects the same simple background used by the Settings option.
+The report records `LowQualityMode`; it does not change the user's config. The
+current stationary and panning scenarios run at the default camera zoom, so they
+do not measure the continuous zoomed-out nebula. Use the manual zoom matrix in
+[the canvas performance log](../../Docs/canvas-performance.md) for that comparison.
+
 `--flip-rendering` requests the experimental two-buffer flip-discard backend for
 overview. Without it, the compatibility backend remains selected. Reports include
 `FlipRenderingRequested` and the actual per-monitor `RenderingBackends`; inspect

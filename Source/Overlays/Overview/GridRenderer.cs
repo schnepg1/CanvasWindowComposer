@@ -50,7 +50,7 @@ internal sealed class GridRenderer : IDisposable
         public float PassOffX, PassOffY;
         public int MonitorCount;
         public int IsPrimary;
-        public int _pad0, _pad1;
+        public int LowQuality, _pad1;
     }
 
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
@@ -99,7 +99,7 @@ cbuffer GridCB : register(b0)
     float passOffY;
     int monitorCount;
     int isPrimary;
-    int _pad0;
+    int lowQuality;
     int _pad1;
 };
 
@@ -246,6 +246,20 @@ float4 PSMain(VSOut input) : SV_Target
     float2 screenPos = input.uv * float2(screenW, screenH);
 
     float2 worldPos = (screenPos + float2(passOffX, passOffY)) / zoom + camPos;
+
+    // A uniform early branch keeps expensive noise and decorative math out of
+    // low quality frames. Preserve the world-space grid and origin axes.
+    if (lowQuality != 0)
+    {
+        float level = floor(log2(zoom * 100.0 / 80.0));
+        float spacing = 100.0 * exp2(-level);
+        float lines = saturate(gridLine(worldPos.x, spacing, 0.4 / zoom)
+                             + gridLine(worldPos.y, spacing, 0.4 / zoom));
+        float axes = saturate(gridLine(worldPos.x, 1e6, 0.6 / zoom)
+                            + gridLine(worldPos.y, 1e6, 0.6 / zoom));
+        return float4(float3(0.04, 0.045, 0.05) + lines * float3(0.10, 0.13, 0.15)
+                      + axes * float3(0.12, 0.30, 0.36), 1.0);
+    }
 
     // === Adaptive grid spacing (doubles per zoom level) ===
     float logZoom = log2(zoom * 100.0 / 80.0);
@@ -421,6 +435,12 @@ float4 PSMain(VSOut input) : SV_Target
         set { if (_drawGrid == value) return; _drawGrid = value; RequestFrame(); }
     }
     private volatile bool _frameTicksRequired;
+    private volatile bool _lowQuality;
+    public bool LowQuality
+    {
+        get => _lowQuality;
+        set { if (_lowQuality == value) return; _lowQuality = value; RequestFrame(); }
+    }
     public bool FrameTicksRequired
     {
         get => _frameTicksRequired;
@@ -437,7 +457,7 @@ float4 PSMain(VSOut input) : SV_Target
     {
         _preferFlip = preferFlip;
         _pump = new RenderFramePump("GridRenderer", RenderFrame,
-            () => _frameTicksRequired || (DrawGrid && _renderZoom < 0.7f), ReleaseResources);
+            () => GridFrameSchedule.NeedsContinuousFrames(DrawGrid, _renderZoom, _frameTicksRequired, LowQuality), ReleaseResources);
     }
 
     private volatile float _renderCamX, _renderCamY, _renderZoom;
@@ -509,14 +529,16 @@ float4 PSMain(VSOut input) : SV_Target
     }
 
     /// <summary>Update camera for next frame (call from any thread).</summary>
-    public void UpdateCamera(double camX, double camY, double zoom)
+    public void UpdateCamera(double camX, double camY, double zoom, double panDx = 0, double panDy = 0)
     {
         lock (_snapshotLock)
         {
-            if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom) return;
+            if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom && panDx == 0 && panDy == 0) return;
             _renderCamX = (float)camX;
             _renderCamY = (float)camY;
             _renderZoom = (float)zoom;
+            _panAccumX += (float)panDx;
+            _panAccumY += (float)panDy;
         }
         RequestFrame();
     }
@@ -556,7 +578,8 @@ float4 PSMain(VSOut input) : SV_Target
                 PanAccumX = _panAccumX, PanAccumY = _panAccumY,
                 PassOffX = _passOffX, PassOffY = _passOffY,
                 MonitorCount = _monitorCount,
-                IsPrimary = _isPrimary
+                IsPrimary = _isPrimary,
+                LowQuality = LowQuality ? 1 : 0
             };
             Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
             _context.Unmap(_constantBuffer!);

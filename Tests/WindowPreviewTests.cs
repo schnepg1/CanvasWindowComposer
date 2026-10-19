@@ -195,6 +195,37 @@ public class WindowPreviewTests
     }
 
     [Fact]
+    public void DragOnlyUpdatesTheChangedThumbnailAndSubpixelCameraChangesDoNotRepushUnchangedPixels()
+        => OnSta(() =>
+        {
+            using var pass = new OverviewOverlay(Screen.PrimaryScreen!);
+            var b = pass.Screen.Bounds;
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var screens = new FakeScreens();
+            for (int i = 1; i <= 2; i++)
+            {
+                api.AddWindow((IntPtr)i, b.X + 100 * i, b.Y + 100, 80, 80);
+                canvas.SetWindow((IntPtr)i, b.X + 100 * i, b.Y + 100, 80, 80);
+            }
+            var windows = new OverviewWindowList(canvas, api); windows.Refresh();
+            var camera = new OverviewCamera(screens); var dwm = new Dwm();
+            var thumbnails = new OverviewThumbnails([pass], windows, camera, new(), api, screens, dwm: dwm);
+            try
+            {
+                thumbnails.Reconcile(); dwm.Updates.Clear();
+                windows.TranslateAt(0, 10, 0);
+                var changed = windows.Windows[0];
+                thumbnails.UpdateWorldRect(changed.HWnd, changed.World);
+                thumbnails.Reconcile();
+                var update = Assert.Single(dwm.Updates);
+                Assert.Equal(110, update.rcDestination.left);
+                camera.SetTo(0.1, 0, 1); thumbnails.Reconcile(); dwm.Updates.Clear();
+                camera.SetTo(0.2, 0, 1); thumbnails.Reconcile();
+                Assert.Empty(dwm.Updates);
+            }
+            finally { thumbnails.Hide(); }
+        });
+
+    [Fact]
     public void ParkingPreparationAndOverviewKeepLogicalLayoutAndNeverRestoreApplication()
         => OnSta(() =>
         {

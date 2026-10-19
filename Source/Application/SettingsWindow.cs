@@ -8,7 +8,7 @@ namespace CanvasDesktop;
 /// <summary>Detached edits; opening or cancelling settings never changes resource policy.</summary>
 internal sealed class SettingsWindow : Window
 {
-    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion;
+    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality;
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
 
     public SettingsWindow(AppConfig config, Action applied)
@@ -52,6 +52,8 @@ internal sealed class SettingsWindow : Window
         _reducedMotion = Option("Reduce startup motion · use a short title fade", preferences.ReducedIntroMotion);
         Hint("Click, scroll, or press any key to skip. Windows animation preferences are respected.");
         Heading("Rendering");
+        _lowQuality = Option("Low quality mode", preferences.LowQualityMode);
+        Hint("Uses a simple grid without the animated space background or decorative effects. Applies immediately; live window previews remain available.");
         _flip = Option("Use flip-model presentation · Experimental", preferences.FlipRendering);
         Hint("Requires a restart. Keep off if overview previews or minimap opacity render incorrectly. Canvas uses the compatibility renderer if initialization fails.");
         var save = ZoneTheme.Button("Save settings", () =>
@@ -61,7 +63,7 @@ internal sealed class SettingsWindow : Window
                 config.SavePreferences(new(_search.IsChecked == true, _altPan.IsChecked == true,
                     _zoom.IsChecked == true, _curve.IsChecked == true, _fixed.IsChecked == true,
                     _clip.IsChecked == true, _parking.IsChecked == true, _flip.IsChecked == true,
-                    _intro.IsChecked == true, _reducedMotion.IsChecked == true));
+                    _intro.IsChecked == true, _reducedMotion.IsChecked == true, _lowQuality.IsChecked == true));
                 applied(); Close();
             }
             catch (Exception ex) { _status.Text = "Settings could not be saved. " + ex.Message; }

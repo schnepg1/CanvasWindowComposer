@@ -84,6 +84,7 @@ internal sealed class OverviewThumbnails
         public WorldRect World;
         public bool ScreenFixed;
         public bool Ready;
+        public WindowRect? LastDestination;
         // DWM frame inset, cached at registration time. Stable while the entry
         // is in the target list — maximize/unmaximize force a re-register which
         // refreshes this, so the only drift case is custom-chrome apps that
@@ -664,6 +665,12 @@ internal sealed class OverviewThumbnails
                 int right  = screen.X + screen.W - fR - pass.OriginX;
                 int bottom = screen.Y + screen.H - fB - pass.OriginY;
 
+                // A drag invalidates geometry, but stationary neighbours still
+                // have the same integer destination. Likewise, subpixel camera
+                // changes do not require another native thumbnail update.
+                var destination = new WindowRect(left, top, right - left, bottom - top);
+                if (entry.Ready && entry.LastDestination == destination) continue;
+
                 var props = new DWM_THUMBNAIL_PROPERTIES
                 {
                     dwFlags = PInvoke.DWM_TNP_RECTDESTINATION | PInvoke.DWM_TNP_VISIBLE,
@@ -671,6 +678,7 @@ internal sealed class OverviewThumbnails
                     rcDestination = new RECT { left = left, top = top, right = right, bottom = bottom }
                 };
                 entry.Ready = _dwm.Update(entry.Thumb, props).Succeeded;
+                if (entry.Ready) entry.LastDestination = destination;
                 list[i] = entry;
                 if (!entry.Ready) InvalidateCameraCache();
             }
