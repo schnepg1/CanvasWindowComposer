@@ -203,9 +203,11 @@ also passed. These results predate the third-pass changes.
 Third-pass local validation: locked restore and Release cross-compilation of the
 desktop test project succeeded with **zero warnings/errors**. The portable suite
 now also links the actual binding registry and its new tests: **16 tests passed**
-on Linux. Full Windows
-execution of the new workspace/parking regressions and Surface GPU/interaction
-latency measurements remain pending.
+on Linux. The third-pass code revision `60778f1` passed its
+[Windows build/test workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39291037682):
+Release build with zero warnings/errors, **836 desktop tests and 81 AI tests passed**,
+and publish succeeded. Its [installer/launcher workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39291037792)
+also passed. Surface GPU and interaction-latency measurements remain pending.
 
 ## Surface / Windows follow-up
 
