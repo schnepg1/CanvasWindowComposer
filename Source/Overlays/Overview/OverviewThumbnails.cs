@@ -36,6 +36,17 @@ internal sealed class OverviewThumbnails
     private readonly Func<IntPtr, bool> _useNativeSource;
     private readonly Func<IntPtr, IntPtr> _transitionSource;
     private readonly HashSet<IntPtr> _liveSources = new();
+    private bool _simplifyDuringMotion;
+    public bool SimplifyDuringMotion
+    {
+        get => _simplifyDuringMotion;
+        set
+        {
+            if (_simplifyDuringMotion == value) return;
+            _simplifyDuringMotion = value;
+            InvalidateCameraCache();
+        }
+    }
 
     // Shell HWND caches — stable across overview opens, invalidated on
     // display topology change via InvalidateShellCache. Self-healing via
@@ -495,6 +506,11 @@ internal sealed class OverviewThumbnails
                 entry = entry with { HWnd = underlying }; // Preserve the proxy's geometry and z-order during its fade.
             }
 
+            // A bounded, previously captured image can remain a DWM source.
+            // Uncached live windows are represented by annotation cards instead.
+            // Pinned/screen-fixed windows remain live because they are not moving.
+            if (SimplifyDuringMotion && !entry.ScreenFixed && !_useCached(entry.HWnd)) continue;
+
             var screen = GetScreenRect(entry, camX, camY, zoom);
             int right = screen.X + screen.W;
             int bottom = screen.Y + screen.H;
@@ -589,7 +605,11 @@ internal sealed class OverviewThumbnails
         return appended;
     }
 
-    public bool HasLiveSource(IntPtr handle)
+    public bool HasLiveSource(IntPtr handle) => HasReadySource(handle, requireLive: true);
+
+    public bool HasVisibleSource(IntPtr handle) => HasReadySource(handle, requireLive: false);
+
+    private bool HasReadySource(IntPtr handle, bool requireLive)
     {
         bool found = false;
         foreach (var pair in _scratchTargetByPass)
@@ -597,7 +617,7 @@ internal sealed class OverviewThumbnails
             if (!pair.Value.Exists(e => e.HWnd == handle)) continue;
             found = true;
             if (!_windowsByPass.TryGetValue(pair.Key, out var current)
-                || !current.Exists(e => e.HWnd == handle && e.Source == handle && e.Ready)) return false;
+                || !current.Exists(e => e.HWnd == handle && (!requireLive || e.Source == handle) && e.Ready)) return false;
         }
         return found;
     }

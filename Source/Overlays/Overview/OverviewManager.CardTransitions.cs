@@ -24,9 +24,12 @@ internal sealed partial class OverviewManager
             || (_win32.GetWindowStyle(source) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0;
 
     private IntPtr GetCardTransitionSource(IntPtr card)
-        => _overviewItemIds.TryGetValue(card, out var id) && _cardTransitions.NeedsLiveUnderlay(id)
-            && _cardSources.TryGetValue(card, out var source) && CanShowUnderlay(source)
-                ? source : IntPtr.Zero;
+    {
+        if (!_cardSources.TryGetValue(card, out var source)) return IntPtr.Zero;
+        if (GesturePreviewsActive) return _wm.HasCachedPreview(source) ? source : IntPtr.Zero;
+        return _overviewItemIds.TryGetValue(card, out var id) && _cardTransitions.NeedsLiveUnderlay(id)
+            && CanShowUnderlay(source) ? source : IntPtr.Zero;
+    }
 
     private void UpdateCardAnimationTimer()
     {

@@ -53,7 +53,7 @@ internal sealed class SettingsWindow : Window
         Hint("Click, scroll, or press any key to skip. Windows animation preferences are respected.");
         Heading("Rendering");
         _lowQuality = Option("Low quality mode", preferences.LowQualityMode);
-        Hint("Uses a simple grid without the animated space background or decorative effects. Applies immediately; live window previews remain available.");
+        Hint("Uses a simple grid and cached previews or title cards while panning, zooming or dragging windows. Live previews return after movement stops. Applies immediately.");
         _flip = Option("Use flip-model presentation · Experimental", preferences.FlipRendering);
         Hint("Requires a restart. Keep off if overview previews or minimap opacity render incorrectly. Canvas uses the compatibility renderer if initialization fails.");
         var save = ZoneTheme.Button("Save settings", () =>

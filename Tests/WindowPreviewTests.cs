@@ -195,6 +195,38 @@ public class WindowPreviewTests
     }
 
     [Fact]
+    public void GestureSuppressionKeepsCachedAndScreenFixedSourcesAndRestoresLiveSources()
+        => OnSta(() =>
+        {
+            using var pass = new OverviewOverlay(Screen.PrimaryScreen!);
+            var b = pass.Screen.Bounds;
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var screens = new FakeScreens();
+            for (int i = 1; i <= 3; i++)
+            {
+                api.AddWindow((IntPtr)i, b.X + 100 * i, b.Y + 100, 80, 80);
+                canvas.RestoreWindow((IntPtr)i, new WorldRect { X = b.X + 100 * i, Y = b.Y + 100,
+                    W = 80, H = 80, PinnedToScreen = i == 3 });
+            }
+            var windows = new OverviewWindowList(canvas, api); windows.Refresh(includeScreenFixedWindows: true);
+            var dwm = new FakeDwmThumbnailApi(); var liveSources = new HashSet<IntPtr>();
+            var thumbnails = new OverviewThumbnails([pass], windows, new(screens), new(), api, screens,
+                useCached: handle => handle == (IntPtr)2, cachedSource: _ => (IntPtr)987, dwm: dwm,
+                prepareLiveSources: handles => { liveSources.Clear(); liveSources.UnionWith(handles); });
+            try
+            {
+                thumbnails.Reconcile(); Assert.Contains((IntPtr)1, dwm.Sources);
+                thumbnails.SimplifyDuringMotion = true; thumbnails.Reconcile();
+                Assert.DoesNotContain((IntPtr)1, dwm.Sources);
+                Assert.Contains((IntPtr)987, dwm.Sources); Assert.Contains((IntPtr)3, dwm.Sources);
+                Assert.Equal(new[] { (IntPtr)3 }, liveSources);
+                Assert.True(thumbnails.HasVisibleSource((IntPtr)2)); Assert.False(thumbnails.HasLiveSource((IntPtr)2));
+                thumbnails.SimplifyDuringMotion = false; thumbnails.Reconcile();
+                Assert.True(thumbnails.HasLiveSource((IntPtr)1)); Assert.Contains((IntPtr)1, liveSources);
+            }
+            finally { thumbnails.Hide(); }
+        });
+
+    [Fact]
     public void DragOnlyUpdatesTheChangedThumbnailAndSubpixelCameraChangesDoNotRepushUnchangedPixels()
         => OnSta(() =>
         {

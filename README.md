@@ -19,7 +19,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Auto-focus** — Camera follows focused windows
 - **Off-screen hiding** — Windows hidden when panned out of view
 - **System tray** — Toggle, reset, exit
-- **Low quality mode** — Settings → Rendering offers a simple grid without the animated space background or decorative effects. Applies immediately; normal quality is the default.
+- **Low quality mode** — Settings → Rendering offers a simple grid and cached previews or title cards during movement. Live previews return after settling. Applies immediately; normal quality is the default.
 - **Project areas** — Draw named, colored zones, assign saved places, move groups, resize boundaries, undo/redo layouts, and jump back to projects. Areas save per virtual desktop. See [project areas](Docs/project-areas.md).
 - **Project navigator** — Keep a compact panel beside the canvas: search areas, members, or paths, expand member lists, jump to areas, focus open members, or reopen closed ones. Open it with **P** in the overview or from the tray.
 
@@ -65,7 +65,7 @@ A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first 
 | `DisableGreedyDraw` | `true` | Skip `SetWindowRgn` clipping of off-screen windows. Keeps Alt-Tab / taskbar thumbnails live at the cost of render work for windows panned out of view |
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
-| `LowQualityMode` | `false` | Simple overview grid without animated nebula/decorations; change through Settings → Rendering for immediate application |
+| `LowQualityMode` | `false` | Simple grid without nebula/decorations; cached previews or title cards during pan/zoom/window dragging. Change through Settings → Rendering for immediate application |
 
 Performance changes, validation limits and the remaining optimization roadmap are
 tracked in [the canvas performance work log](Docs/canvas-performance.md).

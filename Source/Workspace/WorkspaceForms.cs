@@ -119,6 +119,10 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         return _overviewImage = image;
     }
 
+    // Gesture rendering may borrow this immutable image, but must never trigger
+    // DrawToBitmap/PNG conversion in response to a pointer or wheel event.
+    internal System.Windows.Media.ImageSource? CachedOverviewImage => _overviewImage;
+
     internal void ReleaseOverviewImage() => _overviewImage = null;
 
     protected override void Dispose(bool disposing)

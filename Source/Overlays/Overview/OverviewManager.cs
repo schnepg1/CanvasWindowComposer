@@ -92,6 +92,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         _visualFrames.Cancel();
         UpdateGridCamera();
+        UpdateGesturePreviews();
         RefreshTutorialScale();
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
         var proximityCamera = _tutorialReading && (_startupIntroLanded || GuidedTutorialActive)
@@ -128,12 +129,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     }
 
     public OverviewManager(Canvas mainCanvas, WindowManager wm, IWindowApi win32, IInputRouter input, IAppConfig appConfig, IScreens? screens = null,
-        Func<bool>? prefersReducedStartupMotion = null)
+        Func<bool>? prefersReducedStartupMotion = null, IClock? gestureClock = null, IDwmThumbnailApi? dwm = null)
     {
         _mainCanvas = mainCanvas;
         _wm = wm;
         _win32 = win32;
         _appConfig = appConfig;
+        _gestureClock = gestureClock ?? SystemClock.Instance;
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
         _screens = screens ?? WinFormsScreens.Instance;
@@ -145,7 +147,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _tools.SetTool(_zoneTool);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows,
+            UseCachedOverviewSource, _wm.GetCachedPreviewSource, dwm: dwm, prepareLiveSources: _wm.SetLivePreviewWindows,
             useNativeSource: handle => !_placeholderTitles.ContainsKey(handle),
             transitionSource: GetCardTransitionSource);
         _wm.Previews.Changed += OnPreviewChanged;
@@ -398,6 +400,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HideInternal(bool syncCamera)
     {
         CancelVisualFrame();
+        ResetGesturePreviews();
         _tourPanel?.Hide();
         _tutorialReading = false;
         _previewRefreshQueued = false;
@@ -759,6 +762,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
 
             _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
+            if (dx != 0 || dy != 0) ObserveGestureMotion();
             if(dx!=0 || dy!=0)ObserveTourWindow();
             _visualFrames.Request();
         }
@@ -786,6 +790,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         var ended = _tools.EndNavigation(pointer);
         ApplyPointerCapture();
+        if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.Pan) _visualFrames.Request();
         if (ended == CanvasInteractionKind.Window)
         {
             _wm.Reproject(true);
@@ -812,6 +817,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         double worldDx = virtualDx / _camera.Zoom;
         double worldDy = virtualDy / _camera.Zoom;
         _camera.PanByVirtual(virtualDx, virtualDy);
+        ObserveGestureMotion();
         _visualPanX += worldDx;
         _visualPanY += worldDy;
         _visualFrames.Request();
@@ -822,6 +828,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         StopTutorialTravel();
         double before=_camera.Zoom;
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
+        ObserveGestureMotion();
         if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
         _startupIntroLanded = false;
         _visualFrames.Request();
@@ -893,6 +900,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(CancelVisualFrame);
+        Attempt(ResetGesturePreviews);
+        Attempt(() => _gestureSettleTimer?.Dispose());
         Attempt(() => _visualFrameTimer?.Dispose());
         Attempt(DisposeGuidedTutorial);
         Attempt(DisposeAnnotations);

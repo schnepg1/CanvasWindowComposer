@@ -15,11 +15,11 @@ that Surface have not yet been collected.
 
 ## Roadmap and status
 
-| Priority | Topic | Status in this first change set |
+| Priority | Topic | Current status |
 | --- | --- | --- |
 | 1 | Reduce expensive background rendering | Implemented: simple, static-on-idle low quality grid; normal visuals retained |
 | 2 | Coordinate camera updates | First pass implemented: one pending UI camera frame across monitor passes; a unified presentation boundary remains future work |
-| 3 | Frozen previews or outlines during gestures | Not started; live previews remain available in both modes |
+| 3 | Frozen previews or outlines during gestures | Implemented in the second pass: existing snapshots or title cards during low-quality pan/zoom/window drags, with live restoration after settling |
 | 4 | Remove repeated process/identity work during camera motion | Partial: removed the duplicate identity-map refresh within the same reconciliation; event-maintained identity mappings remain to be designed |
 | 5 | Update only changed preview destinations | Implemented: unchanged integer destinations skip native updates, including stationary neighbours during a drag |
 | 6 | Reduce thumbnail registration churn, card allocations and bitmap conversions | Not started |
@@ -32,8 +32,8 @@ that Surface have not yet been collected.
 Settings → Rendering → **Low quality mode** adds a simple adaptive grid and origin
 axes. A uniform shader branch skips the procedural nebula, decorative parallax
 marks and other normal-quality background effects. The normal-quality shader path
-is retained. Preview contents, cards, titles, annotations, canvas geometry and input
-remain available.
+is retained. Titles, annotations, canvas geometry and input remain available;
+the second pass below adds lightweight previews during low-quality gestures.
 
 Saving applies the mode to existing overview renderers immediately. Hidden overview
 passes pick it up when reopened. It does not require a restart or a rendering-backend
@@ -74,6 +74,44 @@ The background, DWM previews and WPF annotations still have separate presentatio
 systems. Batching submissions reduces redundant work; it does not guarantee that
 all three systems display an atomic frame or eliminate the observed stagger.
 
+## Second pass: lightweight gesture previews, 19 October 2026
+
+**Low quality mode** now also changes the moving window representations:
+
+- Overview pan, wheel/pinch/keyboard zoom and single-window drags use an existing
+  cached application snapshot or cached placeholder image when available. Without
+  an image, a simple rectangle and readable title preserve position and identity.
+  The card continues to move and scale with the latest canvas camera.
+- Gesture rendering does not call `PrintWindow`, request capture, generate a new
+  placeholder bitmap, or minimize a window. Previously cached images may reflect
+  an earlier application state; this is not a fresh screenshot at gesture start.
+- Uncached movable DWM sources are removed while cards represent them. Cached
+  sources remain static, and pinned/screen-fixed windows remain live. Visible
+  source preparation therefore no longer unclips uncached off-screen windows
+  merely to draw their live contents during a low-quality gesture.
+- Desktop panning, including inertia, stays lightweight for that Panning session.
+  An overview pointer drag stays lightweight while held, even if the pointer
+  pauses. Other overview motion restores live previews after **180 ms** without
+  further motion. No permanent background timer is added for stationary content.
+- Source registration is reconciled before the gesture cards are removed. A
+  failed live source keeps a title-card fallback and retries at 250 ms intervals
+  for up to one second. Persistent failure retains the card and stops polling;
+  later input/window updates retry normally. Native API acceptance still does
+  not prove that the target application has painted its first correct frame.
+- Turning Low quality mode off restores normal rendering immediately. Closing,
+  disposal and reopening discard old gesture state and timers. Startup camera
+  flights do not activate the gesture policy.
+
+Normal quality keeps live previews throughout gestures. The timing/source
+selection/lifecycle implementation is shared; this optional visual reduction has
+no additional setting beyond the existing Low quality mode.
+
+Existing automatic off-screen minimization is independent. Enabling that resource
+policy can still minimize eligible distant applications after its own delay. The
+gesture controller neither changes that policy nor promises to stop applications'
+own background rendering. Entering/leaving gesture mode can re-register sources;
+broader registration-churn optimization remains priority 6.
+
 ## Verification
 
 Added regression coverage for:
@@ -88,15 +126,27 @@ Added regression coverage for:
   updates for unchanged pixel destinations. Existing readiness-retry tests remain.
 - Both shader quality paths in the native grid smoke test, with both presentation
   backends.
+- Gesture timing at the settle boundary, wheel bursts, held-drag pauses, quality
+  disable, close/reset, cached/pinned source selection and live restoration.
+- Controller integration for normal versus low quality, no captures/minimizations
+  initiated by a gesture, existing cached-snapshot reuse, drag geometry, closing
+  and reopening, and retaining a card across a failed live-registration retry.
 
 `Tools/PerformanceHarness` accepts `--low-quality` and reports `LowQualityMode`.
 It does not modify the installed user's settings. Its existing scenarios use the
 default overview zoom and omit the workspace-card layer, so they do not establish
 the zoomed-out nebula saving or full-app gesture latency.
 
-Local validation: `git diff --check`. This editing environment is Linux without
-the .NET SDK/Windows Desktop runtime. Windows build and test results are recorded
-below once the pull-request workflow finishes; no local Windows test pass is claimed.
+Local validation: `git diff --check`. This editing environment is Linux; it cannot
+execute the Windows Desktop tests. Windows validation runs through the PR workflow;
+no local Windows test pass is claimed.
+
+PR #14's first implementation (`f0247d2`) completed automatic code review with no
+findings. Its [Windows build/test run](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39280900660)
+completed successfully: Release build with zero warnings/errors, **813 desktop
+tests and 81 AI tests passed**, and publish succeeded. The new gesture changes
+require their own validation; those first-pass results do not establish that the
+second pass passed review or Windows tests.
 
 ## Surface / Windows follow-up
 
@@ -105,6 +155,8 @@ monitor arrangement and background activity for paired runs. Compare normal and
 low quality at zoom 1.0, 0.7, 0.5 and 0.25. Include stationary overview, sustained
 pan, zoom bursts, a single-window drag, overview close/reopen and rapid quality
 toggling. Include annotations, saved cards and multiple overlapping windows.
+Exercise held-pointer pauses, inertial desktop pans, wheel bursts less than 180 ms
+apart, pinned windows, unavailable snapshots and failed live-preview restoration.
 
 Record Canvas, DWM and target-application CPU and per-engine GPU counters separately;
 also record frame-time distributions, input-to-visible latency, restoration latency
