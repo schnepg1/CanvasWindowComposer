@@ -312,8 +312,16 @@ four-configuration comparison smoke run. The retained reports contain 20 phase r
 and confirm the requested backend in all four cases. Its
 [installer/launcher workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39331428861)
 also passed. Inspection of those reports prompted the fixed-target wheel workload
-above; validation of that follow-up is pending. CI results do not rank Surface
-performance or validate final displayed pixels.
+above. The follow-up `fda0a9b` passed its
+[Windows build/test workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39332062123):
+zero build warnings/errors, **872 desktop tests and 81 AI tests**, all four
+comparison configurations and publish. Its
+[installer/launcher workflow](https://github.com/schnepg1/CanvasWindowComposer/actions/runs/39332062130)
+also passed. The portable suite passed **29 tests**. The final smoke reports confirm
+20 phase rows, all requested backends, and identical six-target wheel sequences and
+final zoom cameras across the four configurations. CI results do not rank Surface
+performance or validate final displayed pixels. The final documentation-only commit
+records these results without changing the tested code.
 
 ## Verification
 
