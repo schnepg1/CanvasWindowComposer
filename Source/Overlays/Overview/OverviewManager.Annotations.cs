@@ -78,7 +78,7 @@ internal sealed partial class OverviewManager
         AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag selected: move group  ·  Middle drag: pan",
         AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
         AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
-        AnnotationMode.Text => "Click to add a note  ·  Ctrl+Enter: save text  ·  Esc: cancel  ·  Middle drag: pan",
+        AnnotationMode.Text => "Click or drag to add a note  ·  Ctrl+Enter: save  ·  Style and size in the editor  ·  Esc: cancel  ·  Middle drag: pan",
         AnnotationMode.Navigate => "Ctrl+click: select windows  ·  Select: rectangle  ·  Project name: select group  ·  Middle drag: pan",
         _ => null
     };
@@ -99,6 +99,10 @@ internal sealed partial class OverviewManager
             _annotationToolbar.SetSelectionRadius(_selectionRadius);
             _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);
             _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Selected?.Color ?? _annotationTool.Color,stroke);
+            _annotationToolbar.FontSizeRequested+=ChangeAnnotationFontSize;
+            _annotationToolbar.TextAlignRequested+=align=>ChangeAnnotationTextStyle(align:align);
+            _annotationToolbar.EmphasisRequested+=emphasis=>ChangeAnnotationTextStyle(emphasis:emphasis);
+            _annotationToolbar.CardFillRequested+=fill=>ChangeAnnotationTextStyle(fill:fill);
             _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
             _annotationToolbar.RedoRequested+=()=>AnnotationHistory(true);
             _annotationToolbar.DeleteRequested+=DeleteAnnotation;
@@ -122,6 +126,20 @@ internal sealed partial class OverviewManager
     {
         CancelInteraction();
         try { _annotationTool?.SetStyle(color,stroke); }
+        catch(ArgumentException ex) { _annotationError=ex.Message; }
+        RefreshToolPreview(); FocusOverview();
+    }
+    private void ChangeAnnotationFontSize(double fontSize)
+    {
+        CancelInteraction();
+        try { _annotationTool?.SetFontSize(fontSize); }
+        catch(ArgumentException ex) { _annotationError=ex.Message; }
+        RefreshToolPreview(); FocusOverview();
+    }
+    private void ChangeAnnotationTextStyle(AnnotationTextAlign? align=null,AnnotationTextEmphasis? emphasis=null,AnnotationCardFill? fill=null)
+    {
+        CancelInteraction();
+        try { _annotationTool?.SetTextStyle(align,emphasis,fill); }
         catch(ArgumentException ex) { _annotationError=ex.Message; }
         RefreshToolPreview(); FocusOverview();
     }
@@ -173,7 +191,15 @@ internal sealed partial class OverviewManager
             string text=editor.Editor.Text;
             if(save && !string.IsNullOrWhiteSpace(text) && item.DesktopId==_annotationDesktop())
             {
-                try { _annotationDocument!.Put(item with { Text=text }); Selection.Replace([new(CanvasItemKind.Annotation,item.Id)]); _annotationTool?.Select(item.Id); }
+                try
+                {
+                    _annotationDocument!.Put(item with
+                    {
+                        Text=text, FontSize=editor.FontSize, TextAlign=editor.TextAlign,
+                        Emphasis=editor.Emphasis, CardFill=editor.CardFill
+                    });
+                    Selection.Replace([new(CanvasItemKind.Annotation,item.Id)]); _annotationTool?.Select(item.Id);
+                }
                 catch(ArgumentException ex) { MessageBox.Show(editor,ex.Message,"Canvas note"); return; }
             }
             CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview();
