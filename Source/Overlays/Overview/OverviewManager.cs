@@ -461,7 +461,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         ReconcileVisuals();
         if (ShouldShowScreenFixedWindowsDuringPan && AnyPassVisible())
             RaiseMyDockFinderWindowsAboveOverview();
-        else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible())
+        else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible() && !_composerWaitingForBrowser)
             RaiseOverviewPassesAboveTopmostWindows();
 
         // During Zooming, real-window positions don't need to track the camera
@@ -788,7 +788,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
-        if (_composerWindow != null) return;
+        if (_composerWindow is { WaitingForBrowser: false }) return;
         bool zoomModifier = control || (Control.ModifierKeys & Keys.Alt) != 0;
         var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);

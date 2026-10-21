@@ -85,7 +85,7 @@ internal sealed partial class OverviewManager
     private void RefreshAnnotationUi()
     {
         if(_annotationTool==null) return;
-        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive)
+        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser)
         { _annotationToolbar?.Hide(); return; }
         var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
         if(pass==null) return;

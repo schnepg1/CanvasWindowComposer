@@ -155,6 +155,11 @@ internal sealed partial class OverviewManager
     private void RefreshToolPreview()
     {
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
+        if (_composerWindow is { WaitingForBrowser: true })
+        {
+            if (_annotationToolbar is { IsDisposed: false } toolbar) toolbar.Hide();
+            return;
+        }
         bool zooming = CurrentMode == OverviewMode.Zooming;
         _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];
         if (_annotationTool?.Preview is {} annotationPreview)
