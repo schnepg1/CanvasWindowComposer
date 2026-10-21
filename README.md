@@ -31,6 +31,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Alt + Q | Toggle overview (map-view) |
 | Alt + scroll on desktop | Open overview |
 | Two-finger scroll in overview | Pan vertically or horizontally |
+| Shift + scroll in overview | Pan horizontally |
 | Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
 | Ctrl + scroll, Alt + scroll, or + / - in overview | Zoom without a pinch gesture |
 | Alt + S | Fuzzy window search |
@@ -168,8 +169,10 @@ shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edi
 while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
 editing. Drawings save automatically per virtual desktop and return after restart.
 Notes open in a card preview with matching colors, proportions, typography and wrapping.
-Save with Ctrl+Enter or cancel with Esc. Selected drawings have larger corner/endpoint
-grips; notes and shapes also resize from their sides. Grip sizes stay readable as you zoom.
+The editor changes text size from 8 to 96 with a numeric control, quick presets or
+Ctrl +/- and saves it with the note. Save with Ctrl+Enter or cancel with Esc. Selected
+drawings have larger corner/endpoint grips; notes and shapes also resize from their
+sides. Grip sizes stay readable as you zoom.
 
 See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
 

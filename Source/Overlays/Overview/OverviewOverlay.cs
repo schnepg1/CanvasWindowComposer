@@ -56,7 +56,7 @@ internal sealed class OverviewOverlay : Form
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonDown;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseMoved;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonUp;
-    public Action<OverviewOverlay, int, int, int, bool, bool>? OnWheel;
+    public Action<OverviewOverlay, int, int, int, bool, bool, bool>? OnWheel;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseDoubleClicked;
     public Action<OverviewOverlay>? OnCaptureLost;
 
@@ -180,7 +180,7 @@ internal sealed class OverviewOverlay : Form
         {
             var wheel = OverviewNavigationInput.DecodeWheel(m.Msg, m.WParam, m.LParam);
             var client = PointToClient(new Point(wheel.ScreenX, wheel.ScreenY));
-            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control);
+            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control, wheel.Shift);
             m.Result = IntPtr.Zero;
             return;
         }

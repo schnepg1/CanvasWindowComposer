@@ -38,8 +38,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40) };
-        _details = new Label { Dock = DockStyle.Top, Height = 28, AutoEllipsis = true,
-            ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 4, 0, 4) };
+        _details = new Label { Dock = DockStyle.Top, Height = 32, AutoEllipsis = true,
+            Font = new Font("Segoe UI", 13f), ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 4, 0, 4) };
         _open = new Button { Text = "Open", AutoSize = true, FlatStyle = FlatStyle.System, Anchor = AnchorStyles.Left };
         _open.Click += (_, _) =>
         {

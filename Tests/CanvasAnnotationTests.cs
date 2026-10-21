@@ -36,6 +36,51 @@ public class CanvasAnnotationTests
         var item=Item();var doc=new AnnotationDocument([item]);doc.Put(item);doc.Delete(Desktop,Guid.NewGuid());
         Assert.False(doc.Undo(Desktop));
     }
+    [Fact]
+    public void TextSizeDefaultsValidatesAndIsEditableAsOneHistoryStep()
+    {
+        var item=Item(AnnotationKind.Text) with { Text="Note" };
+        Assert.Equal(AnnotationDocument.DefaultFontSize,item.FontSize);
+        var doc=new AnnotationDocument([item]);
+        Assert.Throws<ArgumentException>(()=>doc.Put(item with { FontSize=AnnotationDocument.MinimumFontSize-1 }));
+        Assert.Throws<ArgumentException>(()=>doc.Put(item with { FontSize=AnnotationDocument.MaximumFontSize+1 }));
+        Assert.Throws<ArgumentException>(()=>doc.Put(item with { FontSize=double.NaN }));
+        var tool=new AnnotationCanvasTool(doc,()=>Desktop);tool.SetMode(AnnotationMode.Select);tool.Select(item.Id);
+        tool.SetFontSize(32);
+        Assert.Equal(32,Assert.Single(doc.Items).FontSize);
+        Assert.True(doc.Undo(Desktop));Assert.Equal(AnnotationDocument.DefaultFontSize,Assert.Single(doc.Items).FontSize);
+        Assert.Throws<ArgumentException>(()=>tool.SetFontSize(4));
+        Assert.Equal(32,tool.FontSize);
+    }
+    [Fact]
+    public void TextStyleDefaultsValidateAndApplyWithoutResettingOtherFields()
+    {
+        var item=Item(AnnotationKind.Text) with
+        {
+            Text="Note", TextAlign=AnnotationTextAlign.Center,
+            Emphasis=AnnotationTextEmphasis.Bold, CardFill=AnnotationCardFill.Tinted
+        };
+        Assert.Equal(AnnotationTextAlign.Center,item.TextAlign);
+        Assert.Equal(AnnotationTextEmphasis.Bold,item.Emphasis);
+        Assert.Equal(AnnotationCardFill.Tinted,item.CardFill);
+        var doc=new AnnotationDocument([item]);
+        Assert.Throws<ArgumentException>(()=>doc.Put(item with { TextAlign=(AnnotationTextAlign)99 }));
+        Assert.Throws<ArgumentException>(()=>doc.Put(item with { Emphasis=(AnnotationTextEmphasis)99 }));
+        Assert.Throws<ArgumentException>(()=>doc.Put(item with { CardFill=(AnnotationCardFill)99 }));
+        var tool=new AnnotationCanvasTool(doc,()=>Desktop);tool.SetMode(AnnotationMode.Select);tool.Select(item.Id);
+        tool.SetTextStyle(emphasis:AnnotationTextEmphasis.Italic);
+        var changed=Assert.Single(doc.Items);
+        Assert.Equal(AnnotationTextEmphasis.Italic,changed.Emphasis);
+        Assert.Equal(item.TextAlign,changed.TextAlign);
+        Assert.Equal(item.CardFill,changed.CardFill);
+        Assert.True(doc.Undo(Desktop));Assert.Equal(item,Assert.Single(doc.Items));
+        tool.SetTextStyle(align:AnnotationTextAlign.Right);
+        changed=Assert.Single(doc.Items);
+        Assert.Equal(AnnotationTextAlign.Right,changed.TextAlign);
+        Assert.Equal(item.Emphasis,changed.Emphasis);
+        Assert.Equal(AnnotationTextAlign.Right,tool.TextAlign);
+        Assert.Throws<ArgumentException>(()=>tool.SetTextStyle(align:(AnnotationTextAlign)99));
+    }
     [Theory]
     [InlineData(AnnotationMode.Arrow,AnnotationKind.Arrow)]
     [InlineData(AnnotationMode.Rectangle,AnnotationKind.Rectangle)]
@@ -92,6 +137,28 @@ public class CanvasAnnotationTests
         CanvasAnnotation? requested=null;tool.EditTextRequested+=item=>requested=item;
         tool.PointerDown(Pointer(50,60));tool.PointerUp(Pointer(50,60));Assert.Empty(doc.Items);Assert.False(tool.HasPendingInteraction);
         Assert.NotNull(requested);Assert.Equal(new CanvasRect(50,60,240,120),requested.Bounds);
+    }
+    [Fact]
+    public void DraggingInTextModeKeepsTheDraggedCardSizeAndStyle()
+    {
+        var doc=new AnnotationDocument();var tool=new AnnotationCanvasTool(doc,()=>Desktop);tool.SetMode(AnnotationMode.Text);
+        tool.SetTextStyle(AnnotationTextAlign.Right,AnnotationTextEmphasis.BoldItalic,AnnotationCardFill.None);
+        CanvasAnnotation? requested=null;tool.EditTextRequested+=item=>requested=item;
+        tool.PointerDown(Pointer(100,100));tool.PointerMove(Pointer(460,340));tool.PointerUp(Pointer(460,340));
+        Assert.NotNull(requested);
+        Assert.Equal(new CanvasRect(100,100,360,240),requested.Bounds);
+        Assert.Equal(AnnotationTextAlign.Right,requested.TextAlign);
+        Assert.Equal(AnnotationTextEmphasis.BoldItalic,requested.Emphasis);
+        Assert.Equal(AnnotationCardFill.None,requested.CardFill);
+        requested=null;
+        tool.PointerDown(Pointer(500,400));tool.PointerUp(Pointer(510,410));
+        Assert.NotNull(requested);
+        // A drag below the minimum still produces a usable card.
+        Assert.Equal(new CanvasRect(500,400,
+            AnnotationCanvasTool.MinimumTextCardWidth,AnnotationCanvasTool.MinimumTextCardHeight),requested.Bounds);
+        requested=null;
+        tool.PointerDown(Pointer(700,500));tool.PointerUp(Pointer(600,430));
+        Assert.NotNull(requested);Assert.Equal(new CanvasRect(600,430,100,70),requested.Bounds);
     }
     [Fact]
     public void HitToleranceUsesDipsOnNegativeOriginMixedDpiMonitor()

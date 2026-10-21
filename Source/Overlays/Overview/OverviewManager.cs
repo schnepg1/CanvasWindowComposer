@@ -792,13 +792,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
-    private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control)
+    private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift)
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
         if (_composerWindow is { WaitingForBrowser: false }) return;
         bool zoomModifier = control || (Control.ModifierKeys & Keys.Alt) != 0;
-        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier);
+        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier, shift);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
         else PanOverview(panX, panY);
     }
