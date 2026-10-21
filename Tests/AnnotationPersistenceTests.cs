@@ -12,10 +12,33 @@ public class AnnotationPersistenceTests : IDisposable
     [Fact]
     public void UnicodeNotesRoundTripAndSuccessfulUpdatesRotateBackup()
     {
-        var store=new AnnotationPersistence(FilePath);var item=Item();store.Document.Put(item);Assert.True(store.Save());
+        var store=new AnnotationPersistence(FilePath);var item=Item() with
+        {
+            FontSize=32, TextAlign=AnnotationTextAlign.Center,
+            Emphasis=AnnotationTextEmphasis.BoldItalic, CardFill=AnnotationCardFill.None
+        };
+        store.Document.Put(item);Assert.True(store.Save());
         store.Document.Put(item with { Text="Edited" });Assert.True(store.Save());
-        Assert.Equal("Edited",Assert.Single(new AnnotationPersistence(FilePath).Document.Items).Text);
+        var saved=Assert.Single(new AnnotationPersistence(FilePath).Document.Items);
+        Assert.Equal("Edited",saved.Text);Assert.Equal(32,saved.FontSize);
+        Assert.Equal(AnnotationTextAlign.Center,saved.TextAlign);
+        Assert.Equal(AnnotationTextEmphasis.BoldItalic,saved.Emphasis);
+        Assert.Equal(AnnotationCardFill.None,saved.CardFill);
         Assert.Equal(item,Assert.Single(new AnnotationPersistence(FilePath+".bak").Document.Items));
+    }
+    [Fact]
+    public void LegacyFilesWithoutTextSizeLoadAtTheDefaultSize()
+    {
+        Directory.CreateDirectory(_folder);
+        var id=Guid.NewGuid();var desktop=Guid.NewGuid();
+        File.WriteAllText(FilePath,
+            $"{{\"Version\":1,\"Items\":[{{\"Id\":\"{id}\",\"DesktopId\":\"{desktop}\",\"Kind\":3," +
+            "\"A\":{\"X\":0,\"Y\":0},\"B\":{\"X\":200,\"Y\":100},\"Color\":\"#FBBF24\",\"Stroke\":3,\"Text\":\"Legacy\"}]}");
+        var item=Assert.Single(new AnnotationPersistence(FilePath).Document.Items);
+        Assert.Equal(AnnotationDocument.DefaultFontSize,item.FontSize);
+        Assert.Equal(AnnotationTextAlign.Left,item.TextAlign);
+        Assert.Equal(AnnotationTextEmphasis.Normal,item.Emphasis);
+        Assert.Equal(AnnotationCardFill.Solid,item.CardFill);
     }
     [Fact]
     public void CorruptPrimaryRecoversBackupAndPreservesDamagedFile()

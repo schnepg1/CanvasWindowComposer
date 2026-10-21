@@ -3,8 +3,13 @@ namespace CanvasDesktop.CanvasView;
 public enum AnnotationKind { Arrow, Rectangle, Ellipse, Text }
 public enum AnnotationMode { Navigate, Select, Arrow, Rectangle, Ellipse, Text }
 public enum AnnotationChangeKind { Edit, Undo, Redo }
+public enum AnnotationTextAlign { Left, Center, Right }
+public enum AnnotationTextEmphasis { Normal, Bold, Italic, BoldItalic }
+public enum AnnotationCardFill { Solid, Tinted, None }
 public sealed record CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
-    CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "")
+    CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "", double FontSize = 18,
+    AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
+    AnnotationCardFill CardFill = AnnotationCardFill.Solid)
 {
     public CanvasRect Bounds => new(Math.Min(A.X, B.X), Math.Min(A.Y, B.Y), Math.Abs(B.X - A.X), Math.Abs(B.Y - A.Y));
     public CanvasAnnotation Translate(double x, double y) => this with { A = new(A.X + x, A.Y + y), B = new(B.X + x, B.Y + y) };
@@ -15,6 +20,9 @@ public sealed class AnnotationDocument
 {
     public const int MaximumItems = 2000;
     public const int MaximumTextLength = 10000;
+    public const double DefaultFontSize = 18;
+    public const double MinimumFontSize = 8;
+    public const double MaximumFontSize = 96;
     private readonly List<CanvasAnnotation> _items = [];
     private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay, long Order);
     private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
@@ -36,6 +44,8 @@ public sealed class AnnotationDocument
             if (++count > MaximumItems || item is null || item.Id == Guid.Empty || !ids.Add(item.Id)
                 || !Enum.IsDefined(item.Kind) || !ValidPoint(item.A) || !ValidPoint(item.B)
                 || !double.IsFinite(item.Stroke) || item.Stroke < 1 || item.Stroke > 12
+                || !double.IsFinite(item.FontSize) || item.FontSize < MinimumFontSize || item.FontSize > MaximumFontSize
+                || !Enum.IsDefined(item.TextAlign) || !Enum.IsDefined(item.Emphasis) || !Enum.IsDefined(item.CardFill)
                 || !ValidColor(item.Color) || item.Text is null || item.Text.Length > MaximumTextLength
                 || (item.Kind == AnnotationKind.Arrow ? AnnotationGeometry.Distance(item.A, item.B) < 1
                     : item.Bounds.Width < 1 || item.Bounds.Height < 1)
