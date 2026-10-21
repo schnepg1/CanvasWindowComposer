@@ -61,6 +61,8 @@ public class CanvasComposerOverviewTests
         Assert.True(condition());
     }
     private static void WithOverview(Action<OverviewManager,FakeVirtualDesktops,FakeInputRouter> action)
+        =>WithOverview((overview,desktops,input,_,_)=>action(overview,desktops,input));
+    private static void WithOverview(Action<OverviewManager,FakeVirtualDesktops,FakeInputRouter,Canvas,FakeWindowApi> action)
         =>WorkspaceViewTests.OnSta(()=>
         {
             string folder=Path.Combine(Path.GetTempPath(),"composer-ui-"+Guid.NewGuid().ToString("N"));
@@ -70,7 +72,7 @@ public class CanvasComposerOverviewTests
                 using var wm=new WindowManager(canvas,api,config,input,new FakeClock());using var overview=new OverviewManager(canvas,wm,api,input,config);
                 var desktops=new FakeVirtualDesktops { CurrentDesktopId=Guid.NewGuid() };
                 overview.AttachAnnotations(desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
-                action(overview,desktops,input);
+                action(overview,desktops,input,canvas,api);
             }
             finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
         });
@@ -135,6 +137,27 @@ public class CanvasComposerOverviewTests
             PumpUntil(()=>overview.ComposerWindow==null);
             PumpUntil(()=>accounts.Finished.Task.IsCompleted);
             Assert.True(pass.TopMost);Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
+        });
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void DoubleClickDuringBrowserSignInBringsWindowForwardWithoutClosingComposer()
+        =>WithOverview((overview,desktops,input,canvas,api)=>
+        {
+            using var source=new Form();
+            api.AddWindow(source.Handle,100,100,400,300);canvas.SetWindow(source.Handle,100,100,400,300);overview.RefreshConfig();
+            var accounts=new SignInAccounts();
+            overview.OpenCanvasComposer(new Provider(),new Credentials(),accounts);var window=overview.ComposerWindow!;
+            var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            window.Connections.SourceBox.SelectedIndex=1;
+            window.Connections.SignInButton.PerformClick();
+            PumpUntil(()=>window.WaitingForBrowser);
+            var before=canvas.Camera;
+            int x=150-pass.OriginX,y=150-pass.OriginY;
+            pass.OnMouseButtonDown!(pass,new(MouseButtons.Left,1,x,y,0));
+            pass.OnMouseDoubleClicked!(pass,new(MouseButtons.Left,2,x,y,0));
+            Assert.Equal(before,canvas.Camera);
+            Assert.Same(window,overview.ComposerWindow);Assert.True(window.WaitingForBrowser);
+            Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
         });
     [Fact]
     [Trait("Category","NativeRendering")]
