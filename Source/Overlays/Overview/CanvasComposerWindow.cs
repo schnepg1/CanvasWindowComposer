@@ -34,7 +34,9 @@ internal sealed class CanvasComposerWindow : Form
     private long _generation;
     public event Action<ComposerPreview?>? PreviewChanged;
     public event Action? Dismissed;
+    internal event Action<bool>? WaitingForBrowserChanged;
     internal bool Busy => _request != null || _connections.Busy;
+    internal bool WaitingForBrowser => _connections.WaitingForBrowser;
     internal TextBox PromptBox => _prompt;
     internal TextBox KeyBox => _connections.KeyBox;
     internal ComboBox ActionBox => _action;
@@ -95,6 +97,11 @@ internal sealed class CanvasComposerWindow : Form
         _connections.ConnectionChanged += () => Discard("Connection changed. Generate a new preview.");
         _connections.BusyChanged += UpdateBusy;
         _connections.StatusChanged += message => _status.Text = message;
+        _connections.WaitingForBrowserChanged += waiting =>
+        {
+            TopMost = !waiting;
+            WaitingForBrowserChanged?.Invoke(waiting);
+        };
         _notes.ItemCheck += (_, _) => { if (_preview != null) Discard("Context changed. Generate a new preview."); };
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; Dismissed?.Invoke(); } };
         FormClosing += (_, e) => { if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Dismissed?.Invoke(); } };
@@ -171,7 +178,11 @@ internal sealed class CanvasComposerWindow : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _generation++; _request?.Cancel(); _request = null; _preview = null; }
+        if (disposing)
+        {
+            WaitingForBrowserChanged = null;
+            _generation++; _request?.Cancel(); _request = null; _preview = null;
+        }
         base.Dispose(disposing);
     }
 }

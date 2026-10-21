@@ -461,7 +461,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         ReconcileVisuals();
         if (ShouldShowScreenFixedWindowsDuringPan && AnyPassVisible())
             RaiseMyDockFinderWindowsAboveOverview();
-        else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible())
+        else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible() && !_composerWaitingForBrowser)
             RaiseOverviewPassesAboveTopmostWindows();
 
         // During Zooming, real-window positions don't need to track the camera
@@ -680,6 +680,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         int vy = e.Y + pass.OriginY;
 
         var pointer = Pointer(pass, e);
+        if (e.Button == MouseButtons.Right)
+        {
+            var (rightWx, rightWy) = _camera.WorldFromVirtual(vx, vy);
+            int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
+            if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
+                card.ShowContextMenu(pass, new Point(e.X, e.Y));
+            return;
+        }
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
         if (e.Button == MouseButtons.Left)
         {
@@ -788,7 +796,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
-        if (_composerWindow != null) return;
+        if (_composerWindow is { WaitingForBrowser: false }) return;
         bool zoomModifier = control || (Control.ModifierKeys & Keys.Alt) != 0;
         var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
@@ -827,6 +835,20 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
+        if (_composerWindow is { WaitingForBrowser: true })
+        {
+            if (e.Button != MouseButtons.Left || (Control.ModifierKeys & (Keys.Shift | Keys.Control)) != 0) return;
+            int composerVx = e.X + pass.OriginX;
+            int composerVy = e.Y + pass.OriginY;
+            var (composerWx, composerWy) = _camera.WorldFromVirtual(composerVx, composerVy);
+            int composerHit = HitOverviewWindow(pass, e.X, e.Y, composerWx, composerWy);
+            if (composerHit >= 0)
+            {
+                var entry = _windows.Windows[composerHit];
+                BringWindowForward(entry.HWnd, entry.World, center: false);
+            }
+            return;
+        }
         if (_composerWindow != null || (Control.ModifierKeys & Keys.Control) != 0) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
@@ -863,13 +885,21 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _placeholderWorkspace.Open(itemId);
             return;
         }
+        BringWindowForward(hWnd, world, center: true);
+        TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+    }
+
+    private void BringWindowForward(IntPtr hWnd, WorldRect world, bool center)
+    {
         if (_mainCanvas.IsCollapsed(hWnd))
             PInvoke.ShowWindow((HWND)hWnd, SHOW_WINDOW_CMD.SW_RESTORE);
 
-        var vs = _screens.VirtualScreen;
-        _mainCanvas.CenterOn(world.X, world.Y, world.W, world.H, vs.Width, vs.Height);
+        if (center)
+        {
+            var vs = _screens.VirtualScreen;
+            _mainCanvas.CenterOn(world.X, world.Y, world.W, world.H, vs.Width, vs.Height);
+        }
         PInvoke.SetForegroundWindow((HWND)hWnd);
-        TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
     }
 
     public void Dispose()
