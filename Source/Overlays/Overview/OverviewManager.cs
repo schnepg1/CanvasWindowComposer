@@ -680,6 +680,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         int vy = e.Y + pass.OriginY;
 
         var pointer = Pointer(pass, e);
+        if (e.Button == MouseButtons.Right)
+        {
+            var (rightWx, rightWy) = _camera.WorldFromVirtual(vx, vy);
+            int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
+            if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
+                card.ShowContextMenu(pass, new Point(e.X, e.Y));
+            return;
+        }
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
         if (e.Button == MouseButtons.Left)
         {

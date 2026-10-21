@@ -20,7 +20,7 @@ internal sealed class WorkspaceHarness : IDisposable
     public WorkspaceService Workspace { get; }
 
     public WorkspaceHarness(WorkspaceDocument? document = null, IWorkspaceStore? store = null, FakeWindowApi? api = null,
-        FakeAppConfig? config = null)
+        FakeAppConfig? config = null, IWorkspacePlaceholderFactory? placeholders = null)
     {
         Api = api ?? new();
         if (document != null) Store.Document = document;
@@ -28,7 +28,8 @@ internal sealed class WorkspaceHarness : IDisposable
         Wm = new(Canvas, Api, config ?? new FakeAppConfig(), Input, Clock, Desktops,
             inspectProcess: Identity.InspectProcess);
         Cache = new(Canvas, Wm, new FakeOverviewController(), Desktops);
-        Workspace = new(Canvas, Wm, Api, Desktops, Cache, store ?? Store, Cards, Actions, Launcher, Identity, Clock);
+        Workspace = new(Canvas, Wm, Api, Desktops, Cache, store ?? Store, placeholders ?? Cards,
+            Actions, Launcher, Identity, Clock);
     }
 
     public void Dispose() { Workspace.Dispose(); Cache.Dispose(); Wm.Dispose(); }

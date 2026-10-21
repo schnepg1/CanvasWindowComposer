@@ -121,6 +121,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     internal void ReleaseOverviewImage() => _overviewImage = null;
 
+    internal void ShowContextMenu(Control owner, Point location) => _menu.Show(owner, location);
+
     protected override void Dispose(bool disposing)
     {
         if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); }
