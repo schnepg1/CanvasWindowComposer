@@ -91,9 +91,9 @@ public class WorkspaceViewTests
             using var form = new PlaceholderForm(commands, commands.Items[0] with { State = state });
             form.ShowAt(new WindowRect(-10000, -10000, 800, 550));
             var panel = form.Controls.OfType<TableLayoutPanel>().Single();
-            Assert.Equal("Restore", panel.Controls.OfType<Button>().Single().Text);
-            Assert.DoesNotContain(panel.Controls.OfType<Label>(), label => label.Text.Contains("closed"));
-            panel.Controls.OfType<Button>().Single().PerformClick();
+            Assert.Equal("Restore", FindControl<Button>(panel).Text);
+            Assert.DoesNotContain(AllControls(panel).OfType<Label>(), label => label.Text.Contains("closed"));
+            FindControl<Button>(panel).PerformClick();
             Assert.Equal(commands.Items[0].Id, commands.Opened);
         });
     }
@@ -167,7 +167,7 @@ public class WorkspaceViewTests
             var item = commands.Items[0];
             using var form = new PlaceholderForm(commands, item);
             form.ShowAt(new WindowRect(10, 20, 800, 550));
-            var open = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<Button>().Single();
+            var open = FindControl<Button>(form);
             open.PerformClick();
             Assert.Equal(item.Id, commands.Opened);
             form.UpdateItem(item with { Title = "Changed", State = "Opening…", OpenOnStartup = true });
@@ -293,8 +293,8 @@ public class WorkspaceViewTests
             using var form = new PlaceholderForm(commands, commands.Items[0] with { State = "Needs linking" });
             form.ShowAt(new WindowRect(10, 20, 800, 550));
             var panel = form.Controls.OfType<TableLayoutPanel>().Single();
-            Assert.Equal("Link open window…", panel.Controls.OfType<Button>().Single().Text);
-            Assert.Contains(panel.Controls.OfType<Label>(), label => label.Text.Contains("Several matches"));
+            Assert.Equal("Link open window…", FindControl<Button>(panel).Text);
+            Assert.Contains(AllControls(panel).OfType<Label>(), label => label.Text.Contains("Several matches"));
             Assert.Contains(form.ContextMenuStrip!.Items.OfType<ToolStripMenuItem>(), menu => menu.Text == "Name this saved place…");
             using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
@@ -331,6 +331,18 @@ public class WorkspaceViewTests
         encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
         using var stream = File.Create(Path.Combine(AppContext.BaseDirectory, fileName)); encoder.Save(stream);
     }
+
+    private static IEnumerable<Control> AllControls(Control root)
+    {
+        foreach (Control child in root.Controls)
+        {
+            yield return child;
+            foreach (var descendant in AllControls(child)) yield return descendant;
+        }
+    }
+
+    private static T FindControl<T>(Control root) where T : Control
+        => AllControls(root).OfType<T>().Single();
 
     internal static void OnSta(Action action)
     {

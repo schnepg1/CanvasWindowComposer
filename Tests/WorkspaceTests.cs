@@ -237,8 +237,8 @@ public class WorkspaceTests : IDisposable
             using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
             bitmap.Save(Path.Combine(AppContext.BaseDirectory, "placeholder-preview.png"));
-            Assert.Contains(form.Controls.OfType<System.Windows.Forms.TableLayoutPanel>().Single().Controls
-                .OfType<System.Windows.Forms.Button>(), b => b.Text == "Open" && b.Visible);
+            Assert.Contains(AllControls(form).OfType<System.Windows.Forms.Button>(),
+                b => b.Text == "Open" && b.Visible);
         });
     }
 
@@ -278,6 +278,15 @@ public class WorkspaceTests : IDisposable
         Assert.Equal(disableClipping ? (2700, 7400, 800, 600) : (1919, 1079, 800, 600), api.GetWindowRect(handle));
         Assert.Equal(!disableClipping, api.ClippedWindows.Contains(handle));
     }
+    private static IEnumerable<System.Windows.Forms.Control> AllControls(System.Windows.Forms.Control root)
+    {
+        foreach (System.Windows.Forms.Control child in root.Controls)
+        {
+            yield return child;
+            foreach (var descendant in AllControls(child)) yield return descendant;
+        }
+    }
+
     private static void OnSta(Action action)
     {
         Exception? failure = null;

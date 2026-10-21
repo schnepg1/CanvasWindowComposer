@@ -8,8 +8,10 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 {
     private WorkspaceItemView _item;
     private readonly PlaceholderArtwork _title;
-    private readonly Label _details, _hint;
+    private readonly TableLayoutPanel _pathPanel;
+    private readonly Label _leaf, _parent, _state, _hint;
     private readonly Button _open;
+    private readonly ToolTip _pathTip;
     private readonly ToolStripMenuItem _auto;
     private readonly ContextMenuStrip _menu;
     private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
@@ -38,17 +40,37 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40) };
-        _details = new Label { Dock = DockStyle.Top, Height = 32, AutoEllipsis = true,
-            Font = new Font("Segoe UI", 13f), ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 4, 0, 4) };
-        _open = new Button { Text = "Open", AutoSize = true, FlatStyle = FlatStyle.System, Anchor = AnchorStyles.Left };
+        // The leaf identifies the saved target; its parent stays secondary and the
+        // full path remains available in a tooltip.
+        _pathPanel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 2,
+            Margin = new Padding(0), Padding = new Padding(0), BackColor = BackColor };
+        _pathPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _pathPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _leaf = new Label { Dock = DockStyle.Fill, Height = 24, AutoSize = false, AutoEllipsis = true,
+            Font = new Font("Segoe UI", 13f), ForeColor = Color.WhiteSmoke, Padding = new Padding(0, 2, 0, 0) };
+        _parent = new Label { Dock = DockStyle.Fill, Height = 18, AutoSize = false, AutoEllipsis = true,
+            Font = new Font("Segoe UI", 9.5f), ForeColor = Color.LightSteelBlue };
+        _pathPanel.Controls.Add(_leaf); _pathPanel.Controls.Add(_parent);
+        _pathTip = new ToolTip { AutoPopDelay = 12000, InitialDelay = 600, ReshowDelay = 100 };
+        _state = new Label { AutoSize = true, Padding = new Padding(8, 3, 8, 3), Margin = new Padding(0, 4, 10, 0),
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter };
+        _open = new Button { Text = "Open", AutoSize = true, FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(40, 51, 68), ForeColor = Color.WhiteSmoke, UseVisualStyleBackColor = false,
+            Padding = new Padding(12, 3, 12, 3), Margin = new Padding(0, 4, 0, 0),
+            FlatAppearance = { BorderColor = Color.FromArgb(80, 103, 137), BorderSize = 1,
+                MouseOverBackColor = Color.FromArgb(55, 68, 88), MouseDownBackColor = Color.FromArgb(32, 41, 55) } };
         _open.Click += (_, _) =>
         {
             if (_item.State == "Needs linking") WorkspaceDialogs.LinkWindow(this, workspace, _item.Id);
             else workspace.Open(_item.Id);
         };
-        _hint = new Label { Text = "Application is closed · Right-click for options", AutoSize = true,
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0), Padding = new Padding(0),
+            BackColor = BackColor };
+        actions.Controls.Add(_state); actions.Controls.Add(_open);
+        _hint = new Label { Text = "Right-click for options", AutoSize = true,
             Dock = DockStyle.Top, ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 12, 0, 0) };
-        panel.Controls.Add(_title); panel.Controls.Add(_details); panel.Controls.Add(_open); panel.Controls.Add(_hint);
+        panel.Controls.Add(_title); panel.Controls.Add(_pathPanel); panel.Controls.Add(actions); panel.Controls.Add(_hint);
         Controls.Add(panel);
         var menu = new ContextMenuStrip();
         _menu = menu;
@@ -63,7 +85,9 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Forget this saved place", null, (_, _) => workspace.Forget(item.Id));
         ContextMenuStrip = menu;
-        panel.ContextMenuStrip = menu; _title.ContextMenuStrip = menu; _details.ContextMenuStrip = menu;
+        panel.ContextMenuStrip = menu; _title.ContextMenuStrip = menu; _pathPanel.ContextMenuStrip = menu;
+        _leaf.ContextMenuStrip = menu; _parent.ContextMenuStrip = menu;
+        _state.ContextMenuStrip = menu; _open.ContextMenuStrip = menu;
         DoubleClick += (_, _) => workspace.Open(item.Id);
         _title.DoubleClick += (_, _) => workspace.Open(item.Id);
         FormClosing += (_, e) => { if (e.CloseReason == CloseReason.UserClosing) e.Cancel = true; };
@@ -84,18 +108,43 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         _item = item;
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
-        _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
+        var path = PlaceholderPathDisplay.For(_item);
+        _leaf.Text = path.Leaf;
+        _parent.Text = path.Parent;
+        _parent.Visible = path.Parent.Length > 0;
+        _leaf.AccessibleName = "Saved target: " + path.Full;
+        _parent.AccessibleName = "Saved target folder: " + path.Parent;
+        _pathTip.SetToolTip(_leaf, path.Full);
+        _pathTip.SetToolTip(_parent, path.Full);
+        ApplyState(_item.State);
         _open.Text = _item.State == "Opening…" ? "Opening…" : "Open";
         if (_item.State is "Minimized" or "Sleeping") _open.Text = "Restore";
         else if (_item.State == "Open") _open.Text = "Focus";
         if (_item.State == "Needs linking") _open.Text = "Link open window…";
         _open.Enabled = _item.State != "Opening…";
         _hint.Text = _item.State == "Needs linking"
-            ? "Several matches are possible. Choose the correct open window.\nRight-click for options"
-            : (_item.State is "Minimized" or "Sleeping" ? "Application is minimized · Restore to use it"
-                : _item.State == "Open" ? "Overview preview · Double-click to focus"
-                : _item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
+            ? "Several matches are possible. Right-click for options"
+            : _item.State == "Open" ? "Double-click to focus · Right-click for options"
+            : _item.OpenOnStartup ? "Opens when Canvas starts · Right-click for options"
+            : "Right-click for options";
         _auto.Checked = _item.OpenOnStartup;
+    }
+
+    private void ApplyState(string state)
+    {
+        (string text, Color back, Color fore) = state switch
+        {
+            "Open" => ("Open", Color.FromArgb(31, 77, 58), Color.FromArgb(134, 239, 172)),
+            "Minimized" => ("Minimized", Color.FromArgb(74, 59, 30), Color.FromArgb(252, 211, 77)),
+            "Sleeping" => ("Sleeping", Color.FromArgb(74, 59, 30), Color.FromArgb(252, 211, 77)),
+            "Needs linking" => ("Needs linking", Color.FromArgb(76, 42, 50), Color.FromArgb(252, 165, 165)),
+            "Opening…" => ("Opening…", Color.FromArgb(30, 58, 95), Color.FromArgb(147, 197, 253)),
+            _ => ("Closed", Color.FromArgb(58, 69, 87), Color.FromArgb(203, 213, 225))
+        };
+        _state.Text = text;
+        _state.BackColor = back;
+        _state.ForeColor = fore;
+        _state.AccessibleName = "State: " + text;
     }
 
     // WM_PRINT used by DrawToBitmap renders controls even when their native
@@ -125,7 +174,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); }
+        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); _pathTip.Dispose(); }
         base.Dispose(disposing);
     }
 
@@ -135,7 +184,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         // Small saved places keep their original geometry; secondary copy yields
         // space to the title and Open action instead of forcing a larger window.
         if (_hint != null) _hint.Visible = ClientSize.Height >= 260 * DeviceDpi / 96;
-        if (_details != null) _details.Visible = ClientSize.Height >= 190 * DeviceDpi / 96;
+        if (_pathPanel != null) _pathPanel.Visible = ClientSize.Height >= 190 * DeviceDpi / 96;
     }
 }
 

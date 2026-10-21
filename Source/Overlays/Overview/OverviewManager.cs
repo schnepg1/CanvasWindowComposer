@@ -103,6 +103,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         RefreshCardIdentities();
         _thumbnails.Reconcile();
+        if (_windowInteraction.Active && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
+            || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
         RefreshZoneAnnotations();
     }
 
@@ -126,7 +128,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     }
 
     public OverviewManager(Canvas mainCanvas, WindowManager wm, IWindowApi win32, IInputRouter input, IAppConfig appConfig, IScreens? screens = null,
-        Func<bool>? prefersReducedStartupMotion = null)
+        Func<bool>? prefersReducedStartupMotion = null, IWindowInteractionApi? interactionApi = null)
     {
         _mainCanvas = mainCanvas;
         _wm = wm;
@@ -134,6 +136,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _appConfig = appConfig;
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
+        _windowInteraction = new(interactionApi ?? new Win32WindowInteractionApi());
+        input.WindowDestroyed += OnInteractionWindowLost;
+        input.WindowMinimized += OnInteractionWindowLost;
+        input.WindowFocused += OnInteractionForegroundChanged;
         _screens = screens ?? WinFormsScreens.Instance;
         _camera = new OverviewCamera(_screens);
         _zoneTool = new ZoneCanvasTool(() => _zones != null,
@@ -236,6 +242,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             pass.OnMouseDoubleClicked = HandleDoubleClick;
             pass.OnCaptureLost = _ =>
             {
+                if (_interactionCapture == pass) { EndWindowInteraction(focus: true); return; }
                 if (_tools.CapturedSurface != _passes.IndexOf(pass)) return;
                 CancelInteraction();
             };
@@ -451,7 +458,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             foreach (var p in _passes) p.HideZones();
         }
         bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
-        bool wantNoActivate = (CurrentMode == OverviewMode.Panning);
+        bool wantNoActivate = CurrentMode == OverviewMode.Panning || _windowInteraction.Active;
         foreach (var p in _passes)
         {
             if (p.Grid != null) p.Grid.DrawGrid = _cfg.GridVisible;
@@ -676,6 +683,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
 
         if (_annotationEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
+        if (RouteWindowPointer(pass, e, down: true)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
@@ -686,6 +694,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
             if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
                 card.ShowContextMenu(pass, new Point(e.X, e.Y));
+            else if (rightHit >= 0)
+                ShowWindowInteractionMenu(pass, _windows.Windows[rightHit].HWnd, new(e.X, e.Y));
             return;
         }
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
@@ -721,6 +731,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
         if (!_cfg.InputEnabled || _annotationEditor != null) return;
+        if (RouteWindowPointer(pass, e)) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -776,6 +787,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
         if (TrySkipStartupIntro()) return;
+        if (RouteWindowPointer(pass, e, up: true)) return;
         var pointer = Pointer(pass, e);
         if (_tools.Kind == CanvasInteractionKind.Tool)
         {
@@ -797,7 +809,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
         if (_composerWindow is { WaitingForBrowser: false }) return;
-        bool zoomModifier = control || (Control.ModifierKeys & Keys.Alt) != 0;
+        bool zoomModifier = control || ((_windowInteraction.Active ? InteractionKeys : Control.ModifierKeys) & Keys.Alt) != 0;
+        if (RouteWindowWheel(pass, x, y, delta, horizontal, zoomModifier)) return;
+        if (_windowInteraction.Active && _windowInteraction.Captured) return;
         var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier, shift);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
         else PanOverview(panX, panY);
@@ -835,6 +849,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
+        if (_windowInteraction.Active) return;
         if (_composerWindow is { WaitingForBrowser: true })
         {
             if (e.Button != MouseButtons.Left || (Control.ModifierKeys & (Keys.Shift | Keys.Control)) != 0) return;
@@ -906,6 +921,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (_disposed) return;
         _disposed = true;
+        _input.WindowDestroyed -= OnInteractionWindowLost;
+        _input.WindowMinimized -= OnInteractionWindowLost;
+        _input.WindowFocused -= OnInteractionForegroundChanged;
+        _interactionMenu?.Dispose();
         _wm.Previews.Changed -= OnPreviewChanged;
         _wm.AutomaticParkingChanged -= OnPreviewChanged;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;

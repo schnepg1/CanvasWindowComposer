@@ -13,6 +13,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Pan** — Middle-click drag on desktop, or Alt+middle-click anywhere
 - **Inertia** — Fling to keep sliding, smooth deceleration
 - **Zoom** — Pinch, Ctrl+scroll, or use + / - in the overview
+- **Interact at any live-thumbnail zoom** — Right-click a live window and choose **Interact with window** to use its mouse controls, typing, and keyboard shortcuts. **Esc** returns to canvas navigation. Experimental; see [window interaction](Docs/window-interaction.md).
 - **Fuzzy search** — Alt+S to find and jump to any window
 - **Minimap** — Canvas overview, fades after inactivity
 - **Virtual desktops** — Independent canvas per desktop
@@ -33,6 +34,8 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Two-finger scroll in overview | Pan vertically or horizontally |
 | Shift + scroll in overview | Pan horizontally |
 | Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
+| Right-click a live thumbnail > Interact with window | Use the app at the current zoom, with mouse and real keyboard focus |
+| Esc while interacting | Return to canvas navigation, keeping the overview open |
 | Ctrl + scroll, Alt + scroll, or + / - in overview | Zoom without a pinch gesture |
 | Alt + S | Fuzzy window search |
 | Shift + left-drag in overview | Draw a project area |

@@ -2,9 +2,13 @@
 
 Saved places show a large bold title, fitted and wrapped to the available space.
 The card's **Name this saved place…** action provides a shorter custom title when
-an application's caption is too long. Secondary details yield space on small
-cards without changing their saved bounds. Open, linking, startup selection,
-renaming, and placement still use the existing workspace commands.
+an application's caption is too long. Paths lead with the target's leaf name;
+the parent folder stays secondary below it and a tooltip retains the full path.
+The caption names the target type (`FOLDER`, `TXT FILE`, `APPLICATION`), while a
+colored state badge and one action button replace repeated status copy.
+Secondary details yield space on small cards without changing their saved
+bounds. Open, linking, startup selection, renaming, and placement still use the
+existing workspace commands.
 
 Explorer folder places have a vector folder watermark. Other cards request a
 256-pixel icon from the saved application's executable, with its associated icon

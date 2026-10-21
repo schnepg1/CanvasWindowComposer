@@ -79,7 +79,8 @@ internal sealed partial class OverviewManager
     {
         StopTutorialTravel();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
-        bool cancelled = CancelCanvasComposer();
+        bool cancelled = EndWindowInteraction();
+        cancelled |= CancelCanvasComposer();
         cancelled |= CancelAnnotationEdit();
         cancelled |= _tools.Cancel(); // Clear owner before releasing native capture.
         _dragIndex = -1;
@@ -92,6 +93,7 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (EndWindowInteraction(focus: true)) return;
         if (StopTutorialTravel()) { RefreshTourUi();return; }
         if (_annotationEditor==null && _composerWindow==null && GuidedTutorialActive && !_tools.Active)
         { PauseGuidedTutorial();FocusOverview();return; }

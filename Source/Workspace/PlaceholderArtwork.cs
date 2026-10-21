@@ -13,6 +13,7 @@ internal sealed class PlaceholderArtwork : Control
     private Bitmap? _symbol;
     private string? _symbolKey;
     private bool _folder;
+    private string _caption = "APPLICATION";
 
     public PlaceholderArtwork()
     {
@@ -28,6 +29,7 @@ internal sealed class PlaceholderArtwork : Control
         Text = item.Title;
         AccessibleName = item.Title;
         _folder = item.IsFolder;
+        _caption = PlaceholderPathDisplay.For(item).Kind;
         string key = item.IsFolder ? "folder" : item.ExecutablePath;
         if (_symbolKey != key)
         {
@@ -77,9 +79,9 @@ internal sealed class PlaceholderArtwork : Control
             g.DrawImage(_symbol, Rectangle.Round(symbolRect), 0, 0, _symbol.Width, _symbol.Height,
                 GraphicsUnit.Pixel, attributes);
         }
-        using var captionFont = new Font("Segoe UI", 10 * dpi, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var captionFont = new Font("Segoe UI", 11 * dpi, FontStyle.Bold, GraphicsUnit.Pixel);
         using var captionBrush = new SolidBrush(Color.FromArgb(160, 181, 208));
-        g.DrawString(_folder ? "SAVED FOLDER" : "SAVED APPLICATION", captionFont, captionBrush, 2 * dpi, 4 * dpi);
+        g.DrawString(_caption, captionFont, captionBrush, 2 * dpi, 4 * dpi);
         var titleRect = new RectangleF(0, 26 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 30 * dpi));
         using var format = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisWord, FormatFlags = StringFormatFlags.LineLimit };

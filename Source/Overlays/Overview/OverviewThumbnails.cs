@@ -601,6 +601,27 @@ internal sealed class OverviewThumbnails
         return found;
     }
 
+    public bool TryGetInteractionGeometry(OverviewOverlay pass, IntPtr handle, out WindowInteractionGeometry geometry)
+    {
+        geometry = default;
+        if (!_windowsByPass.TryGetValue(pass, out var entries)) return false;
+        foreach (var entry in entries)
+        {
+            if (entry.HWnd != handle || entry.Source != handle || !entry.Ready) continue;
+            var screen = GetScreenRect(entry, _camera.X, _camera.Y, _camera.Zoom);
+            double scale = entry.ScreenFixed ? 1 : _camera.Zoom;
+            int left = (int)(entry.InsetL * scale), top = (int)(entry.InsetT * scale);
+            int right = (int)(entry.InsetR * scale), bottom = (int)(entry.InsetB * scale);
+            var native = _win32.GetWindowRect(handle);
+            geometry = new(new(screen.X + left, screen.Y + top, screen.W - left - right, screen.H - top - bottom),
+                new(native.x + entry.InsetL, native.y + entry.InsetT,
+                    native.w - entry.InsetL - entry.InsetR, native.h - entry.InsetT - entry.InsetB));
+            return geometry.Destination.Width > 0 && geometry.Destination.Height > 0
+                && geometry.Source.Width > 0 && geometry.Source.Height > 0;
+        }
+        return false;
+    }
+
     private IntPtr ResolveSource(IntPtr handle) => _useCached(handle) ? _cachedSource(handle) : handle;
 
     // A destroyed source HWND may be recycled for a new cache surface before the
