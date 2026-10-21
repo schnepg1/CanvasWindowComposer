@@ -75,11 +75,11 @@ internal sealed partial class OverviewManager
     }
     private string? AnnotationHint => _annotationTool?.Mode switch
     {
-        AnnotationMode.Select => $"{Selection.Ids.Count} selected  Â·  Drag empty space: select  Â·  Ctrl+click: toggle  Â·  Drag selected: move group  Â·  Middle drag: pan",
-        AnnotationMode.Arrow => "Drag to draw an arrow  Â·  Shift: constrain direction  Â·  Middle drag: pan  Â·  Esc: cancel / Windows mode",
-        AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  Â·  Shift: equal sides  Â·  Middle drag: pan  Â·  Esc: cancel / Windows mode",
-        AnnotationMode.Text => "Click or drag to add a note  Â·  Ctrl+Enter: save  Â·  Style and size in the editor  Â·  Esc: cancel  Â·  Middle drag: pan",
-        AnnotationMode.Navigate => "Ctrl+click: select windows  Â·  Select: rectangle  Â·  Project name: select group  Â·  Middle drag: pan",
+        AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag selected: move group  ·  Middle drag: pan",
+        AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
+        AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
+        AnnotationMode.Text => "Click or drag to add a note  ·  Ctrl+Enter: save  ·  Style and size in the editor  ·  Esc: cancel  ·  Middle drag: pan",
+        AnnotationMode.Navigate => "Ctrl+click: select windows  ·  Select: rectangle  ·  Project name: select group  ·  Middle drag: pan",
         _ => null
     };
     private void RefreshAnnotationUi()
