@@ -27,6 +27,6 @@ internal static class OverviewNavigationInput
         int delta, bool horizontal, bool zoomModifier, bool shift = false)
     {
         if (zoomModifier) return (0, 0, horizontal ? 0 : delta / WheelDelta);
-        return horizontal || shift ? (-delta, 0, 0) : (0, delta, 0);
+        return horizontal || shift ? (delta, 0, 0) : (0, delta, 0);
     }
 }
