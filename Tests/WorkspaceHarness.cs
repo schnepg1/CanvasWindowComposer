@@ -57,11 +57,14 @@ internal sealed class MemoryWorkspaceStore : IWorkspaceStore
 
 internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
 {
+    public Dictionary<IntPtr, string> AppIds = new();
+    public string? ReadWindowAppId(IntPtr handle) => AppIds.GetValueOrDefault(handle);
     public string Exe = @"C:\Apps\Editor.exe";
     public Dictionary<IntPtr, string> Folders = new();
     public Exception? Error;
     public long StartedAt = 1;
     public bool Unavailable;
+    public int ProcessInspections;
     public Dictionary<uint, string> Executables = new();
     public Dictionary<IntPtr, string> ReadExplorerFolders()
     {
@@ -69,7 +72,10 @@ internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
         return Folders;
     }
     public WorkspaceProcessIdentity? InspectProcess(uint pid)
-        => Unavailable || pid == 0 ? null : new(pid, StartedAt, Executables.GetValueOrDefault(pid, Exe));
+    {
+        ProcessInspections++;
+        return Unavailable || pid == 0 ? null : new(pid, StartedAt, Executables.GetValueOrDefault(pid, Exe));
+    }
 }
 
 internal sealed class TestWorkspaceLauncher : IWorkspaceLauncher

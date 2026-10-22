@@ -145,6 +145,84 @@ public class WorkspaceViewTests
     }
 
     [Fact]
+    public void MovingSavedGeometryReusesTheCardPixelsButResizingAndReleasingDoNot()
+        => OnSta(() =>
+        {
+            var commands = new TestCommands(); var item = commands.Items[0];
+            using var form = new PlaceholderForm(commands, item);
+            form.ShowAt(new WindowRect(-10000, -10000, 380, 260));
+            var image = form.GetOverviewImage();
+            var moved = item.Bounds; moved.X += 500; moved.Y -= 300;
+            form.UpdateItem(item with { Bounds = moved });
+            form.Left += 100;
+            Assert.Same(image, form.GetOverviewImage());
+            form.Width += 40;
+            var resized = form.GetOverviewImage();
+            Assert.NotSame(image, resized);
+            Assert.Equal(form.Width, resized.PixelWidth);
+            form.ReleaseOverviewImage();
+            Assert.Null(form.CachedOverviewImage);
+            Assert.NotSame(resized, form.GetOverviewImage());
+        });
+
+    [Theory]
+    [InlineData("title")]
+    [InlineData("target")]
+    [InlineData("executable")]
+    [InlineData("folder")]
+    [InlineData("state")]
+    [InlineData("startup")]
+    public void VisualCardChangesInvalidateTheSnapshot(string change)
+        => OnSta(() =>
+        {
+            var commands = new TestCommands(); var item = commands.Items[0];
+            using var form = new PlaceholderForm(commands, item);
+            form.ShowAt(new WindowRect(-10000, -10000, 380, 260));
+            var image = form.GetOverviewImage();
+            var changed = change switch
+            {
+                "title" => item with { Title = "Renamed" },
+                "target" => item with { Target = @"C:\Other\file.txt" },
+                "executable" => item with { ExecutablePath = @"C:\Other\Other.exe" },
+                "folder" => item with { IsFolder = true },
+                "state" => item with { State = "Minimized" },
+                _ => item with { OpenOnStartup = true }
+            };
+            form.UpdateItem(changed);
+            Assert.Null(form.CachedOverviewImage);
+            Assert.NotSame(image, form.GetOverviewImage());
+        });
+
+    [Fact]
+    public void RawCardSnapshotMatchesEncodedPixelsAndOwnsItsDataAfterFormDisposal()
+        => OnSta(() =>
+        {
+            var commands = new TestCommands();
+            using var form = new PlaceholderForm(commands, commands.Items[0]);
+            form.ShowAt(new WindowRect(-10000, -10000, 380, 260));
+            var actual = form.GetOverviewImage();
+            Assert.True(actual.IsFrozen);
+            using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height,
+                System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(System.Drawing.Point.Empty, form.Size));
+            using var encoded = new MemoryStream(); bitmap.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
+            encoded.Position = 0;
+            var reference = new System.Windows.Media.Imaging.BitmapImage(); reference.BeginInit();
+            reference.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            reference.StreamSource = encoded; reference.EndInit();
+            byte[] Pixels(System.Windows.Media.Imaging.BitmapSource image)
+            {
+                var converted = new System.Windows.Media.Imaging.FormatConvertedBitmap(image,
+                    System.Windows.Media.PixelFormats.Pbgra32, null, 0);
+                var pixels = new byte[image.PixelWidth * image.PixelHeight * 4];
+                converted.CopyPixels(pixels, image.PixelWidth * 4, 0); return pixels;
+            }
+            Assert.Equal(Pixels(reference), Pixels(actual));
+            var before = Pixels(actual); form.Dispose();
+            Assert.Equal(before, Pixels(actual));
+        });
+
+    [Fact]
     public void OverviewCardSnapshotYieldsToHigherWindows()
     {
         OnSta(() =>
@@ -303,7 +381,7 @@ public class WorkspaceViewTests
             var panel = form.Controls.OfType<TableLayoutPanel>().Single();
             Assert.Equal("Link open window…", panel.Controls.OfType<Button>().Single().Text);
             Assert.Contains(panel.Controls.OfType<Label>(), label => label.Text.Contains("Several matches"));
-            Assert.Contains(form.ContextMenuStrip!.Items.OfType<ToolStripMenuItem>(), menu => menu.Text == "Name this saved place…");
+            Assert.Contains(form.ContextMenuStrip!.Items.OfType<ToolStripMenuItem>(), menu => menu.Text == "Rename…");
             using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
             bitmap.Save(Path.Combine(AppContext.BaseDirectory, "workspace-ambiguous-preview.png"));
@@ -315,6 +393,37 @@ public class WorkspaceViewTests
         foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
         { yield return child; foreach (var descendant in Descendants(child)) yield return descendant; }
     }
+
+    [Fact]
+    public void RenameAndProfileDialogsSaveTheExplicitChoiceAndCancelLeavesItUnchanged()
+        => OnSta(() =>
+        {
+            var commands = new TestCommands(); var item = commands.Items[0];
+            var rename = WorkspaceInteractionDialogs.CreateNamePlace(IntPtr.Zero, commands, item.Id);
+            rename.Loaded += (_, _) =>
+            {
+                Descendants(rename).OfType<Wpf.TextBox>().Single().Text = "Work browser";
+                Descendants(rename).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Save"))
+                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+            };
+            Assert.True(rename.ShowDialog()); Assert.Equal((item.Id, "Work browser"), commands.Renamed);
+            var cancel = WorkspaceInteractionDialogs.CreateNamePlace(IntPtr.Zero, commands, item.Id);
+            cancel.Loaded += (_, _) =>
+            {
+                Descendants(cancel).OfType<Wpf.TextBox>().Single().Text = "Discard";
+                cancel.DialogResult = false;
+            };
+            Assert.False(cancel.ShowDialog()); Assert.Equal((item.Id, "Work browser"), commands.Renamed);
+            var choices = new[] { new ChromeProfileChoice(@"C:\Profiles\Profile 1", "Work"), new ChromeProfileChoice(@"C:\Profiles\Default", "Personal") };
+            var profile = WorkspaceInteractionDialogs.CreateChromeProfile(IntPtr.Zero, commands, item.Id, choices);
+            profile.Loaded += (_, _) =>
+            {
+                Descendants(profile).OfType<Wpf.ComboBox>().Single().SelectedItem = choices[0];
+                Descendants(profile).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Save"))
+                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+            };
+            Assert.True(profile.ShowDialog()); Assert.Equal((item.Id, choices[0].Path), commands.Profile);
+        });
 
     internal static void Render(Window window, string fileName, double scale = 1)
     {
@@ -356,6 +465,8 @@ public class WorkspaceViewTests
         public Guid? Opened;
         public (Guid Id, bool Value)? AutoOpen;
         public (Guid Id, Guid Candidate)? Linked;
+        public (Guid Id, string Name)? Renamed;
+        public (Guid Id, string Path)? Profile;
         public bool LinkSucceeds = true;
         public IReadOnlyList<WorkspaceLinkCandidate> Candidates = Array.Empty<WorkspaceLinkCandidate>();
         public IReadOnlyList<WorkspaceItemView> Items { get; } = new[]
@@ -372,7 +483,8 @@ public class WorkspaceViewTests
         public void CloseToPlaceholder(Guid id) { }
         public void Forget(Guid id) { }
         public void SetTarget(Guid id, string selected, bool folder) { }
-        public void SetName(Guid id, string name) { }
+        public void SetName(Guid id, string name) => Renamed = (id, name);
+        public bool SetChromeProfile(Guid id, string profilePath) { Profile = (id, profilePath); return true; }
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Candidates;
         public bool LinkWindow(Guid id, Guid candidateToken) { Linked = (id, candidateToken); return LinkSucceeds; }
     }

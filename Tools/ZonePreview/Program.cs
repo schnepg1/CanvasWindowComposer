@@ -89,7 +89,7 @@ internal static class Program
         var camera = new OverviewCamera(WinFormsScreens.Instance);
         IntPtr thumbnail = IntPtr.Zero;
         var dwm = new DwmThumbnailApi();
-        ZoneAnnotationWindow? annotation = null;
+        OverviewAnnotationWindow? annotation = null;
         ZoneWindow? manager = null;
         var gesture = new OverviewZoneInteraction();
         void Refresh()
@@ -98,9 +98,9 @@ internal static class Program
             var screen = host.RectangleToScreen(host.ClientRectangle);
             var views = zones.Items.Select(z => z.Id == gesture.MovingId && gesture.Preview is { } moved
                 ? z with { Bounds = moved } : z).ToArray();
-            annotation.Update(views, 0, 0, 1, screen,
+            annotation.Update(OverviewAnnotationSnapshot.Create(views, 0, 0, 1, screen,
                 gesture.Kind == ZoneGestureKind.Draw ? gesture.Preview : null,
-                gesture.Armed || gesture.Kind == ZoneGestureKind.Draw, gesture.Ghosts);
+                gesture.Armed || gesture.Kind == ZoneGestureKind.Draw, gesture.Ghosts));
             if (thumbnail != IntPtr.Zero)
             {
                 var b = document.Items[0].Bounds;
@@ -134,7 +134,7 @@ internal static class Program
                 rcDestination = new Windows.Win32.Foundation.RECT(100, 160, 590, 440),
                 opacity = 255, fVisible = true, fSourceClientAreaOnly = true
             });
-            annotation = new ZoneAnnotationWindow(host.Handle);
+            annotation = new OverviewAnnotationWindow(host.Handle);
             manager = new ZoneWindow(zones, () => { gesture.Arm(); Refresh(); host.Activate(); },
                 _ => ShowManager(), () => null, layout, Replay, ShowNavigator) { Topmost = true };
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(manager);

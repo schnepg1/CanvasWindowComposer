@@ -41,7 +41,7 @@ internal sealed partial class WindowManager : IDisposable
         _overviewViewport = camera;
         _overviewScreens = camera.HasValue ? screens : null;
         UpdateRuntimeVisibility(refreshIdentity: false);
-        ProcessAutomaticParking(allowNewParking: false);
+        ProcessAutomaticParking(cameraOnly: true);
     }
     public WindowPreviewCache Previews { get; }
     public WindowVisibilitySnapshot? GetRuntimeVisibility(IntPtr hWnd) => _visibility.Get(hWnd);
@@ -301,7 +301,7 @@ internal sealed partial class WindowManager : IDisposable
     private void OnCameraChanged()
     {
         UpdateRuntimeVisibility(refreshIdentity: false);
-        ProcessAutomaticParking(allowNewParking: false);
+        ProcessAutomaticParking(cameraOnly: true);
         if (SuspendProjection) return;
 
         // Overview renders its own camera + thumbnails, so real windows don't
@@ -445,7 +445,7 @@ internal sealed partial class WindowManager : IDisposable
         _lastScreenTopologyVersion = topology;
         bool clipOffScreen = ClipOffScreen;
         UpdateRuntimeVisibility(screens, refreshIdentity: false);
-        ProcessAutomaticParking(allowNewParking: false);
+        ProcessAutomaticParking(cameraOnly: true);
 
         foreach (var (hWnd, world) in _canvas.Windows)
         {

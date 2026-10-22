@@ -9,6 +9,9 @@ internal sealed class GridFrameSchedule
     public long Revision => Interlocked.Read(ref _revision);
     public void Invalidate() => Interlocked.Increment(ref _revision);
     public void Presented(long revision) => Interlocked.Exchange(ref _presented, revision);
-    public bool ShouldRender(bool drawGrid, float zoom, bool needsTicks)
-        => Revision != Interlocked.Read(ref _presented) || needsTicks || (drawGrid && zoom < 0.7f);
+    public static bool NeedsContinuousFrames(bool drawGrid, float zoom, bool needsTicks, bool lowQuality)
+        => needsTicks || (drawGrid && !lowQuality && zoom < 0.7f);
+
+    public bool ShouldRender(bool drawGrid, float zoom, bool needsTicks, bool lowQuality = false)
+        => Revision != Interlocked.Read(ref _presented) || NeedsContinuousFrames(drawGrid, zoom, needsTicks, lowQuality);
 }

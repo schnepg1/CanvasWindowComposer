@@ -1,10 +1,17 @@
 # Readable placeholder cards
 
 Saved places show a large bold title, fitted and wrapped to the available space.
-The card's **Name this saved place…** action provides a shorter custom title when
+The card's **Rename…** action provides a shorter custom title when
 an application's caption is too long. Secondary details yield space on small
 cards without changing their saved bounds. Open, linking, startup selection,
 renaming, and placement still use the existing workspace commands.
+
+Right-click a distant rectangle, a detailed title card, or a saved live preview
+to use the same saved-window menu. **Rename…** changes only Canvas's saved name;
+the application's native caption remains its own. Blank names restore the
+automatic caption. Custom names update both card representations immediately and
+survive tab/document caption changes and restarts. Chrome entries also offer
+**Chrome profile…**; see [Chrome profiles](chrome-profiles.md).
 
 Explorer folder places have a vector folder watermark. Other cards request a
 256-pixel icon from the saved application's executable, with its associated icon

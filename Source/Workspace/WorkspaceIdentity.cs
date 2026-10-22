@@ -9,6 +9,7 @@ namespace CanvasDesktop;
 
 internal sealed class WorkspaceIdentity : IWorkspaceIdentity
 {
+    public string? ReadWindowAppId(IntPtr handle) => WorkspaceWindowProperties.ReadAppId(handle);
     private Dictionary<IntPtr, string> _folderSnapshot = new();
     private int _folderRequest;
     private DateTime _nextFolderPoll;
@@ -110,6 +111,7 @@ internal sealed class WorkspaceIdentity : IWorkspaceIdentity
         // No associations, shell command string, runas verb, or UAC elevation.
         var launch = new ProcessStartInfo(item.ExecutablePath)
             { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(item.ExecutablePath)! };
+        if (item.ChromeProfilePath.Length > 0) ChromeProfiles.AddLaunchArguments(launch, item.ChromeProfilePath);
         if (WorkspaceTargetIdentity.IsVsCode(item.ExecutablePath)) launch.ArgumentList.Add("--new-window");
         if (!string.IsNullOrEmpty(item.Target)) launch.ArgumentList.Add(item.Target);
         return launch;

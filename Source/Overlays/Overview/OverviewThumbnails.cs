@@ -36,6 +36,17 @@ internal sealed class OverviewThumbnails
     private readonly Func<IntPtr, bool> _useNativeSource;
     private readonly Func<IntPtr, IntPtr> _transitionSource;
     private readonly HashSet<IntPtr> _liveSources = new();
+    private bool _simplifyDuringMotion;
+    public bool SimplifyDuringMotion
+    {
+        get => _simplifyDuringMotion;
+        set
+        {
+            if (_simplifyDuringMotion == value) return;
+            _simplifyDuringMotion = value;
+            InvalidateCameraCache();
+        }
+    }
 
     // Shell HWND caches — stable across overview opens, invalidated on
     // display topology change via InvalidateShellCache. Self-healing via
@@ -83,7 +94,8 @@ internal sealed class OverviewThumbnails
         public IntPtr Thumb;
         public WorldRect World;
         public bool ScreenFixed;
-        public bool Ready;
+        public bool Ready, Visible, Suppressed;
+        public WindowRect? LastDestination;
         // DWM frame inset, cached at registration time. Stable while the entry
         // is in the target list — maximize/unmaximize force a re-register which
         // refreshes this, so the only drift case is custom-chrome apps that
@@ -93,7 +105,12 @@ internal sealed class OverviewThumbnails
     private readonly Dictionary<OverviewOverlay, List<ActiveEntry>> _windowsByPass = new();
 
     // Scratch target per pass (z-descending), reused across Reconcile calls.
-    private readonly Dictionary<OverviewOverlay, List<OverviewWindowList.Entry>> _scratchTargetByPass = new();
+    private readonly record struct TargetEntry(OverviewWindowList.Entry Window, IntPtr Source, bool Cached, bool Visible)
+    {
+        public IntPtr HWnd => Window.HWnd;
+    }
+    private readonly Dictionary<OverviewOverlay, List<TargetEntry>> _scratchTargetByPass = new();
+    private readonly HashSet<OverviewOverlay> _appendedPasses = new();
 
     public OverviewThumbnails(
         IReadOnlyList<OverviewOverlay> passes,
@@ -157,27 +174,28 @@ internal sealed class OverviewThumbnails
     /// window list, then update props on desktop, taskbar, and window
     /// thumbnails. Call after any camera / mode / window-list change.
     /// </summary>
-    public void Reconcile()
+    public void Reconcile(CanvasCamera? view = null)
     {
-        UpdateDesktop();
+        var camera = view ?? new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
+        UpdateDesktop(camera.Zoom);
 
-        ComputeTarget();
+        ComputeTarget(camera);
         _liveSources.Clear();
         foreach (var target in _scratchTargetByPass.Values)
             foreach (var entry in target)
-                if (!_useCached(entry.HWnd)) _liveSources.Add(entry.HWnd);
+                if (entry.Visible && !entry.Cached && entry.Source != IntPtr.Zero) _liveSources.Add(entry.HWnd);
         _prepareLiveSources?.Invoke(_liveSources);
-        bool appended = RebuildWindows();
+        _appendedPasses.Clear();
+        RebuildWindows();
 
         // Taskbars must sit on top of window thumbnails. DWM stacks in
         // registration order, so any window append lands above the taskbars
         // until we cycle them back to the top.
-        if (appended)
-            CycleTaskbarsOnTop();
+        foreach (var pass in _appendedPasses) CycleTaskbarsOnTop(pass);
 
         UpdateTaskbars();
 
-        UpdateWindowRects();
+        UpdateWindowRects(camera);
     }
 
     /// <summary>
@@ -192,7 +210,7 @@ internal sealed class OverviewThumbnails
         {
             if (!_windowsByPass.TryGetValue(pass, out var list)) continue;
             int idx = IndexOfHWnd(list, hWnd);
-            if (idx < 0) continue;
+            if (idx < 0 || idx == list.Count - 1) continue;
 
             var entry = list[idx];
             _dwm.Unregister(entry.Thumb);
@@ -201,11 +219,11 @@ internal sealed class OverviewThumbnails
             HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)entry.Source, out nint newThumb);
             if (hr.Succeeded)
             {
-                SetVisibleOnce(newThumb);
                 entry.Thumb = newThumb;
-                entry.Ready = false;
+                entry.Ready = entry.Visible = false;
                 list.Add(entry);
                 moved = true;
+                CycleTaskbarsOnTop(pass);
             }
         }
 
@@ -214,18 +232,14 @@ internal sealed class OverviewThumbnails
         if (moved)
         {
             InvalidateCameraCache();
-            CycleTaskbarsOnTop();
             UpdateTaskbars();
         }
     }
 
-    private void CycleTaskbarsOnTop()
+    private void CycleTaskbarsOnTop(OverviewOverlay pass)
     {
-        foreach (var pass in _passes)
-        {
-            UnregisterTaskbars(pass);
-            RegisterTaskbars(pass);
-        }
+        UnregisterTaskbars(pass);
+        RegisterTaskbars(pass);
     }
 
     /// <summary>Sync the stored world rect for a window during a drag.</summary>
@@ -303,13 +317,13 @@ internal sealed class OverviewThumbnails
     /// Opacity is the same for all passes (driven by mode + camera zoom), so
     /// we track a single "last applied" value and fan out on change.
     /// </summary>
-    private void UpdateDesktop()
+    private void UpdateDesktop(double zoom)
     {
         var cfg = _state.CurrentConfig;
         byte opacity = cfg.DesktopOpacity;
         if (_state.CurrentMode == OverviewMode.Zooming)
         {
-            double t = (_camera.Zoom - OverviewCamera.ZoomMin) / (OverviewCamera.ZoomMax - OverviewCamera.ZoomMin);
+            double t = (zoom - OverviewCamera.ZoomMin) / (OverviewCamera.ZoomMax - OverviewCamera.ZoomMin);
             t = Math.Clamp(t, 0.0, 1.0);
             double min = DesktopOpacityZoomedMin;
             double max = cfg.DesktopOpacity;
@@ -377,7 +391,8 @@ internal sealed class OverviewThumbnails
             PInvoke.GetWindowRect((HWND)hwnd, out RECT r);
             var props = new DWM_THUMBNAIL_PROPERTIES
             {
-                dwFlags = PInvoke.DWM_TNP_RECTDESTINATION,
+                dwFlags = PInvoke.DWM_TNP_RECTDESTINATION | PInvoke.DWM_TNP_VISIBLE,
+                fVisible = _state.CurrentConfig.TaskbarVisible,
                 rcDestination = new RECT
                 {
                     left   = r.left   - pass.OriginX,
@@ -391,7 +406,6 @@ internal sealed class OverviewThumbnails
             list.Add(new TaskbarEntry { Hwnd = hwnd, Thumb = thumb });
         }
         _taskbarsByPass[pass] = list;
-        _lastTaskbarsVisible = null; // force visibility push on the next UpdateTaskbars
     }
 
     private void UnregisterTaskbars(OverviewOverlay pass)
@@ -473,14 +487,14 @@ internal sealed class OverviewThumbnails
     /// be registered on each pass, in z-descending order (bottom-most first,
     /// topmost last — matching DWM registration order for correct stacking).
     /// </summary>
-    private void ComputeTarget()
+    private void ComputeTarget(CanvasCamera camera)
     {
         foreach (var kv in _scratchTargetByPass)
             kv.Value.Clear();
 
-        double zoom = _camera.Zoom;
-        double camX = _camera.X;
-        double camY = _camera.Y;
+        double zoom = camera.Zoom;
+        double camX = camera.X;
+        double camY = camera.Y;
 
         // _windows is z-ascending (index 0 = topmost). Build per-pass lists
         // in that order, then reverse once at the end to flip to z-descending.
@@ -494,6 +508,14 @@ internal sealed class OverviewThumbnails
                 entry = entry with { HWnd = underlying }; // Preserve the proxy's geometry and z-order during its fade.
             }
 
+            // A bounded, previously captured image can remain a DWM source.
+            // Uncached live windows are represented by annotation cards instead.
+            // Pinned/screen-fixed windows remain live because they are not moving.
+            bool cached = _useCached(entry.HWnd);
+            var source = cached ? _cachedSource(entry.HWnd) : entry.HWnd;
+            bool visible = !SimplifyDuringMotion || entry.ScreenFixed || cached;
+            var target = new TargetEntry(entry, source, cached, visible);
+
             var screen = GetScreenRect(entry, camX, camY, zoom);
             int right = screen.X + screen.W;
             int bottom = screen.Y + screen.H;
@@ -506,10 +528,10 @@ internal sealed class OverviewThumbnails
 
                 if (!_scratchTargetByPass.TryGetValue(pass, out var list))
                 {
-                    list = new List<OverviewWindowList.Entry>();
+                    list = new List<TargetEntry>();
                     _scratchTargetByPass[pass] = list;
                 }
-                list.Add(entry);
+                list.Add(target);
             }
         }
 
@@ -517,22 +539,15 @@ internal sealed class OverviewThumbnails
             kv.Value.Reverse();
     }
 
-    /// <summary>
-    /// Differential rebuild per pass. Walks current + target in lockstep;
-    /// items that match at the same position are preserved (World is
-    /// refreshed). Items that diverge are unregistered. Remaining target
-    /// items are appended. Returns true if any new window was registered —
-    /// the caller must re-register taskbars so they stay on top.
-    /// </summary>
-    private bool RebuildWindows()
+    // DWM only appends at the top of its registration stack. Preserve the
+    // matching target prefix, and rebuild the suffix only AFTER a new registration
+    // succeeds. An unavailable lower source must not churn healthy higher windows.
+    private void RebuildWindows()
     {
-        bool appended = false;
-
         foreach (var pass in _passes)
         {
             _scratchTargetByPass.TryGetValue(pass, out var target);
             int targetCount = target?.Count ?? 0;
-
             if (!_windowsByPass.TryGetValue(pass, out var current))
             {
                 if (targetCount == 0) continue;
@@ -540,68 +555,84 @@ internal sealed class OverviewThumbnails
                 _windowsByPass[pass] = current;
             }
 
-            int writeIdx = 0;
-            int k = 0;
-            for (int ci = 0; ci < current.Count; ci++)
+            int write = 0;
+            for (int k = 0; k < targetCount; k++)
             {
-                if (k < targetCount && current[ci].HWnd == target![k].HWnd
-                    && current[ci].Source == ResolveSource(target[k].HWnd))
+                var cand = target![k];
+                if (cand.Source == IntPtr.Zero) continue;
+                int match = write;
+                while (match < current.Count && (current[match].HWnd != cand.HWnd || current[match].Source != cand.Source)) match++;
+                if (match < current.Count)
                 {
-                    var entry = current[ci];
-                    if (!entry.World.Equals(target[k].World) || entry.ScreenFixed != target[k].ScreenFixed)
-                        InvalidateCameraCache();
-                    entry.World = target[k].World;
-                    entry.ScreenFixed = target[k].ScreenFixed;
-                    current[writeIdx++] = entry;
-                    k++;
-                }
-                else
-                {
-                    _dwm.Unregister(current[ci].Thumb);
-                }
-            }
-            if (writeIdx < current.Count)
-                current.RemoveRange(writeIdx, current.Count - writeIdx);
-
-            for (int i = k; i < targetCount; i++)
-            {
-                var cand = target![i];
-                var source = ResolveSource(cand.HWnd);
-                if (source == IntPtr.Zero) continue; // A parked source must never fall back to waking the application.
-                HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)source, out nint thumb);
-                if (hr.Succeeded)
-                {
-                    SetVisibleOnce(thumb);
-                    var (iL, iT, iR, iB) = source == cand.HWnd ? _win32.GetFrameInset(cand.HWnd) : (0, 0, 0, 0);
-                    current.Add(new ActiveEntry
+                    RemoveEntries(current, write, match - write);
+                    var entry = current[write];
+                    if (!entry.World.Equals(cand.Window.World) || entry.ScreenFixed != cand.Window.ScreenFixed
+                        || entry.Suppressed != !cand.Visible || (cand.Visible && !entry.Visible)) InvalidateCameraCache();
+                    entry.World = cand.Window.World;
+                    entry.ScreenFixed = cand.Window.ScreenFixed;
+                    bool wasSuppressed = entry.Suppressed;
+                    entry.Suppressed = !cand.Visible;
+                    if (!cand.Visible && (!wasSuppressed || entry.Visible))
                     {
-                        HWnd = cand.HWnd, Source = source, Thumb = thumb, World = cand.World,
-                        ScreenFixed = cand.ScreenFixed,
-                        InsetL = iL, InsetT = iT, InsetR = iR, InsetB = iB
-                    });
-                    InvalidateCameraCache(); // new thumb needs initial rect push
-                    appended = true;
+                        var hidden = new DWM_THUMBNAIL_PROPERTIES { dwFlags = PInvoke.DWM_TNP_VISIBLE, fVisible = false };
+                        if (_dwm.Update(entry.Thumb, hidden).Failed)
+                        {
+                            // If hiding fails, release it rather than leaving live
+                            // content behind the gesture's lightweight card.
+                            RemoveEntries(current, write, 1);
+                            continue;
+                        }
+                        entry.Visible = false;
+                    }
+                    current[write++] = entry;
+                    continue;
                 }
-            }
-        }
 
-        return appended;
+                // Retain already-registered, still-visible geometry while hidden,
+                // but never register a new uncached source just for a gesture.
+                if (!cand.Visible) continue;
+                HRESULT hr = _dwm.Register((HWND)pass.Handle, (HWND)cand.Source, out nint thumb);
+                if (hr.Failed) continue;
+                RemoveEntries(current, write, current.Count - write);
+                var (iL, iT, iR, iB) = cand.Source == cand.HWnd ? _win32.GetFrameInset(cand.HWnd) : (0, 0, 0, 0);
+                current.Add(new ActiveEntry
+                {
+                    HWnd = cand.HWnd, Source = cand.Source, Thumb = thumb, World = cand.Window.World,
+                    ScreenFixed = cand.Window.ScreenFixed,
+                    InsetL = iL, InsetT = iT, InsetR = iR, InsetB = iB
+                });
+                write++;
+                InvalidateCameraCache();
+                _appendedPasses.Add(pass);
+            }
+            // Off-screen, removed and replaced sources are released immediately,
+            // including hidden entries. Retention never grows beyond the view.
+            RemoveEntries(current, write, current.Count - write);
+        }
     }
 
-    public bool HasLiveSource(IntPtr handle)
+    private void RemoveEntries(List<ActiveEntry> list, int start, int count)
+    {
+        for (int i = start; i < start + count; i++) _dwm.Unregister(list[i].Thumb);
+        if (count > 0) list.RemoveRange(start, count);
+    }
+
+    public bool HasLiveSource(IntPtr handle) => HasReadySource(handle, requireLive: true);
+
+    public bool HasVisibleSource(IntPtr handle) => HasReadySource(handle, requireLive: false);
+
+    private bool HasReadySource(IntPtr handle, bool requireLive)
     {
         bool found = false;
         foreach (var pair in _scratchTargetByPass)
         {
-            if (!pair.Value.Exists(e => e.HWnd == handle)) continue;
+            if (!pair.Value.Exists(e => e.HWnd == handle && e.Visible)) continue;
             found = true;
             if (!_windowsByPass.TryGetValue(pair.Key, out var current)
-                || !current.Exists(e => e.HWnd == handle && e.Source == handle && e.Ready)) return false;
+                || !current.Exists(e => e.HWnd == handle && (!requireLive || e.Source == handle) && e.Ready && e.Visible && !e.Suppressed)) return false;
         }
         return found;
     }
-
-    private IntPtr ResolveSource(IntPtr handle) => _useCached(handle) ? _cachedSource(handle) : handle;
 
     // A destroyed source HWND may be recycled for a new cache surface before the
     // queued reconciliation. Force re-registration even when its numeric value matches.
@@ -617,26 +648,11 @@ internal sealed class OverviewThumbnails
             }
     }
 
-    /// <summary>
-    /// One-shot visibility toggle for a freshly registered thumbnail. Newly
-    /// registered DWM thumbnails default to invisible; after this, ongoing
-    /// UpdateWindowRects only needs to push rect changes.
-    /// </summary>
-    private void SetVisibleOnce(IntPtr thumb)
+    private void UpdateWindowRects(CanvasCamera camera)
     {
-        var props = new DWM_THUMBNAIL_PROPERTIES
-        {
-            dwFlags = PInvoke.DWM_TNP_VISIBLE,
-            fVisible = true
-        };
-        _dwm.Update(thumb, props);
-    }
-
-    private void UpdateWindowRects()
-    {
-        double zoom = _camera.Zoom;
-        double camX = _camera.X;
-        double camY = _camera.Y;
+        double zoom = camera.Zoom;
+        double camX = camera.X;
+        double camY = camera.Y;
 
         if (camX == _lastPushedCamX && camY == _lastPushedCamY && zoom == _lastPushedZoom)
             return;
@@ -652,6 +668,7 @@ internal sealed class OverviewThumbnails
             for (int i = 0; i < list.Count; i++)
             {
                 var entry = list[i];
+                if (entry.Suppressed) continue;
                 var screen = GetScreenRect(entry, camX, camY, zoom);
 
                 int fL = entry.ScreenFixed ? entry.InsetL : (int)(entry.InsetL * zoom);
@@ -664,6 +681,12 @@ internal sealed class OverviewThumbnails
                 int right  = screen.X + screen.W - fR - pass.OriginX;
                 int bottom = screen.Y + screen.H - fB - pass.OriginY;
 
+                // A drag invalidates geometry, but stationary neighbours still
+                // have the same integer destination. Likewise, subpixel camera
+                // changes do not require another native thumbnail update.
+                var destination = new WindowRect(left, top, right - left, bottom - top);
+                if (entry.Ready && entry.Visible && entry.LastDestination == destination) continue;
+
                 var props = new DWM_THUMBNAIL_PROPERTIES
                 {
                     dwFlags = PInvoke.DWM_TNP_RECTDESTINATION | PInvoke.DWM_TNP_VISIBLE,
@@ -671,6 +694,7 @@ internal sealed class OverviewThumbnails
                     rcDestination = new RECT { left = left, top = top, right = right, bottom = bottom }
                 };
                 entry.Ready = _dwm.Update(entry.Thumb, props).Succeeded;
+                if (entry.Ready) { entry.LastDestination = destination; entry.Visible = true; }
                 list[i] = entry;
                 if (!entry.Ready) InvalidateCameraCache();
             }
