@@ -484,11 +484,12 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
         item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath);
 
-    private string? ReadChromeProfile(IntPtr handle, string exe)
+    private string? ReadChromeProfile(IntPtr handle, string exe, string? additionalProfile = null)
     {
         if (!ChromeProfiles.Supports(exe)) return null;
         var candidates = ChromeProfiles.Get(exe).Select(p => p.Path).Concat(Document.Items
-            .Where(i => string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)).Select(i => i.ChromeProfilePath));
+            .Where(i => string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)).Select(i => i.ChromeProfilePath))
+            .Append(additionalProfile ?? "");
         return ChromeProfiles.Resolve(exe, _identity.ReadWindowAppId(handle),
             candidates.Where(p => p.Length > 0 && File.Exists(Path.Combine(p, "Preferences"))));
     }
@@ -622,15 +623,27 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             || !ChromeProfiles.ValidPath(profilePath) || _launching.ContainsKey(id) || _queued.Contains(id)) return false;
         if (profilePath.Length > 0) profilePath = Path.GetFullPath(profilePath);
         if (string.Equals(item.ChromeProfilePath, profilePath, StringComparison.OrdinalIgnoreCase) && !item.CaptureChromeProfile) return Save();
-        // Changing the launch profile must not close or relabel an existing window
-        // of another profile. Keep it on the canvas and make this slot reopenable.
-        if (profilePath.Length > 0 && BoundWindow(id) is { } live
-            && !string.Equals(ReadChromeProfile(live.Identity.Handle, item.ExecutablePath), profilePath, StringComparison.OrdinalIgnoreCase))
-        { live.Forgotten = true; live.ItemId = null; }
+        var live = BoundWindow(id);
+        string? currentProfile = live == null ? null : ReadChromeProfile(live.Identity.Handle, item.ExecutablePath, profilePath);
+        string previousProfile = item.ChromeProfilePath;
+        bool previousCapture = item.CaptureChromeProfile;
         item.ChromeProfilePath = profilePath;
         item.CaptureChromeProfile = false;
-        EnsureCards(); bool saved = Save(); Changed?.Invoke();
-        return saved;
+        if (!Save())
+        {
+            item.ChromeProfilePath = previousProfile; item.CaptureChromeProfile = previousCapture;
+            Changed?.Invoke();
+            return false;
+        }
+        // Changing the launch profile must not close or relabel an existing window
+        // of another profile. Keep it on the canvas and make this slot reopenable.
+        // Detach only after persistence succeeds, so cancelling a failed save
+        // cannot leave a hidden in-memory edit or lose the current binding.
+        bool sameProfile = string.Equals(currentProfile ?? previousProfile, profilePath, StringComparison.OrdinalIgnoreCase);
+        if (profilePath.Length > 0 && live != null && !sameProfile)
+        { live.Forgotten = true; live.ItemId = null; }
+        EnsureCards(); Changed?.Invoke();
+        return true;
     }
 
     public void SetTarget(Guid id, string selected, bool folder)

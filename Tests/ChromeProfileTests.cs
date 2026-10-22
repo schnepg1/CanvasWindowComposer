@@ -97,6 +97,69 @@ public sealed class ChromeProfileTests : IDisposable
             chromeProfilePath: first.ChromeProfilePath).IsAmbiguous);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MixedProfileAndUnprofiledSlotsMatchByTheirTitlesWithoutDuplicates(bool legacy)
+    {
+        var configured = Item(Profile("Profile 1")); configured.Title = "Work tab";
+        var unprofiled = Item(""); unprofiled.Title = "Reference tab"; unprofiled.CaptureChromeProfile = legacy;
+        var work = new WorkspaceMatchInput(Guid.NewGuid(), Chrome, configured.Title, "", null) { ChromeProfilePath = configured.ChromeProfilePath };
+        var reference = new WorkspaceMatchInput(Guid.NewGuid(), Chrome, unprofiled.Title, "", null) { ChromeProfilePath = configured.ChromeProfilePath };
+        var plan = WorkspaceMatcher.Plan([configured, unprofiled], Guid.Empty, [work, reference], []);
+        Assert.Same(configured, plan[work.Token].Item); Assert.Same(unprofiled, plan[reference.Token].Item);
+        plan = WorkspaceMatcher.Plan([configured, unprofiled], Guid.Empty, [reference], [configured.Id]);
+        Assert.Same(unprofiled, plan[reference.Token].Item);
+    }
+
+    [Fact]
+    public void ExactWindowTitleWinsOverAnotherWindowsProfileOnlyFallback()
+    {
+        var configured = Item(Profile("Profile 1"));
+        var exact = new WorkspaceMatchInput(Guid.NewGuid(), Chrome, configured.Title, "", null) { ChromeProfilePath = configured.ChromeProfilePath };
+        var other = new WorkspaceMatchInput(Guid.NewGuid(), Chrome, "Another tab", "", null) { ChromeProfilePath = configured.ChromeProfilePath };
+        var plan = WorkspaceMatcher.Plan([configured], Guid.Empty, [other, exact], []);
+        Assert.Same(configured, plan[exact.Token].Item); Assert.Null(plan[other.Token].Item);
+        Assert.False(plan[other.Token].IsAmbiguous);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void FailedProfileSaveRestoresTheModelAndKeepsTheLiveBinding(bool capture, bool sameProfile)
+    {
+        string first = Profile("Profile 1"), second = sameProfile ? first : Profile("Profile 2");
+        var item = Item(first); item.CaptureChromeProfile = capture;
+        using var rig = new WorkspaceHarness(new WorkspaceDocument { Items = [item] }); rig.Identity.Exe = Chrome;
+        rig.Api.AddWindow((IntPtr)42, 10, 20, 800, 550, title: item.Title);
+        rig.Identity.AppIds[(IntPtr)42] = "Chrome." + ChromeProfiles.ProfileId(first);
+        rig.Workspace.Start(); Assert.True(rig.Workspace.IsOpen(item));
+        rig.Store.SaveError = new IOException("Disk full");
+        Assert.False(rig.Workspace.SetChromeProfile(item.Id, second));
+        Assert.Equal(first, item.ChromeProfilePath); Assert.Equal(capture, item.CaptureChromeProfile);
+        Assert.True(rig.Workspace.IsOpen(item)); Assert.Empty(rig.Cards.Created); Assert.Empty(rig.Actions.Closed);
+        Assert.Equal(item.Id, rig.Workspace.GetOverviewItemIds()[(IntPtr)42]);
+        rig.Store.SaveError = null; rig.Workspace.SaveNow();
+        Assert.Equal(first, item.ChromeProfilePath); Assert.Equal(capture, item.CaptureChromeProfile);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SelectingTheCurrentProfileKeepsTheExistingWindowBound(bool previouslyCaptured)
+    {
+        string profile = Profile("Profile 1"); var item = Item(previouslyCaptured ? profile : "");
+        using var rig = new WorkspaceHarness(new WorkspaceDocument { Items = [item] }); rig.Identity.Exe = Chrome;
+        rig.Api.AddWindow((IntPtr)42, 10, 20, 800, 550, title: item.Title);
+        rig.Identity.AppIds[(IntPtr)42] = "Chrome." + ChromeProfiles.ProfileId(profile);
+        rig.Workspace.Start(); Assert.True(rig.Workspace.IsOpen(item));
+        if (previouslyCaptured) rig.Identity.AppIds.Clear(); // Transient property failure must not detach a trusted binding.
+        Assert.True(rig.Workspace.SetChromeProfile(item.Id, profile));
+        Assert.True(rig.Workspace.IsOpen(item)); Assert.Equal(profile, item.ChromeProfilePath);
+        Assert.False(item.CaptureChromeProfile); Assert.Empty(rig.Cards.Created);
+    }
+
     [Fact]
     public void ChangingAnOpenSlotsProfileLeavesItsOldWindowAloneAndBindsOnlyTheNewProfile()
     {

@@ -88,7 +88,7 @@ internal static class WorkspaceInteractionDialogs
         {
             if (list.SelectedItem is not ChromeProfileChoice choice) return;
             if (workspace.SetChromeProfile(id, choice.Path)) dialog.DialogResult = true;
-            else status.Text = "Could not change the profile. Wait for any pending launch to finish, then try again.";
+            else status.Text = workspace.Status ?? "Could not change the profile. Wait for any pending launch to finish, then try again.";
         }); save.IsDefault = true;
         var cancel = ZoneTheme.Button("Cancel", () => dialog.DialogResult = false); cancel.IsCancel = true;
         save.Margin = new Thickness(0, 0, 6, 0); cancel.Margin = new Thickness(6, 0, 0, 0);

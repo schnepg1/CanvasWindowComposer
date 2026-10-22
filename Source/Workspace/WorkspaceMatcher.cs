@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal enum WorkspaceMatchStrength { None, SingleApp, Title, Profile, Target, Launch }
+internal enum WorkspaceMatchStrength { None, SingleApp, Profile, Title, Target, Launch }
 
 internal sealed record WorkspaceMatch(WorkspaceItem? Item, IReadOnlyList<Guid> AmbiguousIds,
     WorkspaceMatchStrength Strength = WorkspaceMatchStrength.None)
@@ -52,12 +52,6 @@ internal static class WorkspaceMatcher
                 ? string.Equals(chosen.Target, target, StringComparison.OrdinalIgnoreCase)
                 : !chosen.IsFolder)) return WorkspaceMatch.Found(chosen, WorkspaceMatchStrength.Launch);
 
-        var profiled = appItems.Where(i => i.ChromeProfilePath.Length > 0
-            && string.Equals(i.ChromeProfilePath, chromeProfilePath, StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (profiled.Length == 1 && !used.Contains(profiled[0].Id))
-            return WorkspaceMatch.Found(profiled[0], WorkspaceMatchStrength.Profile);
-        if (profiled.Length > 0) { appItems = profiled; available = profiled.Where(i => !used.Contains(i.Id)).ToArray(); }
-
         var exact = appItems.Where(i => target.Length > 0
             ? string.Equals(i.Target, target, StringComparison.OrdinalIgnoreCase)
             : i.Target.Length == 0 && i.Title == title).ToArray();
@@ -66,6 +60,13 @@ internal static class WorkspaceMatcher
         if (exact.Length > 1 && remaining.Length > 0) return WorkspaceMatch.Ambiguous(remaining);
         if (remaining.Length == 1) return WorkspaceMatch.Found(remaining[0],
             target.Length > 0 ? WorkspaceMatchStrength.Target : WorkspaceMatchStrength.Title);
+        // Profile identity distinguishes accounts, not several windows inside
+        // one account. Keep unprofiled slots eligible for their title/target
+        // evidence, and use a unique configured profile only as a fallback.
+        var profiled = appItems.Where(i => i.ChromeProfilePath.Length > 0
+            && string.Equals(i.ChromeProfilePath, chromeProfilePath, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (profiled.Length == 1 && !used.Contains(profiled[0].Id))
+            return WorkspaceMatch.Found(profiled[0], WorkspaceMatchStrength.Profile);
         if (target.Length == 0 && !requested.HasValue && appItems.Length == 1
             && available.Length == 1 && available[0].Target.Length == 0)
             return WorkspaceMatch.Found(available[0], WorkspaceMatchStrength.SingleApp);

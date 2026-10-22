@@ -17,6 +17,9 @@ Choosing a different profile for an open saved window leaves its browser window
 open on the canvas. That window is detached from this saved slot; the card can
 then reopen using the new profile. Pending launches must finish before a profile
 can be changed. No Chrome settings are written.
+If saving fails, the previous profile preference and live binding are retained;
+the dialog reports the persistence error and can be cancelled without applying
+the attempted change.
 
 ## Capture and matching
 
@@ -38,6 +41,9 @@ identifiers do not auto-attach to a configured profile. Such cards keep the
 existing **Link open window…** fallback. Explicit linking can select a window
 whose profile cannot be read; positively identified other profiles are excluded.
 Several indistinguishable windows in the same profile still require linking.
+Legacy/default-selection slots remain eligible for title/target matching even
+beside a profile-specific slot. Exact title/target evidence ranks above a
+profile-only fallback when several windows compete for one saved place.
 Custom Chrome builds, installer suffixes outside the standard 26-character base32 form,
 policy overrides, very long identifiers shortened by Chrome, or nonstandard
 user-data paths may require that fallback. Native HWND/process-start validation
@@ -53,6 +59,8 @@ Tests cover metadata discovery/recovery, launch escaping and missing profiles,
 different profiles with identical captions, unknown identities during launches,
 sanitized collisions, profile changes without closing existing windows,
 custom-name refresh, explicit default selection, persistence, and legacy files.
+Regression checks also cover mixed profiled/unprofiled slots, batch evidence
+priority, and saving failures without model or binding side effects.
 Windows UI tests exercise saved-card/live-preview menus and dialog save/cancel.
 Physical Chrome installation/profile-picker behavior remains a manual check.
 
