@@ -137,6 +137,84 @@ public class WorkspaceViewTests
     }
 
     [Fact]
+    public void MovingSavedGeometryReusesTheCardPixelsButResizingAndReleasingDoNot()
+        => OnSta(() =>
+        {
+            var commands = new TestCommands(); var item = commands.Items[0];
+            using var form = new PlaceholderForm(commands, item);
+            form.ShowAt(new WindowRect(-10000, -10000, 380, 260));
+            var image = form.GetOverviewImage();
+            var moved = item.Bounds; moved.X += 500; moved.Y -= 300;
+            form.UpdateItem(item with { Bounds = moved });
+            form.Left += 100;
+            Assert.Same(image, form.GetOverviewImage());
+            form.Width += 40;
+            var resized = form.GetOverviewImage();
+            Assert.NotSame(image, resized);
+            Assert.Equal(form.Width, resized.PixelWidth);
+            form.ReleaseOverviewImage();
+            Assert.Null(form.CachedOverviewImage);
+            Assert.NotSame(resized, form.GetOverviewImage());
+        });
+
+    [Theory]
+    [InlineData("title")]
+    [InlineData("target")]
+    [InlineData("executable")]
+    [InlineData("folder")]
+    [InlineData("state")]
+    [InlineData("startup")]
+    public void VisualCardChangesInvalidateTheSnapshot(string change)
+        => OnSta(() =>
+        {
+            var commands = new TestCommands(); var item = commands.Items[0];
+            using var form = new PlaceholderForm(commands, item);
+            form.ShowAt(new WindowRect(-10000, -10000, 380, 260));
+            var image = form.GetOverviewImage();
+            var changed = change switch
+            {
+                "title" => item with { Title = "Renamed" },
+                "target" => item with { Target = @"C:\Other\file.txt" },
+                "executable" => item with { ExecutablePath = @"C:\Other\Other.exe" },
+                "folder" => item with { IsFolder = true },
+                "state" => item with { State = "Minimized" },
+                _ => item with { OpenOnStartup = true }
+            };
+            form.UpdateItem(changed);
+            Assert.Null(form.CachedOverviewImage);
+            Assert.NotSame(image, form.GetOverviewImage());
+        });
+
+    [Fact]
+    public void RawCardSnapshotMatchesEncodedPixelsAndOwnsItsDataAfterFormDisposal()
+        => OnSta(() =>
+        {
+            var commands = new TestCommands();
+            using var form = new PlaceholderForm(commands, commands.Items[0]);
+            form.ShowAt(new WindowRect(-10000, -10000, 380, 260));
+            var actual = form.GetOverviewImage();
+            Assert.True(actual.IsFrozen);
+            using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height,
+                System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(System.Drawing.Point.Empty, form.Size));
+            using var encoded = new MemoryStream(); bitmap.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
+            encoded.Position = 0;
+            var reference = new System.Windows.Media.Imaging.BitmapImage(); reference.BeginInit();
+            reference.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            reference.StreamSource = encoded; reference.EndInit();
+            byte[] Pixels(System.Windows.Media.Imaging.BitmapSource image)
+            {
+                var converted = new System.Windows.Media.Imaging.FormatConvertedBitmap(image,
+                    System.Windows.Media.PixelFormats.Pbgra32, null, 0);
+                var pixels = new byte[image.PixelWidth * image.PixelHeight * 4];
+                converted.CopyPixels(pixels, image.PixelWidth * 4, 0); return pixels;
+            }
+            Assert.Equal(Pixels(reference), Pixels(actual));
+            var before = Pixels(actual); form.Dispose();
+            Assert.Equal(before, Pixels(actual));
+        });
+
+    [Fact]
     public void OverviewCardSnapshotYieldsToHigherWindows()
     {
         OnSta(() =>

@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Remove="Ai\**" />
+    <Compile Include="..\Tools\PerformanceHarness\PresentationProfile.cs" Link="Harness\PresentationProfile.cs" />
     <Using Include="Xunit" />
     <!-- WPF's SDK removes the default IO/HTTP implicit imports. Preserve the existing test imports. -->
     <Using Include="System.IO" />

@@ -45,6 +45,12 @@ skips that work while minimized. Both invalidate/draw animated GDI content while
 normal. These two modes deliberately test different application responses to
 minimization; they do not simulate every application's rendering pipeline.
 
+`--low-quality` selects the same simple background used by the Settings option.
+The report records `LowQualityMode`; it does not change the user's config. The
+stationary/overview gesture scenarios accept `--overview-zoom=0.05..1` (default 1).
+Native desktop `Panning` always follows the main canvas at zoom 1. Reports include
+the actual start/end camera: inspect those values when comparing configurations.
+
 `--flip-rendering` requests the experimental two-buffer flip-discard backend for
 overview. Without it, the compatibility backend remains selected. Reports include
 `FlipRenderingRequested` and the actual per-monitor `RenderingBackends`; inspect
@@ -57,6 +63,72 @@ For large counts the grid extends beyond the primary screen, so the Visible phas
 does not promise all windows fit. Inspect `NativeWindows` and monitor geometry,
 or choose a window count that fits the display. OffScreenDefault likewise needs
 the shifted layout to be outside the recorded monitor topology.
+
+## Presentation comparison
+
+The solution now builds this tool during normal Release builds. For a repeatable
+comparison of both presentation backends, both quality modes and zoom 1/.5/.25:
+
+```powershell
+./Tools/PerformanceHarness/Compare-Presentation.ps1 -Count 8 -Repeats 3 -Seconds 5
+```
+
+The default 12 configurations, 3 repeats and 5 phases take roughly 15 minutes plus
+setup. The script creates a timestamped directory in `results/`, with raw reports
+and `summary.csv` / `summary.json`. Case order rotates/reverses between repeats to
+reduce fixed thermal/backend order bias. Each report uses one repeat and the same
+owned child-window layout. No installed application settings are changed.
+
+A short smoke run (also run in Windows CI) is:
+
+```powershell
+./Tools/PerformanceHarness/Compare-Presentation.ps1 -Count 3 -Repeats 1 -Seconds 1 -Zooms 0.5 -OutputDirectory TestResults/PresentationSmoke
+```
+
+`--presentation-only` selects these phases without the minimize/visibility phases:
+
+| Phase | Behavior |
+| --- | --- |
+| StationaryOverview | Stationary view at the requested zoom after a 300 ms setup/settle period |
+| OverviewPan | Held middle-button pan through the production overview input callbacks |
+| ZoomBursts | Fixed zoom targets at 0/40/80 ms of each 500 ms cycle, alternating out/back with pauses for low-quality restoration |
+| WindowDrag | Held drag of the first owned window through the production pointer callbacks |
+| Panning | Layered desktop-pan mode, following the main canvas at zoom 1 |
+
+The tool invokes the controller's input callbacks; it does not synthesize OS-wide
+mouse/keyboard input. Requested zoom is applied via the production wheel scale,
+with integer-delta rounding. `CameraStart` / `CameraEnd` are the actual values.
+Wheel bursts follow the same target trajectory rather than emitting more deltas
+on faster pump loops. Late pumps catch up to the current target; `ZoomBurstTargets`
+records which targets were submitted, so missed steps remain visible in the report.
+The current workload still omits saved-workspace cards and the minimap; low-quality
+gesture cards are exercised, but this is not a complete full-app scene benchmark.
+
+The matrix records actual per-monitor `RenderingBackends` and marks
+`BackendMatched=false` on fallback/unavailable backends. Do not group fallback
+samples with successful flip samples. It does not choose a backend automatically.
+
+Schema 2 adds `InputPumpMs` nearest-rank p50/p95/p99/max and sample counts for each
+overview phase. A sample covers one synthetic-input/WinForms-pump iteration,
+including any scheduled frame processed during it, and excludes the 10 ms pacing
+sleep. Idle iterations are included. It is a UI wall-time distribution, not a
+present-to-screen measurement. Pointer-down/setup and pointer-up/final-release
+costs are not represented by that distribution; detailed real-app end-of-gesture
+latency still needs tracing. Process samples include ownership checks and harness
+measurement overhead. The final release occurs after phase diagnostics are captured.
+
+The new diagnostics separate `GridUploadAndDraw` / `MinimapUploadAndDraw` from
+`GridPresentCall` / `MinimapPresentCall`. The former includes snapshot copying,
+D3D buffer upload and command submission. The latter is CPU wall time in `Present`,
+which may include a vsync/queue wait. Neither is GPU execution time.
+`OverviewAnnotationFlush` measures one shared WPF render-priority barrier after all
+monitor annotation windows have been staged/prepared. Existing
+`*FrameIncludingPresent` totals overlap these measurements; do not add them.
+
+CI smoke results establish execution/API compatibility on the runner. Its display,
+virtual GPU and background activity do not rank backends for a Surface Pro 4.
+Use the full matrix on the target machine and inspect visual composition before
+changing backend defaults.
 
 ## Reading a report
 

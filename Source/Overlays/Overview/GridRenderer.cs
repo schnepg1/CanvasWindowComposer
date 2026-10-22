@@ -39,7 +39,7 @@ internal sealed class GridRenderer : IDisposable
     private const int MonitorStructBytes = 16;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct GridConstants
+    internal struct GridConstants
     {
         public float CamX, CamY;
         public float Zoom;
@@ -50,7 +50,7 @@ internal sealed class GridRenderer : IDisposable
         public float PassOffX, PassOffY;
         public int MonitorCount;
         public int IsPrimary;
-        public int _pad0, _pad1;
+        public int LowQuality, _pad1;
     }
 
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
@@ -99,7 +99,7 @@ cbuffer GridCB : register(b0)
     float passOffY;
     int monitorCount;
     int isPrimary;
-    int _pad0;
+    int lowQuality;
     int _pad1;
 };
 
@@ -246,6 +246,20 @@ float4 PSMain(VSOut input) : SV_Target
     float2 screenPos = input.uv * float2(screenW, screenH);
 
     float2 worldPos = (screenPos + float2(passOffX, passOffY)) / zoom + camPos;
+
+    // A uniform early branch keeps expensive noise and decorative math out of
+    // low quality frames. Preserve the world-space grid and origin axes.
+    if (lowQuality != 0)
+    {
+        float level = floor(log2(zoom * 100.0 / 80.0));
+        float spacing = 100.0 * exp2(-level);
+        float lines = saturate(gridLine(worldPos.x, spacing, 0.4 / zoom)
+                             + gridLine(worldPos.y, spacing, 0.4 / zoom));
+        float axes = saturate(gridLine(worldPos.x, 1e6, 0.6 / zoom)
+                            + gridLine(worldPos.y, 1e6, 0.6 / zoom));
+        return float4(float3(0.04, 0.045, 0.05) + lines * float3(0.10, 0.13, 0.15)
+                      + axes * float3(0.12, 0.30, 0.36), 1.0);
+    }
 
     // === Adaptive grid spacing (doubles per zoom level) ===
     float logZoom = log2(zoom * 100.0 / 80.0);
@@ -421,6 +435,12 @@ float4 PSMain(VSOut input) : SV_Target
         set { if (_drawGrid == value) return; _drawGrid = value; RequestFrame(); }
     }
     private volatile bool _frameTicksRequired;
+    private volatile bool _lowQuality;
+    public bool LowQuality
+    {
+        get => _lowQuality;
+        set { if (_lowQuality == value) return; _lowQuality = value; RequestFrame(); }
+    }
     public bool FrameTicksRequired
     {
         get => _frameTicksRequired;
@@ -437,7 +457,7 @@ float4 PSMain(VSOut input) : SV_Target
     {
         _preferFlip = preferFlip;
         _pump = new RenderFramePump("GridRenderer", RenderFrame,
-            () => _frameTicksRequired || (DrawGrid && _renderZoom < 0.7f), ReleaseResources);
+            () => GridFrameSchedule.NeedsContinuousFrames(DrawGrid, _renderZoom, _frameTicksRequired, LowQuality), ReleaseResources);
     }
 
     private volatile float _renderCamX, _renderCamY, _renderZoom;
@@ -446,6 +466,7 @@ float4 PSMain(VSOut input) : SV_Target
     private volatile float _passOffX, _passOffY;
     private volatile int _isPrimary;
     private readonly float[] _monitors = new float[MonitorBufferCapacity * 4];
+    private readonly float[] _uploadMonitors = new float[MonitorBufferCapacity * 4];
     private volatile int _monitorCount;
     private readonly object _snapshotLock = new();
 
@@ -509,14 +530,16 @@ float4 PSMain(VSOut input) : SV_Target
     }
 
     /// <summary>Update camera for next frame (call from any thread).</summary>
-    public void UpdateCamera(double camX, double camY, double zoom)
+    public void UpdateCamera(double camX, double camY, double zoom, double panDx = 0, double panDy = 0)
     {
         lock (_snapshotLock)
         {
-            if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom) return;
+            if (_renderCamX == (float)camX && _renderCamY == (float)camY && _renderZoom == (float)zoom && panDx == 0 && panDy == 0) return;
             _renderCamX = (float)camX;
             _renderCamY = (float)camY;
             _renderZoom = (float)zoom;
+            _panAccumX += (float)panDx;
+            _panAccumY += (float)panDy;
         }
         RequestFrame();
     }
@@ -538,35 +561,38 @@ float4 PSMain(VSOut input) : SV_Target
         RequestFrame();
     }
 
+    // The UI only shares managed state. Map/Unmap/Present must never run under
+    // this lock: a busy driver must not hold up publishing the next camera.
+    internal GridConstants CaptureSnapshot(Span<float> monitors)
+    {
+        lock (_snapshotLock)
+        {
+            _monitors.AsSpan(0, _monitorCount * 4).CopyTo(monitors);
+            return new GridConstants
+            {
+                CamX = _renderCamX, CamY = _renderCamY, Zoom = _renderZoom,
+                ScreenW = _width, ScreenH = _height, Time = (float)_clock.Elapsed.TotalSeconds,
+                DpiScale = _dpiScale, PanAccumX = _panAccumX, PanAccumY = _panAccumY,
+                PassOffX = _passOffX, PassOffY = _passOffY, MonitorCount = _monitorCount,
+                IsPrimary = _isPrimary, LowQuality = LowQuality ? 1 : 0
+            };
+        }
+    }
+
     private bool RenderFrame()
     {
         if (_context == null || _swapChain == null) return false;
         long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
-        lock (_snapshotLock)
+        var constants = CaptureSnapshot(_uploadMonitors);
+        var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
+        Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
+        _context.Unmap(_constantBuffer!);
+        if (constants.MonitorCount > 0)
         {
-            var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
-            var constants = new GridConstants
-            {
-                CamX = _renderCamX, CamY = _renderCamY,
-                Zoom = _renderZoom,
-                ScreenW = _width, ScreenH = _height,
-                Time = (float)_clock.Elapsed.TotalSeconds,
-                DpiScale = _dpiScale,
-                PanAccumX = _panAccumX, PanAccumY = _panAccumY,
-                PassOffX = _passOffX, PassOffY = _passOffY,
-                MonitorCount = _monitorCount,
-                IsPrimary = _isPrimary
-            };
-            Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
-            _context.Unmap(_constantBuffer!);
-
-            if (_monitorCount > 0)
-            {
-                var mapped = _context.Map(_monitorBuffer!, MapMode.WriteDiscard);
-                Marshal.Copy(_monitors, 0, mapped.DataPointer, _monitorCount * 4);
-                _context.Unmap(_monitorBuffer!);
-            }
+            var mapped = _context.Map(_monitorBuffer!, MapMode.WriteDiscard);
+            Marshal.Copy(_uploadMonitors, 0, mapped.DataPointer, constants.MonitorCount * 4);
+            _context.Unmap(_monitorBuffer!);
         }
 
         _context.OMSetRenderTargets(_rtv!);
@@ -586,7 +612,10 @@ float4 PSMain(VSOut input) : SV_Target
             _context.ClearRenderTargetView(_rtv!, new Vortice.Mathematics.Color4(0, 0, 0, 0));
         }
 
+        PerformanceDiagnostics.Shared.Complete("GridUploadAndDraw", IntPtr.Zero, frameStarted, true);
+        long presentStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
+        PerformanceDiagnostics.Shared.Complete("GridPresentCall", IntPtr.Zero, presentStarted, present.Success, present.Code);
         PerformanceDiagnostics.Shared.Complete("GridFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
         present.CheckError();
         OnFrameTick?.Invoke();

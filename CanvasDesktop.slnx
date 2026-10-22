@@ -4,4 +4,5 @@
   <Project Path="Modules/Ai/CanvasDesktop.Ai.csproj" />
   <Project Path="Tests/CanvasDesktop.Tests.csproj" />
   <Project Path="Tests/Ai/CanvasDesktop.Ai.Tests.csproj" />
+  <Project Path="Tools/PerformanceHarness/CanvasDesktop.PerformanceHarness.csproj" />
 </Solution>

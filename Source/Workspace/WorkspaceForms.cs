@@ -13,6 +13,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly WorkspaceContextMenu _menu;
     private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
     private Size _overviewSize;
+    private int _overviewDpi;
+    private bool _itemApplied;
     public event Action? PlacementChanged;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
@@ -69,8 +71,15 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     public void UpdateItem(WorkspaceItemView item)
     {
-        if (_item != item) _overviewImage = null;
+        bool appearanceChanged = !_itemApplied || _item.Title != item.Title || _item.Target != item.Target
+            || _item.ExecutablePath != item.ExecutablePath || _item.IsFolder != item.IsFolder
+            || _item.State != item.State || _item.OpenOnStartup != item.OpenOnStartup;
         _item = item;
+        // World position, saved bounds and nonvisual metadata do not repaint a
+        // card or invalidate its snapshot. Native size/DPI are checked separately.
+        if (!appearanceChanged) return;
+        _itemApplied = true;
+        _overviewImage = null;
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
         _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
@@ -91,22 +100,29 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     // window is entirely off-screen. A DWM thumbnail cannot guarantee that.
     internal System.Windows.Media.Imaging.BitmapSource GetOverviewImage()
     {
-        if (_overviewImage != null && _overviewSize == Size) return _overviewImage;
+        if (_overviewImage != null && _overviewSize == Size && _overviewDpi == DeviceDpi) return _overviewImage;
         PerformLayout();
-        using var bitmap = new Bitmap(Width, Height);
+        using var bitmap = new Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
         DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size));
-        using var stream = new System.IO.MemoryStream();
-        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
-        stream.Position = 0;
-        var image = new System.Windows.Media.Imaging.BitmapImage();
-        image.BeginInit();
-        image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-        image.StreamSource = stream;
-        image.EndInit();
-        image.Freeze();
-        _overviewSize = Size;
-        return _overviewImage = image;
+        var bits = bitmap.LockBits(new Rectangle(Point.Empty, Size), System.Drawing.Imaging.ImageLockMode.ReadOnly,
+            System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        try
+        {
+            // BitmapSource.Create copies these premultiplied pixels into WPF's
+            // owned bitmap. No PNG encoder, stream or decoder is needed.
+            var image = System.Windows.Media.Imaging.BitmapSource.Create(Width, Height, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32, null, bits.Scan0, checked(bits.Stride * Height), bits.Stride);
+            image.Freeze();
+            _overviewSize = Size;
+            _overviewDpi = DeviceDpi;
+            return _overviewImage = image;
+        }
+        finally { bitmap.UnlockBits(bits); }
     }
+
+    // Gesture rendering may borrow this immutable image, but must never trigger
+    // DrawToBitmap/pixel conversion in response to a pointer or wheel event.
+    internal System.Windows.Media.ImageSource? CachedOverviewImage => _overviewImage;
 
     internal void ReleaseOverviewImage() => _overviewImage = null;
 

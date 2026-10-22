@@ -58,6 +58,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
+    internal CanvasCamera ViewCamera => new(_camera.X, _camera.Y, _camera.Zoom);
+
     // MMCSS registration for the UI thread while the overview is open —
     // keeps WM_PAINT / mouse-message dispatch on near-realtime scheduling.
     // Released on Hide.
@@ -88,12 +90,31 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private int _panStartVx, _panStartVy;
     private int _dragIndex = -1;
     private int _dragStartVx, _dragStartVy;
+    private bool _reconcilingVisuals;
+    private CanvasCamera? _sceneCamera;
+    private CanvasCamera SceneCamera => _sceneCamera ?? ViewCamera;
     private void ReconcileVisuals()
     {
+        // Native/WPF calls may reenter the UI thread. Complete this immutable
+        // camera frame before servicing a newer invalidation.
+        if (_reconcilingVisuals) { _visualFrames.Request(); return; }
+        _reconcilingVisuals = true;
+        try { ReconcileVisualFrame(); }
+        finally { _sceneCamera = null; _reconcilingVisuals = false; }
+    }
+
+    private void ReconcileVisualFrame()
+    {
+        _visualFrames.Cancel();
+        UpdateGesturePreviews();
         RefreshTutorialScale();
+        var camera = ViewCamera;
+        _sceneCamera = camera;
+        double panX = _visualPanX, panY = _visualPanY;
+        _visualPanX = _visualPanY = 0;
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
         var proximityCamera = _tutorialReading && (_startupIntroLanded || GuidedTutorialActive)
-            ? _mainCanvas.Camera : new CanvasCamera(_camera.X, _camera.Y, _camera.Zoom);
+            ? _mainCanvas.Camera : camera;
         _wm.SetOverviewViewport(proximityCamera,
             _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
         if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
@@ -102,8 +123,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             RefreshOverviewWindows();
         }
         RefreshCardIdentities();
-        _thumbnails.Reconcile();
+        _thumbnails.Reconcile(camera);
         RefreshZoneAnnotations();
+        // Publish the GPU background camera after DWM properties and the staged
+        // annotation scene. This avoids waking it with a partially submitted view.
+        if (!_disposed && CurrentMode != OverviewMode.Hidden) UpdateGridCamera(camera, panX, panY);
     }
 
     private bool _previewRefreshQueued;
@@ -126,23 +150,25 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     }
 
     public OverviewManager(Canvas mainCanvas, WindowManager wm, IWindowApi win32, IInputRouter input, IAppConfig appConfig, IScreens? screens = null,
-        Func<bool>? prefersReducedStartupMotion = null)
+        Func<bool>? prefersReducedStartupMotion = null, IClock? gestureClock = null, IDwmThumbnailApi? dwm = null)
     {
         _mainCanvas = mainCanvas;
         _wm = wm;
         _win32 = win32;
         _appConfig = appConfig;
+        _gestureClock = gestureClock ?? SystemClock.Instance;
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
         _screens = screens ?? WinFormsScreens.Instance;
         _camera = new OverviewCamera(_screens);
+        _visualFrames = new OverviewFrameScheduler(ScheduleVisualFrame, ReconcileVisuals);
         _zoneTool = new ZoneCanvasTool(() => _zones != null,
             () => _zones?.Items ?? Array.Empty<ZoneView>(), ZoneMoveMembers);
         _zoneTool.Completed += OnZoneToolCompleted;
         _tools.SetTool(_zoneTool);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-            _wm.UsesCachedPreview, _wm.GetCachedPreviewSource, prepareLiveSources: _wm.SetLivePreviewWindows,
+            UseCachedOverviewSource, _wm.GetCachedPreviewSource, dwm: dwm, prepareLiveSources: _wm.SetLivePreviewWindows,
             useNativeSource: handle => !_placeholderTitles.ContainsKey(handle),
             transitionSource: GetCardTransitionSource);
         _wm.Previews.Changed += OnPreviewChanged;
@@ -213,6 +239,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         foreach (var p in _passes)
         {
             p.Warmup(_appConfig.EnableFlipRendering);
+            if (p.Grid != null) p.Grid.LowQuality = _appConfig.LowQualityMode;
             p.Grid?.SetScreenLayout(p.OriginX, p.OriginY, p.Screen.Primary, monitors);
         }
     }
@@ -322,9 +349,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         CancelInteraction();
         _camera.SyncFrom(_mainCanvas);
 
-        foreach (var p in _passes)
-            p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-        ReconcileVisuals();
+        _visualFrames.Request();
     }
 
     /// <summary>Single entry point for every mode change.</summary>
@@ -395,6 +420,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        CancelVisualFrame();
+        ResetGesturePreviews();
         _tourPanel?.Hide();
         _tutorialReading = false;
         _previewRefreshQueued = false;
@@ -454,7 +481,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         bool wantNoActivate = (CurrentMode == OverviewMode.Panning);
         foreach (var p in _passes)
         {
-            if (p.Grid != null) p.Grid.DrawGrid = _cfg.GridVisible;
+            if (p.Grid != null)
+            {
+                p.Grid.DrawGrid = _cfg.GridVisible;
+                p.Grid.LowQuality = _appConfig.LowQualityMode;
+            }
             p.SetModeStyle(wantLayered, wantNoActivate);
             p.SetClickThrough(!_cfg.InputEnabled);
         }
@@ -667,6 +698,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
+        _visualFrames.Flush();
         if (StopTutorialTravel()) RefreshTourUi();
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled)
@@ -742,7 +774,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_hoveredPlaceholder != hovered)
         {
             _hoveredPlaceholder = hovered;
-            RefreshZoneAnnotations();
+            _visualFrames.Request();
         }
         pass.Cursor = _tools.CursorAt(pointer) switch
         {
@@ -766,8 +798,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
 
             _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
+            if (dx != 0 || dy != 0) ObserveGestureMotion();
             if(dx!=0 || dy!=0)ObserveTourWindow();
-            ReconcileVisuals();
+            _visualFrames.Request();
         }
         else if (_tools.Kind == CanvasInteractionKind.Pan)
         {
@@ -782,6 +815,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        _visualFrames.Flush();
         if (TrySkipStartupIntro()) return;
         var pointer = Pointer(pass, e);
         if (_tools.Kind == CanvasInteractionKind.Tool)
@@ -792,6 +826,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         var ended = _tools.EndNavigation(pointer);
         ApplyPointerCapture();
+        if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.Pan) _visualFrames.Request();
         if (ended == CanvasInteractionKind.Window)
         {
             _wm.Reproject(true);
@@ -818,12 +853,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         double worldDx = virtualDx / _camera.Zoom;
         double worldDy = virtualDy / _camera.Zoom;
         _camera.PanByVirtual(virtualDx, virtualDy);
-        foreach (var p in _passes)
-        {
-            p.Grid?.AccumulatePan(worldDx, worldDy);
-            p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-        }
-        ReconcileVisuals();
+        ObserveGestureMotion();
+        _visualPanX += worldDx;
+        _visualPanY += worldDy;
+        _visualFrames.Request();
     }
 
     private void ZoomOverview(int virtualX, int virtualY, double notches)
@@ -831,15 +864,15 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         StopTutorialTravel();
         double before=_camera.Zoom;
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
+        ObserveGestureMotion();
         if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
         _startupIntroLanded = false;
-        foreach (var p in _passes)
-            p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
-        ReconcileVisuals();
+        _visualFrames.Request();
     }
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
+        _visualFrames.Flush();
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
         if (_composerWindow is { WaitingForBrowser: true })
@@ -924,6 +957,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(CancelVisualFrame);
+        Attempt(ResetGesturePreviews);
+        Attempt(() => _gestureSettleTimer?.Dispose());
+        Attempt(() => _visualFrameTimer?.Dispose());
         Attempt(DisposeGuidedTutorial);
         Attempt(DisposeAnnotations);
         Attempt(() => FinishStartupIntro(refresh: false));

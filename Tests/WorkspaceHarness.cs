@@ -64,6 +64,7 @@ internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
     public Exception? Error;
     public long StartedAt = 1;
     public bool Unavailable;
+    public int ProcessInspections;
     public Dictionary<uint, string> Executables = new();
     public Dictionary<IntPtr, string> ReadExplorerFolders()
     {
@@ -71,7 +72,10 @@ internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
         return Folders;
     }
     public WorkspaceProcessIdentity? InspectProcess(uint pid)
-        => Unavailable || pid == 0 ? null : new(pid, StartedAt, Executables.GetValueOrDefault(pid, Exe));
+    {
+        ProcessInspections++;
+        return Unavailable || pid == 0 ? null : new(pid, StartedAt, Executables.GetValueOrDefault(pid, Exe));
+    }
 }
 
 internal sealed class TestWorkspaceLauncher : IWorkspaceLauncher
