@@ -10,8 +10,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly PlaceholderArtwork _title;
     private readonly Label _details, _hint;
     private readonly Button _open;
-    private readonly ToolStripMenuItem _auto;
-    private readonly ContextMenuStrip _menu;
+    private readonly WorkspaceContextMenu _menu;
     private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
     private Size _overviewSize;
     public event Action? PlacementChanged;
@@ -50,18 +49,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             Dock = DockStyle.Top, ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 12, 0, 0) };
         panel.Controls.Add(_title); panel.Controls.Add(_details); panel.Controls.Add(_open); panel.Controls.Add(_hint);
         Controls.Add(panel);
-        var menu = new ContextMenuStrip();
+        var menu = new WorkspaceContextMenu(workspace, item.Id);
         _menu = menu;
-        menu.Items.Add("Open", null, (_, _) => workspace.Open(item.Id));
-        menu.Items.Add("Link open window…", null, (_, _) => WorkspaceDialogs.LinkWindow(this, workspace, item.Id));
-        menu.Items.Add("Name this saved place…", null, (_, _) => WorkspaceDialogs.NamePlace(this, workspace, item.Id));
-        _auto = new ToolStripMenuItem("Open automatically when Canvas starts") { CheckOnClick = true, Checked = item.OpenOnStartup };
-        _auto.Click += (_, _) => workspace.SetAutoOpen(item.Id, _auto.Checked);
-        menu.Items.Add(_auto);
-        menu.Items.Add("Choose file to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(this, workspace, item.Id, false));
-        menu.Items.Add("Choose folder to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(this, workspace, item.Id, true));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Forget this saved place", null, (_, _) => workspace.Forget(item.Id));
         ContextMenuStrip = menu;
         panel.ContextMenuStrip = menu; _title.ContextMenuStrip = menu; _details.ContextMenuStrip = menu;
         DoubleClick += (_, _) => workspace.Open(item.Id);
@@ -95,7 +84,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             : (_item.State is "Minimized" or "Sleeping" ? "Application is minimized · Restore to use it"
                 : _item.State == "Open" ? "Overview preview · Double-click to focus"
                 : _item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
-        _auto.Checked = _item.OpenOnStartup;
+        _menu.UpdateItem(item);
     }
 
     // WM_PRINT used by DrawToBitmap renders controls even when their native

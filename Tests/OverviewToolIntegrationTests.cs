@@ -54,7 +54,30 @@ public class OverviewToolIntegrationTests
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
             pass.OnMouseButtonDown!(pass, new(MouseButtons.Right, 1, 300, 250, 0));
             Assert.True(opened);
+            Assert.Contains(card.ContextMenuStrip.Items.OfType<ToolStripMenuItem>(), i => i.Text == "Rename…");
             card.ContextMenuStrip.Close();
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void RightClickingSavedLivePreviewAlsoOffersRenameWithoutCreatingAPlaceholder()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var source = new Form();
+            var config = new FakeAppConfig { EnableStartupIntro = false };
+            var item = new WorkspaceItem { Title = "Editor", ExecutablePath = @"C:\Apps\Editor.exe",
+                Bounds = new WorldRect { X = 100, Y = 100, W = 400, H = 300 } };
+            using var rig = new WorkspaceHarness(new WorkspaceDocument { Items = [item] }, config: config);
+            rig.Api.AddWindow(source.Handle, 100, 100, 400, 300, title: item.Title);
+            rig.Workspace.Start(); Assert.True(rig.Workspace.IsOpen(item));
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config);
+            overview.AttachPlaceholderWorkspace(rig.Workspace); overview.TransitionTo(OverviewMode.Zooming);
+            var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            pass.OnMouseButtonDown!(pass, new(MouseButtons.Right, 1, 300, 250, 0));
+            var field = typeof(OverviewManager).GetField("_windowContextMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var menu = Assert.IsType<WorkspaceContextMenu>(field.GetValue(overview));
+            Assert.True(menu.Visible); Assert.Empty(rig.Workspace.GetPlaceholderTitles());
+            Assert.Contains(menu.Items.OfType<ToolStripMenuItem>(), i => i.Text == "Rename…"); menu.Close();
         });
 
     [Theory]

@@ -686,6 +686,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
             if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
                 card.ShowContextMenu(pass, new Point(e.X, e.Y));
+            else if (rightHit >= 0 && _placeholderWorkspace != null
+                && _overviewItemIds.TryGetValue(_windows.Windows[rightHit].HWnd, out var id))
+            {
+                _windowContextMenu?.Dispose();
+                _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
+                _windowContextMenu.Show(pass, new Point(e.X, e.Y));
+            }
             return;
         }
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
@@ -930,6 +937,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _zoneTool.Completed -= OnZoneToolCompleted;
         Attempt(ClearCardTransitions);
         Attempt(() => _cardAnimationTimer?.Dispose());
+        Attempt(() => _windowContextMenu?.Dispose());
         Attempt(_inputs.Dispose);
         Attempt(CancelInertia);
         // HideInternal may have failed after the state changed to Hidden.
