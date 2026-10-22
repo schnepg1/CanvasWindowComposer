@@ -2,8 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Prompt', 'Fail')]
-    [string]$Mode = 'Prompt',
-    [string]$ProcessName = 'CanvasDesktop'
+    [string]$Mode = 'Prompt'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -12,7 +11,7 @@ if ($env:CI -or $env:TF_BUILD -or $env:GITHUB_ACTIONS -or $env:CANVAS_TEST_NO_PR
 }
 
 function Get-CanvasProcesses {
-    @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)
+    @(Get-Process -Name 'CanvasDesktop' -ErrorAction SilentlyContinue)
 }
 
 function Get-CanvasSummary {
@@ -89,7 +88,7 @@ $processes = Get-CanvasProcesses
 if ($processes.Count -eq 0) { exit 0 }
 
 if ($Mode -eq 'Fail') {
-    [Console]::Error.WriteLine("$ProcessName is running. Close it before running tests.`r`n$([Environment]::NewLine)$(Get-CanvasSummary)")
+    [Console]::Error.WriteLine("CanvasDesktop is running. Close it before running tests.`r`n$([Environment]::NewLine)$(Get-CanvasSummary)")
     exit 1
 }
 

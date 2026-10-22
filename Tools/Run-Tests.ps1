@@ -55,7 +55,7 @@ try {
     if (-not $acquired) { throw 'Timed out waiting for another Canvas test run on this machine.' }
 
     if (-not $AllowRunningApp) {
-        $preflight = Join-Path $PSScriptRoot 'TestPreflight.ps1'
+        $preflight = Join-Path $PSScriptRoot 'Test-Preflight.ps1'
         $preflightArgs = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $preflight)
         if ($NoPrompt) { $preflightArgs += @('-Mode', 'Fail') }
         & powershell.exe @preflightArgs

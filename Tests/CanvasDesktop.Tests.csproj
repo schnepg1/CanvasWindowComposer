@@ -30,7 +30,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <CanvasTestPreflightScript>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Tools\TestPreflight.ps1'))</CanvasTestPreflightScript>
+    <CanvasTestPreflightScript>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Tools\Test-Preflight.ps1'))</CanvasTestPreflightScript>
   </PropertyGroup>
 
   <Target Name="CanvasTestPreflight" BeforeTargets="VSTest"

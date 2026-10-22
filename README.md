@@ -123,7 +123,7 @@ dotnet test Tests/CanvasDesktop.Tests.csproj -c Release --no-build --no-restore
 ```
 
 For agent work and native desktop tests, use the serialized runner:
-`Tests\run-tests.bat -Configuration Release`. It waits for other test runs,
+`Tests\run_tests.bat -Configuration Release`. It waits for other test runs,
 prompts you to close a running Canvas, and isolates results per run. See
 [AGENTS.md](AGENTS.md).
 

@@ -25,7 +25,7 @@ Rules:
 - One agent per worktree. Do not share a worktree between sessions.
 - New untracked files (local config, logs) are not copied into a new worktree.
 - Native and smoke tests still share the logged-in Windows desktop across
-  worktrees. Run them through `Tools\RunCanvasTests.ps1`; it serializes runs with a
+  worktrees. Run them through `Tools\Run-Tests.ps1`; it serializes runs with a
   machine-wide mutex.
 - Finish by committing on the agent branch, then remove the worktree:
   `git worktree remove "..\CanvasWindowComposer-<task>"`. The branch remains.
@@ -36,9 +36,9 @@ Rules:
 Preferred entry point (works from any worktree):
 
 ```powershell
-Tests\run-tests.bat -Configuration Release
+Tests\run_tests.bat -Configuration Release
 # or directly
-powershell -NoProfile -ExecutionPolicy Bypass -File Tools\RunCanvasTests.ps1 -Configuration Release
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\Run-Tests.ps1 -Configuration Release
 ```
 
 The runner:
