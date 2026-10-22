@@ -60,10 +60,14 @@ public class WorkspaceViewTests
             Assert.InRange(pixels[(110 * 400 + 110) * 4 + 3], (byte)126, (byte)129);
             Assert.Equal(0, pixels[(110 * 400 + 270) * 4 + 3]);
             Assert.Equal((IntPtr)42, drawing.HitPlaceholderLabel(200, 175));
+            for (int y = 100; y < 250; y++)
+                for (int x = 250; x < 300; x++)
+                    Assert.Equal(0, pixels[(y * 400 + x) * 4 + 3]);
+            Assert.Equal(IntPtr.Zero, drawing.HitPlaceholderLabel(270, 175));
         });
 
     [Fact]
-    public void DistantCardRendersRectangleWithoutAnImageAndHasOnlyItsOverlayTitle()
+    public void DistantCardRendersRectangleAndTitleWithoutPixelsOrHitsOutsideItsBounds()
     {
         OnSta(() =>
         {
@@ -77,6 +81,10 @@ public class WorkspaceViewTests
             var pixels = new byte[400 * 300 * 4]; bitmap.CopyPixels(pixels, 1600, 0);
             Assert.True(pixels[(110 * 400 + 110) * 4 + 3] > 0); // Card body exists without any native pixels.
             Assert.NotEqual(IntPtr.Zero, drawing.HitPlaceholderLabel(200, 175));
+            Assert.Equal(IntPtr.Zero, drawing.HitPlaceholderLabel(90, 175));
+            for (int y = 102; y < 248; y++)
+                for (int x = 0; x < 98; x++)
+                    Assert.Equal(0, pixels[(y * 400 + x) * 4 + 3]);
         });
     }
 

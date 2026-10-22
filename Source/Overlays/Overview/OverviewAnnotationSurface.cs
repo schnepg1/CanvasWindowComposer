@@ -71,9 +71,14 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
     {
         if (_frame == null) return IntPtr.Zero;
         var dpi = VisualTreeHelper.GetDpi(this);
-        var point = View(_frame, dpi).LocalToDip(new CanvasPoint(x, y));
+        var view = View(_frame, dpi);
+        var point = view.LocalToDip(new CanvasPoint(x, y));
+        var world = view.LocalToWorld(new CanvasPoint(x, y));
         foreach (var label in _placeholders.Labels)
-            if (label.Rect.Contains(new Point(point.X, point.Y))) return label.Card.Handle;
+            if (label.Rect.Contains(new Point(point.X, point.Y))
+                && (label.Card.Occluders == null || !label.Card.Occluders.Any(b =>
+                    world.X >= b.X && world.X < b.X + b.W && world.Y >= b.Y && world.Y < b.Y + b.H)))
+                return label.Card.Handle;
         return IntPtr.Zero;
     }
 

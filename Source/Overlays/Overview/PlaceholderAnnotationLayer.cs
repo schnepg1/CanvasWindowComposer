@@ -24,17 +24,7 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             if (card.Opacity <= 0 || (imageOpacity >= 1 && card.Image == null)) continue;
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
-            Geometry visible = new RectangleGeometry(rect);
-            // Annotations sit above DWM. Cut out higher windows so card
-            // snapshots preserve the overview's native thumbnail z-order.
-            if (card.Occluders != null)
-                foreach (var above in card.Occluders)
-                {
-                    var covered = context.Project(above);
-                    if (covered.IntersectsWith(rect))
-                        visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
-                }
-            dc.PushClip(visible);
+            dc.PushClip(VisibleCard(card, context));
             dc.PushOpacity(card.Opacity);
             if (imageOpacity < 1)
                 dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(28, 34, 46)),
@@ -53,30 +43,40 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
     private void DrawPlaceholderLabels(DrawingContext dc, OverviewAnnotationContext context)
     {
         var monitor = new ScreenRect(context.Frame.Screen.X, context.Frame.Screen.Y, context.Frame.Screen.Width, context.Frame.Screen.Height);
-        var reserved = new List<Rect> { new(0, 0, context.Size.Width, 64) };
-        foreach (var zone in context.Frame.Zones)
-            if (ZoneLabelLayout.Get(zone.Bounds, context.View.CameraX, context.View.CameraY, context.View.Zoom, monitor, context.Dpi.DpiScaleX, context.Dpi.DpiScaleY) is { } header)
-                reserved.Add(new Rect(header.X / context.Dpi.DpiScaleX, header.Y / context.Dpi.DpiScaleY,
-                    header.Width / context.Dpi.DpiScaleX, header.Height / context.Dpi.DpiScaleY));
         Labels = PlaceholderLabelLayout.Get(context.Frame.Placeholders, context.View.CameraX, context.View.CameraY, context.View.Zoom, monitor,
-            context.Dpi.DpiScaleX, context.Dpi.DpiScaleY, reserved);
+            context.Dpi.DpiScaleX, context.Dpi.DpiScaleY);
         foreach (var label in Labels)
         {
+            dc.PushClip(VisibleCard(label.Card, context));
             dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
             var rect = label.Rect;
-            var border = new SolidColorBrush(label.Card.Priority ? Color.FromRgb(147, 197, 253) : Color.FromRgb(80, 103, 137));
-            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(23, 31, 46)),
-                new Pen(border, label.Card.Priority ? 2 : 1), rect, 10, 10);
             var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
                 label.FontSize, Brushes.WhiteSmoke, context.Dpi.PixelsPerDip)
             {
-                MaxTextWidth = rect.Width - 24, MaxTextHeight = rect.Height - 16,
-                MaxLineCount = 2, Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
+                MaxTextWidth = rect.Width, MaxTextHeight = rect.Height,
+                LineHeight = label.FontSize * 1.2, MaxLineCount = 3,
+                Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
             };
-            dc.DrawText(text, new Point(rect.X + 12, rect.Y + Math.Max(8, (rect.Height - text.Height) / 2)));
+            dc.DrawText(text, new Point(rect.X, rect.Y + (rect.Height - text.Height) / 2));
+            dc.Pop();
             dc.Pop();
         }
+    }
+
+    private static Geometry VisibleCard(PlaceholderAnnotation card, OverviewAnnotationContext context)
+    {
+        var rect = context.Project(card.Bounds);
+        Geometry visible = new RectangleGeometry(rect);
+        // Apply the same native z-order clipping to both the card and its title.
+        if (card.Occluders != null)
+            foreach (var above in card.Occluders)
+            {
+                var covered = context.Project(above);
+                if (covered.IntersectsWith(rect))
+                    visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
+            }
+        return visible;
     }
 
 }

@@ -66,7 +66,7 @@ internal sealed class OverviewCardTransitions
             if (cover <= 0) continue;
             double detail = Math.Clamp(e.Detail / cover, 0, 1);
             // Stagger the two title treatments through a plain rectangle so
-            // the bitmap's title and the floating badge never overlap.
+            // the bitmap's title and the simplified title never overlap.
             double imageOpacity = Math.Max(0, detail * 2 - 1);
             double labelOpacity = Math.Max(0, 1 - detail * 2);
             result.Add(input.Card with { Title = e.Title, Image = e.Image, Opacity = cover,
