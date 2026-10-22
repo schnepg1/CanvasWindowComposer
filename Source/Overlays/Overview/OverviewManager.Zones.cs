@@ -13,6 +13,7 @@ internal sealed partial class OverviewManager
     private WorkspaceService? _placeholderWorkspace;
     private IReadOnlyDictionary<IntPtr, string> _placeholderTitles = new Dictionary<IntPtr, string>();
     private IntPtr _hoveredPlaceholder;
+    private WorkspaceContextMenu? _windowContextMenu;
 
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {

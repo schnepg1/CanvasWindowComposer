@@ -57,6 +57,8 @@ internal sealed class MemoryWorkspaceStore : IWorkspaceStore
 
 internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
 {
+    public Dictionary<IntPtr, string> AppIds = new();
+    public string? ReadWindowAppId(IntPtr handle) => AppIds.GetValueOrDefault(handle);
     public string Exe = @"C:\Apps\Editor.exe";
     public Dictionary<IntPtr, string> Folders = new();
     public Exception? Error;

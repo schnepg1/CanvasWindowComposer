@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal enum WorkspaceMatchStrength { None, SingleApp, Title, Target, Launch }
+internal enum WorkspaceMatchStrength { None, SingleApp, Title, Profile, Target, Launch }
 
 internal sealed record WorkspaceMatch(WorkspaceItem? Item, IReadOnlyList<Guid> AmbiguousIds,
     WorkspaceMatchStrength Strength = WorkspaceMatchStrength.None)
@@ -20,6 +20,7 @@ internal sealed record WorkspaceMatch(WorkspaceItem? Item, IReadOnlyList<Guid> A
 internal sealed record WorkspaceMatchInput(Guid Token, string ExecutablePath, string Title, string Target, Guid? Requested)
 {
     public IReadOnlyCollection<Guid> ExistingLaunches { get; init; } = Array.Empty<Guid>();
+    public string? ChromeProfilePath { get; init; }
 }
 
 /// <summary>Pure policy: neither saved duplicates nor competing live windows are first-match-wins.</summary>
@@ -30,17 +31,32 @@ internal static class WorkspaceMatcher
         => Evaluate(items, desktop, exe, title, target, bound, requested).Item;
 
     public static WorkspaceMatch Evaluate(IReadOnlyCollection<WorkspaceItem> items, Guid desktop,
-        string exe, string title, string target, IEnumerable<Guid> bound, Guid? requested = null)
+        string exe, string title, string target, IEnumerable<Guid> bound, Guid? requested = null, string? chromeProfilePath = null)
     {
         var used = new HashSet<Guid>(bound);
         var appItems = items.Where(i => i.DesktopId == desktop
             && string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (ChromeProfiles.Supports(exe))
+        {
+            var configured = appItems.Where(i => i.ChromeProfilePath.Length > 0).ToArray();
+            // Neither a caption nor launch timing proves a Chrome profile.
+            if (chromeProfilePath == null && configured.Any(i => !used.Contains(i.Id)))
+                return WorkspaceMatch.Ambiguous(configured.Where(i => !used.Contains(i.Id)));
+            appItems = appItems.Where(i => i.ChromeProfilePath.Length == 0
+                || string.Equals(i.ChromeProfilePath, chromeProfilePath, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
         var available = appItems.Where(i => !used.Contains(i.Id)).ToArray();
         // The coordinator supplies launch intent only for a NEW runtime window.
         var chosen = available.SingleOrDefault(i => i.Id == requested);
         if (chosen != null && (target.Length > 0
                 ? string.Equals(chosen.Target, target, StringComparison.OrdinalIgnoreCase)
                 : !chosen.IsFolder)) return WorkspaceMatch.Found(chosen, WorkspaceMatchStrength.Launch);
+
+        var profiled = appItems.Where(i => i.ChromeProfilePath.Length > 0
+            && string.Equals(i.ChromeProfilePath, chromeProfilePath, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (profiled.Length == 1 && !used.Contains(profiled[0].Id))
+            return WorkspaceMatch.Found(profiled[0], WorkspaceMatchStrength.Profile);
+        if (profiled.Length > 0) { appItems = profiled; available = profiled.Where(i => !used.Contains(i.Id)).ToArray(); }
 
         var exact = appItems.Where(i => target.Length > 0
             ? string.Equals(i.Target, target, StringComparison.OrdinalIgnoreCase)
@@ -66,7 +82,7 @@ internal static class WorkspaceMatcher
     {
         var used = bound.ToArray();
         var results = windows.ToDictionary(w => w.Token,
-            w => Evaluate(items, desktop, w.ExecutablePath, w.Title, w.Target, used, w.Requested));
+            w => Evaluate(items, desktop, w.ExecutablePath, w.Title, w.Target, used, w.Requested, w.ChromeProfilePath));
         foreach (var window in windows)
             if (results[window.Token].Item is { } item && window.ExistingLaunches.Contains(item.Id))
                 results[window.Token] = WorkspaceMatch.Ambiguous(new[] { item });
