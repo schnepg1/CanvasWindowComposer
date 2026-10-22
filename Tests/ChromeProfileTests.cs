@@ -57,13 +57,30 @@ public sealed class ChromeProfileTests : IDisposable
         string first = Profile("Profile 1"), second = Profile("Profile 2");
         string id = "Chrome." + ChromeProfiles.ProfileId(first);
         Assert.Equal(first, ChromeProfiles.Resolve(Chrome, id, [first, second]));
-        Assert.Equal(first, ChromeProfiles.Resolve(Chrome, "Chrome.0123ABCDEF." + ChromeProfiles.ProfileId(first), [first, second]));
+        Assert.Equal(first, ChromeProfiles.Resolve(Chrome, "Chrome.2LGS6APA4UDF4BG3HSPLQ25VFU." + ChromeProfiles.ProfileId(first), [first, second]));
         Assert.Null(ChromeProfiles.Resolve(Chrome, "Chrome._crx_example." + ChromeProfiles.ProfileId(first), [first, second]));
         Assert.Null(ChromeProfiles.Resolve(Chrome, null, [first, second]));
         Assert.Null(ChromeProfiles.Resolve(Chrome, id, [first, Profile("Profile1")]));
         string defaultProfile = Path.Combine(ChromeProfiles.UserDataDirectory(Chrome), "Default");
-        Assert.Equal(defaultProfile, ChromeProfiles.Resolve(Chrome, "Chrome.0123ABCDEF", [defaultProfile]));
+        Assert.Equal(defaultProfile, ChromeProfiles.Resolve(Chrome, "Chrome.2LGS6APA4UDF4BG3HSPLQ25VFU", [defaultProfile]));
         Assert.Null(ChromeProfiles.Resolve(Chrome, "Chrome.UserData.Profile1", [defaultProfile]));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Google\Chrome\Application\chrome.exe", "Chrome")]
+    [InlineData(@"C:\Google\Chrome Beta\Application\chrome.exe", "ChromeBeta")]
+    [InlineData(@"C:\Google\Chrome Dev\Application\chrome.exe", "ChromeDev")]
+    [InlineData(@"C:\Google\Chrome SxS\Application\chrome.exe", "ChromeCanary")]
+    public void PerUserBase32SuffixMatchesBothDefaultAndNamedProfilesAcrossChannels(string exe, string browserId)
+    {
+        // Actual unpadded base32(MD5("S-1-5-21-1-2-3-1001")), including letters beyond F.
+        const string suffix = ".2LGS6APA4UDF4BG3HSPLQ25VFU";
+        string initial = Path.Combine(ChromeProfiles.UserDataDirectory(exe), "Default");
+        string named = Profile("Profile 1");
+        Assert.Equal(initial, ChromeProfiles.Resolve(exe, browserId + suffix, [initial, named]));
+        Assert.Equal(named, ChromeProfiles.Resolve(exe, browserId + suffix + "." + ChromeProfiles.ProfileId(named), [initial, named]));
+        Assert.Null(ChromeProfiles.Resolve(exe, browserId + suffix[..^1], [initial, named]));
+        Assert.Null(ChromeProfiles.Resolve(exe, browserId + suffix + ".webapp", [initial, named]));
     }
 
     [Fact]

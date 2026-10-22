@@ -97,8 +97,10 @@ internal static class ChromeProfiles
     { "Chrome Beta" => "ChromeBeta", "Chrome Dev" => "ChromeDev", "Chrome SxS" => "ChromeCanary", _ => "Chrome" };
 
     private static bool IsBrowserId(string appId, string browserId) => appId == browserId
-        || (appId.StartsWith(browserId + ".", StringComparison.Ordinal) && appId.Length > browserId.Length + 1
-            && appId.AsSpan(browserId.Length + 1).IndexOfAnyExcept("0123456789abcdefABCDEF".AsSpan()) < 0);
+        // Chromium encodes the user's 16-byte SID hash as 26 unpadded base32
+        // characters (A–Z, 2–7). This per-user suffix is not hexadecimal.
+        || (appId.StartsWith(browserId + ".", StringComparison.Ordinal) && appId.Length == browserId.Length + 27
+            && appId.AsSpan(browserId.Length + 1).IndexOfAnyExcept("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".AsSpan()) < 0);
 
     internal static string? Resolve(string exe, string? appId, IEnumerable<string> candidates)
     {

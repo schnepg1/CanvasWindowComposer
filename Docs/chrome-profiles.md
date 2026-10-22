@@ -38,7 +38,7 @@ identifiers do not auto-attach to a configured profile. Such cards keep the
 existing **Link open window…** fallback. Explicit linking can select a window
 whose profile cannot be read; positively identified other profiles are excluded.
 Several indistinguishable windows in the same profile still require linking.
-Custom Chrome builds, installer suffixes outside the standard hexadecimal form,
+Custom Chrome builds, installer suffixes outside the standard 26-character base32 form,
 policy overrides, very long identifiers shortened by Chrome, or nonstandard
 user-data paths may require that fallback. Native HWND/process-start validation
 and same-application launch serialization remain in place.
