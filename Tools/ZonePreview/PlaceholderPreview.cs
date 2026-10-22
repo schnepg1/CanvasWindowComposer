@@ -68,8 +68,9 @@ internal static class PlaceholderPreview
             g.DrawImage(i == 0 ? folder : app, new Rectangle(x + (int)(b.X * zoom), y + (int)(b.Y * zoom),
                 (int)(b.W * zoom), (int)(b.H * zoom)));
         }
-        var drawing = new ZoneAnnotationWindow.ZoneDrawing();
-        drawing.Update(Array.Empty<ZoneView>(), 0, 0, zoom, new Rectangle(0, 0, width, height), null, false, null, cards);
+        var drawing = new OverviewAnnotationSurface();
+        drawing.Update(OverviewAnnotationSnapshot.Create(Array.Empty<ZoneView>(), 0, 0, zoom,
+            new Rectangle(0, 0, width, height), null, false, null, cards));
         drawing.Measure(new System.Windows.Size(width, height));
         drawing.Arrange(new System.Windows.Rect(0, 0, width, height));
         drawing.UpdateLayout();
