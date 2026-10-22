@@ -13,6 +13,7 @@ internal sealed partial class OverviewManager
     private WorkspaceService? _placeholderWorkspace;
     private IReadOnlyDictionary<IntPtr, string> _placeholderTitles = new Dictionary<IntPtr, string>();
     private IntPtr _hoveredPlaceholder;
+    private WorkspaceContextMenu? _windowContextMenu;
 
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {
@@ -184,6 +185,11 @@ internal sealed partial class OverviewManager
     private void RefreshToolPreview()
     {
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
+        if (_composerWindow is { WaitingForBrowser: true })
+        {
+            if (_annotationToolbar is { IsDisposed: false } toolbar) toolbar.Hide();
+            return;
+        }
         var camera = SceneCamera;
         bool zooming = CurrentMode == OverviewMode.Zooming;
         _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];

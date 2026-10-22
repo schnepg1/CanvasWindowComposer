@@ -34,6 +34,23 @@ public class CanvasComposerOverviewTests
         public Task<string> SignOutAsync(string id, CancellationToken token) => throw new NotSupportedException();
         public void AcknowledgeWelcome(string id) { }
     }
+    private sealed class SignInAccounts : IChatGptAccounts
+    {
+        public IReadOnlyList<ChatGptAccount> AccountsList = [];
+        public readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource<ChatGptAccount> Completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IReadOnlyList<ChatGptAccount> IChatGptAccounts.Accounts => AccountsList;
+        public ICanvasComposerProvider CreateProvider(string id) => throw new NotSupportedException();
+        public async Task<ChatGptAccount> SignInAsync(string? id, CancellationToken token)
+        {
+            Started.TrySetResult();
+            try { return await Completion.Task.WaitAsync(token); }
+            finally { Finished.TrySetResult(); }
+        }
+        public Task<string> SignOutAsync(string id, CancellationToken token) => throw new NotSupportedException();
+        public void AcknowledgeWelcome(string id) { }
+    }
     private static ComposerPlan Plan()=>new("A roadmap",[new("a","note","Start","#FFFFFF"),new("b","rectangle","Finish","#60A5FA")],[new("a","b","#FFFFFF")],[]);
     private static void Configure(CanvasComposerWindow window)
     { window.KeyBox.Text="fake-test-key";window.ModelBox.Text="test-model";window.PromptBox.Text="Build a roadmap"; }
@@ -44,6 +61,8 @@ public class CanvasComposerOverviewTests
         Assert.True(condition());
     }
     private static void WithOverview(Action<OverviewManager,FakeVirtualDesktops,FakeInputRouter> action)
+        =>WithOverview((overview,desktops,input,_,_)=>action(overview,desktops,input));
+    private static void WithOverview(Action<OverviewManager,FakeVirtualDesktops,FakeInputRouter,Canvas,FakeWindowApi> action)
         =>WorkspaceViewTests.OnSta(()=>
         {
             string folder=Path.Combine(Path.GetTempPath(),"composer-ui-"+Guid.NewGuid().ToString("N"));
@@ -53,7 +72,7 @@ public class CanvasComposerOverviewTests
                 using var wm=new WindowManager(canvas,api,config,input,new FakeClock());using var overview=new OverviewManager(canvas,wm,api,input,config);
                 var desktops=new FakeVirtualDesktops { CurrentDesktopId=Guid.NewGuid() };
                 overview.AttachAnnotations(desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
-                action(overview,desktops,input);
+                action(overview,desktops,input,canvas,api);
             }
             finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
         });
@@ -85,6 +104,60 @@ public class CanvasComposerOverviewTests
             overview.OpenCanvasComposer(new Provider(),new Credentials(),new Accounts());var window=overview.ComposerWindow!;Configure(window);
             window.GenerateButton.PerformClick();PumpUntil(()=>!window.Busy);Assert.True(window.ApplyButton.Enabled);
             input.RaiseEscPressed();Assert.Null(overview.ComposerWindow);Assert.Empty(overview.Annotations!.Items);Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
+        });
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void BrowserSignInYieldsForegroundAndRestoresCanvasWhenItFinishes()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            var accounts=new SignInAccounts();
+            overview.OpenCanvasComposer(new Provider(),new Credentials(),accounts);var window=overview.ComposerWindow!;
+            var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            Assert.True(window.TopMost);Assert.True(pass.TopMost);
+            window.Connections.SourceBox.SelectedIndex=1;
+            window.Connections.SignInButton.PerformClick();
+            PumpUntil(()=>window.WaitingForBrowser);
+            Assert.False(window.TopMost);Assert.False(pass.TopMost);Assert.True(overview.CanvasInputSuspended);
+            accounts.Completion.SetResult(new ChatGptAccount("account","Account",true,false,false));
+            PumpUntil(()=>!window.WaitingForBrowser);
+            Assert.True(window.TopMost);Assert.True(pass.TopMost);
+        });
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void CancellingBrowserSignInRestoresOverviewTopmost()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            var accounts=new SignInAccounts();
+            overview.OpenCanvasComposer(new Provider(),new Credentials(),accounts);var window=overview.ComposerWindow!;
+            var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            window.Connections.SourceBox.SelectedIndex=1;
+            window.Connections.SignInButton.PerformClick();
+            PumpUntil(()=>window.WaitingForBrowser);Assert.False(pass.TopMost);
+            input.RaiseEscPressed();
+            PumpUntil(()=>overview.ComposerWindow==null);
+            PumpUntil(()=>accounts.Finished.Task.IsCompleted);
+            Assert.True(pass.TopMost);Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
+        });
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void DoubleClickDuringBrowserSignInBringsWindowForwardWithoutClosingComposer()
+        =>WithOverview((overview,desktops,input,canvas,api)=>
+        {
+            using var source=new Form();
+            api.AddWindow(source.Handle,100,100,400,300);canvas.SetWindow(source.Handle,100,100,400,300);overview.RefreshConfig();
+            var accounts=new SignInAccounts();
+            overview.OpenCanvasComposer(new Provider(),new Credentials(),accounts);var window=overview.ComposerWindow!;
+            var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            window.Connections.SourceBox.SelectedIndex=1;
+            window.Connections.SignInButton.PerformClick();
+            PumpUntil(()=>window.WaitingForBrowser);
+            var before=canvas.Camera;
+            int x=150-pass.OriginX,y=150-pass.OriginY;
+            pass.OnMouseButtonDown!(pass,new(MouseButtons.Left,1,x,y,0));
+            pass.OnMouseDoubleClicked!(pass,new(MouseButtons.Left,2,x,y,0));
+            Assert.Equal(before,canvas.Camera);
+            Assert.Same(window,overview.ComposerWindow);Assert.True(window.WaitingForBrowser);
+            Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
         });
     [Fact]
     [Trait("Category","NativeRendering")]

@@ -11,6 +11,7 @@ internal sealed partial class OverviewManager
     private CanvasComposerWindow? _composerWindow;
     private ComposerPreviewLayer? _composerLayer;
     private readonly HashSet<Guid> _composerPreviewIds = [];
+    private bool _composerWaitingForBrowser;
     internal CanvasComposerWindow? ComposerWindow => _composerWindow;
 
     private IReadOnlyList<CanvasAnnotation> CurrentComposerNotes() => _annotationDocument?.Items
@@ -37,6 +38,7 @@ internal sealed partial class OverviewManager
             RefreshToolPreview();
         };
         form.Dismissed += () => { CancelCanvasComposer(); RefreshToolPreview(); FocusOverview(); };
+        form.WaitingForBrowserChanged += SetComposerWaitingForBrowser;
         var area = owner.Screen.WorkingArea;
         form.Size = new(Math.Min(form.Width, area.Width), Math.Min(form.Height, area.Height - 80));
         form.Location = new(area.Right - form.Width - 12, area.Top + 24);
@@ -87,10 +89,36 @@ internal sealed partial class OverviewManager
         _startupIntroLanded = false;
         ReconcileVisuals();
     }
+    private void SetComposerWaitingForBrowser(bool waiting)
+    {
+        _composerWaitingForBrowser = waiting;
+        if (_disposed || CurrentMode != OverviewMode.Zooming) return;
+        if (waiting)
+        {
+            foreach (var pass in _passes) pass.HideZones();
+            if (_annotationToolbar is { IsDisposed: false } toolbar) toolbar.Hide();
+        }
+        SetOverviewTopmost(!waiting);
+        _annotationToolbar?.TopMost = !waiting;
+        if (!waiting)
+        {
+            RefreshToolPreview();
+            if (_composerWindow is { IsDisposed: false } form) form.Activate();
+        }
+    }
+    private void SetOverviewTopmost(bool topmost)
+    {
+        foreach (var pass in _passes)
+            if (pass.IsHandleCreated) pass.TopMost = topmost;
+        if (topmost) RaiseOverviewPassesAboveTopmostWindows();
+    }
     private bool CancelCanvasComposer()
     {
         if (_composerWindow is not {} form) return false;
-        _composerWindow = null; form.Dispose(); _composerLayer?.SetPreview(null); _composerPreviewIds.Clear(); return true;
+        bool restoreTopmost = _composerWaitingForBrowser;
+        _composerWindow = null; form.Dispose(); _composerLayer?.SetPreview(null); _composerPreviewIds.Clear();
+        if (restoreTopmost) SetComposerWaitingForBrowser(false);
+        return true;
     }
 }
 

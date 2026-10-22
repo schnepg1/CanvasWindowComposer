@@ -18,6 +18,7 @@ internal sealed class WorkspaceWindow : Window
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock _selection = new() { TextWrapping = TextWrapping.Wrap, FontSize = 18, FontWeight = FontWeights.SemiBold };
     private readonly StackPanel _actions = new();
+    private readonly Button _chromeProfile;
     private bool _closed, _refreshQueued;
 
     public WorkspaceWindow(IWorkspaceCommands workspace)
@@ -82,7 +83,13 @@ internal sealed class WorkspaceWindow : Window
         detail.Children.Add(_selection); detail.Children.Add(_actions);
         AddAction("Go to", workspace.FocusItem); AddAction("Open", workspace.Open);
         AddAction("Link open window…", id => WorkspaceDialogs.LinkWindow(OwnerHandle(), workspace, id));
-        AddAction("Name saved place…", id => WorkspaceDialogs.NamePlace(OwnerHandle(), workspace, id));
+        AddAction("Rename…", id => WorkspaceDialogs.NamePlace(OwnerHandle(), workspace, id));
+        _chromeProfile = ZoneTheme.Button("Chrome profile…", () =>
+        {
+            if (_items.SelectedItem is WorkspaceItemView item)
+                WorkspaceInteractionDialogs.ChooseChromeProfile(OwnerHandle().Handle, workspace, item.Id);
+        });
+        _actions.Children.Add(_chromeProfile);
         AddAction("Close to placeholder", workspace.CloseToPlaceholder);
         AddAction("Choose file…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, false));
         AddAction("Choose folder…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, true));
@@ -142,6 +149,9 @@ internal sealed class WorkspaceWindow : Window
     {
         var selected = _items.SelectedItem as WorkspaceItemView;
         _actions.IsEnabled = selected != null;
+        _chromeProfile.Visibility = selected != null && ChromeProfiles.Supports(selected.ExecutablePath) && !selected.IsFolder
+            ? Visibility.Visible : Visibility.Collapsed;
+        _chromeProfile.IsEnabled = selected?.State is not "Opening…" and not "Queued";
         _selection.Text = selected == null ? "Select a saved place" :
             $"{selected.Title}\n\n{selected.Bounds.X:0}, {selected.Bounds.Y:0}";
         _selection.Margin = new Thickness(0, 0, 0, 12);
