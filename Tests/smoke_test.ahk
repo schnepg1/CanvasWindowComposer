@@ -15,7 +15,9 @@ if !A_IsAdmin {
 }
 
 ; === Config ===
-ExePath := A_ScriptDir "\..\bin\Debug\net8.0-windows\CanvasDesktop.exe"
+ExePath := A_ScriptDir "\..\publish-workspace\CanvasDesktop.exe"
+if !FileExist(ExePath)
+    ExePath := A_ScriptDir "\..\bin\Release\net10.0-windows\CanvasDesktop.exe"
 TestsPassed := 0
 TestsFailed := 0
 TestsRun := 0

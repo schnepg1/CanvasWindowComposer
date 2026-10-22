@@ -29,4 +29,13 @@
     <ProjectReference Include="..\CanvasDesktop.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <CanvasTestPreflightScript>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Tools\TestPreflight.ps1'))</CanvasTestPreflightScript>
+  </PropertyGroup>
+
+  <Target Name="CanvasTestPreflight" BeforeTargets="VSTest"
+          Condition="'$(CanvasSkipTestPreflight)' != 'true' and '$(CI)' != 'true' and '$(TF_BUILD)' != 'true' and '$(GITHUB_ACTIONS)' != 'true'">
+    <Exec Command="powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File &quot;$(CanvasTestPreflightScript)&quot;" />
+  </Target>
+
 </Project>
