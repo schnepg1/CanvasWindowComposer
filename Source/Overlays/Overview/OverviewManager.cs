@@ -262,6 +262,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             {
                 if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
             };
+            pass.Deactivate += (_, _) => CloseActiveMenus();
             pass.OnKey = HandleKeyDown;
             pass.OnKeyReleased = HandleKeyUp;
             pass.OnMouseButtonDown = HandleMouseDown;
@@ -429,7 +430,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
-        CancelVisualFrame();
+        CancelVisualFrame();
+        CloseActiveMenus();
         ResetGesturePreviews();
         _tourPanel?.Hide();
         _tutorialReading = false;
@@ -437,6 +439,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         ClearCardTransitions();
         CancelInteraction();
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
+        _annotationToolbar?.CloseDropDowns();
         _annotationToolbar?.Hide();
         foreach (var p in _passes) p.HideZones();
         foreach (var p in _passes)
@@ -483,7 +486,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (CurrentMode != OverviewMode.Zooming)
         {
             CancelInteraction();
-            _annotationToolbar?.Hide();
+            _annotationToolbar?.CloseDropDowns();
+        _annotationToolbar?.Hide();
             foreach (var p in _passes) p.HideZones();
         }
         bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
@@ -732,9 +736,33 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
+    public bool CloseActiveMenus()
+    {
+        bool hadMenu = false;
+        if (_windowContextMenu != null && _windowContextMenu.Visible)
+        {
+            _windowContextMenu.Close();
+            _windowContextMenu = null;
+            hadMenu = true;
+        }
+        if (_interactionMenu != null && _interactionMenu.Visible)
+        {
+            _interactionMenu.Close();
+            _interactionMenu = null;
+            hadMenu = true;
+        }
+        if (_annotationToolbar != null && _annotationToolbar.HasOpenDropDown)
+        {
+            _annotationToolbar.CloseDropDowns();
+            hadMenu = true;
+        }
+        return hadMenu;
+    }
+
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
-        _visualFrames.Flush();
+        _visualFrames.Flush();
+        if (CloseActiveMenus()) return;
         if (StopTutorialTravel()) RefreshTourUi();
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled)
@@ -755,7 +783,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
             if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
             {
-                card.ShowContextMenu(pass, new Point(e.X, e.Y));
+                PInvoke.SetForegroundWindow((HWND)pass.Handle); card.ShowContextMenu(pass, new Point(e.X, e.Y));
                 return;
             }
             else if (rightHit >= 0 && _placeholderWorkspace != null
@@ -763,7 +791,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             {
                 _windowContextMenu?.Dispose();
                 _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
-                _windowContextMenu.Show(pass, new Point(e.X, e.Y));
+                PInvoke.SetForegroundWindow((HWND)pass.Handle); _windowContextMenu.Show(pass, new Point(e.X, e.Y));
                 return;
             }
             else if (rightHit >= 0)
@@ -880,7 +908,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
-        _visualFrames.Flush();
+        _visualFrames.Flush();
+        if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;
         if (RouteWindowPointer(pass, e, up: true)) return;
         var pointer = Pointer(pass, e);
@@ -940,7 +969,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
-        _visualFrames.Flush();
+        _visualFrames.Flush();
+        if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
         if (_windowInteraction.Active) return;

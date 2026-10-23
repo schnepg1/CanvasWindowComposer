@@ -18,7 +18,7 @@ internal static class AnnotationVisual
     internal static readonly Brush CardBackground = CreateCardBackground();
     private static Brush CreateCardBackground()
     {
-        var brush=new SolidColorBrush(Color.FromArgb(245,28,34,46));
+        var brush=new SolidColorBrush(Color.FromArgb(255,28,34,46));
         brush.Freeze(); return brush;
     }
 

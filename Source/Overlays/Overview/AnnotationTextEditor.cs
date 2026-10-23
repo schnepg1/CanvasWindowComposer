@@ -215,7 +215,7 @@ internal sealed class AnnotationTextEditor : Form
         };
         _size=new NumericUpDown
         {
-            Location=new Point(80,59), Size=new Size(64,26), Minimum=8, Maximum=96,
+            Location=new Point(80,59), Size=new Size(64,26), Minimum=8, Maximum=(decimal)AnnotationDocument.MaximumFontSize,
             DecimalPlaces=0, Increment=1, Value=(decimal)initialSize, TextAlign=HorizontalAlignment.Right,
             BackColor=Color.FromArgb(35,43,58), ForeColor=Color.White, BorderStyle=BorderStyle.FixedSingle,
             Font=new Font("Segoe UI",10), AccessibleName="Text size"
@@ -238,7 +238,7 @@ internal sealed class AnnotationTextEditor : Form
         _count.Left=Math.Max(14,header.ClientSize.Width-_count.Width-14);
 
         int linkLeft=176;
-        foreach (var preset in new[] { ("S",12), ("M",18), ("L",28), ("XL",40) })
+        foreach (var preset in new[] { ("S", 14), ("M", 24), ("L", 40), ("XL", 72), ("2XL", 120), ("3XL", 200) })
         {
             var link=new LinkLabel
             {

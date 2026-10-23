@@ -411,7 +411,7 @@ internal sealed class AnnotationShapeEditor : Form
 
         BringToFrontButton = CreateStyledButton("⤒  Bring to Foreground", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
         BringToFrontButton.Height = 32;
-        BringToFrontButton.ToolTip = "Move shape to the very top, in front of all other notes and shapes";
+        BringToFrontButton.ToolTip = "Move shape to the foreground, in front of windows and other shapes";
         BringToFrontButton.Margin = new Thickness(0, 0, 3, 0);
         BringToFrontButton.Click += (_, _) => SetZOrder(ZOrderAction.BringToFront);
         Grid.SetColumn(BringToFrontButton, 0);
@@ -419,7 +419,7 @@ internal sealed class AnnotationShapeEditor : Form
 
         SendToBackButton = CreateStyledButton("⤓  Send to Background", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
         SendToBackButton.Height = 32;
-        SendToBackButton.ToolTip = "Move shape to the very back, behind other notes and shapes";
+        SendToBackButton.ToolTip = "Move shape to the background, behind windows and other shapes";
         SendToBackButton.Margin = new Thickness(3, 0, 0, 0);
         SendToBackButton.Click += (_, _) => SetZOrder(ZOrderAction.SendToBack);
         Grid.SetColumn(SendToBackButton, 1);
@@ -623,6 +623,10 @@ internal sealed class AnnotationShapeEditor : Form
     private void SetZOrder(ZOrderAction action)
     {
         SelectedZOrder = action;
+        if (action == ZOrderAction.SendToBack)
+            CurrentItem = CurrentItem with { InBackground = true };
+        else if (action is ZOrderAction.BringToFront or ZOrderAction.BringForward)
+            CurrentItem = CurrentItem with { InBackground = false };
         ZOrderStatusText.Text = FormatZOrderStatus();
         RefreshActiveState();
     }
@@ -642,16 +646,16 @@ internal sealed class AnnotationShapeEditor : Form
     {
         return SelectedZOrder switch
         {
-            ZOrderAction.BringToFront => "Will move to Foreground (Top)",
-            ZOrderAction.SendToBack => "Will move to Background (Bottom)",
+            ZOrderAction.BringToFront => "Will move to Foreground (In front of windows & shapes)",
+            ZOrderAction.SendToBack => "Will move to Background (Behind windows & shapes)",
             ZOrderAction.BringForward => "Will step Forward (+1 layer)",
             ZOrderAction.SendBackward => "Will step Backward (-1 layer)",
-            _ => _initialZOrder.Total <= 1
-                ? "Single layer"
-                : _initialZOrder.Index == _initialZOrder.Total - 1
-                    ? "Currently: Foreground (Top layer)"
-                    : _initialZOrder.Index == 0
-                        ? "Currently: Background (Bottom layer)"
+            _ => (CurrentItem.InBackground || (_initialZOrder.Index == 0 && _initialZOrder.Total > 0 && CurrentItem.InBackground))
+                ? "Currently: Background (Behind windows & shapes)"
+                : _initialZOrder.Total <= 1
+                    ? "Single layer"
+                    : _initialZOrder.Index == _initialZOrder.Total - 1
+                        ? "Currently: Foreground (In front of windows)"
                         : $"Current layer: {_initialZOrder.Index + 1} of {_initialZOrder.Total}"
         };
     }

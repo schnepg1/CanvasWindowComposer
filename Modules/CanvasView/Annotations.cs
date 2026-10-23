@@ -10,7 +10,7 @@ public enum AnnotationCardFill { Solid, Tinted, None }
 public sealed record CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
     CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "", double FontSize = 18,
     AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
-    AnnotationCardFill CardFill = AnnotationCardFill.Solid)
+    AnnotationCardFill CardFill = AnnotationCardFill.Solid, bool InBackground = false)
 {
     public CanvasRect Bounds => new(Math.Min(A.X, B.X), Math.Min(A.Y, B.Y), Math.Abs(B.X - A.X), Math.Abs(B.Y - A.Y));
     public CanvasAnnotation Translate(double x, double y) => this with { A = new(A.X + x, A.Y + y), B = new(B.X + x, B.Y + y) };
@@ -23,7 +23,7 @@ public sealed class AnnotationDocument
     public const int MaximumTextLength = 10000;
     public const double DefaultFontSize = 18;
     public const double MinimumFontSize = 8;
-    public const double MaximumFontSize = 96;
+    public const double MaximumFontSize = 400;
     private readonly List<CanvasAnnotation> _items = [];
     private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay, long Order);
     private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
@@ -152,7 +152,7 @@ public sealed class AnnotationDocument
 
         if (zChanged)
         {
-            _items.RemoveAt(index);
+            if (zOrder == ZOrderAction.SendToBack) item = item with { InBackground = true }; else if (zOrder is ZOrderAction.BringToFront or ZOrderAction.BringForward) item = item with { InBackground = false }; _items.RemoveAt(index);
             if (zOrder == ZOrderAction.BringToFront)
             {
                 int target = _items.FindLastIndex(a => a.DesktopId == desktop);
