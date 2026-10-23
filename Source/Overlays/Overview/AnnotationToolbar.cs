@@ -15,7 +15,7 @@ internal sealed class AnnotationToolbar : Form
     public event Action<AnnotationMode>? ModeRequested;
     public event Action<string>? ColorRequested;
     public event Action<double>? StrokeRequested;
-    public event Action? UndoRequested,RedoRequested,DeleteRequested,RetrySaveRequested,ComposerRequested;
+    public event Action? UndoRequested,RedoRequested,EditRequested,DeleteRequested,RetrySaveRequested,ComposerRequested;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams { get { var cp=base.CreateParams; cp.ExStyle|=0x80; return cp; } }
     public AnnotationToolbar()
@@ -39,7 +39,7 @@ internal sealed class AnnotationToolbar : Form
         foreach(var width in new[]{1d,3d,6d}) widths.DropDownItems.Add(width.ToString(),null,(_,_)=>StrokeRequested?.Invoke(width));
         bar.Items.Add(widths);
         void Button(string title,Action action) => bar.Items.Add(title,null,(_,_)=>action());
-        Button("Undo",()=>UndoRequested?.Invoke()); Button("Redo",()=>RedoRequested?.Invoke()); Button("Delete",()=>DeleteRequested?.Invoke());
+        Button("Undo",()=>UndoRequested?.Invoke()); Button("Redo",()=>RedoRequested?.Invoke()); Button("Edit",()=>EditRequested?.Invoke()); Button("Delete",()=>DeleteRequested?.Invoke());
         Button("Save",()=>RetrySaveRequested?.Invoke());
         Button("AI Compose",()=>ComposerRequested?.Invoke());
         var radiusHost=new ToolStripControlHost(_radius);

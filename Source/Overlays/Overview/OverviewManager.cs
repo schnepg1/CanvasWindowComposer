@@ -612,7 +612,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
-        if (_annotationEditor != null || _composerWindow != null) return;
+        if (_annotationEditor != null || _shapeEditor != null || _composerWindow != null) return;
         if (HandleCanvasHistoryKey(e)) return;
         if (e.KeyCode is Keys.Oemplus or Keys.Add or Keys.OemMinus or Keys.Subtract)
         {
@@ -675,7 +675,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             return;
         }
 
-        if (_annotationEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
+        if (_annotationEditor != null || _shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
@@ -712,7 +712,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
-        if (!_cfg.InputEnabled || _annotationEditor != null) return;
+        if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -787,7 +787,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control)
     {
         if (TrySkipStartupIntro()) return;
-        if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null) return;
+        if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
         if (_composerWindow != null) return;
         bool zoomModifier = control || (Control.ModifierKeys & Keys.Alt) != 0;
         var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier);
@@ -831,9 +831,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
-                && annotationTool.Hit(Pointer(pass,e)) is { } note && note.Kind != AnnotationKind.Arrow && note.Text.Length > 0)
+                && annotationTool.Hit(Pointer(pass,e)) is { } note)
             {
-                CancelInteraction(); annotationTool.Select(note.Id); QueueAnnotationTextEdit(note);
+                CancelInteraction(); annotationTool.Select(note.Id);
+                if (note.Kind == AnnotationKind.Text)
+                    QueueAnnotationTextEdit(note);
+                else
+                    QueueAnnotationShapeEdit(note);
                 return;
             }
             if (annotationTool.Mode!=AnnotationMode.Select) return;

@@ -17,7 +17,7 @@ internal sealed partial class OverviewManager
 
     private bool HandleCanvasHistoryKey(KeyEventArgs e)
     {
-        if(_annotationEditor!=null || _composerWindow!=null || !e.Control || e.Alt || e.KeyCode is not (Keys.Z or Keys.Y)) return false;
+        if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null || !e.Control || e.Alt || e.KeyCode is not (Keys.Z or Keys.Y)) return false;
         bool redo=e.KeyCode==Keys.Y || e.Shift;
         if((_annotationDocument?.HistoryOrder(_annotationDesktop(),redo)??0)==0 && (_placeholderWorkspace?.ZoneHistoryOrder(redo)??0)==0) return false;
         AnnotationHistory(redo);e.Handled=true;e.SuppressKeyPress=true;return true;
