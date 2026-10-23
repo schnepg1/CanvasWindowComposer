@@ -106,6 +106,9 @@ public class ShapeEditorTests
             Assert.Equal("#FBBF24", editor.CurrentItem.Color);
             Assert.Equal(3, editor.CurrentItem.Stroke);
             Assert.Equal("Initial", editor.CurrentItem.Text);
+            // Verify preview artwork dimensions are initialized immediately upon creation
+            Assert.Equal(shape.Bounds.Width, editor.ArtworkPreview.Width);
+            Assert.Equal(shape.Bounds.Height, editor.ArtworkPreview.Height);
 
             // Toggle kind to Ellipse
             editor.TypeEllipseButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));

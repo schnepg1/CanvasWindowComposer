@@ -73,6 +73,7 @@ internal sealed class AnnotationShapeEditor : Form
     internal Button SaveBtn { get; }
     internal Button CancelBtn { get; }
     internal Button DeleteBtn { get; }
+    internal FrameworkElement ArtworkPreview => _artworkPreview;
 
     private readonly ShapeArtworkPreview _artworkPreview;
     private readonly TextBlock _dimensionText;
@@ -757,17 +758,28 @@ internal sealed class AnnotationShapeEditor : Form
         return brush;
     }
 
-    private sealed class ShapeArtworkPreview(CanvasAnnotation item) : FrameworkElement
+    private sealed class ShapeArtworkPreview : FrameworkElement
     {
-        private CanvasAnnotation _item = item;
+        private CanvasAnnotation _item;
+
+        public ShapeArtworkPreview(CanvasAnnotation item)
+        {
+            _item = item;
+            Width = Math.Max(1, item.Bounds.Width);
+            Height = Math.Max(1, item.Bounds.Height);
+        }
 
         public void Update(CanvasAnnotation item)
         {
             _item = item;
             Width = Math.Max(1, item.Bounds.Width);
             Height = Math.Max(1, item.Bounds.Height);
+            InvalidateMeasure();
             InvalidateVisual();
         }
+
+        protected override System.Windows.Size MeasureOverride(System.Windows.Size availableSize) =>
+            new(Math.Max(1, _item.Bounds.Width), Math.Max(1, _item.Bounds.Height));
 
         protected override void OnRender(DrawingContext dc)
         {
