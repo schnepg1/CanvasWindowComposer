@@ -29,9 +29,9 @@ internal static class PlaceholderPreview
         using var appBitmap = RenderCard(commands, app, 720, 430);
         g.DrawImageUnscaled(folderBitmap, 32, 84);
         g.DrawImageUnscaled(appBitmap, 800, 84);
-        g.DrawString("Overview · 25% zoom · crisp labels drawn above the thumbnails", small, Brushes.LightSteelBlue, 32, 542);
+        g.DrawString("Overview · 25% zoom · centered titles wrap inside each rectangle", small, Brushes.LightSteelBlue, 32, 542);
         DrawOverview(g, folderBitmap, appBitmap, .25, 32, 578, 1496, 270);
-        g.DrawString("Overview · 10% zoom · titles keep their minimum readable size", small, Brushes.LightSteelBlue, 32, 878);
+        g.DrawString("Overview · 10% zoom · titles shrink and stay attached to their cards", small, Brushes.LightSteelBlue, 32, 878);
         DrawOverview(g, folderBitmap, appBitmap, .1, 32, 914, 1496, 270);
         sheet.Save(output, System.Drawing.Imaging.ImageFormat.Png);
     }
@@ -68,8 +68,9 @@ internal static class PlaceholderPreview
             g.DrawImage(i == 0 ? folder : app, new Rectangle(x + (int)(b.X * zoom), y + (int)(b.Y * zoom),
                 (int)(b.W * zoom), (int)(b.H * zoom)));
         }
-        var drawing = new ZoneAnnotationWindow.ZoneDrawing();
-        drawing.Update(Array.Empty<ZoneView>(), 0, 0, zoom, new Rectangle(0, 0, width, height), null, false, null, cards);
+        var drawing = new OverviewAnnotationSurface();
+        drawing.Update(OverviewAnnotationSnapshot.Create(Array.Empty<ZoneView>(), 0, 0, zoom,
+            new Rectangle(0, 0, width, height), null, false, null, cards));
         drawing.Measure(new System.Windows.Size(width, height));
         drawing.Arrange(new System.Windows.Rect(0, 0, width, height));
         drawing.UpdateLayout();
@@ -95,6 +96,7 @@ internal static class PlaceholderPreview
         public void SetAutoOpen(Guid id, bool value) { }
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) { }
+        public bool SetChromeProfile(Guid id, string profilePath) => true;
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Array.Empty<WorkspaceLinkCandidate>();
         public bool LinkWindow(Guid id, Guid token) => false;
     }

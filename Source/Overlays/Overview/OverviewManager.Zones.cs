@@ -13,6 +13,7 @@ internal sealed partial class OverviewManager
     private WorkspaceService? _placeholderWorkspace;
     private IReadOnlyDictionary<IntPtr, string> _placeholderTitles = new Dictionary<IntPtr, string>();
     private IntPtr _hoveredPlaceholder;
+    private WorkspaceContextMenu? _windowContextMenu;
 
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {
@@ -88,7 +89,6 @@ internal sealed partial class OverviewManager
         var fit = ZoneGeometry.Fit(zone.Bounds, _screens.PrimaryWorkingArea);
         _startupIntroLanded = false;
         _camera.SetTo(fit.X, fit.Y, fit.Zoom);
-        foreach (var p in _passes) p.Grid?.UpdateCamera(_camera.X, _camera.Y, _camera.Zoom);
         ReconcileVisuals();
     }
 
@@ -100,23 +100,42 @@ internal sealed partial class OverviewManager
             CancelInteraction();
         }
         if (CurrentMode == OverviewMode.Hidden) return;
-        RefreshCardIdentities();
+        var camera = SceneCamera;
         var inputs = new List<OverviewCardInput>();
-        var occluders = new List<WorldRect>();
+        List<PlaceholderAnnotation>? gestureCards = null;
+        bool hasRestoreFallback = false;
+        // Each card borrows a prefix of one detached frame array. Copying every
+        // previous window per card used quadratic memory in dense overviews.
+        var occluders = new WorldRect[_windows.Count];
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
             bool visible = !entry.ScreenFixed && _passes.Exists(pass =>
             {
                 var b = pass.Screen.Bounds;
-                return (entry.World.X - _camera.X) * _camera.Zoom < b.Right
-                    && (entry.World.X + entry.World.W - _camera.X) * _camera.Zoom > b.Left
-                    && (entry.World.Y - _camera.Y) * _camera.Zoom < b.Bottom
-                    && (entry.World.Y + entry.World.H - _camera.Y) * _camera.Zoom > b.Top;
+                return (entry.World.X - camera.X) * camera.Zoom < b.Right
+                    && (entry.World.X + entry.World.W - camera.X) * camera.Zoom > b.Left
+                    && (entry.World.Y - camera.Y) * camera.Zoom < b.Bottom
+                    && (entry.World.Y + entry.World.H - camera.Y) * camera.Zoom > b.Top;
             });
             bool priority = i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder
                 || (_tools.Kind == CanvasInteractionKind.Window && i == _dragIndex);
-            if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
+            bool restoreFallback = visible && _restoringGesturePreviews
+                && !_placeholderTitles.ContainsKey(entry.HWnd) && !_thumbnails.HasVisibleSource(entry.HWnd);
+            if (visible && (GesturePreviewsActive || restoreFallback))
+            {
+                // Reuse an existing immutable card image or cached native source.
+                // A title card is immediate when no image exists; never capture here.
+                var image = (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.CachedOverviewImage;
+                bool cachedThumbnail = _thumbnails.HasVisibleSource(entry.HWnd)
+                    || (_cardSources.TryGetValue(entry.HWnd, out var cachedSource) && _thumbnails.HasVisibleSource(cachedSource));
+                if (cachedThumbnail) image = null;
+                (gestureCards ??= new()).Add(new(entry.HWnd, GestureTitle(entry.HWnd), entry.World, priority,
+                    image, new ArraySegment<WorldRect>(occluders, 0, i), ImageOpacity: image != null || cachedThumbnail ? 1 : 0,
+                    LabelOpacity: image != null ? 0 : 1));
+                hasRestoreFallback |= restoreFallback;
+            }
+            else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
             {
                 if (_placeholderTitles.TryGetValue(entry.HWnd, out var title)
                     && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
@@ -127,11 +146,11 @@ internal sealed partial class OverviewManager
                     if (simple) card.ReleaseOverviewImage();
                     bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
-                        simple ? null : card.GetOverviewImage(), occluders.ToArray()),
+                        simple ? null : card.GetOverviewImage(), new ArraySegment<WorldRect>(occluders, 0, i)),
                         simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay));
                 }
                 else
-                    inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: occluders.ToArray()),
+                    inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i)),
                         OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd)));
             }
             else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)
@@ -139,13 +158,24 @@ internal sealed partial class OverviewManager
             if (entry.ScreenFixed)
             {
                 var rect = _win32.GetWindowRect(entry.HWnd);
-                occluders.Add(new WorldRect { X = _camera.X + rect.x / _camera.Zoom,
-                    Y = _camera.Y + rect.y / _camera.Zoom, W = rect.w / _camera.Zoom, H = rect.h / _camera.Zoom });
+                occluders[i] = new WorldRect { X = camera.X + rect.x / camera.Zoom,
+                    Y = camera.Y + rect.y / camera.Zoom, W = rect.w / camera.Zoom, H = rect.h / camera.Zoom };
             }
-            else occluders.Add(entry.World);
+            else occluders[i] = entry.World;
         }
-        var cards = _cardTransitions.Update(inputs, Environment.TickCount64);
-        UpdateCardAnimationTimer();
+        IReadOnlyList<PlaceholderAnnotation> cards;
+        if (GesturePreviewsActive)
+        {
+            _cardAnimationTimer?.Stop();
+            cards = gestureCards is { } moving ? moving : Array.Empty<PlaceholderAnnotation>();
+        }
+        else
+        {
+            var normalCards = _cardTransitions.Update(inputs, Environment.TickCount64);
+            cards = gestureCards == null ? normalCards : normalCards.Concat(gestureCards).ToArray();
+            UpdateCardAnimationTimer();
+        }
+        RetryGestureRestoration(hasRestoreFallback);
         _annotationCards = cards;
         RefreshToolPreview();
     }
@@ -155,6 +185,12 @@ internal sealed partial class OverviewManager
     private void RefreshToolPreview()
     {
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
+        if (_composerWindow is { WaitingForBrowser: true })
+        {
+            if (_annotationToolbar is { IsDisposed: false } toolbar) toolbar.Hide();
+            return;
+        }
+        var camera = SceneCamera;
         bool zooming = CurrentMode == OverviewMode.Zooming;
         _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];
         if (_annotationTool?.Preview is {} annotationPreview)
@@ -166,10 +202,24 @@ internal sealed partial class OverviewManager
             for (int i = 0; i < zones.Count; i++)
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
         }
+        OverviewAnnotationSnapshot? frame = null;
+        OverviewOverlay? firstPass = null;
         foreach (var p in _passes)
-            if (p.Visible) p.ShowAnnotations(OverviewAnnotationSnapshot.Create(zones, _camera.X, _camera.Y, _camera.Zoom, p.Screen.Bounds,
+            if (p.Visible)
+            {
+                // Detach the lists once; each monitor only changes viewport data.
+                frame ??= OverviewAnnotationSnapshot.Create(zones, camera.X, camera.Y, camera.Zoom, p.Screen.Bounds,
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
-                _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards, zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, AnnotationHint));
+                _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
+                zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, AnnotationHint);
+                var b = p.Screen.Bounds;
+                p.StageAnnotations(frame with { Screen = new(b.X, b.Y, b.Width, b.Height), ShowIntroTitle = p.Screen.Primary });
+                firstPass ??= p;
+            }
+        // Every annotation window is owned by this UI thread/Dispatcher. Prepare
+        // all viewports, then service render-priority work once for the whole frame.
+        foreach (var p in _passes) if (p.Visible) p.PrepareAnnotations();
+        firstPass?.FlushAnnotations();
         RefreshAnnotationUi();
         RefreshTourUi();
     }

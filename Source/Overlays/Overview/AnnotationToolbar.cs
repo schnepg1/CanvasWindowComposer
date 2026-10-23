@@ -15,6 +15,10 @@ internal sealed class AnnotationToolbar : Form
     public event Action<AnnotationMode>? ModeRequested;
     public event Action<string>? ColorRequested;
     public event Action<double>? StrokeRequested;
+    public event Action<double>? FontSizeRequested;
+    public event Action<AnnotationTextAlign>? TextAlignRequested;
+    public event Action<AnnotationTextEmphasis>? EmphasisRequested;
+    public event Action<AnnotationCardFill>? CardFillRequested;
     public event Action? UndoRequested,RedoRequested,EditRequested,DeleteRequested,RetrySaveRequested,ComposerRequested;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams { get { var cp=base.CreateParams; cp.ExStyle|=0x80; return cp; } }
@@ -38,6 +42,25 @@ internal sealed class AnnotationToolbar : Form
         var widths=new ToolStripDropDownButton("Stroke");
         foreach(var width in new[]{1d,3d,6d}) widths.DropDownItems.Add(width.ToString(),null,(_,_)=>StrokeRequested?.Invoke(width));
         bar.Items.Add(widths);
+        var sizes=new ToolStripDropDownButton("Text size");
+        foreach(var size in new[]{12d,18d,24d,32d,40d,56d,72d})
+            sizes.DropDownItems.Add(size.ToString("0"),null,(_,_)=>FontSizeRequested?.Invoke(size));
+        bar.Items.Add(sizes);
+        var textStyle=new ToolStripDropDownButton("Text");
+        void Style(string title,Action action) => textStyle.DropDownItems.Add(title,null,(_,_)=>action());
+        Style("Plain",()=>EmphasisRequested?.Invoke(AnnotationTextEmphasis.Normal));
+        Style("Bold",()=>EmphasisRequested?.Invoke(AnnotationTextEmphasis.Bold));
+        Style("Italic",()=>EmphasisRequested?.Invoke(AnnotationTextEmphasis.Italic));
+        Style("Bold italic",()=>EmphasisRequested?.Invoke(AnnotationTextEmphasis.BoldItalic));
+        textStyle.DropDownItems.Add(new ToolStripSeparator());
+        Style("Align left",()=>TextAlignRequested?.Invoke(AnnotationTextAlign.Left));
+        Style("Align center",()=>TextAlignRequested?.Invoke(AnnotationTextAlign.Center));
+        Style("Align right",()=>TextAlignRequested?.Invoke(AnnotationTextAlign.Right));
+        textStyle.DropDownItems.Add(new ToolStripSeparator());
+        Style("Solid card",()=>CardFillRequested?.Invoke(AnnotationCardFill.Solid));
+        Style("Tinted card",()=>CardFillRequested?.Invoke(AnnotationCardFill.Tinted));
+        Style("Outline card",()=>CardFillRequested?.Invoke(AnnotationCardFill.None));
+        bar.Items.Add(textStyle);
         void Button(string title,Action action) => bar.Items.Add(title,null,(_,_)=>action());
         Button("Undo",()=>UndoRequested?.Invoke()); Button("Redo",()=>RedoRequested?.Invoke()); Button("Edit",()=>EditRequested?.Invoke()); Button("Delete",()=>DeleteRequested?.Invoke());
         Button("Save",()=>RetrySaveRequested?.Invoke());

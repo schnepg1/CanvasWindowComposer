@@ -8,14 +8,44 @@ namespace CanvasDesktop;
 /// <summary>Card artwork in canvas units, shared by the canvas and the text editor.</summary>
 internal static class AnnotationVisual
 {
-    internal const double FontSize = 18;
+    internal const double FontSize = AnnotationDocument.DefaultFontSize;
     internal const double TextInset = 8;
-    internal static readonly Typeface Typeface = new("Segoe UI");
+    private static readonly FontFamily Family = new("Segoe UI");
+    internal static readonly Typeface Typeface = new(Family,FontStyles.Normal,FontWeights.Normal,FontStretches.Normal);
+    private static readonly Typeface BoldTypeface = new(Family,FontStyles.Normal,FontWeights.Bold,FontStretches.Normal);
+    private static readonly Typeface ItalicTypeface = new(Family,FontStyles.Italic,FontWeights.Normal,FontStretches.Normal);
+    private static readonly Typeface BoldItalicTypeface = new(Family,FontStyles.Italic,FontWeights.Bold,FontStretches.Normal);
     internal static readonly Brush CardBackground = CreateCardBackground();
     private static Brush CreateCardBackground()
     {
         var brush=new SolidColorBrush(Color.FromArgb(245,28,34,46));
         brush.Freeze(); return brush;
+    }
+
+    internal static Typeface TypefaceFor(AnnotationTextEmphasis emphasis) => emphasis switch
+    {
+        AnnotationTextEmphasis.Bold => BoldTypeface,
+        AnnotationTextEmphasis.Italic => ItalicTypeface,
+        AnnotationTextEmphasis.BoldItalic => BoldItalicTypeface,
+        _ => Typeface
+    };
+
+    internal static TextAlignment TextAlignmentFor(AnnotationTextAlign align) => align switch
+    {
+        AnnotationTextAlign.Center => TextAlignment.Center,
+        AnnotationTextAlign.Right => TextAlignment.Right,
+        _ => TextAlignment.Left
+    };
+
+    private static Brush? CardFillBrush(CanvasAnnotation item,SolidColorBrush color)
+    {
+        if (item.Kind != AnnotationKind.Text || item.CardFill == AnnotationCardFill.None) return null;
+        if (item.CardFill == AnnotationCardFill.Tinted)
+        {
+            var tint=new SolidColorBrush(Color.FromArgb(42,color.Color.R,color.Color.G,color.Color.B));
+            tint.Freeze(); return tint;
+        }
+        return CardBackground;
     }
 
     internal static Rect TextBounds(CanvasAnnotation item)
@@ -50,12 +80,16 @@ internal static class AnnotationVisual
         }
         if (item.Kind == AnnotationKind.Rectangle) dc.DrawRectangle(null,pen,rect);
         else if (item.Kind == AnnotationKind.Ellipse) dc.DrawEllipse(null,pen,new(rect.Width/2,rect.Height/2),rect.Width/2,rect.Height/2);
-        else dc.DrawRoundedRectangle(CardBackground,pen,rect,6,6);
+        else
+        {
+            dc.DrawRoundedRectangle(CardFillBrush(item,brush),pen,rect,6,6);
+        }
         if (!drawText || string.IsNullOrEmpty(item.Text) || rect.Width <= TextInset*2 || rect.Height <= TextInset*2) return;
         var textRect = TextBounds(item);
-        var text = new FormattedText(item.Text,CultureInfo.CurrentUICulture,FlowDirection.LeftToRight,Typeface,FontSize,brush,pixelsPerDip)
+        var text = new FormattedText(item.Text,CultureInfo.CurrentUICulture,FlowDirection.LeftToRight,TypefaceFor(item.Emphasis),item.FontSize,brush,pixelsPerDip)
         {
-            MaxTextWidth=textRect.Width, MaxTextHeight=textRect.Height, Trimming=TextTrimming.CharacterEllipsis
+            MaxTextWidth=textRect.Width, MaxTextHeight=textRect.Height, Trimming=TextTrimming.CharacterEllipsis,
+            TextAlignment=TextAlignmentFor(item.TextAlign)
         };
         dc.PushClip(new RectangleGeometry(textRect));
         dc.DrawText(text,textRect.TopLeft);

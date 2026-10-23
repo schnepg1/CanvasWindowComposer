@@ -42,7 +42,7 @@ internal sealed class MinimapRenderer : IDisposable
     private int _width, _height;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct MinimapConstants
+    internal struct MinimapConstants
     {
         public float ScreenW, ScreenH;
         public float MapOriginX, MapOriginY;
@@ -259,6 +259,7 @@ float4 PSMain(VSOut input) : SV_Target
     // Shader-facing state (UI thread writes, render thread reads).
     private volatile float _vpMinX, _vpMinY, _vpMaxX, _vpMaxY;
     private readonly float[] _windowRects = new float[WindowBufferCapacity * 4];
+    private readonly float[] _uploadRects = new float[WindowBufferCapacity * 4];
     private volatile int _windowCount;
     private readonly object _windowsLock = new();
 
@@ -358,37 +359,35 @@ float4 PSMain(VSOut input) : SV_Target
         RequestFrame();
     }
 
+    internal MinimapConstants CaptureSnapshot(Span<float> windows)
+    {
+        lock (_windowsLock)
+        {
+            _windowRects.AsSpan(0, _windowCount * 4).CopyTo(windows);
+            return new MinimapConstants
+            {
+                ScreenW = _width, ScreenH = _height,
+                MapOriginX = _mapOriginX, MapOriginY = _mapOriginY, MapW = _mapW, MapH = _mapH,
+                WindowCount = _windowCount, ViewportMinX = _vpMinX, ViewportMinY = _vpMinY,
+                ViewportMaxX = _vpMaxX, ViewportMaxY = _vpMaxY
+            };
+        }
+    }
+
     private bool RenderFrame()
     {
         if (_context == null || _swapChain == null) return false;
         long frameStarted = System.Diagnostics.Stopwatch.GetTimestamp();
 
-        lock (_windowsLock)
+        var constants = CaptureSnapshot(_uploadRects);
+        var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
+        Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
+        _context.Unmap(_constantBuffer!);
+        if (constants.WindowCount > 0)
         {
-            var cbMapped = _context.Map(_constantBuffer!, MapMode.WriteDiscard);
-            var constants = new MinimapConstants
-            {
-                ScreenW = _width,
-                ScreenH = _height,
-                MapOriginX = _mapOriginX,
-                MapOriginY = _mapOriginY,
-                MapW = _mapW,
-                MapH = _mapH,
-                WindowCount = _windowCount,
-                ViewportMinX = _vpMinX,
-                ViewportMinY = _vpMinY,
-                ViewportMaxX = _vpMaxX,
-                ViewportMaxY = _vpMaxY
-            };
-            Marshal.StructureToPtr(constants, cbMapped.DataPointer, false);
-            _context.Unmap(_constantBuffer!);
-
-            if (_windowCount > 0)
-            {
-                var mapped = _context.Map(_windowsBuffer!, MapMode.WriteDiscard);
-                Marshal.Copy(_windowRects, 0, mapped.DataPointer, _windowCount * 4);
-                _context.Unmap(_windowsBuffer!);
-            }
+            var mapped = _context.Map(_windowsBuffer!, MapMode.WriteDiscard);
+            Marshal.Copy(_uploadRects, 0, mapped.DataPointer, constants.WindowCount * 4);
+            _context.Unmap(_windowsBuffer!);
         }
 
         _context.OMSetRenderTargets(_rtv!);
@@ -401,7 +400,10 @@ float4 PSMain(VSOut input) : SV_Target
         _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         _context.Draw(FullscreenTriangleVertexCount, 0);
 
+        PerformanceDiagnostics.Shared.Complete("MinimapUploadAndDraw", IntPtr.Zero, frameStarted, true);
+        long presentStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         var present = _swapChain.Present(VsyncInterval, PresentFlags.None);
+        PerformanceDiagnostics.Shared.Complete("MinimapPresentCall", IntPtr.Zero, presentStarted, present.Success, present.Code);
         PerformanceDiagnostics.Shared.Complete("MinimapFrameIncludingPresent", IntPtr.Zero, frameStarted, present.Success, present.Code);
         present.CheckError();
         OnFrameTick?.Invoke();

@@ -94,7 +94,6 @@ internal sealed partial class OverviewManager
     private void SetTourCamera(CanvasCamera camera)
     {
         _camera.SetTo(camera.X,camera.Y,camera.Zoom);
-        foreach(var pass in _passes)pass.Grid?.UpdateCamera(camera.X,camera.Y,camera.Zoom);
         ReconcileVisuals();
     }
     internal bool StopTutorialTravel()

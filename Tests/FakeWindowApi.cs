@@ -36,13 +36,17 @@ internal sealed class FakeWindowApi : IWindowApi
     public readonly List<IntPtr> MinimizeCalls = new();
     public readonly List<(IntPtr handle, WindowRect rect)> ParkingRestoreCalls = new();
     public IntPtr Foreground;
+    public int ParkingEligibilityQueries;
     public Action<IntPtr>? AfterParkingMinimize;
     public Action<IntPtr>? AfterParkingRestore;
 
     public IntPtr GetForegroundWindow() => Foreground;
     public bool CanAutomaticallyMinimize(IntPtr handle)
-        => Windows.TryGetValue(handle, out var w) && w.Manageable && w.Visible
+    {
+        ParkingEligibilityQueries++;
+        return Windows.TryGetValue(handle, out var w) && w.Manageable && w.Visible
             && !ParkingIneligible.Contains(handle) && Foreground != handle;
+    }
     public NativeOperationResult MinimizeForParking(IntPtr handle)
     {
         MinimizeCalls.Add(handle);

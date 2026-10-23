@@ -10,10 +10,11 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly PlaceholderArtwork _title;
     private readonly Label _details, _hint;
     private readonly Button _open;
-    private readonly ToolStripMenuItem _auto;
-    private readonly ContextMenuStrip _menu;
+    private readonly WorkspaceContextMenu _menu;
     private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
     private Size _overviewSize;
+    private int _overviewDpi;
+    private bool _itemApplied;
     public event Action? PlacementChanged;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
@@ -50,18 +51,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             Dock = DockStyle.Top, ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 12, 0, 0) };
         panel.Controls.Add(_title); panel.Controls.Add(_details); panel.Controls.Add(_open); panel.Controls.Add(_hint);
         Controls.Add(panel);
-        var menu = new ContextMenuStrip();
+        var menu = new WorkspaceContextMenu(workspace, item.Id);
         _menu = menu;
-        menu.Items.Add("Open", null, (_, _) => workspace.Open(item.Id));
-        menu.Items.Add("Link open window…", null, (_, _) => WorkspaceDialogs.LinkWindow(this, workspace, item.Id));
-        menu.Items.Add("Name this saved place…", null, (_, _) => WorkspaceDialogs.NamePlace(this, workspace, item.Id));
-        _auto = new ToolStripMenuItem("Open automatically when Canvas starts") { CheckOnClick = true, Checked = item.OpenOnStartup };
-        _auto.Click += (_, _) => workspace.SetAutoOpen(item.Id, _auto.Checked);
-        menu.Items.Add(_auto);
-        menu.Items.Add("Choose file to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(this, workspace, item.Id, false));
-        menu.Items.Add("Choose folder to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(this, workspace, item.Id, true));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Forget this saved place", null, (_, _) => workspace.Forget(item.Id));
         ContextMenuStrip = menu;
         panel.ContextMenuStrip = menu; _title.ContextMenuStrip = menu; _details.ContextMenuStrip = menu;
         DoubleClick += (_, _) => workspace.Open(item.Id);
@@ -80,8 +71,15 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     public void UpdateItem(WorkspaceItemView item)
     {
-        if (_item != item) _overviewImage = null;
+        bool appearanceChanged = !_itemApplied || _item.Title != item.Title || _item.Target != item.Target
+            || _item.ExecutablePath != item.ExecutablePath || _item.IsFolder != item.IsFolder
+            || _item.State != item.State || _item.OpenOnStartup != item.OpenOnStartup;
         _item = item;
+        // World position, saved bounds and nonvisual metadata do not repaint a
+        // card or invalidate its snapshot. Native size/DPI are checked separately.
+        if (!appearanceChanged) return;
+        _itemApplied = true;
+        _overviewImage = null;
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
         _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
@@ -95,31 +93,40 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             : (_item.State is "Minimized" or "Sleeping" ? "Application is minimized · Restore to use it"
                 : _item.State == "Open" ? "Overview preview · Double-click to focus"
                 : _item.OpenOnStartup ? "Opens when Canvas starts" : "Application is closed") + " · Right-click for options";
-        _auto.Checked = _item.OpenOnStartup;
+        _menu.UpdateItem(item);
     }
 
     // WM_PRINT used by DrawToBitmap renders controls even when their native
     // window is entirely off-screen. A DWM thumbnail cannot guarantee that.
     internal System.Windows.Media.Imaging.BitmapSource GetOverviewImage()
     {
-        if (_overviewImage != null && _overviewSize == Size) return _overviewImage;
+        if (_overviewImage != null && _overviewSize == Size && _overviewDpi == DeviceDpi) return _overviewImage;
         PerformLayout();
-        using var bitmap = new Bitmap(Width, Height);
+        using var bitmap = new Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
         DrawToBitmap(bitmap, new Rectangle(Point.Empty, Size));
-        using var stream = new System.IO.MemoryStream();
-        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
-        stream.Position = 0;
-        var image = new System.Windows.Media.Imaging.BitmapImage();
-        image.BeginInit();
-        image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-        image.StreamSource = stream;
-        image.EndInit();
-        image.Freeze();
-        _overviewSize = Size;
-        return _overviewImage = image;
+        var bits = bitmap.LockBits(new Rectangle(Point.Empty, Size), System.Drawing.Imaging.ImageLockMode.ReadOnly,
+            System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        try
+        {
+            // BitmapSource.Create copies these premultiplied pixels into WPF's
+            // owned bitmap. No PNG encoder, stream or decoder is needed.
+            var image = System.Windows.Media.Imaging.BitmapSource.Create(Width, Height, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32, null, bits.Scan0, checked(bits.Stride * Height), bits.Stride);
+            image.Freeze();
+            _overviewSize = Size;
+            _overviewDpi = DeviceDpi;
+            return _overviewImage = image;
+        }
+        finally { bitmap.UnlockBits(bits); }
     }
 
+    // Gesture rendering may borrow this immutable image, but must never trigger
+    // DrawToBitmap/pixel conversion in response to a pointer or wheel event.
+    internal System.Windows.Media.ImageSource? CachedOverviewImage => _overviewImage;
+
     internal void ReleaseOverviewImage() => _overviewImage = null;
+
+    internal void ShowContextMenu(Control owner, Point location) => _menu.Show(owner, location);
 
     protected override void Dispose(bool disposing)
     {

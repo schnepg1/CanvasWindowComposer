@@ -26,12 +26,13 @@ public class AutomaticParkingTests
         public readonly FakeCapture Capture = new();
         public readonly WindowManager Manager;
         public long Started = 100;
+        public int ProcessInspections;
         public readonly IntPtr Handle = (IntPtr)42;
         public Harness()
         {
             var cache = new WindowPreviewCache(Capture);
             Manager = new(Canvas, Api, Config, Input, Clock, Desktops,
-                inspectProcess: pid => new(pid, Started, "app.exe"), previews: cache);
+                inspectProcess: pid => { ProcessInspections++; return new(pid, Started, "app.exe"); }, previews: cache);
             Api.AddWindow(Handle, 5000, 100, 400, 300, pid: 7);
             Manager.RegisterWindow(Handle);
         }
@@ -53,6 +54,43 @@ public class AutomaticParkingTests
             Api.FailedParkingRestores.Clear(); Api.FailedMoves.Clear();
             Manager.Dispose();
         }
+    }
+
+    [Fact]
+    public void DistantParkedWindowsDoNotInspectProcessesOrEnumerateOwnedWindowsDuringCameraBursts()
+    {
+        using var h = new Harness(); h.Park();
+        h.Manager.SuspendProjection = true;
+        int inspections = h.ProcessInspections;
+        int eligibility = h.Api.ParkingEligibilityQueries;
+        for (int frame = 0; frame < 120; frame++)
+        {
+            h.Canvas.SetCamera(-frame, 0);
+            h.Manager.SetOverviewViewport(new CanvasCamera(-frame, 0, .8));
+        }
+        Assert.Equal(inspections, h.ProcessInspections);
+        Assert.Equal(eligibility, h.Api.ParkingEligibilityQueries);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        h.Api.ParkingIneligible.Add(h.Handle);
+        h.Tick(2000);
+        Assert.True(h.ProcessInspections > inspections);
+        Assert.Single(h.Api.ParkingRestoreCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CameraApproachValidatesIdentityBeforeRestoringRecycledParkedWindow(bool reusePid)
+    {
+        using var h = new Harness(); h.Park();
+        h.Manager.SuspendProjection = true;
+        if (reusePid) h.Started++;
+        else h.Api.Windows[h.Handle].ProcessId++;
+        h.Api.SetPositionCalls.Clear();
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, 1));
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        Assert.Empty(h.Api.SetPositionCalls);
+        Assert.False(h.Manager.UsesCachedPreview(h.Handle));
     }
 
     [Fact]
