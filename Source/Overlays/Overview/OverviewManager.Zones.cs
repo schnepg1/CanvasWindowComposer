@@ -101,6 +101,7 @@ internal sealed partial class OverviewManager
         }
         if (CurrentMode == OverviewMode.Hidden) return;
         var camera = SceneCamera;
+        var focal = GetTransitionFocalPoint(camera);
         var inputs = new List<OverviewCardInput>();
         List<PlaceholderAnnotation>? gestureCards = null;
         bool hasRestoreFallback = false;
@@ -137,21 +138,22 @@ internal sealed partial class OverviewManager
             }
             else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
             {
+                long stagger = CalculateStagger(entry.World, camera, focal);
                 if (_placeholderTitles.TryGetValue(entry.HWnd, out var title)
                     && Control.FromHandle(entry.HWnd) is PlaceholderForm card)
                 {
-                    bool simple = _wm.OverviewUsesInfoCards;
+                    bool simple = _wm.OverviewUsesSimpleCards;
                     // The transition controller retains the outgoing frozen image
                     // only until the fade ends; distant cards create no new bitmap.
                     if (simple) card.ReleaseOverviewImage();
                     bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
                         simple ? null : card.GetOverviewImage(), new ArraySegment<WorldRect>(occluders, 0, i)),
-                        simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay));
+                        simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger));
                 }
                 else
                     inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i)),
-                        OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd)));
+                        OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd), stagger));
             }
             else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)
                 offscreen.ReleaseOverviewImage();

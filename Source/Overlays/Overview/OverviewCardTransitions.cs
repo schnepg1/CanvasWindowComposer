@@ -6,7 +6,7 @@ using System.Windows.Media;
 namespace CanvasDesktop;
 
 internal enum OverviewCardMode { Simple, Detailed, Live }
-internal readonly record struct OverviewCardInput(Guid Id, PlaceholderAnnotation Card, OverviewCardMode Mode, bool LiveReady = true);
+internal readonly record struct OverviewCardInput(Guid Id, PlaceholderAnnotation Card, OverviewCardMode Mode, bool LiveReady = true, long StaggerDelay = 0);
 
 /// <summary>Visible-only, UI-thread transition state. Images are immutable borrowed snapshots.</summary>
 internal sealed class OverviewCardTransitions
@@ -59,7 +59,7 @@ internal sealed class OverviewCardTransitions
             if (input.Mode != e.Target && (input.Mode != OverviewCardMode.Live || input.LiveReady))
             {
                 e.FromDetail = e.Detail; e.FromLive = e.Live;
-                e.Target = input.Mode; e.Started = now; e.Moving = true;
+                e.Target = input.Mode; e.Started = now + Math.Max(0, input.StaggerDelay); e.Moving = true;
             }
             if (!e.Moving && e.Target != OverviewCardMode.Detailed) e.Image = null;
             if (input.Mode == OverviewCardMode.Live && !input.LiveReady && e.Live < 1)
@@ -84,6 +84,7 @@ internal sealed class OverviewCardTransitions
     private static void Advance(Entry e, long now)
     {
         if (!e.Moving) return;
+        if (now < e.Started) return;
         double t = Math.Clamp((double)(now - e.Started) / DurationMs, 0, 1);
         double eased = t * t * (3 - 2 * t);
         e.Detail = e.FromDetail + ((e.Target == OverviewCardMode.Detailed ? 1 : 0) - e.FromDetail) * eased;

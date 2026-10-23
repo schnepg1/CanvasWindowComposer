@@ -143,6 +143,34 @@ public class AutomaticParkingTests
     }
 
     [Fact]
+    public void OverviewUsesSimpleCardsTracksDualThresholdHysteresis()
+    {
+        using var h = new Harness();
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 1));
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.35));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.31));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
+
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.38));
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
+
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.41));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.56));
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+    }
+
+    [Fact]
     public void OverviewApproachRestoresDespiteDistantMainCameraAndSuspendedProjection()
     {
         using var h = new Harness(); h.Park();

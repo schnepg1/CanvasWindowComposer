@@ -66,7 +66,6 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     public bool SetOverviewCardMode(bool enabled)
     {
         if (_disposed || !_started || _switching || _overviewCardMode == enabled) return false;
-        Capture();
         _overviewCardMode = enabled;
         EnsureCards();
         return true;

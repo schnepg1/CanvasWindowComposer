@@ -931,6 +931,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         StopTutorialTravel();
         double before=_camera.Zoom;
+        _lastZoomFocalWorld = new CanvasPoint(virtualX / before + _camera.X, virtualY / before + _camera.Y);
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
         ObserveGestureMotion();
         if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
