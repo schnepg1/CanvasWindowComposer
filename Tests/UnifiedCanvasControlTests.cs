@@ -10,17 +10,70 @@ public class UnifiedCanvasControlTests
 {
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ToolbarHasUnifiedSelectAndNoSeparateWindowsButton()
+    public void ToolbarHasUnifiedSelectAndShapesDropdown()
     {
         var toolbar = new AnnotationToolbar();
-        var buttons = toolbar.Controls.OfType<ToolStrip>().Single().Items.OfType<ToolStripButton>().Select(b => b.Text).ToArray();
-        Assert.DoesNotContain("Windows", buttons);
-        Assert.Contains("Select", buttons);
-        Assert.Contains("Arrow", buttons);
-        Assert.Contains("Rectangle", buttons);
-        Assert.Contains("Ellipse", buttons);
-        Assert.Contains("Text", buttons);
+        var strip = toolbar.Controls.OfType<ToolStrip>().Single();
+        var topLevelTexts = strip.Items.OfType<ToolStripItem>().Select(b => b.Text).ToArray();
+
+        // Separate Windows and separate shape buttons should not exist at top level
+        Assert.DoesNotContain("Windows", topLevelTexts);
+        Assert.DoesNotContain("Arrow", topLevelTexts);
+        Assert.DoesNotContain("Rectangle", topLevelTexts);
+        Assert.DoesNotContain("Ellipse", topLevelTexts);
+
+        // Unified Select, combined Shapes dropdown, and Text should exist
+        Assert.Contains("Select", topLevelTexts);
+        Assert.Contains("Shapes", topLevelTexts);
+        Assert.Contains("Text", topLevelTexts);
+
+        // Shapes dropdown contains Arrow, Rectangle, Ellipse
+        var shapesBtn = strip.Items.OfType<ToolStripDropDownButton>().First(b => b.Text == "Shapes");
+        var shapeItems = shapesBtn.DropDownItems.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
+        Assert.Contains("Arrow", shapeItems);
+        Assert.Contains("Rectangle", shapeItems);
+        Assert.Contains("Ellipse", shapeItems);
     }
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void ControlsButtonAndPopupWorkflow()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "controls-btn-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                // Controls button should be visible in top right
+                Assert.NotNull(overview.ControlsButton);
+                Assert.True(overview.ControlsButton.Visible);
+
+                // Click Controls button to open popup
+                var btn = overview.ControlsButton.Controls.OfType<Button>().Single();
+                btn.PerformClick();
+
+                Assert.NotNull(overview.ControlsPopup);
+                Assert.True(overview.ControlsPopup.Visible);
+
+                // Escape closes popup
+                overview.HandleEscape();
+                Assert.False(overview.ControlsPopup.Visible);
+                Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
 
     [Fact]
     [Trait("Category", "NativeRendering")]

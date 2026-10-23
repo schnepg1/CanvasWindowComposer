@@ -16,6 +16,10 @@ internal sealed partial class OverviewManager
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
     private IVirtualDesktops? _annotationDesktops;
     private AnnotationToolbar? _annotationToolbar;
+    private CanvasControlsButton? _controlsButton;
+    private CanvasControlsPopup? _controlsPopup;
+    internal CanvasControlsButton? ControlsButton => _controlsButton;
+    internal CanvasControlsPopup? ControlsPopup => _controlsPopup;
     private AnnotationTextEditor? _annotationEditor;
     private long _annotationEditGeneration;
     private string? _annotationError;
@@ -88,9 +92,29 @@ internal sealed partial class OverviewManager
     {
         if(_annotationTool==null) return;
         if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive)
-        { _annotationToolbar?.Hide(); return; }
+        {
+            _annotationToolbar?.Hide();
+            _controlsButton?.Hide();
+            _controlsPopup?.Hide();
+            return;
+        }
         var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
         if(pass==null) return;
+        var area=pass.Screen.WorkingArea;
+
+        if (_controlsButton?.IsDisposed == true) _controlsButton = null;
+        if (_controlsButton == null)
+        {
+            _controlsButton = new();
+            _controlsButton.ControlsClicked += () => ToggleControlsPopup(pass);
+            _controlsButton.KeyDown += (_, e) => HandleKeyDown(pass, e);
+        }
+        if (!_controlsButton.Visible)
+        {
+            _controlsButton.Show(pass);
+            _controlsButton.Location = new Point(area.Right - _controlsButton.Width - 16, area.Top + 14);
+        }
+
         if (_annotationToolbar?.IsDisposed == true) _annotationToolbar = null;
         if(_annotationToolbar==null)
         {
@@ -116,8 +140,34 @@ internal sealed partial class OverviewManager
         if(!_annotationToolbar.Visible)
         {
             _annotationToolbar.Show(pass);
-            var area=pass.Screen.WorkingArea;
-            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height-24);
+            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height);
+        }
+        else
+        {
+            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height);
+        }
+    }
+
+    private void ToggleControlsPopup(OverviewOverlay pass)
+    {
+        if (_controlsPopup?.IsDisposed == true) _controlsPopup = null;
+        if (_controlsPopup == null)
+        {
+            _controlsPopup = new();
+            _controlsPopup.ClosedRequested += () => { _controlsPopup.Hide(); FocusOverview(); };
+            _controlsPopup.KeyDown += (_, e) => HandleKeyDown(pass, e);
+        }
+        if (_controlsPopup.Visible)
+        {
+            _controlsPopup.Hide();
+            FocusOverview();
+        }
+        else
+        {
+            _controlsPopup.Show(pass);
+            var area = pass.Screen.WorkingArea;
+            _controlsPopup.Location = new Point(Math.Max(area.Left, area.Right - _controlsPopup.Width - 16), area.Top + 50);
+            _controlsPopup.Activate();
         }
     }
     private void ChangeAnnotationStyle(string color,double stroke)
@@ -215,6 +265,8 @@ internal sealed partial class OverviewManager
         if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
         if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
         _annotationToolbar?.Dispose(); _annotationToolbar=null;
+        _controlsPopup?.Dispose(); _controlsPopup=null;
+        _controlsButton?.Dispose(); _controlsButton=null;
     }
 
     internal bool PrepareForUpdate(out string? message)
