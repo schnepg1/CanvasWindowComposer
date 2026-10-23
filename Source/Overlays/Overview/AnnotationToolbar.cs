@@ -27,7 +27,8 @@ internal sealed class AnnotationToolbar : Form
         Controls.Add(bar);
         foreach(var mode in Enum.GetValues<AnnotationMode>())
         {
-            var button=new ToolStripButton(mode==AnnotationMode.Navigate?"Windows":mode.ToString()) { DisplayStyle=ToolStripItemDisplayStyle.Text };
+            if (mode == AnnotationMode.Navigate) continue;
+            var button=new ToolStripButton(mode.ToString()) { DisplayStyle=ToolStripItemDisplayStyle.Text };
             button.Click+=(_,_)=>ModeRequested?.Invoke(mode); _modes.Add(mode,button); bar.Items.Add(button);
         }
         bar.Items.Add(new ToolStripSeparator());
@@ -52,7 +53,8 @@ internal sealed class AnnotationToolbar : Form
     public void SetSelectionRadius(double radius) => _radius.Value=(decimal)Math.Clamp(radius,1,100000);
     public void UpdateState(AnnotationMode mode,string? status,int selectedCount=0)
     {
-        foreach(var pair in _modes) pair.Value.Checked=pair.Key==mode;
+        var activeMode = mode == AnnotationMode.Navigate ? AnnotationMode.Select : mode;
+        foreach(var pair in _modes) pair.Value.Checked=pair.Key==activeMode;
         _status.Text=status is null?$"{selectedCount} selected":"Warning"; _status.ToolTipText=status??"";
     }
 }

@@ -53,6 +53,7 @@ internal sealed class OverviewOverlay : Form
 
     // Input forwarding callbacks (set by OverviewOverlay coordinator)
     public Action<OverviewOverlay, KeyEventArgs>? OnKey;
+    public Action<OverviewOverlay, KeyEventArgs>? OnKeyReleased;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonDown;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseMoved;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonUp;
@@ -90,6 +91,7 @@ internal sealed class OverviewOverlay : Form
         KeyPreview = true;
 
         KeyDown += (s, e) => OnKey?.Invoke(this, e);
+        KeyUp += (s, e) => OnKeyReleased?.Invoke(this, e);
         MouseDown += (s, e) => OnMouseButtonDown?.Invoke(this, e);
         MouseMove += (s, e) => OnMouseMoved?.Invoke(this, e);
         MouseUp += (s, e) => OnMouseButtonUp?.Invoke(this, e);

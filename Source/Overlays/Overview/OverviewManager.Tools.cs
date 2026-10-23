@@ -14,7 +14,7 @@ internal sealed partial class OverviewManager
     public void SetCanvasTool(ICanvasTool? tool, IReadOnlyList<IOverviewAnnotationLayer>? layers = null)
     {
         CancelInteraction();
-        if (tool == null) _annotationTool?.SetMode(AnnotationMode.Navigate);
+        if (tool == null) _annotationTool?.SetMode(AnnotationMode.Select);
         _tools.SetTool(tool ?? _annotationRouter ?? _zoneTool);
         var attached = new List<IOverviewAnnotationLayer>();
         if (_tutorialLayer != null) attached.Add(_tutorialLayer);
@@ -99,7 +99,7 @@ internal sealed partial class OverviewManager
         if (_annotationEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
         if (CancelInteraction()) return;
         if (Selection.Ids.Count > 0) { Selection.Clear(); _proximityCircle=null; RefreshToolPreview(); return; }
-        if (_annotationTool is { Mode: not AnnotationMode.Navigate }) { SelectAnnotationMode(AnnotationMode.Navigate); return; }
+        if (_annotationTool is { Mode: not (AnnotationMode.Select or AnnotationMode.Navigate) }) { SelectAnnotationMode(AnnotationMode.Select); return; }
         TransitionTo(OverviewMode.Hidden);
     }
 }
