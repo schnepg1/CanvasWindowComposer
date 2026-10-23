@@ -271,4 +271,68 @@ public class ShapeEditorTests
                 if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
         });
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void MakeSquarePreservesOrientationWhenDrawnLeftOrUpward()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var doc = new AnnotationDocument();
+            // A=(200, 200), B=(100, 150) -> drawn upwards and to the left
+            var shape = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Rectangle, new(200, 200), new(100, 150));
+            doc.Put(shape);
+
+            using var editor = new AnnotationShapeEditor(shape, doc, Desktop);
+            editor.MakeSquareButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+            // Side should be max(100, 50) = 100
+            // Direction should be preserved: B.X should still be < A.X, and B.Y should still be < A.Y
+            Assert.Equal(100, editor.CurrentItem.Bounds.Width);
+            Assert.Equal(100, editor.CurrentItem.Bounds.Height);
+            Assert.Equal(new CanvasPoint(100, 100), editor.CurrentItem.B);
+            Assert.Equal(100, editor.CurrentItem.Bounds.X);
+            Assert.Equal(100, editor.CurrentItem.Bounds.Y);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void ArrowsAreExcludedFromShapeEditor()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "canvas-arrow-exclude-ui-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+
+                var desktopId = Guid.NewGuid();
+                var desktops = new FakeVirtualDesktops { CurrentDesktopId = desktopId };
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var arrow = new CanvasAnnotation(Guid.NewGuid(), desktopId, AnnotationKind.Arrow, new(100, 100), new(300, 100));
+                overview.Annotations!.Put(arrow);
+
+                overview.SelectAnnotationMode(AnnotationMode.Select);
+                var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+
+                // Double click the arrow
+                pass.OnMouseDoubleClicked!(pass, new(MouseButtons.Left, 2, 200, 100, 0));
+                Application.DoEvents();
+                Assert.Null(overview.ShapeEditor);
+
+                // Press Enter on the selected arrow
+                overview.AnnotationTool!.Select(arrow.Id);
+                pass.OnKey!(pass, new(Keys.Enter));
+                Application.DoEvents();
+                Assert.Null(overview.ShapeEditor);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
 }

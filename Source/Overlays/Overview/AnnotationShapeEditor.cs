@@ -631,7 +631,9 @@ internal sealed class AnnotationShapeEditor : Form
     {
         var bounds = CurrentItem.Bounds;
         double side = Math.Max(bounds.Width, bounds.Height);
-        CurrentItem = CurrentItem with { B = new CanvasPoint(CurrentItem.A.X + side, CurrentItem.A.Y + side) };
+        double signX = CurrentItem.B.X < CurrentItem.A.X ? -1 : 1;
+        double signY = CurrentItem.B.Y < CurrentItem.A.Y ? -1 : 1;
+        CurrentItem = CurrentItem with { B = new CanvasPoint(CurrentItem.A.X + signX * side, CurrentItem.A.Y + signY * side) };
         _dimensionText.Text = $"{Math.Round(side)} × {Math.Round(side)} px";
         _artworkPreview.Update(CurrentItem);
     }
