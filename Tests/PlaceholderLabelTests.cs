@@ -12,11 +12,13 @@ public class PlaceholderLabelTests
     [InlineData(.1)]
     [InlineData(.25)]
     [InlineData(.49)]
-    public void ZoomedOutTitlesStayReadableAndInsideTheMonitor(double zoom)
+    public void ZoomedOutTitlesScaleWithCardAndStayInsideTheMonitor(double zoom)
     {
-        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, zoom,
+        var card = Card();
+        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { card }, 0, 0, zoom,
             new ScreenRect(0, 0, 1920, 1080), 1, 1));
-        Assert.InRange(label.FontSize, 22, 32);
+        double expectedFontSize = PlaceholderArtwork.CalculateCardTitleFontSize(card.Title, (float)card.Bounds.W, (float)card.Bounds.H) * zoom;
+        Assert.Equal(expectedFontSize, label.FontSize, 2);
         Assert.True(new Rect(0, 0, 1920, 1080).Contains(label.Rect));
     }
 
@@ -28,7 +30,8 @@ public class PlaceholderLabelTests
             new ScreenRect(-1920, 0, 1920, 1080), 1.5, 1.5));
         double center = ((card.Bounds.X + card.Bounds.W / 2 + 100) * .25 + 1920) / 1.5;
         Assert.Equal(center, label.Rect.X + label.Rect.Width / 2, 6);
-        Assert.Equal(22, label.FontSize);
+        double expectedFontSize = PlaceholderArtwork.CalculateCardTitleFontSize(card.Title, (float)card.Bounds.W, (float)card.Bounds.H) * .25;
+        Assert.Equal(expectedFontSize, label.FontSize, 2);
     }
 
     [Fact]

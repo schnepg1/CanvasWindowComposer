@@ -65,16 +65,19 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
             var rect = label.Rect;
             var border = new SolidColorBrush(label.Card.Priority ? Color.FromRgb(147, 197, 253) : Color.FromRgb(80, 103, 137));
+            double radius = Math.Clamp(label.FontSize * 0.35, 2, 10);
             dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(23, 31, 46)),
-                new Pen(border, label.Card.Priority ? 2 : 1), rect, 10, 10);
+                new Pen(border, label.Card.Priority ? 2 : 1), rect, radius, radius);
+            double padX = Math.Max(4, label.FontSize * 0.5);
+            double padY = Math.Max(2, label.FontSize * 0.3);
             var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
                 label.FontSize, Brushes.WhiteSmoke, context.Dpi.PixelsPerDip)
             {
-                MaxTextWidth = rect.Width - 24, MaxTextHeight = rect.Height - 16,
+                MaxTextWidth = Math.Max(1, rect.Width - padX * 2), MaxTextHeight = Math.Max(1, rect.Height - padY * 2),
                 MaxLineCount = 2, Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
             };
-            dc.DrawText(text, new Point(rect.X + 12, rect.Y + Math.Max(8, (rect.Height - text.Height) / 2)));
+            dc.DrawText(text, new Point(rect.X + padX, rect.Y + Math.Max(padY, (rect.Height - text.Height) / 2)));
             dc.Pop();
         }
     }

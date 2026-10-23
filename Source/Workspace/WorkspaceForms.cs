@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
@@ -8,7 +9,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 {
     private WorkspaceItemView _item;
     private readonly PlaceholderArtwork _title;
-    private readonly Label _details, _hint;
+    private readonly Label _pathHeader, _details, _hint;
+    private readonly Bitmap? _openIcon;
     private readonly Button _open;
     private readonly ToolStripMenuItem _auto;
     private readonly ContextMenuStrip _menu;
@@ -32,23 +34,72 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         BackColor = Color.FromArgb(28, 34, 46);
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 11);
-        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), RowCount = 4, ColumnCount = 1 };
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), RowCount = 5, ColumnCount = 1 };
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40) };
-        _details = new Label { Dock = DockStyle.Top, Height = 28, AutoEllipsis = true,
-            ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 4, 0, 4) };
-        _open = new Button { Text = "Open", AutoSize = true, FlatStyle = FlatStyle.System, Anchor = AnchorStyles.Left };
+        _pathHeader = new Label
+        {
+            Text = "Path:",
+            Dock = DockStyle.Top,
+            Height = (int)(22 * DeviceDpi / 96f),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(160, 181, 208),
+            Padding = new Padding(0)
+        };
+        _details = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = (int)(32 * DeviceDpi / 96f),
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 12.5f),
+            ForeColor = Color.LightSteelBlue,
+            Padding = new Padding(0, 2, 0, 4)
+        };
+        int iconSize = Math.Max(14, (int)(15 * DeviceDpi / 96f));
+        _openIcon = CreateOpenSymbol(iconSize, Color.White);
+        _open = new Button
+        {
+            Text = "Open",
+            AutoSize = true,
+            Anchor = AnchorStyles.None,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(37, 99, 235),
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 11, FontStyle.Bold),
+            Padding = new Padding(16, 6, 16, 6),
+            Margin = new Padding(0, 16, 0, 6),
+            Cursor = Cursors.Hand,
+            Image = _openIcon,
+            TextImageRelation = TextImageRelation.ImageBeforeText
+        };
+        _open.FlatAppearance.BorderSize = 0;
+        _open.FlatAppearance.MouseOverBackColor = Color.FromArgb(59, 130, 246);
+        _open.FlatAppearance.MouseDownBackColor = Color.FromArgb(29, 78, 216);
         _open.Click += (_, _) =>
         {
             if (_item.State == "Needs linking") WorkspaceDialogs.LinkWindow(this, workspace, _item.Id);
             else workspace.Open(_item.Id);
         };
-        _hint = new Label { Text = "Application is closed · Right-click for options", AutoSize = true,
-            Dock = DockStyle.Top, ForeColor = Color.LightSteelBlue, Padding = new Padding(0, 12, 0, 0) };
-        panel.Controls.Add(_title); panel.Controls.Add(_details); panel.Controls.Add(_open); panel.Controls.Add(_hint);
+        _hint = new Label
+        {
+            Text = "Application is closed · Right-click for options",
+            AutoSize = true,
+            TextAlign = ContentAlignment.TopCenter,
+            Dock = DockStyle.Top,
+            ForeColor = Color.LightSteelBlue,
+            Padding = new Padding(0, 12, 0, 0)
+        };
+        panel.Controls.Add(_title);
+        panel.Controls.Add(_pathHeader);
+        panel.Controls.Add(_details);
+        panel.Controls.Add(_open);
+        panel.Controls.Add(_hint);
         Controls.Add(panel);
         var menu = new ContextMenuStrip();
         _menu = menu;
@@ -63,13 +114,57 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Forget this saved place", null, (_, _) => workspace.Forget(item.Id));
         ContextMenuStrip = menu;
-        panel.ContextMenuStrip = menu; _title.ContextMenuStrip = menu; _details.ContextMenuStrip = menu;
+        panel.ContextMenuStrip = menu; _title.ContextMenuStrip = menu;
+        _pathHeader.ContextMenuStrip = menu; _details.ContextMenuStrip = menu;
         DoubleClick += (_, _) => workspace.Open(item.Id);
         _title.DoubleClick += (_, _) => workspace.Open(item.Id);
+        _pathHeader.DoubleClick += (_, _) => workspace.Open(item.Id);
+        _details.DoubleClick += (_, _) => workspace.Open(item.Id);
         FormClosing += (_, e) => { if (e.CloseReason == CloseReason.UserClosing) e.Cancel = true; };
         Move += (_, _) => PlacementChanged?.Invoke();
         ResizeEnd += (_, _) => PlacementChanged?.Invoke();
         UpdateItem(item);
+    }
+
+    private static Bitmap CreateOpenSymbol(int size, Color color)
+    {
+        var bmp = new Bitmap(size, size);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        float s = size;
+        float stroke = Math.Max(1.6f, s / 9.5f);
+        using var pen = new Pen(color, stroke)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round
+        };
+        float left = s * 0.16f;
+        float right = s * 0.84f;
+        float top = s * 0.16f;
+        float bottom = s * 0.84f;
+        float midX = s * 0.50f;
+        float midY = s * 0.50f;
+
+        var boxPoints = new[]
+        {
+            new PointF(midX, top),
+            new PointF(left, top),
+            new PointF(left, bottom),
+            new PointF(right, bottom),
+            new PointF(right, midY)
+        };
+        g.DrawLines(pen, boxPoints);
+
+        var arrowStart = new PointF(s * 0.42f, s * 0.58f);
+        var arrowEnd = new PointF(right, top);
+        g.DrawLine(pen, arrowStart, arrowEnd);
+
+        float head = s * 0.32f;
+        g.DrawLine(pen, arrowEnd, new PointF(arrowEnd.X - head, arrowEnd.Y));
+        g.DrawLine(pen, arrowEnd, new PointF(arrowEnd.X, arrowEnd.Y + head));
+
+        return bmp;
     }
 
     public void ShowAt(WindowRect rect)
@@ -123,7 +218,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); }
+        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); _openIcon?.Dispose(); }
         base.Dispose(disposing);
     }
 
@@ -134,6 +229,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         // space to the title and Open action instead of forcing a larger window.
         if (_hint != null) _hint.Visible = ClientSize.Height >= 260 * DeviceDpi / 96;
         if (_details != null) _details.Visible = ClientSize.Height >= 190 * DeviceDpi / 96;
+        if (_pathHeader != null) _pathHeader.Visible = ClientSize.Height >= 190 * DeviceDpi / 96;
     }
 }
 
