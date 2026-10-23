@@ -90,6 +90,8 @@ public class RenderingNativeTests
             using var grid = new GridRenderer(flip);
             Assert.True(grid.Initialize(gridHost.Handle, 128, 80)); Assert.Equal(flip, grid.UsesFlipModel);
             grid.Render(0, 0, 1); grid.Resize(96, 64); grid.Render(10, 20, 1);
+            grid.LowQuality = true; grid.Render(10, 20, 0.25);
+            grid.LowQuality = false; grid.Render(10, 20, 0.25);
             using var map = new MinimapRenderer(flip);
             Assert.True(map.Initialize(mapHost.Handle, 128, 80, 8, 8, 112, 64));
             Assert.Equal(flip, map.UsesFlipModel);

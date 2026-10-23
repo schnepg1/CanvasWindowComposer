@@ -15,6 +15,7 @@ internal interface IAppConfig
     bool DisableGreedyDraw { get; }
     bool EnableAutomaticMinimization => false;
     bool EnableFlipRendering => false;
+    bool LowQualityMode => false;
     bool EnableStartupIntro => true;
     bool ReduceStartupMotion => false;
     double SelectionRadius => 1200;
@@ -63,6 +64,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DisableGreedyDraw { get; private set; } = true;
     public bool EnableAutomaticMinimization { get; private set; }
     public bool EnableFlipRendering { get; private set; }
+    public bool LowQualityMode { get; private set; }
     public bool EnableStartupIntro { get; private set; } = true;
     public bool ReduceStartupMotion { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
@@ -97,6 +99,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
             EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
             EnableFlipRendering = GetBool(values, "EnableFlipRendering", defaultValue: false);
+            LowQualityMode = GetBool(values, "LowQualityMode", defaultValue: false);
             EnableStartupIntro = GetBool(values, "EnableStartupIntro", defaultValue: true);
             ReduceStartupMotion = GetBool(values, "ReduceStartupMotion", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
@@ -146,7 +149,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
         {
             lock (_watcherGate) return new(!DisableSearch, !DisableAltPan, !DisableZoomHotkey,
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
-                EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion);
+                EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode);
         }
     }
 
@@ -166,7 +169,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["EnableAutomaticMinimization"] = preferences.AutomaticMinimization,
                 ["EnableFlipRendering"] = preferences.FlipRendering,
                 ["EnableStartupIntro"] = preferences.StartupIntro,
-                ["ReduceStartupMotion"] = preferences.ReducedIntroMotion
+                ["ReduceStartupMotion"] = preferences.ReducedIntroMotion,
+                ["LowQualityMode"] = preferences.LowQualityMode
             });
             Load();
         }
@@ -250,6 +254,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Experimental flip-model rendering; restart Canvas after changing
 ; Keep disabled until DWM thumbnails and layered overlays are visually validated
 ;EnableFlipRendering=false
+
+; Simple overview grid without the animated nebula or decorative effects
+; Applies immediately from Settings; normal visual quality remains the default
+;LowQualityMode=false
 
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true
@@ -360,4 +368,4 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
 internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotkey, bool MouseCurve,
     bool ScreenFixedWindows, bool ClipOffscreen, bool AutomaticMinimization, bool FlipRendering,
-    bool StartupIntro = true, bool ReducedIntroMotion = false);
+    bool StartupIntro = true, bool ReducedIntroMotion = false, bool LowQualityMode = false);

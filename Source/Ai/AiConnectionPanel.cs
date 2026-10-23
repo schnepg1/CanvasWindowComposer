@@ -36,12 +36,14 @@ internal sealed class AiConnectionPanel : UserControl
     private readonly TableLayoutPanel _layout;
     private CancellationTokenSource? _operation;
     private long _epoch;
-    private bool _updating, _externalBusy;
+    private bool _updating, _externalBusy, _waitingForBrowser;
     public event Action? ConnectionChanged;
     public event Action? BusyChanged;
     public event Action<string>? StatusChanged;
+    public event Action<bool>? WaitingForBrowserChanged;
     internal string LastStatus { get; private set; } = "";
     internal bool Busy => _operation != null;
+    internal bool WaitingForBrowser => _waitingForBrowser;
     internal TextBox KeyBox => _key;
     internal ComboBox ModelBox => _model;
     internal ComboBox SourceBox => _source;
@@ -137,7 +139,10 @@ internal sealed class AiConnectionPanel : UserControl
         {
             ClearModels();
             Report("Complete ChatGPT sign-in in your browser. Cancel here to stop waiting.");
-            var account = await _accounts.SignInAsync(id, token);
+            ChatGptAccount account;
+            SetWaitingForBrowser(true);
+            try { account = await _accounts.SignInAsync(id, token); }
+            finally { SetWaitingForBrowser(false); }
             if (token.IsCancellationRequested || IsDisposed) return;
             ReloadAccounts(account.Id);
             if (account.NeedsWelcome)
@@ -270,19 +275,25 @@ internal sealed class AiConnectionPanel : UserControl
     }
     internal void CancelPending()
     {
-        _epoch++; _operation?.Cancel(); _operation = null;
+        _epoch++; _operation?.Cancel(); _operation = null; SetWaitingForBrowser(false);
         if (!IsDisposed) { _usage.ResetFont(); UpdateControls(); BusyChanged?.Invoke(); }
     }
     internal void ShowUsageAction() { if (!_usage.Font.Bold) _usage.Font = new Font(_usage.Font, FontStyle.Bold); _usage.Focus(); }
     private void InvalidateConnection() { _usage.ResetFont(); ConnectionChanged?.Invoke(); }
     private void Report(string message) { LastStatus = message; StatusChanged?.Invoke(message); }
+    private void SetWaitingForBrowser(bool waiting)
+    {
+        if (_waitingForBrowser == waiting) return;
+        _waitingForBrowser = waiting;
+        if (!IsDisposed) WaitingForBrowserChanged?.Invoke(waiting);
+    }
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
             _updating = true;
-            ConnectionChanged = null; BusyChanged = null; StatusChanged = null;
-            _epoch++; _operation?.Cancel(); _operation = null; _key.Clear();
+            ConnectionChanged = null; BusyChanged = null; StatusChanged = null; WaitingForBrowserChanged = null;
+            _epoch++; _operation?.Cancel(); _operation = null; _waitingForBrowser = false; _key.Clear();
         }
         base.Dispose(disposing);
     }

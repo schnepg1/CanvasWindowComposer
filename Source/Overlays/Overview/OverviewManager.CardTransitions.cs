@@ -8,15 +8,14 @@ internal sealed partial class OverviewManager
 {
     private readonly OverviewCardTransitions _cardTransitions = new();
     private IReadOnlyDictionary<IntPtr, Guid> _overviewItemIds = new Dictionary<IntPtr, Guid>();
-    private readonly Dictionary<IntPtr, IntPtr> _cardSources = new();
+    private IReadOnlyDictionary<IntPtr, IntPtr> _cardSources = WorkspaceOverviewSnapshot.Empty.CardSources;
     private Timer? _cardAnimationTimer;
 
     private void RefreshCardIdentities()
     {
-        _overviewItemIds = _placeholderWorkspace?.GetOverviewItemIds() ?? new Dictionary<IntPtr, Guid>();
-        _cardSources.Clear();
-        if (_placeholderWorkspace == null) return;
-        foreach (var pair in _placeholderWorkspace.GetRepresentedWindows()) _cardSources[pair.Value] = pair.Key;
+        var snapshot = _placeholderWorkspace?.GetOverviewSnapshot() ?? WorkspaceOverviewSnapshot.Empty;
+        _overviewItemIds = snapshot.ItemIds;
+        _cardSources = snapshot.CardSources;
     }
 
     private bool CanShowUnderlay(IntPtr source)
@@ -24,9 +23,12 @@ internal sealed partial class OverviewManager
             || (_win32.GetWindowStyle(source) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0;
 
     private IntPtr GetCardTransitionSource(IntPtr card)
-        => _overviewItemIds.TryGetValue(card, out var id) && _cardTransitions.NeedsLiveUnderlay(id)
-            && _cardSources.TryGetValue(card, out var source) && CanShowUnderlay(source)
-                ? source : IntPtr.Zero;
+    {
+        if (!_cardSources.TryGetValue(card, out var source)) return IntPtr.Zero;
+        if (GesturePreviewsActive) return _wm.HasCachedPreview(source) ? source : IntPtr.Zero;
+        return _overviewItemIds.TryGetValue(card, out var id) && _cardTransitions.NeedsLiveUnderlay(id)
+            && CanShowUnderlay(source) ? source : IntPtr.Zero;
+    }
 
     private void UpdateCardAnimationTimer()
     {
@@ -57,7 +59,7 @@ internal sealed partial class OverviewManager
     {
         _cardAnimationTimer?.Stop();
         _cardTransitions.Clear();
-        _cardSources.Clear();
-        _overviewItemIds = new Dictionary<IntPtr, Guid>();
+        _cardSources = WorkspaceOverviewSnapshot.Empty.CardSources;
+        _overviewItemIds = WorkspaceOverviewSnapshot.Empty.ItemIds;
     }
 }

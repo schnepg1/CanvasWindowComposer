@@ -39,7 +39,6 @@ internal sealed partial class OverviewManager
             {
                 StopTutorialTravel();
                 var view=_tour?.Active==true?TourTarget():TutorialReadingView(layout);_camera.SetTo(view.X,view.Y,view.Zoom);
-                foreach(var pass in _passes)pass.Grid?.UpdateCamera(view.X,view.Y,view.Zoom);
             }
         }
         catch(Exception ex) { TrayApp.Log("Tutorial sizing could not be refreshed: "+ex.Message); }
@@ -95,7 +94,6 @@ internal sealed partial class OverviewManager
         // Opening/closing a help view without navigating must not replace the desktop camera.
         _startupIntroLanded=true;
         _tutorialReading=true;
-        foreach(var pass in _passes)pass.Grid?.UpdateCamera(view.X,view.Y,view.Zoom);
         _tutorialStore?.MarkPresented();
         ReconcileVisuals();
     }

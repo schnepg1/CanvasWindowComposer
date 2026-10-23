@@ -16,6 +16,9 @@ namespace CanvasDesktop;
 internal sealed class OverviewAnnotationWindow : Window
 {
     private OverviewAnnotationSurface _drawing = new();
+    private readonly IntPtr _handle;
+    private readonly PerformanceDiagnostics _diagnostics;
+    private static readonly Action RenderBarrier = static () => { };
     private System.Drawing.Rectangle _bounds;
     private IReadOnlyList<IOverviewAnnotationLayer> _layers = Array.Empty<IOverviewAnnotationLayer>();
     public void SetDrawingLayers(IReadOnlyList<IOverviewAnnotationLayer> layers)
@@ -33,8 +36,9 @@ internal sealed class OverviewAnnotationWindow : Window
         Content = _drawing;
     }
 
-    public OverviewAnnotationWindow(IntPtr owner)
+    public OverviewAnnotationWindow(IntPtr owner, PerformanceDiagnostics? diagnostics = null)
     {
+        _diagnostics = diagnostics ?? PerformanceDiagnostics.Shared;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true;
@@ -47,11 +51,20 @@ internal sealed class OverviewAnnotationWindow : Window
         Content = _drawing;
         var interop = new WindowInteropHelper(this) { Owner = owner };
         var hwnd = (HWND)interop.EnsureHandle();
+        _handle = (IntPtr)hwnd;
         int style = PInvoke.GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
         PInvoke.SetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, style | 0x20 | 0x80 | 0x08000000);
     }
 
     public void Update(OverviewAnnotationSnapshot frame)
+    {
+        StageUpdate(frame);
+        PrepareFrame();
+        FlushFrame();
+    }
+
+    // A multi-monitor frame stages every window before servicing WPF rendering.
+    public void StageUpdate(OverviewAnnotationSnapshot frame)
     {
         var screen = new System.Drawing.Rectangle(frame.Screen.X, frame.Screen.Y, frame.Screen.Width, frame.Screen.Height);
         bool opening = !IsVisible;
@@ -59,17 +72,24 @@ internal sealed class OverviewAnnotationWindow : Window
         if (opening || _bounds != screen)
         {
             _bounds = screen;
-            PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1),
+            PInvoke.SetWindowPos((HWND)_handle, (HWND)new IntPtr(-1),
                 screen.X, screen.Y, screen.Width, screen.Height,
                 SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
         }
         _drawing.Update(frame);
+    }
+
+    public void PrepareFrame() => _drawing.UpdateLayout();
+
+    public void FlushFrame()
+    {
         // The host runs a WinForms message loop. During a wheel/mouse-message burst,
         // WPF's deferred render can otherwise trail the synchronous DWM thumbnails.
         // Complete layout and service render-priority work for this camera frame;
         // do not drain lower-priority input or use Application.DoEvents().
-        _drawing.UpdateLayout();
-        Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        Dispatcher.Invoke(DispatcherPriority.Render, RenderBarrier);
+        _diagnostics.Complete("OverviewAnnotationFlush", _handle, started, true);
     }
 
 }

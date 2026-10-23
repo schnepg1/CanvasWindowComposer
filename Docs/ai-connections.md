@@ -34,6 +34,10 @@ request is made just by signing in or refreshing the model list.
 - Sign-out attempts renewable-session revocation, retries transient failures once,
   then clears local tokens while retaining the account/client mapping and host ID.
   If remote revocation was not confirmed, the UI directs users to ChatGPT settings.
+- While browser sign-in is pending, the composer and overview temporarily stop being
+  topmost so the system browser stays reachable. Canvas wheel navigation and
+  double-click window switching remain available without closing the composer; the
+  canvas returns to the foreground after the callback or cancellation.
 - Closing overview or cancelling stops pending sign-in, model discovery or generation.
   Switching connection, model or account discards an existing canvas proposal.
 

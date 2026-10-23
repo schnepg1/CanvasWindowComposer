@@ -38,7 +38,9 @@ internal sealed class AnnotationPersistence
                 if(new FileInfo(path).Length>MaximumBytes) throw new InvalidDataException("Annotation file is too large.");
                 var data=JsonSerializer.Deserialize<FileDocument>(File.ReadAllText(path),Options);
                 if(data is null || data.Version!=1 || data.Items is null) throw new InvalidDataException("Unsupported annotation format.");
-                var document=new AnnotationDocument(data.Items);
+                // Version-1 files predate per-note text sizes; missing values deserialize as zero.
+                var items=data.Items.Select(item => item is { FontSize: 0 } ? item with { FontSize=AnnotationDocument.DefaultFontSize } : item).ToArray();
+                var document=new AnnotationDocument(items);
                 if(path!=_path)
                 {
                     if(File.Exists(_path)) File.Copy(_path,_path+".corrupt-"+Guid.NewGuid().ToString("N"));

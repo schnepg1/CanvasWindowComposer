@@ -131,4 +131,103 @@ public class CanvasAnnotationRenderingTests
             }
         });
 
+    [Fact]
+    public void EditorChangesTextSizeWithinTheSameCardBounds()
+        => WorkspaceViewTests.OnSta(()=>
+        {
+            var item=new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,new(50,60),new(290,180),"#C084FC",3,"Sized note",24);
+            using var editor=new AnnotationTextEditor(item);
+            editor.Show();System.Windows.Forms.Application.DoEvents();
+            Assert.Equal(24,editor.FontSize);
+            Assert.Equal(24,editor.Editor.FontSize);
+            var width=editor.Editor.Width;var height=editor.Editor.Height;
+            editor.FontSize=40;
+            Assert.Equal(40,editor.Editor.FontSize);
+            Assert.Equal(width,editor.Editor.Width);Assert.Equal(height,editor.Editor.Height);
+            editor.SetFontSize(1);
+            Assert.Equal(AnnotationDocument.MinimumFontSize,editor.FontSize);
+            editor.SetFontSize(1000);
+            Assert.Equal(AnnotationDocument.MaximumFontSize,editor.FontSize);
+        });
+
+    [Fact]
+    public void TextStyleControlsChangeRenderedArtwork()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop=Guid.NewGuid();
+            var item=new CanvasAnnotation(Guid.NewGuid(),desktop,AnnotationKind.Text,new(20,20),new(340,240),Text:"Style me",FontSize:28);
+            byte[] Render(CanvasAnnotation candidate)
+            {
+                var document=new AnnotationDocument([candidate]);
+                var surface=new OverviewAnnotationSurface();
+                surface.SetDrawingLayers([new CanvasAnnotationLayer(document,new AnnotationCanvasTool(document,()=>desktop),()=>desktop,()=>true)]);
+                surface.Update(OverviewAnnotationSnapshot.Create([],0,0,1,new(0,0,360,260),null,false,showHints:false));
+                surface.Measure(new Size(360,260));surface.Arrange(new Rect(0,0,360,260));surface.UpdateLayout();
+                var bitmap=new RenderTargetBitmap(360,260,96,96,PixelFormats.Pbgra32);bitmap.Render(surface);
+                var pixels=new byte[360*260*4];bitmap.CopyPixels(pixels,1440,0);return pixels;
+            }
+            static int Gold(byte[] pixels,int fromX,int toX)
+                =>Enumerable.Range(0,360*260).Count(i=> { int x=i%360; return x>=fromX && x<toX && pixels[i*4+2]>200 && pixels[i*4+1]>140; });
+            var left=Render(item with { TextAlign=AnnotationTextAlign.Left });
+            var right=Render(item with { TextAlign=AnnotationTextAlign.Right });
+            Assert.True(Gold(left,0,180)>Gold(left,180,360));
+            Assert.True(Gold(right,180,360)>Gold(right,0,180));
+            var normal=Render(item);
+            var bold=Render(item with { Emphasis=AnnotationTextEmphasis.Bold });
+            Assert.True(Gold(bold,0,360)>Gold(normal,0,360));
+            static int Alpha(byte[] pixels,int x,int y)=>pixels[(y*360+x)*4+3];
+            Assert.True(Alpha(Render(item),60,210)>200);
+            Assert.Equal(42,Alpha(Render(item with { CardFill=AnnotationCardFill.Tinted }),60,210));
+            Assert.Equal(0,Alpha(Render(item with { CardFill=AnnotationCardFill.None }),60,210));
+        });
+
+    [Fact]
+    public void EditorExposesStyleControlsAndKeepsKeyboardShortcutsConsistent()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var item=new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,new(20,20),new(340,240),
+                Text:"Style me",FontSize:24,TextAlign:AnnotationTextAlign.Center,
+                Emphasis:AnnotationTextEmphasis.BoldItalic,CardFill:AnnotationCardFill.Tinted);
+            using var editor=new AnnotationTextEditor(item);
+            editor.Show();System.Windows.Forms.Application.DoEvents();
+            Assert.Equal(AnnotationTextAlign.Center,editor.TextAlign);
+            Assert.Equal(AnnotationTextEmphasis.BoldItalic,editor.Emphasis);
+            Assert.Equal(AnnotationCardFill.Tinted,editor.CardFill);
+            Assert.Equal(System.Windows.TextAlignment.Center,editor.Editor.TextAlignment);
+            Assert.Equal(FontWeights.Bold,editor.Editor.FontWeight);
+            Assert.Equal(FontStyles.Italic,editor.Editor.FontStyle);
+            editor.SetTextAlign(AnnotationTextAlign.Right);
+            Assert.Equal(System.Windows.TextAlignment.Right,editor.Editor.TextAlignment);
+            editor.SetEmphasis(AnnotationTextEmphasis.Bold);
+            Assert.Equal(FontWeights.Bold,editor.Editor.FontWeight);
+            Assert.Equal(FontStyles.Normal,editor.Editor.FontStyle);
+            editor.ToggleBold();Assert.Equal(AnnotationTextEmphasis.Normal,editor.Emphasis);
+            editor.ToggleItalic();Assert.Equal(AnnotationTextEmphasis.Italic,editor.Emphasis);
+            editor.ToggleBold();Assert.Equal(AnnotationTextEmphasis.BoldItalic,editor.Emphasis);
+            editor.SetCardFill(AnnotationCardFill.None);Assert.Equal(AnnotationCardFill.None,editor.CardFill);
+            Assert.Throws<ArgumentException>(()=>editor.SetTextAlign((AnnotationTextAlign)99));
+            Assert.Throws<ArgumentException>(()=>editor.SetEmphasis((AnnotationTextEmphasis)99));
+            Assert.Throws<ArgumentException>(()=>editor.SetCardFill((AnnotationCardFill)99));
+        });
+
+    [Fact]
+    public void LargerTextSizeDrawsMoreCardPixels()
+        => WorkspaceViewTests.OnSta(()=>
+        {
+            var desktop=Guid.NewGuid();
+            var item=new CanvasAnnotation(Guid.NewGuid(),desktop,AnnotationKind.Text,new(20,20),new(300,180),Text:"Scale me");
+            int Render(double fontSize)
+            {
+                var document=new AnnotationDocument([item with { FontSize=fontSize }]);
+                var surface=new OverviewAnnotationSurface();
+                surface.SetDrawingLayers([new CanvasAnnotationLayer(document,new AnnotationCanvasTool(document,()=>desktop),()=>desktop,()=>true)]);
+                surface.Update(OverviewAnnotationSnapshot.Create([],0,0,1,new(0,0,340,220),null,false,showHints:false));
+                surface.Measure(new Size(340,220));surface.Arrange(new Rect(0,0,340,220));surface.UpdateLayout();
+                var bitmap=new RenderTargetBitmap(340,220,96,96,PixelFormats.Pbgra32);bitmap.Render(surface);
+                var pixels=new byte[340*220*4];bitmap.CopyPixels(pixels,1360,0);
+                return Enumerable.Range(0,340*220).Count(i=>pixels[i*4+2]>200 && pixels[i*4+1]>140);
+            }
+            Assert.True(Render(40)>Render(10));
+        });
+
 }

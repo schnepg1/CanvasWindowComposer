@@ -35,4 +35,22 @@ public class GridFrameScheduleTests
         frames.Presented(frames.Revision);
         Assert.False(frames.ShouldRender(true, 1f, false));
     }
+
+    [Theory]
+    [InlineData(0.05f)]
+    [InlineData(0.25f)]
+    [InlineData(0.69f)]
+    public void LowQualityIdlesAtEveryZoomButStillPresentsChangesAndInertia(float zoom)
+    {
+        var frames = new GridFrameSchedule();
+        Assert.True(frames.ShouldRender(true, zoom, false, lowQuality: true));
+        frames.Presented(frames.Revision);
+        Assert.False(frames.ShouldRender(true, zoom, false, lowQuality: true));
+        Assert.True(frames.ShouldRender(true, zoom, true, lowQuality: true));
+        Assert.True(frames.ShouldRender(true, zoom, false, lowQuality: false));
+        frames.Invalidate(); // Toggling quality or changing the camera must repaint once.
+        Assert.True(frames.ShouldRender(true, zoom, false, lowQuality: true));
+        frames.Presented(frames.Revision);
+        Assert.False(frames.ShouldRender(true, zoom, false, lowQuality: true));
+    }
 }

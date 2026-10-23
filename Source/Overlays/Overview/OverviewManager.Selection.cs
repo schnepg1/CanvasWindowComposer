@@ -92,8 +92,8 @@ internal sealed partial class OverviewManager
             : HitOverviewWindow(pass,(int)p.Position.X,(int)p.Position.Y,p.World.X,p.World.Y);
         if (index >= 0 && !_windows.Windows[index].ScreenFixed)
         {
-            if (p.Button == CanvasPointerButton.Left) BringWindowToFront(index);
             var handle = _windows.Windows[index].HWnd;
+            if (p.Button == CanvasPointerButton.Left) BringWindowToFront(index);
             if (_overviewItemIds.TryGetValue(handle,out var id)) return new(CanvasItemKind.Window,id);
             SelectionItems();
             if (_selectionWindows.TryGetValue(handle,out var identity)) return new(CanvasItemKind.Window,identity.Id);

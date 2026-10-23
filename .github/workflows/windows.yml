@@ -28,6 +28,9 @@ jobs:
       - run: dotnet restore CanvasDesktop.slnx --locked-mode
       - run: dotnet build CanvasDesktop.slnx -c Release --no-restore
       - run: dotnet test CanvasDesktop.slnx -c Release --no-build --no-restore --logger trx --collect "XPlat Code Coverage" --results-directory TestResults
+      - name: Smoke-test presentation comparison on owned windows
+        shell: pwsh
+        run: ./Tools/PerformanceHarness/Compare-Presentation.ps1 -Count 3 -Repeats 1 -Seconds 1 -Zooms 0.5 -OutputDirectory TestResults/PresentationSmoke
       - run: dotnet publish CanvasDesktop.csproj -c Release --no-restore --self-contained false -o publish-ci
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

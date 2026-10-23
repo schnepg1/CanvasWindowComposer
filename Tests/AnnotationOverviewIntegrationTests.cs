@@ -58,10 +58,20 @@ public class AnnotationOverviewIntegrationTests
                 input.RaiseOverviewHotkey();Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
                 input.RaiseEscPressed();Assert.Null(overview.AnnotationEditor);Assert.Empty(overview.Annotations!.Items);
                 Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
-                Place();overview.AnnotationEditor!.Editor.Text="Saved note";
+                Place();
+                var editor=overview.AnnotationEditor!;
+                editor.Editor.Text="Saved note";editor.FontSize=28;
+                editor.SetTextAlign(AnnotationTextAlign.Center);
+                editor.SetEmphasis(AnnotationTextEmphasis.BoldItalic);
+                editor.SetCardFill(AnnotationCardFill.None);
                 // The actual Save button uses the same callback as Ctrl+Enter.
-                var save=overview.AnnotationEditor.Controls.OfType<Button>().Single();save.PerformClick();
-                Assert.Equal("Saved note",Assert.Single(overview.Annotations.Items).Text);Assert.Null(overview.AnnotationEditor);
+                var save=editor.Controls.OfType<Button>().Single();save.PerformClick();
+                var saved=Assert.Single(overview.Annotations.Items);
+                Assert.Equal("Saved note",saved.Text);Assert.Equal(28,saved.FontSize);
+                Assert.Equal(AnnotationTextAlign.Center,saved.TextAlign);
+                Assert.Equal(AnnotationTextEmphasis.BoldItalic,saved.Emphasis);
+                Assert.Equal(AnnotationCardFill.None,saved.CardFill);
+                Assert.Null(overview.AnnotationEditor);
                 Assert.Equal(new CanvasItemId(CanvasItemKind.Annotation,overview.Annotations.Items[0].Id),Assert.Single(overview.Selection.Ids));
                 overview.SelectAnnotationMode(AnnotationMode.Navigate);overview.SelectAnnotationMode(AnnotationMode.Select);
                 Assert.Equal(overview.Annotations.Items[0].Id,overview.AnnotationTool!.SelectedId);

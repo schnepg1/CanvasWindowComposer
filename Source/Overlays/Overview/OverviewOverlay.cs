@@ -28,13 +28,23 @@ internal sealed class OverviewOverlay : Form
 
     public void ShowAnnotations(OverviewAnnotationSnapshot frame)
     {
+        StageAnnotations(frame);
+        PrepareAnnotations();
+        FlushAnnotations();
+    }
+
+    public void StageAnnotations(OverviewAnnotationSnapshot frame)
+    {
         if (_annotations == null)
         {
             _annotations = new OverviewAnnotationWindow(Handle);
             _annotations.SetDrawingLayers(_drawingLayers);
         }
-        _annotations.Update(frame);
+        _annotations.StageUpdate(frame);
     }
+
+    public void PrepareAnnotations() => _annotations?.PrepareFrame();
+    public void FlushAnnotations() => _annotations?.FlushFrame();
 
     public void SetIntroOpacity(double opacity)
     {

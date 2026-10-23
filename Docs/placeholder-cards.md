@@ -1,10 +1,17 @@
 # Readable placeholder cards
 
 Saved places show a large bold title, fitted and wrapped to the available space.
-The card's **Name this saved place…** action provides a shorter custom title when
+The card's **Rename…** action provides a shorter custom title when
 an application's caption is too long. Secondary details yield space on small
 cards without changing their saved bounds. Open, linking, startup selection,
 renaming, and placement still use the existing workspace commands.
+
+Right-click a distant rectangle, a detailed title card, or a saved live preview
+to use the same saved-window menu. **Rename…** changes only Canvas's saved name;
+the application's native caption remains its own. Blank names restore the
+automatic caption. Custom names update both card representations immediately and
+survive tab/document caption changes and restarts. Chrome entries also offer
+**Chrome profile…**; see [Chrome profiles](chrome-profiles.md).
 
 Explorer folder places have a vector folder watermark. Other cards request a
 256-pixel icon from the saved application's executable, with its associated icon
@@ -42,17 +49,21 @@ existing validated HWND, never launches a duplicate process. Closed cards keep
 their **Open** action and are never launched just by proximity or zoom changes.
 
 In simple overview mode, the card is a simple rectangle, without a bitmap of its
-controls. A separate WPF annotation draws crisp title badges in
-display coordinates, following each card's current projected position. Text stays
-between 22 and 32 logical pixels rather than shrinking with the DWM thumbnail.
-Badges support the overview's existing drag and double-click navigation. In detailed
+controls. A WPF annotation draws only the bold title, centered horizontally and
+vertically inside its rectangle, wrapping to at most three lines with an ellipsis
+if needed. The title starts at up to 84 world pixels, reduced for short cards so
+three lines fit. Text and padding shrink with the card's camera projection;
+there is no minimum screen-sized font or separate badge background.
+Titles support the overview's existing drag and double-click navigation. In detailed
 mode, the full info card's own title is shown, without a duplicate badge.
 There is no card bitmap generation or DWM card thumbnail in the distant view.
 
-Overlapping badges yield to hovered, keyboard-selected, or dragged cards. Labels
-also avoid project headers and the overview instruction strip. Extremely small
-cards hide their labels unless prioritized. This keeps distant views readable;
-hover a card or select it with the arrow keys to prioritize its title.
+Each title stays attached to its own card, including when partly offscreen.
+Adjacent titles remain visible independently of hover, selection, or enumeration
+order. Both card and title are clipped around higher windows to preserve native
+z-order, and covered text cannot intercept pointer input. Project headers and the
+instruction strip still render above cards; they do not reposition or suppress
+the card's title. Cards smaller than one logical pixel omit their title.
 
 The Direct3D grid, DWM thumbnail engine, native window management, and workspace
 file format are unchanged. The wider WinForms-to-WPF Fluent migration is a
@@ -60,8 +71,9 @@ separate next step.
 
 The isolated renderer in `Tools/ZonePreview` produces
 `placeholder-cards-preview.png` from the actual card controls and annotation
-drawing. Automated checks cover zoom limits, collision priority, off-screen
-culling, negative monitor origins, DPI scaling, custom names, and desktop
+drawing. Automated checks cover zoom scaling, independent adjacent titles,
+off-screen anchoring and culling, occlusion and pointer hits, negative monitor
+origins, DPI scaling, custom names, and desktop
 switching. Physical multi-monitor interaction still requires a live check.
 
 ## Overview transitions
@@ -80,7 +92,7 @@ Registration is not a guarantee that a third-party app has painted fresh pixels.
 Manually minimized windows that have no remaining native/cached pixels show an
 opaque card immediately rather than fading over an empty surface.
 
-Full-card and floating titles fade sequentially through a plain rectangle to
+Full-card and simplified titles fade sequentially through a plain rectangle to
 avoid duplicate text. Frozen outgoing card snapshots are borrowed only during
 transitions and released afterward. Distant views create no new card bitmaps.
 Only visible saved identities have transition state; panning away, leaving the
