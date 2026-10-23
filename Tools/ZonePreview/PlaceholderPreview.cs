@@ -96,7 +96,7 @@ internal static class PlaceholderPreview
         public void SetAutoOpen(Guid id, bool value) { }
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) { }
-        public bool SetChromeProfile(Guid id, string profilePath) => true;
+        public bool SetChromeProfile(Guid id, string profileDirectory) => false;
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Array.Empty<WorkspaceLinkCandidate>();
         public bool LinkWindow(Guid id, Guid token) => false;
     }

@@ -14,7 +14,8 @@ public class PlaceholderLabelTests
     [InlineData(.49)]
     public void ZoomedOutTitlesStayCenteredInsideTheirCardsAndScaleWithZoom(double zoom)
     {
-        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, zoom,
+        var card = Card();
+        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { card }, 0, 0, zoom,
             new ScreenRect(0, 0, 1920, 1080), 1, 1));
         var projectedCard = new Rect(500 * zoom, 500 * zoom, 800 * zoom, 550 * zoom);
         Assert.True(projectedCard.Contains(label.Rect));

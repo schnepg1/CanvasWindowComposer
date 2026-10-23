@@ -77,11 +77,13 @@ internal sealed class PlaceholderArtwork : Control
             g.DrawImage(_symbol, Rectangle.Round(symbolRect), 0, 0, _symbol.Width, _symbol.Height,
                 GraphicsUnit.Pixel, attributes);
         }
-        using var captionFont = new Font("Segoe UI", 10 * dpi, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var captionFont = new Font("Segoe UI", 13 * dpi, FontStyle.Bold, GraphicsUnit.Pixel);
         using var captionBrush = new SolidBrush(Color.FromArgb(160, 181, 208));
-        g.DrawString(_folder ? "SAVED FOLDER" : "SAVED APPLICATION", captionFont, captionBrush, 2 * dpi, 4 * dpi);
-        var titleRect = new RectangleF(0, 26 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 30 * dpi));
-        using var format = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center,
+        using var captionFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+        var captionRect = new RectangleF(0, 4 * dpi, Width, 20 * dpi);
+        g.DrawString(_folder ? "SAVED FOLDER" : "SAVED APPLICATION", captionFont, captionBrush, captionRect, captionFormat);
+        var titleRect = new RectangleF(4 * dpi, 28 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 32 * dpi));
+        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisWord, FormatFlags = StringFormatFlags.LineLimit };
         float fontSize = Math.Min(84 * dpi, titleRect.Height * .65f);
         float minimum = 20 * dpi;
@@ -96,6 +98,25 @@ internal sealed class PlaceholderArtwork : Control
         using var titleFont = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
         using var titleBrush = new SolidBrush(ForeColor);
         g.DrawString(Text, titleFont, titleBrush, titleRect, format);
+    }
+
+    internal static float CalculateCardTitleFontSize(string text, float cardWidth, float cardHeight)
+    {
+        float artworkWidth = Math.Max(40, cardWidth - 36);
+        float artworkHeight = Math.Max(40, cardHeight - 184);
+        var titleRect = new RectangleF(4, 28, Math.Max(1, artworkWidth - 8), Math.Max(1, artworkHeight - 32));
+        float fontSize = Math.Min(84, titleRect.Height * .65f);
+        float minimum = 20;
+        fontSize = Math.Max(minimum, fontSize);
+        while (fontSize > minimum)
+        {
+            float charsPerLine = Math.Max(1, titleRect.Width / (fontSize * 0.58f));
+            int lines = (int)Math.Ceiling(Math.Max(1, text.Length) / charsPerLine);
+            float neededHeight = lines * fontSize * 1.25f;
+            if (neededHeight <= titleRect.Height) break;
+            fontSize = Math.Max(minimum, fontSize - 2);
+        }
+        return fontSize;
     }
 
     private static void DrawFolder(Graphics g, RectangleF r)
