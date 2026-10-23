@@ -97,10 +97,10 @@ internal sealed partial class OverviewManager
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
         if (StopTutorialTravel()) { RefreshTourUi();return; }
-        if (_annotationEditor==null && _composerWindow==null && GuidedTutorialActive && !_tools.Active)
+        if (_annotationEditor==null && _shapeEditor==null && _composerWindow==null && GuidedTutorialActive && !_tools.Active)
         { PauseGuidedTutorial();FocusOverview();return; }
         if (_composerWindow != null) { CancelCanvasComposer(); RefreshToolPreview(); FocusOverview(); return; }
-        if (_annotationEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
+        if (_annotationEditor != null || _shapeEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
         if (CancelInteraction()) return;
         if (Selection.Ids.Count > 0) { Selection.Clear(); _proximityCircle=null; RefreshToolPreview(); return; }
         if (_annotationTool is { Mode: not AnnotationMode.Navigate }) { SelectAnnotationMode(AnnotationMode.Navigate); return; }

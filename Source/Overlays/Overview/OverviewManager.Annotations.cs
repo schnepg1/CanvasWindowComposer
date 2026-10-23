@@ -17,12 +17,14 @@ internal sealed partial class OverviewManager
     private IVirtualDesktops? _annotationDesktops;
     private AnnotationToolbar? _annotationToolbar;
     private AnnotationTextEditor? _annotationEditor;
+    private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
     private string? _annotationError;
-    public bool CanvasInputSuspended => _composerWindow != null || _annotationEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
+    public bool CanvasInputSuspended => _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
     internal AnnotationDocument? Annotations => _annotationDocument;
     internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
+    internal AnnotationShapeEditor? ShapeEditor => _shapeEditor;
 
     public void AttachAnnotations(IVirtualDesktops desktops,string? path=null)
     {
@@ -99,6 +101,7 @@ internal sealed partial class OverviewManager
             _annotationToolbar.SetSelectionRadius(_selectionRadius);
             _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);
             _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Selected?.Color ?? _annotationTool.Color,stroke);
+            _annotationToolbar.EditRequested+=()=> { if (_annotationTool?.Selected is {} item) { if (item.Kind == AnnotationKind.Text) QueueAnnotationTextEdit(item); else if (item.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) QueueAnnotationShapeEdit(item); } };
             _annotationToolbar.FontSizeRequested+=ChangeAnnotationFontSize;
             _annotationToolbar.TextAlignRequested+=align=>ChangeAnnotationTextStyle(align:align);
             _annotationToolbar.EmphasisRequested+=emphasis=>ChangeAnnotationTextStyle(emphasis:emphasis);
@@ -152,11 +155,11 @@ internal sealed partial class OverviewManager
     }
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
-        if(_annotationEditor!=null || _composerWindow!=null) return true;
+        if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null) return true;
         if(_annotationTool==null || _annotationTool.Mode==AnnotationMode.Navigate) return false;
         if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) AnnotationHistory(e.KeyCode==Keys.Y || e.Shift);
         else if(e.KeyCode==Keys.Delete || e.KeyCode==Keys.Back) DeleteAnnotation();
-        else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { } text && text.Kind != AnnotationKind.Arrow && text.Text.Length > 0) QueueAnnotationTextEdit(text);
+        else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { } item) { if (item.Kind == AnnotationKind.Text) QueueAnnotationTextEdit(item); else if (item.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) QueueAnnotationShapeEdit(item); }
         else
         {
             if (_annotationTool.Mode==AnnotationMode.Navigate) return false;
@@ -206,11 +209,56 @@ internal sealed partial class OverviewManager
         };
         editor.Show(pass); editor.Activate();
     }
+    internal void QueueAnnotationShapeEdit(CanvasAnnotation item)
+    {
+        if(_passes.Count==0) return;
+        long generation=++_annotationEditGeneration;
+        _passes[0].BeginInvoke((Action)(()=>
+        {
+            if(_disposed || generation!=_annotationEditGeneration || item.DesktopId!=_annotationDesktop() || CurrentMode!=OverviewMode.Zooming) return;
+            OpenAnnotationShapeEdit(item);
+        }));
+    }
+    private void OpenAnnotationShapeEdit(CanvasAnnotation item)
+    {
+        CancelAnnotationEdit();
+        if (_annotationDocument!.Items.Any(a=>a.Id==item.Id)) Selection.Replace([new(CanvasItemKind.Annotation,item.Id)]);
+        _annotationTool?.Select(item.Id);
+        var point=new Point((int)Math.Round((item.Bounds.X-_camera.X)*_camera.Zoom),(int)Math.Round((item.Bounds.Y-_camera.Y)*_camera.Zoom));
+        var pass=_passes.FirstOrDefault(p=>p.Screen.Bounds.Contains(point))??_passes[0];
+        var editor=new AnnotationShapeEditor(item, _annotationDocument, _annotationDesktop());
+        _shapeEditor=editor;
+        var area=pass.Screen.WorkingArea;
+        editor.Location=new Point(Math.Clamp(point.X,area.Left,Math.Max(area.Left,area.Right-editor.Width)),Math.Clamp(point.Y,area.Top,Math.Max(area.Top,area.Bottom-editor.Height)));
+        editor.Finished+=result=>
+        {
+            if(_shapeEditor!=editor) return;
+            if(result.Delete)
+            {
+                _annotationDocument!.Delete(item.DesktopId, item.Id);
+                Selection.Clear(); _annotationTool?.ClearSelection();
+            }
+            else if(result.Save && item.DesktopId==_annotationDesktop())
+            {
+                try
+                {
+                    _annotationDocument!.Update(result.UpdatedItem, result.ZOrder);
+                    Selection.Replace([new(CanvasItemKind.Annotation,item.Id)]);
+                    _annotationTool?.Select(item.Id);
+                }
+                catch(ArgumentException ex) { MessageBox.Show(editor,ex.Message,"Shape editor"); return; }
+            }
+            CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview();
+        };
+        editor.Show(pass); editor.Activate();
+    }
     private bool CancelAnnotationEdit()
     {
         ++_annotationEditGeneration;
-        if(_annotationEditor is not {} editor) return false;
-        _annotationEditor=null; editor.Dispose(); return true;
+        bool canceled = false;
+        if(_annotationEditor is {} editor) { _annotationEditor=null; editor.Dispose(); canceled=true; }
+        if(_shapeEditor is {} shapeEditor) { _shapeEditor=null; shapeEditor.Dispose(); canceled=true; }
+        return canceled;
     }
     private void DisposeAnnotations()
     {
@@ -225,7 +273,7 @@ internal sealed partial class OverviewManager
     internal bool PrepareForUpdate(out string? message)
     {
         message = null;
-        if (_annotationEditor != null || _composerWindow != null)
+        if (_annotationEditor != null || _shapeEditor != null || _composerWindow != null)
         { message = "Finish or cancel the open note or AI proposal before restarting to update."; return false; }
         CancelInteraction();
         if (_annotationStore?.Save() == false)

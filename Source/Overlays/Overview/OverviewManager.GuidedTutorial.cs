@@ -155,7 +155,7 @@ internal sealed partial class OverviewManager
     }
     private bool HandleTutorialControlKey(KeyEventArgs e)
     {
-        if(e.KeyCode!=Keys.Tab || e.Control || e.Alt || _tools.Active || _annotationEditor!=null || _composerWindow!=null
+        if(e.KeyCode!=Keys.Tab || e.Control || e.Alt || _tools.Active || _annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null
             || (!GuidedTutorialActive && !_tutorialOfferVisible))return false;
         RefreshTourUi();
         if(_tourPanel is not { Visible:true })return false;
@@ -166,7 +166,7 @@ internal sealed partial class OverviewManager
     private void RefreshTourUi()
     {
         bool offer=_tutorialOfferVisible && _tutorialOfferDesktop==_annotationDesktop();
-        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _annotationEditor!=null || _composerWindow!=null || _tools.Active
+        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null || _tools.Active
             || (!GuidedTutorialActive && !offer)) { _tourPanel?.Hide();return; }
         var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
         if(pass==null)return;

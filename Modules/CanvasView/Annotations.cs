@@ -3,6 +3,7 @@ namespace CanvasDesktop.CanvasView;
 public enum AnnotationKind { Arrow, Rectangle, Ellipse, Text }
 public enum AnnotationMode { Navigate, Select, Arrow, Rectangle, Ellipse, Text }
 public enum AnnotationChangeKind { Edit, Undo, Redo }
+public enum ZOrderAction { None, BringToFront, SendToBack, BringForward, SendBackward }
 public enum AnnotationTextAlign { Left, Center, Right }
 public enum AnnotationTextEmphasis { Normal, Bold, Italic, BoldItalic }
 public enum AnnotationCardFill { Solid, Tinted, None }
@@ -117,6 +118,104 @@ public sealed class AnnotationDocument
         if (snapshot.Replay?.Invoke(redo) == false) return false;
         to.Add(new(Snapshot(desktop), snapshot.Replay,snapshot.Order)); from.RemoveAt(from.Count - 1);
         _items.RemoveAll(a => a.DesktopId == desktop); _items.AddRange(snapshot.Items); NotifyChanged(desktop,redo?AnnotationChangeKind.Redo:AnnotationChangeKind.Undo); return true;
+    }
+
+    public bool Update(CanvasAnnotation item, ZOrderAction zOrder = ZOrderAction.None)
+    {
+        var index = _items.FindIndex(a => a.Id == item.Id);
+        if (index < 0) return false;
+        if (_items[index].DesktopId != item.DesktopId) throw new ArgumentException("Cannot move an annotation between desktops.");
+
+        var current = _items[index];
+        bool propsChanged = current != item;
+        var desktop = item.DesktopId;
+
+        int firstDesktopIndex = _items.FindIndex(a => a.DesktopId == desktop);
+        int lastDesktopIndex = _items.FindLastIndex(a => a.DesktopId == desktop);
+
+        bool zChanged = zOrder switch
+        {
+            ZOrderAction.BringToFront => index != lastDesktopIndex,
+            ZOrderAction.SendToBack => index != firstDesktopIndex,
+            ZOrderAction.BringForward => index < lastDesktopIndex,
+            ZOrderAction.SendBackward => index > firstDesktopIndex,
+            _ => false
+        };
+
+        if (!propsChanged && !zChanged) return false;
+
+        var next = _items.Select(a => a.Id == item.Id ? item : a).ToArray();
+        Validate(next);
+
+        Remember(desktop);
+        _items[index] = item;
+
+        if (zChanged)
+        {
+            _items.RemoveAt(index);
+            if (zOrder == ZOrderAction.BringToFront)
+            {
+                int target = _items.FindLastIndex(a => a.DesktopId == desktop);
+                if (target < 0) _items.Add(item); else _items.Insert(target + 1, item);
+            }
+            else if (zOrder == ZOrderAction.SendToBack)
+            {
+                int target = _items.FindIndex(a => a.DesktopId == desktop);
+                if (target < 0) _items.Add(item); else _items.Insert(target, item);
+            }
+            else if (zOrder == ZOrderAction.BringForward)
+            {
+                int target = -1;
+                for (int i = index; i < _items.Count; i++)
+                {
+                    if (_items[i].DesktopId == desktop) { target = i; break; }
+                }
+                if (target < 0) _items.Add(item); else _items.Insert(target + 1, item);
+            }
+            else if (zOrder == ZOrderAction.SendBackward)
+            {
+                int target = -1;
+                for (int i = index - 1; i >= 0; i--)
+                {
+                    if (_items[i].DesktopId == desktop) { target = i; break; }
+                }
+                if (target < 0) _items.Insert(0, item); else _items.Insert(target, item);
+            }
+        }
+
+        NotifyChanged(desktop);
+        return true;
+    }
+
+    public bool BringToFront(Guid desktop, Guid id)
+    {
+        var item = _items.FirstOrDefault(a => a.Id == id && a.DesktopId == desktop);
+        return item != null && Update(item, ZOrderAction.BringToFront);
+    }
+
+    public bool SendToBack(Guid desktop, Guid id)
+    {
+        var item = _items.FirstOrDefault(a => a.Id == id && a.DesktopId == desktop);
+        return item != null && Update(item, ZOrderAction.SendToBack);
+    }
+
+    public bool BringForward(Guid desktop, Guid id)
+    {
+        var item = _items.FirstOrDefault(a => a.Id == id && a.DesktopId == desktop);
+        return item != null && Update(item, ZOrderAction.BringForward);
+    }
+
+    public bool SendBackward(Guid desktop, Guid id)
+    {
+        var item = _items.FirstOrDefault(a => a.Id == id && a.DesktopId == desktop);
+        return item != null && Update(item, ZOrderAction.SendBackward);
+    }
+
+    public (int Index, int Total) GetZOrder(Guid desktop, Guid id)
+    {
+        var desktopItems = _items.Where(a => a.DesktopId == desktop).ToList();
+        int idx = desktopItems.FindIndex(a => a.Id == id);
+        return (idx, desktopItems.Count);
     }
 }
 
