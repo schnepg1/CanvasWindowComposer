@@ -39,11 +39,11 @@ try {
         $name = $Matches[1].ToLowerInvariant()
         $raw = $Matches[2]
         $enabled = if ($raw -and $raw -match '^(?i:false|0|no|off)$') { $false } else { $true }
-        switch ($name) {
+        switch ($name -replace '-', '') {
             'build' { $Build = $enabled }
             'diagnose' { $Diagnose = $enabled }
-            'no-launch' { $NoLaunch = $enabled }
-            'no-dialog' { $NoDialog = $enabled }
+            'nolaunch' { $NoLaunch = $enabled }
+            'nodialog' { $NoDialog = $enabled }
             default { $invalid += $token }
         }
     }
