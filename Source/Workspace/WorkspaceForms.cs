@@ -11,7 +11,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly PlaceholderArtwork _title;
     private readonly Label _pathHeader, _details, _hint;
     private readonly Bitmap? _openIcon;
-    private readonly Button _open;
+    private readonly PlaceholderOpenButton _open;
     private readonly WorkspaceContextMenu _menu;
     private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
     private Size _overviewSize;
@@ -64,7 +64,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         };
         int iconSize = Math.Max(14, (int)(15 * DeviceDpi / 96f));
         _openIcon = CreateOpenSymbol(iconSize, Color.White);
-        _open = new Button
+        _open = new PlaceholderOpenButton
         {
             Text = "Open",
             AutoSize = true,
@@ -84,6 +84,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         _open.FlatAppearance.MouseDownBackColor = Color.FromArgb(29, 78, 216);
         _open.Click += (_, _) =>
         {
+            _open.Text = "Opening…";
+            _open.Enabled = false;
             if (_item.State == "Needs linking") WorkspaceDialogs.LinkWindow(this, workspace, _item.Id);
             else workspace.Open(_item.Id);
         };
@@ -221,6 +223,24 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     internal void ReleaseOverviewImage() => _overviewImage = null;
 
+    internal bool HitTestOpenButton(int clientX, int clientY)
+    {
+        if (_open == null || !_open.Visible || !_open.Enabled) return false;
+        var ptInOpen = _open.PointToClient(PointToScreen(new Point(clientX, clientY)));
+        return _open.ClientRectangle.Contains(ptInOpen);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        const int WM_MOUSEACTIVATE = 0x0021;
+        if (m.Msg == WM_MOUSEACTIVATE)
+        {
+            m.Result = (IntPtr)1; // MA_ACTIVATE: click activates window and delivers mouse click
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
     internal void ShowContextMenu(Control owner, Point location) => _menu.Show(owner, location);
 
     protected override void Dispose(bool disposing)
@@ -260,5 +280,48 @@ internal static class WorkspaceDialogs
             using var dialog = new OpenFileDialog { Title = "File to open with this saved application" };
             if (dialog.ShowDialog(owner) == DialogResult.OK) workspace.SetTarget(id, dialog.FileName, false);
         }
+    }
+}
+
+internal sealed class PlaceholderOpenButton : Button
+{
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONUP = 0x0202;
+    private bool _clickedInCurrentDown;
+
+    public PlaceholderOpenButton()
+    {
+        SetStyle(ControlStyles.Selectable, true);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_MOUSEACTIVATE)
+        {
+            m.Result = (IntPtr)1; // MA_ACTIVATE
+            return;
+        }
+        if (m.Msg == WM_LBUTTONDOWN)
+        {
+            _clickedInCurrentDown = false;
+        }
+        else if (m.Msg == WM_LBUTTONUP)
+        {
+            base.WndProc(ref m);
+            if (!_clickedInCurrentDown)
+            {
+                _clickedInCurrentDown = true;
+                OnClick(EventArgs.Empty);
+            }
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    protected override void OnClick(EventArgs e)
+    {
+        _clickedInCurrentDown = true;
+        base.OnClick(e);
     }
 }

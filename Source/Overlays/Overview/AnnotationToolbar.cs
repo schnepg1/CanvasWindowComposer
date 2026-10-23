@@ -55,6 +55,7 @@ internal sealed class AnnotationToolbar : Form
     private readonly ToolStripButton _textButton;
     private readonly ToolStripLabel _status = new();
     private readonly ToolStripDropDownButton _nearby = new("Nearby");
+    private readonly System.Collections.Generic.List<ToolStripDropDownItem> _dropDowns = new();
     private readonly NumericUpDown _radius = new() { Minimum = 1, Maximum = 100000, Increment = 100, Value = 1200, Width = 90, AccessibleName = "Selection radius in canvas units" };
 
     public event Action<double>? NearbyRequested;
@@ -128,7 +129,7 @@ internal sealed class AnnotationToolbar : Form
         }
         bar.Items.Add(widths);
         var sizes = new ToolStripDropDownButton("Text size");
-        foreach (var size in new[] { 12d, 18d, 24d, 32d, 40d, 56d, 72d })
+        foreach (var size in new[] { 12d, 18d, 24d, 32d, 40d, 56d, 72d, 96d, 128d, 160d, 200d, 280d, 400d })
         {
             var item = sizes.DropDownItems.Add(size.ToString("0"), null, (_, _) => FontSizeRequested?.Invoke(size));
             item.ForeColor = Color.White;
@@ -184,6 +185,56 @@ internal sealed class AnnotationToolbar : Form
 
         _status.ForeColor = Color.FromArgb(148, 163, 184);
         bar.Items.Add(_status);
+
+        foreach (ToolStripItem item in bar.Items)
+        {
+            if (item is ToolStripDropDownItem dd)
+            {
+                _dropDowns.Add(dd);
+                dd.DropDownOpening += (_, _) =>
+                {
+                    if (IsHandleCreated) Windows.Win32.PInvoke.SetForegroundWindow((Windows.Win32.Foundation.HWND)Handle);
+                };
+            }
+        }
+    }
+
+    public bool HasOpenDropDown
+    {
+        get
+        {
+            foreach (var d in _dropDowns)
+                if (d.DropDown.Visible) return true;
+            return false;
+        }
+    }
+
+    public void CloseDropDowns()
+    {
+        foreach (var d in _dropDowns)
+            if (d.DropDown.Visible) d.DropDown.Close();
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!Visible) CloseDropDowns();
+    }
+
+    protected override void OnDeactivate(EventArgs e)
+    {
+        base.OnDeactivate(e);
+        CloseDropDowns();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.Escape && HasOpenDropDown)
+        {
+            CloseDropDowns();
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     protected override void OnPaint(PaintEventArgs e)

@@ -6,7 +6,7 @@ using System.Windows.Media;
 
 namespace CanvasDesktop;
 
-internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null) : IOverviewAnnotationLayer
+internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null) : IOverviewAnnotationLayer
 {
     private readonly Dictionary<Guid,(CanvasAnnotation Item,double Dpi,DrawingGroup Drawing)> _artwork = [];
     private long _revision = -1;
@@ -33,11 +33,41 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
             var projected = context.View.WorldToDip(item.Bounds);
             var rect = new Rect(projected.X,projected.Y,projected.Width,projected.Height);
             if (!new Rect(-32,-32,context.Size.Width+64,context.Size.Height+64).IntersectsWith(rect)) continue;
+            bool pushedClip = false;
+            if (item.InBackground && windowOccluders?.Invoke() is { } occluders)
+            {
+                List<Rect>? intersecting = null;
+                foreach (var w in occluders)
+                {
+                    if (CanvasSelection.Intersects(item.Bounds, w))
+                    {
+                        var wDip = context.View.WorldToDip(w);
+                        var wRect = new Rect(wDip.X, wDip.Y, Math.Max(0, wDip.Width), Math.Max(0, wDip.Height));
+                        if (wRect.IntersectsWith(rect))
+                        {
+                            intersecting ??= new();
+                            intersecting.Add(wRect);
+                        }
+                    }
+                }
+                if (intersecting != null && intersecting.Count > 0)
+                {
+                    Geometry clip = new RectangleGeometry(rect);
+                    foreach (var wRect in intersecting)
+                    {
+                        clip = new CombinedGeometry(GeometryCombineMode.Exclude, clip, new RectangleGeometry(wRect));
+                    }
+                    dc.PushClip(clip);
+                    pushedClip = true;
+                }
+            }
+
             // Scale the whole artwork together, including type, inset, stroke and arrowheads.
             dc.PushTransform(new TranslateTransform(rect.X,rect.Y));
             dc.PushTransform(new ScaleTransform(context.View.Zoom/context.Dpi.DpiScaleX,context.View.Zoom/context.Dpi.DpiScaleY));
             dc.DrawDrawing(Artwork(item,context.Dpi.PixelsPerDip,item.Id==preview?.Id));
             dc.Pop(); dc.Pop();
+            if (pushedClip) dc.Pop();
             if (tool.Mode == AnnotationMode.Select && item.Id == tool.SelectedId)
             {
                 dc.DrawRectangle(null,new Pen(Brushes.DeepSkyBlue,2),rect);

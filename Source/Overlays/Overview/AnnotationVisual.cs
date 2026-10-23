@@ -18,7 +18,7 @@ internal static class AnnotationVisual
     internal static readonly Brush CardBackground = CreateCardBackground();
     private static Brush CreateCardBackground()
     {
-        var brush=new SolidColorBrush(Color.FromArgb(245,28,34,46));
+        var brush=new SolidColorBrush(Color.FromArgb(255,28,34,46));
         brush.Freeze(); return brush;
     }
 
@@ -39,7 +39,7 @@ internal static class AnnotationVisual
 
     private static Brush? CardFillBrush(CanvasAnnotation item,SolidColorBrush color)
     {
-        if (item.Kind != AnnotationKind.Text || item.CardFill == AnnotationCardFill.None) return null;
+        if (item.Kind == AnnotationKind.Arrow || item.CardFill == AnnotationCardFill.None) return null;
         if (item.CardFill == AnnotationCardFill.Tinted)
         {
             var tint=new SolidColorBrush(Color.FromArgb(42,color.Color.R,color.Color.G,color.Color.B));
@@ -78,11 +78,12 @@ internal static class AnnotationVisual
             }
             return;
         }
-        if (item.Kind == AnnotationKind.Rectangle) dc.DrawRectangle(null,pen,rect);
-        else if (item.Kind == AnnotationKind.Ellipse) dc.DrawEllipse(null,pen,new(rect.Width/2,rect.Height/2),rect.Width/2,rect.Height/2);
+        var fillBrush = CardFillBrush(item, brush);
+        if (item.Kind == AnnotationKind.Rectangle) dc.DrawRectangle(fillBrush, pen, rect);
+        else if (item.Kind == AnnotationKind.Ellipse) dc.DrawEllipse(fillBrush, pen, new(rect.Width/2, rect.Height/2), rect.Width/2, rect.Height/2);
         else
         {
-            dc.DrawRoundedRectangle(CardFillBrush(item,brush),pen,rect,6,6);
+            dc.DrawRoundedRectangle(fillBrush, pen, rect, 6, 6);
         }
         if (!drawText || string.IsNullOrEmpty(item.Text) || rect.Width <= TextInset*2 || rect.Height <= TextInset*2) return;
         var textRect = TextBounds(item);

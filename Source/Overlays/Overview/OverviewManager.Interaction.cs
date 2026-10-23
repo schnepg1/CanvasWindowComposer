@@ -119,6 +119,7 @@ internal sealed partial class OverviewManager
             foreach (var entry in _windows.Windows)
                 if (entry.HWnd == window) { GoToWindow(window, entry.World); break; }
         });
+        PInvoke.SetForegroundWindow((HWND)pass.Handle);
         menu.Show(pass, location);
     }
 

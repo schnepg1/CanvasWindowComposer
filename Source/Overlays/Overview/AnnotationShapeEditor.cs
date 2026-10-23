@@ -60,6 +60,10 @@ internal sealed class AnnotationShapeEditor : Form
     // Exposed controls for testing and automation
     internal Button TypeRectButton { get; }
     internal Button TypeEllipseButton { get; }
+    internal Button FillSolidButton { get; }
+    internal Button FillTintedButton { get; }
+    internal Button FillOutlineButton { get; }
+    public AnnotationCardFill SelectedCardFill => CurrentItem.CardFill;
     internal List<Button> ColorSwatchButtons { get; } = [];
     internal TextBox HexInput { get; }
     internal List<Button> StrokePresetButtons { get; } = [];
@@ -267,6 +271,38 @@ internal sealed class AnnotationShapeEditor : Form
         shapeTypeGrid.Children.Add(TypeEllipseButton);
         propertiesStack.Children.Add(shapeTypeGrid);
 
+        // --- SECTION: Fill Style ---
+        propertiesStack.Children.Add(CreateSectionLabel("FILL STYLE"));
+        var fillGrid = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        FillSolidButton = CreateStyledButton("⬛  Solid", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
+        FillSolidButton.Height = 32;
+        FillSolidButton.ToolTip = "Solid opaque background fill";
+        FillSolidButton.Margin = new Thickness(0, 0, 2, 0);
+        FillSolidButton.Click += (_, _) => SetFill(AnnotationCardFill.Solid);
+        Grid.SetColumn(FillSolidButton, 0);
+        fillGrid.Children.Add(FillSolidButton);
+
+        FillTintedButton = CreateStyledButton("▨  Tinted", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
+        FillTintedButton.Height = 32;
+        FillTintedButton.ToolTip = "Translucent color tint fill";
+        FillTintedButton.Margin = new Thickness(2, 0, 2, 0);
+        FillTintedButton.Click += (_, _) => SetFill(AnnotationCardFill.Tinted);
+        Grid.SetColumn(FillTintedButton, 1);
+        fillGrid.Children.Add(FillTintedButton);
+
+        FillOutlineButton = CreateStyledButton("▢  Outline", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
+        FillOutlineButton.Height = 32;
+        FillOutlineButton.ToolTip = "Outline only with transparent interior";
+        FillOutlineButton.Margin = new Thickness(2, 0, 0, 0);
+        FillOutlineButton.Click += (_, _) => SetFill(AnnotationCardFill.None);
+        Grid.SetColumn(FillOutlineButton, 2);
+        fillGrid.Children.Add(FillOutlineButton);
+        propertiesStack.Children.Add(fillGrid);
+
         // --- SECTION: Color Setting ---
         var colorHeader = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
         colorHeader.Children.Add(CreateSectionLabelInline("COLOR"));
@@ -411,7 +447,7 @@ internal sealed class AnnotationShapeEditor : Form
 
         BringToFrontButton = CreateStyledButton("⤒  Bring to Foreground", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
         BringToFrontButton.Height = 32;
-        BringToFrontButton.ToolTip = "Move shape to the very top, in front of all other notes and shapes";
+        BringToFrontButton.ToolTip = "Move shape to the foreground, in front of windows and other shapes";
         BringToFrontButton.Margin = new Thickness(0, 0, 3, 0);
         BringToFrontButton.Click += (_, _) => SetZOrder(ZOrderAction.BringToFront);
         Grid.SetColumn(BringToFrontButton, 0);
@@ -419,7 +455,7 @@ internal sealed class AnnotationShapeEditor : Form
 
         SendToBackButton = CreateStyledButton("⤓  Send to Background", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
         SendToBackButton.Height = 32;
-        SendToBackButton.ToolTip = "Move shape to the very back, behind other notes and shapes";
+        SendToBackButton.ToolTip = "Move shape to the background, behind windows and other shapes";
         SendToBackButton.Margin = new Thickness(3, 0, 0, 0);
         SendToBackButton.Click += (_, _) => SetZOrder(ZOrderAction.SendToBack);
         Grid.SetColumn(SendToBackButton, 1);
@@ -596,6 +632,14 @@ internal sealed class AnnotationShapeEditor : Form
         RefreshActiveState();
     }
 
+    public void SetFill(AnnotationCardFill fill)
+    {
+        if (!Enum.IsDefined(fill)) throw new ArgumentException("Invalid card fill.");
+        CurrentItem = CurrentItem with { CardFill = fill };
+        _artworkPreview.Update(CurrentItem);
+        RefreshActiveState();
+    }
+
     private void SetColor(string hex, bool fromHexInput = false)
     {
         if (!AnnotationDocument.ValidColor(hex)) return;
@@ -623,6 +667,10 @@ internal sealed class AnnotationShapeEditor : Form
     private void SetZOrder(ZOrderAction action)
     {
         SelectedZOrder = action;
+        if (action == ZOrderAction.SendToBack)
+            CurrentItem = CurrentItem with { InBackground = true };
+        else if (action is ZOrderAction.BringToFront or ZOrderAction.BringForward)
+            CurrentItem = CurrentItem with { InBackground = false };
         ZOrderStatusText.Text = FormatZOrderStatus();
         RefreshActiveState();
     }
@@ -642,16 +690,16 @@ internal sealed class AnnotationShapeEditor : Form
     {
         return SelectedZOrder switch
         {
-            ZOrderAction.BringToFront => "Will move to Foreground (Top)",
-            ZOrderAction.SendToBack => "Will move to Background (Bottom)",
+            ZOrderAction.BringToFront => "Will move to Foreground (In front of windows & shapes)",
+            ZOrderAction.SendToBack => "Will move to Background (Behind windows & shapes)",
             ZOrderAction.BringForward => "Will step Forward (+1 layer)",
             ZOrderAction.SendBackward => "Will step Backward (-1 layer)",
-            _ => _initialZOrder.Total <= 1
-                ? "Single layer"
-                : _initialZOrder.Index == _initialZOrder.Total - 1
-                    ? "Currently: Foreground (Top layer)"
-                    : _initialZOrder.Index == 0
-                        ? "Currently: Background (Bottom layer)"
+            _ => (CurrentItem.InBackground || (_initialZOrder.Index == 0 && _initialZOrder.Total > 0 && CurrentItem.InBackground))
+                ? "Currently: Background (Behind windows & shapes)"
+                : _initialZOrder.Total <= 1
+                    ? "Single layer"
+                    : _initialZOrder.Index == _initialZOrder.Total - 1
+                        ? "Currently: Foreground (In front of windows)"
                         : $"Current layer: {_initialZOrder.Index + 1} of {_initialZOrder.Total}"
         };
     }
@@ -662,6 +710,11 @@ internal sealed class AnnotationShapeEditor : Form
         bool isRect = CurrentItem.Kind == AnnotationKind.Rectangle;
         HighlightButton(TypeRectButton, isRect);
         HighlightButton(TypeEllipseButton, !isRect);
+
+        // Fill style buttons
+        HighlightButton(FillSolidButton, CurrentItem.CardFill == AnnotationCardFill.Solid);
+        HighlightButton(FillTintedButton, CurrentItem.CardFill == AnnotationCardFill.Tinted);
+        HighlightButton(FillOutlineButton, CurrentItem.CardFill == AnnotationCardFill.None);
 
         // Color swatches
         for (int i = 0; i < Palette.Length && i < ColorSwatchButtons.Count; i++)
