@@ -1,7 +1,9 @@
 # Runs on Windows PowerShell 5.1, independently of the app's .NET 10 dependency.
-[CmdletBinding()]
-param([switch]$Build, [switch]$NoLaunch, [switch]$Diagnose, [switch]$NoDialog)
 $ErrorActionPreference = 'Stop'
+$Build = $false
+$NoLaunch = $false
+$Diagnose = $false
+$NoDialog = $false
 $root = Split-Path $PSScriptRoot -Parent
 $logDirectory = Join-Path $env:LOCALAPPDATA 'CanvasWindowComposer\Logs'
 $log = $null
@@ -27,6 +29,27 @@ try {
     Write-Detail 'Canvas development launcher - builds from this source checkout.'
     Write-Detail "Repository: $root"
     Write-Detail "Log: $log"
+    $invalid = @()
+    foreach ($argument in $args) {
+        $token = [string]$argument
+        if ($token -notmatch '^[/-]{1,2}([A-Za-z][A-Za-z-]*)(?:=(.*))?$') {
+            $invalid += $token
+            continue
+        }
+        $name = $Matches[1].ToLowerInvariant()
+        $raw = $Matches[2]
+        $enabled = if ($raw -and $raw -match '^(?i:false|0|no|off)$') { $false } else { $true }
+        switch ($name) {
+            'build' { $Build = $enabled }
+            'diagnose' { $Diagnose = $enabled }
+            'no-launch' { $NoLaunch = $enabled }
+            'no-dialog' { $NoDialog = $enabled }
+            default { $invalid += $token }
+        }
+    }
+    if ($invalid.Count -gt 0) {
+        throw "Unknown option(s): $($invalid -join ', '). Supported options: --build, --diagnose, --no-launch, --no-dialog."
+    }
     if ([Environment]::OSVersion.Platform -ne 'Win32NT') { throw 'Canvas requires Windows 10/11.' }
     Set-Location -LiteralPath $root
     $required = (Get-Content -Raw -LiteralPath (Join-Path $root 'global.json') | ConvertFrom-Json).sdk.version

@@ -67,9 +67,11 @@ internal sealed class OverviewOverlay : Form
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonDown;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseMoved;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonUp;
-    public Action<OverviewOverlay, int, int, int, bool, bool>? OnWheel;
+    public Action<OverviewOverlay, int, int, int, bool, bool, bool>? OnWheel;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseDoubleClicked;
     public Action<OverviewOverlay>? OnCaptureLost;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal bool WindowInteractionActive { get; set; }
 
     protected override CreateParams CreateParams
     {
@@ -188,11 +190,16 @@ internal sealed class OverviewOverlay : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (WindowInteractionActive && m.Msg == 0x21) // WM_MOUSEACTIVATE
+        {
+            m.Result = (IntPtr)3; // MA_NOACTIVATE: leave real typing/shortcuts with the source app.
+            return;
+        }
         if (m.Msg is OverviewNavigationInput.MouseWheelMessage or OverviewNavigationInput.MouseHorizontalWheelMessage)
         {
             var wheel = OverviewNavigationInput.DecodeWheel(m.Msg, m.WParam, m.LParam);
             var client = PointToClient(new Point(wheel.ScreenX, wheel.ScreenY));
-            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control);
+            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control, wheel.Shift);
             m.Result = IntPtr.Zero;
             return;
         }

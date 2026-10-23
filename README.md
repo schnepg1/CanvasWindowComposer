@@ -13,6 +13,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Pan** — Middle-click drag on desktop, or Alt+middle-click anywhere
 - **Inertia** — Fling to keep sliding, smooth deceleration
 - **Zoom** — Pinch, Ctrl+scroll, or use + / - in the overview
+- **Interact at any live-thumbnail zoom** — Right-click a live window and choose **Interact with window** to use its mouse controls, typing, and keyboard shortcuts. **Esc** returns to canvas navigation. Experimental; see [window interaction](Docs/window-interaction.md).
 - **Fuzzy search** — Alt+S to find and jump to any window
 - **Minimap** — Canvas overview, fades after inactivity
 - **Virtual desktops** — Independent canvas per desktop
@@ -32,7 +33,10 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Alt + Q | Toggle overview (map-view) |
 | Alt + scroll on desktop | Open overview |
 | Two-finger scroll in overview | Pan vertically or horizontally |
+| Shift + scroll in overview | Pan horizontally |
 | Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
+| Right-click a live thumbnail > Interact with window | Use the app at the current zoom, with mouse and real keyboard focus |
+| Esc while interacting | Return to canvas navigation, keeping the overview open |
 | Ctrl + scroll, Alt + scroll, or + / - in overview | Zoom without a pinch gesture |
 | Alt + S | Fuzzy window search |
 | Shift + left-drag in overview | Draw a project area |
@@ -123,6 +127,11 @@ dotnet build CanvasDesktop.slnx -c Release --no-restore
 dotnet test Tests/CanvasDesktop.Tests.csproj -c Release --no-build --no-restore
 ```
 
+For agent work and native desktop tests, use the serialized runner:
+`Tests\run_tests.bat -Configuration Release`. It waits for other test runs,
+prompts you to close a running Canvas, and isolates results per run. See
+[AGENTS.md](AGENTS.md).
+
 ```bash
 # C# app
 dotnet build
@@ -173,8 +182,10 @@ shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edi
 while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
 editing. Drawings save automatically per virtual desktop and return after restart.
 Notes open in a card preview with matching colors, proportions, typography and wrapping.
-Save with Ctrl+Enter or cancel with Esc. Selected drawings have larger corner/endpoint
-grips; notes and shapes also resize from their sides. Grip sizes stay readable as you zoom.
+The editor changes text size from 8 to 96 with a numeric control, quick presets or
+Ctrl +/- and saves it with the note. Save with Ctrl+Enter or cancel with Esc. Selected
+drawings have larger corner/endpoint grips; notes and shapes also resize from their
+sides. Grip sizes stay readable as you zoom.
 
 See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
 

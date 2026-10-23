@@ -15,6 +15,7 @@ RI_MOUSE_WHEEL
 
 // One-shot: resolve click location at drag-start
 GetCursorPos
+SetCursorPos
 
 // Raw input thread wait
 MsgWaitForMultipleObjects
@@ -56,6 +57,11 @@ FindWindowEx
 WindowFromPoint
 SetForegroundWindow
 GetParent
+IsChild
+ScreenToClient
+GetClientRect
+ChildWindowFromPointEx
+MSLLHOOKSTRUCT
 GetWindow
 GetForegroundWindow
 IsWindowEnabled
