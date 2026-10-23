@@ -90,8 +90,8 @@ smoke checks; offscreen rendering does not verify those interactions.
 
 ## Canvas annotations v1
 
-The overview toolbar exposes Windows (normal window/area navigation), Select,
-Arrow, Rectangle, Ellipse and Text modes. Drawing modes own left clicks even above
+The overview toolbar exposes a unified Select control (combining window navigation,
+group selection, element movement, and handle resizing) alongside Arrow, Rectangle, Ellipse and Text modes. Drawing modes own left clicks even above
 window previews; middle drag remains camera navigation. Select moves annotations
 and exposes corner/endpoint handles. Shift constrains arrows to 45-degree steps
 and shapes to equal sides. Color and stroke apply to the selection and new items;
@@ -110,9 +110,10 @@ note. The annotation toolbar applies text size, emphasis, alignment and fill to 
 selected item and to new notes. Ctrl+Enter or Save commits the complete text edit;
 Escape or closing the editor cancels it. Global canvas input is drained while
 editing or drawing. A first Escape cancels a gesture or editor; an idle
-drawing/selection mode returns to Windows mode on Escape, then Escape closes
-overview. Annotations are visible only in interactive overview, not on the live
-desktop or during the startup flight.
+drawing mode returns to the unified Select mode on Escape, an active selection is
+cleared on Escape, and pressing Escape with nothing selected closes overview.
+Annotations are visible only in interactive overview, not on the live desktop or
+during the startup flight.
 
 `AnnotationDocument` owns immutable world geometry and bounded, desktop-local
 undo/redo. Pointer previews do not enter storage/history. Ctrl+Z/Y and

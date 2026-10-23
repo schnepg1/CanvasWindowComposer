@@ -256,6 +256,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
                 if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
             };
             pass.OnKey = HandleKeyDown;
+            pass.OnKeyReleased = HandleKeyUp;
             pass.OnMouseButtonDown = HandleMouseDown;
             pass.OnMouseMoved = HandleMouseMove;
             pass.OnMouseButtonUp = HandleMouseUp;
@@ -636,6 +637,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (!_cfg.InputEnabled) return;
         if (HandleTutorialControlKey(e)) return;
 
+        if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
+        {
+            foreach (var p in _passes) p.Cursor = Cursors.Hand;
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         if (e.KeyCode == Keys.Escape)
         {
             HandleEscape();
@@ -696,6 +705,25 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         ReconcileVisuals();
     }
 
+    private void HandleKeyUp(OverviewOverlay pass, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
+        {
+            var pointer = Pointer(pass, new MouseEventArgs(MouseButtons.None, 0, pass.PointToClient(Cursor.Position).X, pass.PointToClient(Cursor.Position).Y, 0));
+            pass.Cursor = _tools.CursorAt(pointer) switch
+            {
+                CanvasCursor.Crosshair => Cursors.Cross,
+                CanvasCursor.ResizeNorthWestSouthEast => Cursors.SizeNWSE,
+                CanvasCursor.ResizeNorthEastSouthWest => Cursors.SizeNESW,
+                CanvasCursor.ResizeNorthSouth => Cursors.SizeNS,
+                CanvasCursor.ResizeEastWest => Cursors.SizeWE,
+                CanvasCursor.Move => Cursors.SizeAll,
+                _ => Cursors.Default
+            };
+            e.Handled = true;
+        }
+    }
+
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
         _visualFrames.Flush();
@@ -717,14 +745,33 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             var (rightWx, rightWy) = _camera.WorldFromVirtual(vx, vy);
             int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
             if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
+            {
                 card.ShowContextMenu(pass, new Point(e.X, e.Y));
+                return;
+            }
             else if (rightHit >= 0 && _placeholderWorkspace != null
                 && _overviewItemIds.TryGetValue(_windows.Windows[rightHit].HWnd, out var id))
             {
                 _windowContextMenu?.Dispose();
                 _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
                 _windowContextMenu.Show(pass, new Point(e.X, e.Y));
+                return;
             }
+
+            _tools.TryBeginNavigation(CanvasInteractionKind.Pan, pointer);
+            ApplyPointerCapture();
+            _panStartVx = vx;
+            _panStartVy = vy;
+            return;
+        }
+
+        bool isSpaceDown = (PInvoke.GetAsyncKeyState((int)VIRTUAL_KEY.VK_SPACE) & 0x8000) != 0;
+        if (e.Button == MouseButtons.Middle || (e.Button == MouseButtons.Left && isSpaceDown))
+        {
+            _tools.TryBeginNavigation(CanvasInteractionKind.Pan, pointer);
+            ApplyPointerCapture();
+            _panStartVx = vx;
+            _panStartVy = vy;
             return;
         }
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
@@ -776,16 +823,19 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _hoveredPlaceholder = hovered;
             _visualFrames.Request();
         }
-        pass.Cursor = _tools.CursorAt(pointer) switch
-        {
-            CanvasCursor.Crosshair => Cursors.Cross,
-            CanvasCursor.ResizeNorthWestSouthEast => Cursors.SizeNWSE,
-            CanvasCursor.ResizeNorthEastSouthWest => Cursors.SizeNESW,
-            CanvasCursor.ResizeNorthSouth => Cursors.SizeNS,
-            CanvasCursor.ResizeEastWest => Cursors.SizeWE,
-            CanvasCursor.Move => Cursors.SizeAll,
-            _ => Cursors.Default
-        };
+        bool isSpaceDown = (PInvoke.GetAsyncKeyState((int)VIRTUAL_KEY.VK_SPACE) & 0x8000) != 0;
+        pass.Cursor = _tools.Kind == CanvasInteractionKind.Pan || (isSpaceDown && _annotationEditor == null)
+            ? Cursors.Hand
+            : _tools.CursorAt(pointer) switch
+            {
+                CanvasCursor.Crosshair => Cursors.Cross,
+                CanvasCursor.ResizeNorthWestSouthEast => Cursors.SizeNWSE,
+                CanvasCursor.ResizeNorthEastSouthWest => Cursors.SizeNESW,
+                CanvasCursor.ResizeNorthSouth => Cursors.SizeNS,
+                CanvasCursor.ResizeEastWest => Cursors.SizeWE,
+                CanvasCursor.Move => Cursors.SizeAll,
+                _ => Cursors.Default
+            };
         if (_tools.Kind == CanvasInteractionKind.Window && _dragIndex >= 0 && _dragIndex < _windows.Count)
         {
             double dx = (vx - _dragStartVx) / _camera.Zoom;

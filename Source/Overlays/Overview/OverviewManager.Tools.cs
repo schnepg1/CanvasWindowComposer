@@ -14,7 +14,7 @@ internal sealed partial class OverviewManager
     public void SetCanvasTool(ICanvasTool? tool, IReadOnlyList<IOverviewAnnotationLayer>? layers = null)
     {
         CancelInteraction();
-        if (tool == null) _annotationTool?.SetMode(AnnotationMode.Navigate);
+        if (tool == null) _annotationTool?.SetMode(AnnotationMode.Select);
         _tools.SetTool(tool ?? _annotationRouter ?? _zoneTool);
         var attached = new List<IOverviewAnnotationLayer>();
         if (_tutorialLayer != null) attached.Add(_tutorialLayer);
@@ -96,6 +96,7 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (_controlsPopup != null && _controlsPopup.Visible) { _controlsPopup.Hide(); FocusOverview(); return; }
         if (StopTutorialTravel()) { RefreshTourUi();return; }
         if (_annotationEditor==null && _shapeEditor==null && _composerWindow==null && GuidedTutorialActive && !_tools.Active)
         { PauseGuidedTutorial();FocusOverview();return; }
@@ -103,7 +104,7 @@ internal sealed partial class OverviewManager
         if (_annotationEditor != null || _shapeEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
         if (CancelInteraction()) return;
         if (Selection.Ids.Count > 0) { Selection.Clear(); _proximityCircle=null; RefreshToolPreview(); return; }
-        if (_annotationTool is { Mode: not AnnotationMode.Navigate }) { SelectAnnotationMode(AnnotationMode.Navigate); return; }
+        if (_annotationTool is { Mode: not (AnnotationMode.Select or AnnotationMode.Navigate) }) { SelectAnnotationMode(AnnotationMode.Select); return; }
         TransitionTo(OverviewMode.Hidden);
     }
 }

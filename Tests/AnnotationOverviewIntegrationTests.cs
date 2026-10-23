@@ -30,7 +30,7 @@ public class AnnotationOverviewIntegrationTests
                 pass.OnKey!(pass,new(Keys.Control|Keys.Z));Assert.Empty(overview.Annotations.Items);
                 pass.OnKey!(pass,new(Keys.Control|Keys.Y));Assert.Single(overview.Annotations.Items);
                 Down();desktops.SwitchTo(Guid.NewGuid());Up();Assert.Single(overview.Annotations.Items);
-                Assert.Equal(AnnotationMode.Navigate,overview.AnnotationTool!.Mode);Assert.False(pass.Capture);
+                Assert.Equal(AnnotationMode.Select,overview.AnnotationTool!.Mode);Assert.False(pass.Capture);
             }
             finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
         });

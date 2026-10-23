@@ -16,6 +16,10 @@ internal sealed partial class OverviewManager
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
     private IVirtualDesktops? _annotationDesktops;
     private AnnotationToolbar? _annotationToolbar;
+    private CanvasControlsButton? _controlsButton;
+    private CanvasControlsPopup? _controlsPopup;
+    internal CanvasControlsButton? ControlsButton => _controlsButton;
+    internal CanvasControlsPopup? ControlsPopup => _controlsPopup;
     private AnnotationTextEditor? _annotationEditor;
     private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
@@ -34,6 +38,7 @@ internal sealed partial class OverviewManager
         _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
         _annotationDocument=_annotationStore.Document;
         _annotationTool=new(_annotationDocument,_annotationDesktop);
+        _annotationTool.SetMode(AnnotationMode.Select);
         _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id));
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
@@ -58,12 +63,13 @@ internal sealed partial class OverviewManager
     private void OnAnnotationDesktopChanged()
     {
         PauseGuidedTutorial();
-        CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Navigate);
+        CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Select);
         RefreshToolPreview();
     }
     internal void SelectAnnotationMode(AnnotationMode mode)
     {
         if(_annotationTool==null) return;
+        if (mode == AnnotationMode.Navigate) mode = AnnotationMode.Select;
         StopTutorialTravel();
         CancelInteraction(); _zoneTool.Cancel(); _annotationTool.SetMode(mode); _annotationError=null;
         if (mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) Selection.Clear();
@@ -77,20 +83,40 @@ internal sealed partial class OverviewManager
     }
     private string? AnnotationHint => _annotationTool?.Mode switch
     {
-        AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag selected: move group  ·  Middle drag: pan",
-        AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
-        AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: cancel / Windows mode",
+        AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
+        AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: Select mode",
+        AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: Select mode",
         AnnotationMode.Text => "Click or drag to add a note  ·  Ctrl+Enter: save  ·  Style and size in the editor  ·  Esc: cancel  ·  Middle drag: pan",
-        AnnotationMode.Navigate => "Ctrl+click: select windows  ·  Select: rectangle  ·  Project name: select group  ·  Middle drag: pan",
+        AnnotationMode.Navigate => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
         _ => null
     };
     private void RefreshAnnotationUi()
     {
         if(_annotationTool==null) return;
         if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser)
-        { _annotationToolbar?.Hide(); return; }
+        {
+            _annotationToolbar?.Hide();
+            _controlsButton?.Hide();
+            _controlsPopup?.Hide();
+            return;
+        }
         var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
         if(pass==null) return;
+        var area=pass.Screen.WorkingArea;
+
+        if (_controlsButton?.IsDisposed == true) _controlsButton = null;
+        if (_controlsButton == null)
+        {
+            _controlsButton = new();
+            _controlsButton.ControlsClicked += () => ToggleControlsPopup(pass);
+            _controlsButton.KeyDown += (_, e) => HandleKeyDown(pass, e);
+        }
+        if (!_controlsButton.Visible)
+        {
+            _controlsButton.Show(pass);
+            _controlsButton.Location = new Point(area.Right - _controlsButton.Width - 16, area.Top + 14);
+        }
+
         if (_annotationToolbar?.IsDisposed == true) _annotationToolbar = null;
         if(_annotationToolbar==null)
         {
@@ -121,8 +147,34 @@ internal sealed partial class OverviewManager
         if(!_annotationToolbar.Visible)
         {
             _annotationToolbar.Show(pass);
-            var area=pass.Screen.WorkingArea;
-            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height-24);
+            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height);
+        }
+        else
+        {
+            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height);
+        }
+    }
+
+    private void ToggleControlsPopup(OverviewOverlay pass)
+    {
+        if (_controlsPopup?.IsDisposed == true) _controlsPopup = null;
+        if (_controlsPopup == null)
+        {
+            _controlsPopup = new();
+            _controlsPopup.ClosedRequested += () => { _controlsPopup.Hide(); FocusOverview(); };
+            _controlsPopup.KeyDown += (_, e) => HandleKeyDown(pass, e);
+        }
+        if (_controlsPopup.Visible)
+        {
+            _controlsPopup.Hide();
+            FocusOverview();
+        }
+        else
+        {
+            _controlsPopup.Show(pass);
+            var area = pass.Screen.WorkingArea;
+            _controlsPopup.Location = new Point(Math.Max(area.Left, area.Right - _controlsPopup.Width - 16), area.Top + 50);
+            _controlsPopup.Activate();
         }
     }
     private void ChangeAnnotationStyle(string color,double stroke)
@@ -146,7 +198,22 @@ internal sealed partial class OverviewManager
         catch(ArgumentException ex) { _annotationError=ex.Message; }
         RefreshToolPreview(); FocusOverview();
     }
-    private void DeleteAnnotation() { CancelInteraction(); _annotationTool?.Delete(); RefreshToolPreview(); FocusOverview(); }
+    private void DeleteAnnotation()
+    {
+        CancelInteraction();
+        var selectedAnnotations = Selection.Ids.Where(id => id.Kind == CanvasItemKind.Annotation).Select(id => id.Id).ToArray();
+        if (selectedAnnotations.Length > 0 && _annotationDocument != null)
+        {
+            foreach (var id in selectedAnnotations)
+                _annotationDocument.Delete(_annotationDesktop(), id);
+            Selection.Replace(Selection.Ids.Where(id => id.Kind != CanvasItemKind.Annotation));
+        }
+        else
+        {
+            _annotationTool?.Delete();
+        }
+        RefreshToolPreview(); FocusOverview();
+    }
     private void AnnotationHistory(bool redo)
     {
         CancelInteraction();
@@ -156,14 +223,22 @@ internal sealed partial class OverviewManager
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
         if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null) return true;
-        if(_annotationTool==null || _annotationTool.Mode==AnnotationMode.Navigate) return false;
+        if(_annotationTool==null || _annotationTool.Mode is AnnotationMode.Navigate or AnnotationMode.Select)
+        {
+            if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) { AnnotationHistory(e.KeyCode==Keys.Y || e.Shift); e.Handled=true; e.SuppressKeyPress=true; return true; }
+            if((e.KeyCode==Keys.Delete || e.KeyCode==Keys.Back) && (Selection.Ids.Count > 0 || _annotationTool?.Selected != null)) { DeleteAnnotation(); e.Handled=true; e.SuppressKeyPress=true; return true; }
+            if(e.KeyCode==Keys.Enter && _annotationTool?.Selected is { } item)
+            {
+                if (item.Kind == AnnotationKind.Text) { QueueAnnotationTextEdit(item); e.Handled=true; e.SuppressKeyPress=true; return true; }
+                if (item.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) { QueueAnnotationShapeEdit(item); e.Handled=true; e.SuppressKeyPress=true; return true; }
+            }
+            return false;
+        }
         if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) AnnotationHistory(e.KeyCode==Keys.Y || e.Shift);
         else if(e.KeyCode==Keys.Delete || e.KeyCode==Keys.Back) DeleteAnnotation();
         else if(e.KeyCode==Keys.Enter && _annotationTool.Selected is { } item) { if (item.Kind == AnnotationKind.Text) QueueAnnotationTextEdit(item); else if (item.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) QueueAnnotationShapeEdit(item); }
         else
         {
-            if (_annotationTool.Mode==AnnotationMode.Navigate) return false;
-            // Annotation mode owns typing/navigation keys; project-area shortcuts stay in Windows mode.
             e.Handled=true; e.SuppressKeyPress=true; return true;
         }
         e.Handled=true; e.SuppressKeyPress=true; return true;
@@ -268,6 +343,8 @@ internal sealed partial class OverviewManager
         if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
         if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
         _annotationToolbar?.Dispose(); _annotationToolbar=null;
+        _controlsPopup?.Dispose(); _controlsPopup=null;
+        _controlsButton?.Dispose(); _controlsButton=null;
     }
 
     internal bool PrepareForUpdate(out string? message)
@@ -291,11 +368,18 @@ internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotati
         bool Begin(ICanvasTool tool) { if (!tool.PointerDown(p)) return false; _owner=tool; return true; }
         if (annotations.Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return Begin(annotations);
         if (annotations.Mode==AnnotationMode.Select && !p.Modifiers.HasFlag(CanvasModifiers.Control) && annotations.HasHandleAt(p)) return Begin(annotations);
-        if (annotations.Mode==AnnotationMode.Navigate && zones.IsBoundaryGesture(p) && Begin(zones)) return true;
+        if (zones.IsBoundaryGesture(p) && Begin(zones)) return true;
         return Begin(selection);
     }
     public void PointerMove(CanvasPointer p)=>_owner?.PointerMove(p);
     public void PointerUp(CanvasPointer p) { var owner=_owner; _owner=null; owner?.PointerUp(p); if (ReferenceEquals(owner,annotations)) annotationCompleted(); }
     public void Cancel() { _owner=null; annotations.Cancel(); zones.Cancel(); selection.Cancel(); }
-    public CanvasCursor CursorAt(CanvasPointer p)=>annotations.Mode==AnnotationMode.Navigate?zones.CursorAt(p):annotations.CursorAt(p);
+    public CanvasCursor CursorAt(CanvasPointer p)
+    {
+        if (annotations.Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return annotations.CursorAt(p);
+        if (annotations.HasHandleAt(p)) return annotations.CursorAt(p);
+        var zoneCursor = zones.CursorAt(p);
+        if (zoneCursor != CanvasCursor.Default) return zoneCursor;
+        return annotations.CursorAt(p);
+    }
 }
