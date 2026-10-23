@@ -12,14 +12,18 @@ public class PlaceholderLabelTests
     [InlineData(.1)]
     [InlineData(.25)]
     [InlineData(.49)]
-    public void ZoomedOutTitlesScaleWithCardAndStayInsideTheMonitor(double zoom)
+    public void ZoomedOutTitlesStayCenteredInsideTheirCardsAndScaleWithZoom(double zoom)
     {
         var card = Card();
         var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { card }, 0, 0, zoom,
             new ScreenRect(0, 0, 1920, 1080), 1, 1));
-        double expectedFontSize = PlaceholderArtwork.CalculateCardTitleFontSize(card.Title, (float)card.Bounds.W, (float)card.Bounds.H) * zoom;
-        Assert.Equal(expectedFontSize, label.FontSize, 2);
-        Assert.True(new Rect(0, 0, 1920, 1080).Contains(label.Rect));
+        var projectedCard = new Rect(500 * zoom, 500 * zoom, 800 * zoom, 550 * zoom);
+        Assert.True(projectedCard.Contains(label.Rect));
+        Assert.Equal(projectedCard.X + projectedCard.Width / 2, label.Rect.X + label.Rect.Width / 2, 6);
+        Assert.Equal(projectedCard.Y + projectedCard.Height / 2, label.Rect.Y + label.Rect.Height / 2, 6);
+        Assert.Equal(84 * zoom, label.FontSize, 6);
+        Assert.Equal(752 * zoom, label.Rect.Width, 6);
+        Assert.Equal(502 * zoom, label.Rect.Height, 6);
     }
 
     [Fact]
@@ -30,30 +34,44 @@ public class PlaceholderLabelTests
             new ScreenRect(-1920, 0, 1920, 1080), 1.5, 1.5));
         double center = ((card.Bounds.X + card.Bounds.W / 2 + 100) * .25 + 1920) / 1.5;
         Assert.Equal(center, label.Rect.X + label.Rect.Width / 2, 6);
-        double expectedFontSize = PlaceholderArtwork.CalculateCardTitleFontSize(card.Title, (float)card.Bounds.W, (float)card.Bounds.H) * .25;
-        Assert.Equal(expectedFontSize, label.FontSize, 2);
+        Assert.Equal(84 * .25 / 1.5, label.FontSize, 6);
     }
 
     [Fact]
-    public void HoveredCardWinsCollisionsAndReservedUiRemainsClear()
+    public void AdjacentTitlesRemainVisibleWhenHoverPriorityOrEnumerationChanges()
     {
-        var cards = new[] { Card(), Card(2, priority: true) };
-        var label = Assert.Single(PlaceholderLabelLayout.Get(cards, 0, 0, .25,
-            new ScreenRect(0, 0, 1920, 1080), 1, 1));
-        Assert.Equal((IntPtr)2, label.Card.Handle);
-        Assert.Empty(PlaceholderLabelLayout.Get(cards, 0, 0, .25,
-            new ScreenRect(0, 0, 1920, 1080), 1, 1, new[] { label.Rect }));
+        var first = Card();
+        var second = Card(2, x: 1320, priority: true);
+        var monitor = new ScreenRect(0, 0, 1920, 1080);
+        var labels = PlaceholderLabelLayout.Get(new[] { first, second }, 0, 0, .1, monitor, 1, 1);
+        Assert.Equal(2, labels.Count);
+        Assert.False(labels[0].Rect.IntersectsWith(labels[1].Rect));
+        var changed = PlaceholderLabelLayout.Get(new[] { second with { Priority = false }, first with { Priority = true } },
+            0, 0, .1, monitor, 1, 1);
+        Assert.Equal(2, changed.Count);
+        foreach (var label in labels)
+            Assert.Equal(label.Rect, Assert.Single(changed, item => item.Card.Handle == label.Card.Handle).Rect);
     }
 
     [Fact]
-    public void CloseZoomOffscreenCardsAndUnrecognizablyTinyCardsHaveNoBadge()
+    public void PartlyOffscreenTitleStaysAnchoredInsteadOfSlidingOntoTheMonitor()
+    {
+        var label = Assert.Single(PlaceholderLabelLayout.Get(new[] { Card(x: -600, y: -100) }, 0, 0, .25,
+            new ScreenRect(0, 0, 1920, 1080), 1, 1));
+        Assert.Equal(-50, label.Rect.X + label.Rect.Width / 2, 6);
+        Assert.Equal(43.75, label.Rect.Y + label.Rect.Height / 2, 6);
+        Assert.True(label.Rect.Left < 0);
+    }
+
+    [Fact]
+    public void CloseZoomOffscreenCardsAndSubpixelCardsHaveNoTitle()
     {
         var monitor = new ScreenRect(0, 0, 1920, 1080);
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, 1, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, .5, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card(x: -10000) }, 0, 0, .25, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, .001, monitor, 1, 1));
-        Assert.Single(PlaceholderLabelLayout.Get(new[] { Card(priority: true) }, 0, 0, .001, monitor, 1, 1));
+        Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card(priority: true) }, 0, 0, .001, monitor, 1, 1));
     }
 
     [Fact]

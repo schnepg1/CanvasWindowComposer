@@ -77,7 +77,7 @@ public class OverviewCardTransitionTests
     }
 
     [Fact]
-    public void DetailedAndFloatingTitlesNeverShowTogetherAndDistantImagesAreReleased()
+    public void DetailedAndSimplifiedTitlesNeverShowTogetherAndDistantImagesAreReleased()
         => WorkspaceViewTests.OnSta(() =>
         {
             var image = new DrawingImage(); image.Freeze();

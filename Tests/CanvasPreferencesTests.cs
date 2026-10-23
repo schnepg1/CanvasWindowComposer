@@ -12,6 +12,7 @@ public class CanvasPreferencesTests : IDisposable
         using var config = new AppConfig(directory: _directory); config.Load();
         Assert.Equal(new(true, true, true, true, true, false, false, false), config.Preferences);
         Assert.Contains(";EnableFlipRendering=false", File.ReadAllText(Path.Combine(_directory, "config.ini")));
+        Assert.False(config.LowQualityMode);
     }
 
     [Fact]
@@ -21,7 +22,7 @@ public class CanvasPreferencesTests : IDisposable
         File.WriteAllText(Path.Combine(_directory, "config.ini"),
             "; My comment\n[CanvasWindowComposer]\nFutureOption=keep\nDisableSearch=false\ndisablesearch=false\n");
         using var config = new AppConfig(directory: _directory); config.Load();
-        var wanted = new CanvasPreferences(false, false, false, false, false, true, true, true, false, true);
+        var wanted = new CanvasPreferences(false, false, false, false, false, true, true, true, false, true, true);
         config.SavePreferences(wanted);
         Assert.Equal(wanted, config.Preferences);
         using var reopened = new AppConfig(directory: _directory); reopened.Load();
@@ -53,6 +54,21 @@ public class CanvasPreferencesTests : IDisposable
         Assert.False(config.EnableAutomaticMinimization); Assert.False(config.EnableFlipRendering);
         config.SavePreferences(edits);
         Assert.True(config.EnableAutomaticMinimization); Assert.True(config.EnableFlipRendering);
+    }
+
+    [Fact]
+    public void LowQualityIsOptInAndCanBeDisabledAgainWithoutChangingOtherSettings()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        var original = config.Preferences;
+        config.SavePreferences(original with { LowQualityMode = true });
+        Assert.True(config.LowQualityMode);
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.Equal(original with { LowQualityMode = true }, reopened.Preferences);
+        config.SavePreferences(original);
+        reopened.Load();
+        Assert.False(reopened.LowQualityMode);
+        Assert.Equal(original, reopened.Preferences);
     }
 
     [Fact]

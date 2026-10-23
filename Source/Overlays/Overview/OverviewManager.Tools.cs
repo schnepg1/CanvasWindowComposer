@@ -85,7 +85,11 @@ internal sealed partial class OverviewManager
         _dragIndex = -1;
         ApplyPointerCapture();
         if (windowDrag && !_disposed) _wm.Reproject(true);
-        if (cancelled && !_disposed) RefreshToolPreview();
+        if (cancelled && !_disposed)
+        {
+            RefreshToolPreview();
+            _visualFrames.Request();
+        }
         return cancelled;
     }
 

@@ -11,7 +11,9 @@ windows; AI proposals have no process, file, network-tool or window-movement pow
    and a model ID supporting Responses Structured Outputs; Refresh models can
    populate choices. Saving the key is optional and uses Windows Credential Manager.
    For ChatGPT, choose **Continue with ChatGPT**, authorize plan usage in the system
-   browser, then select an account-specific model. Manage usage opens ChatGPT settings.
+   browser, then select an account-specific model. While the browser flow is pending,
+   the composer and overview yield the foreground so the browser remains reachable.
+   Manage usage opens ChatGPT settings.
    See [AI connections](ai-connections.md) for account lifecycle and storage.
 3. Write a request or choose a transformation action. The current canvas selection
    starts checked; review annotation text and window/project metadata before sending.

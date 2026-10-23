@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 
 namespace CanvasDesktop;
@@ -10,42 +9,32 @@ internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldR
     double Opacity = 1, double? ImageOpacity = null, double? LabelOpacity = null);
 internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
-/// <summary>Display-sized labels: project positions with the camera, scaling title text with the card title size.</summary>
+/// <summary>Card-local titles: bounds, padding and type all scale with the camera.</summary>
 internal static class PlaceholderLabelLayout
 {
     public static IReadOnlyList<PlaceholderLabel> Get(IReadOnlyList<PlaceholderAnnotation> cards,
-        double camX, double camY, double zoom, ScreenRect monitor, double dpiX, double dpiY,
-        IReadOnlyList<Rect>? reserved = null)
+        double camX, double camY, double zoom, ScreenRect monitor, double dpiX, double dpiY)
     {
         var result = new List<PlaceholderLabel>();
         if (!double.IsFinite(zoom) || zoom <= 0 || dpiX <= 0 || dpiY <= 0) return result;
         double viewWidth = monitor.Width / dpiX, viewHeight = monitor.Height / dpiY;
         var view = new CanvasViewTransform(camX, camY, zoom,
             new(monitor.X, monitor.Y, monitor.Width, monitor.Height), dpiX, dpiY);
-        if (viewWidth < 40 || viewHeight < 40) return result;
-        foreach (var card in cards.OrderByDescending(c => c.Priority))
+        foreach (var card in cards)
         {
             if ((card.LabelOpacity ?? (zoom < WindowManager.OverviewLivePreviewZoom ? 1 : 0)) <= 0
                 || card.Opacity <= 0) continue;
             var b = card.Bounds;
+            if (!WorkspaceGeometry.ValidBounds(b)) continue;
             var projected = view.WorldToDip(new CanvasRect(b.X, b.Y, b.W, b.H));
             double x = projected.X, y = projected.Y, w = projected.Width, h = projected.Height;
-            if (!WorkspaceGeometry.ValidBounds(b) || x >= viewWidth || y >= viewHeight || x + w <= 0 || y + h <= 0
-                || (!card.Priority && (w < 8 || h < 8))) continue;
-            double cardTitleSize = PlaceholderArtwork.CalculateCardTitleFontSize(card.Title, (float)b.W, (float)b.H);
-            double fontSize = Math.Max(1, cardTitleSize * zoom);
-            double padX = Math.Max(6, fontSize * 0.8);
-            double padY = Math.Max(4, fontSize * 0.4);
-            double textWidth = card.Title.Length * fontSize * 0.58;
-            double width = Math.Min(viewWidth - 16, Math.Clamp(textWidth + padX * 2, fontSize * 3, Math.Max(fontSize * 3, w)));
-            double height = Math.Min(viewHeight - 16, Math.Clamp(fontSize * 1.6 + padY * 2, fontSize * 1.5, Math.Max(fontSize * 1.5, h)));
-            var rect = new Rect(Math.Clamp(x + (w - width) / 2, 8, viewWidth - width - 8),
-                Math.Clamp(y + (h - height) / 2, 8, viewHeight - height - 8), width, height);
-            // Selected/hovered cards are placed first. Other labels yield rather
-            // than growing into an unreadable pile at distant zoom levels.
-            if (reserved != null && reserved.Any(r => r.IntersectsWith(rect))) continue;
-            var clearance = rect; clearance.Inflate(4, 4);
-            if (result.Any(label => label.Rect.IntersectsWith(clearance))) continue;
+            if (x >= viewWidth || y >= viewHeight || x + w <= 0 || y + h <= 0 || w < 1 || h < 1) continue;
+            double paddingX = Math.Min(24, b.W * .08) * zoom / dpiX;
+            double paddingY = Math.Min(24, b.H * .08) * zoom / dpiY;
+            var rect = new Rect(x + paddingX, y + paddingY, w - 2 * paddingX, h - 2 * paddingY);
+            double fontSize = Math.Min(84 * zoom / dpiY, rect.Height / 3.6);
+            // Do not clamp to the monitor or arbitrate collisions: each title
+            // belongs to its card, including when that card is partly offscreen.
             result.Add(new(card, rect, fontSize));
         }
         return result;

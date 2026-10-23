@@ -23,6 +23,7 @@ public class SettingsWindowTests
                 foreach (var box in WorkspaceViewTests.Descendants(window).OfType<CheckBox>()) box.IsChecked = true;
                 window.Close();
                 Assert.False(config.EnableAutomaticMinimization); Assert.False(config.EnableFlipRendering);
+                Assert.False(config.LowQualityMode);
                 Assert.Equal(before, File.ReadAllText(Path.Combine(directory, "config.ini")));
             }
             finally { Directory.Delete(directory, true); }
@@ -42,11 +43,13 @@ public class SettingsWindowTests
                 window.Width = 440; window.Height = 420;
                 WorkspaceViewTests.Render(window, "settings-shell-small-150-preview.png", 1.5);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(10, boxes.Length);
+                Assert.Equal(11, boxes.Length);
                 boxes[0].IsChecked = false;
+                boxes.Single(b => (b.Content as TextBlock)?.Text == "Low quality mode").IsChecked = true;
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(1, applied); Assert.True(config.DisableSearch);
+                Assert.True(config.LowQualityMode);
                 Assert.False(config.EnableAutomaticMinimization); Assert.False(config.EnableFlipRendering);
                 window.Close();
             }

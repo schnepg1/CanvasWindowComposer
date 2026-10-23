@@ -6,7 +6,7 @@ using System.Windows.Media;
 namespace CanvasDesktop;
 
 internal enum OverviewCardMode { Simple, Detailed, Live }
-internal sealed record OverviewCardInput(Guid Id, PlaceholderAnnotation Card, OverviewCardMode Mode, bool LiveReady = true);
+internal readonly record struct OverviewCardInput(Guid Id, PlaceholderAnnotation Card, OverviewCardMode Mode, bool LiveReady = true);
 
 /// <summary>Visible-only, UI-thread transition state. Images are immutable borrowed snapshots.</summary>
 internal sealed class OverviewCardTransitions
@@ -22,6 +22,8 @@ internal sealed class OverviewCardTransitions
         public bool Moving;
     }
     private readonly Dictionary<Guid, Entry> _entries = new();
+    private readonly HashSet<Guid> _seen = new();
+    private readonly List<Guid> _removed = new();
     public bool IsAnimating => _entries.Values.Any(e => e.Moving);
     public bool HasPendingLiveSources { get; private set; }
     internal int RetainedImages => _entries.Values.Count(e => e.Image != null);
@@ -31,11 +33,11 @@ internal sealed class OverviewCardTransitions
     public IReadOnlyList<PlaceholderAnnotation> Update(IReadOnlyList<OverviewCardInput> inputs, long now)
     {
         HasPendingLiveSources = false;
-        var seen = new HashSet<Guid>();
+        _seen.Clear();
         var result = new List<PlaceholderAnnotation>();
         foreach (var input in inputs)
         {
-            seen.Add(input.Id);
+            _seen.Add(input.Id);
             if (!_entries.TryGetValue(input.Id, out var e))
             {
                 e = new Entry { Target = input.Mode, Detail = input.Mode == OverviewCardMode.Detailed ? 1 : 0,
@@ -66,13 +68,16 @@ internal sealed class OverviewCardTransitions
             if (cover <= 0) continue;
             double detail = Math.Clamp(e.Detail / cover, 0, 1);
             // Stagger the two title treatments through a plain rectangle so
-            // the bitmap's title and the floating badge never overlap.
+            // the bitmap's title and the simplified title never overlap.
             double imageOpacity = Math.Max(0, detail * 2 - 1);
             double labelOpacity = Math.Max(0, 1 - detail * 2);
             result.Add(input.Card with { Title = e.Title, Image = e.Image, Opacity = cover,
                 ImageOpacity = imageOpacity, LabelOpacity = labelOpacity });
         }
-        foreach (var id in _entries.Keys.Where(id => !seen.Contains(id)).ToArray()) _entries.Remove(id);
+        _removed.Clear();
+        foreach (var id in _entries.Keys)
+            if (!_seen.Contains(id)) _removed.Add(id);
+        foreach (var id in _removed) _entries.Remove(id);
         return result;
     }
 
@@ -89,6 +94,8 @@ internal sealed class OverviewCardTransitions
     public void Clear()
     {
         _entries.Clear();
+        _seen.Clear();
+        _removed.Clear();
         HasPendingLiveSources = false;
     }
 }

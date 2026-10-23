@@ -8,6 +8,7 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool EnableStartupIntro { get; set; } = true;
     public bool ReduceStartupMotion { get; set; }
     public bool EnableAutomaticMinimization { get; set; }
+    public bool LowQualityMode { get; set; }
     public bool ShowScreenFixedWindowsDuringPan { get; set; } = true;
     public bool DisableMouseCurve { get; set; }
     public bool DisableZoomHotkey { get; set; }
