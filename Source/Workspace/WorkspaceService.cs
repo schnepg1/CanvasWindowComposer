@@ -63,6 +63,13 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         return null;
     }
 
+    public Guid? CardItem(IntPtr handle)
+    {
+        foreach (var (id, card) in _cards)
+            if (card.Handle == handle) return id;
+        return null;
+    }
+
     public bool SetOverviewCardMode(bool enabled)
     {
         if (_disposed || !_started || _switching || _overviewCardMode == enabled) return false;
@@ -522,6 +529,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             _api.EnumWindows(handle => { baseline.Add(handle); return true; });
             _launchBaselines[item.Id] = baseline;
             _launching[item.Id] = _clock.TickCount64 + 30000;
+            if (_cards.TryGetValue(item.Id, out var card))
+                card.UpdateItem(View(item));
             _launcher.Open(item);
             _status = null;
         }

@@ -823,6 +823,20 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             int hit = HitOverviewWindow(pass, e.X, e.Y, wx, wy);
             if (hit >= 0)
             {
+                var entry = _windows.Windows[hit];
+                if (Control.FromHandle(entry.HWnd) is PlaceholderForm card
+                    && _placeholderWorkspace?.CardItem(entry.HWnd) is { } cardItemId)
+                {
+                    double relX = wx - entry.World.X;
+                    double relY = wy - entry.World.Y;
+                    if (card.HitTestOpenButton((int)Math.Round(relX), (int)Math.Round(relY)))
+                    {
+                        TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+                        _placeholderWorkspace.Open(cardItemId);
+                        return;
+                    }
+                }
+
                 BringWindowToFront(hit);
                 _tools.TryBeginNavigation(CanvasInteractionKind.Window, pointer);
                 ApplyPointerCapture();
@@ -1022,7 +1036,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void GoToWindow(IntPtr hWnd, WorldRect world)
     {
         ObserveTourWindow();
-        if (_placeholderWorkspace?.LiveCardItem(hWnd) is { } itemId)
+        if (_placeholderWorkspace?.CardItem(hWnd) is { } itemId)
         {
             TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
             _placeholderWorkspace.Open(itemId);

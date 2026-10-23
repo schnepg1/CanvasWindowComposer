@@ -3,6 +3,8 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Windows.Media;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using Color = System.Windows.Media.Color;
@@ -140,4 +142,125 @@ public class UiBugsAndShapesTests
             overview.HandleEscape();
             Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
         });
+
+    private sealed class TestWorkspaceCommands : IWorkspaceCommands
+    {
+        public bool OpenCalled { get; set; }
+        public Guid LastOpenedId { get; set; }
+        public IReadOnlyList<WorkspaceItemView> Items => Array.Empty<WorkspaceItemView>();
+        public string? Status => null;
+        public event Action? Changed { add { } remove { } }
+        public void Open(Guid id) { OpenCalled = true; LastOpenedId = id; }
+        public void FocusItem(Guid id) { }
+        public void CloseToPlaceholder(Guid id) { }
+        public void Forget(Guid id) { }
+        public void SetAutoOpen(Guid id, bool enabled) { }
+        public void SetTarget(Guid id, string target, bool isFolder) { }
+        public void SetName(Guid id, string name) { }
+        public bool SetChromeProfile(Guid id, string profilePath) => true;
+        public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Array.Empty<WorkspaceLinkCandidate>();
+        public bool LinkWindow(Guid id, Guid candidateToken) => true;
+    }
+
+    [Fact]
+    public void PlaceholderFormOpenButtonClickCallsWorkspaceOpen()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var commands = new TestWorkspaceCommands();
+            var id = Guid.NewGuid();
+            var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", "", false,
+                new WorldRect { X = 100, Y = 100, W = 800, H = 600 }, "Placeholder");
+            using var form = new PlaceholderForm(commands, item);
+            form.Show();
+            var button = AllControls(form).OfType<Button>().FirstOrDefault(b => b.Text == "Open");
+            Assert.NotNull(button);
+            Assert.True(button.Visible);
+            Assert.True(button.Enabled);
+            var centerInForm = form.PointToClient(button.PointToScreen(new Point(button.Width / 2, button.Height / 2)));
+            var childAtCenter = form.GetChildAtPoint(centerInForm);
+            Assert.NotNull(childAtCenter);
+            var panel = childAtCenter as TableLayoutPanel;
+            Assert.NotNull(panel);
+            var centerInPanel = panel.PointToClient(button.PointToScreen(new Point(button.Width / 2, button.Height / 2)));
+            var childInPanel = panel.GetChildAtPoint(centerInPanel);
+            Assert.Same(button, childInPanel);
+
+            button.PerformClick();
+            Assert.True(commands.OpenCalled);
+            Assert.Equal(id, commands.LastOpenedId);
+        });
+
+    [Fact]
+    public void PlaceholderFormHitTestOpenButtonAccuratelyIdentifiesButtonArea()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var commands = new TestWorkspaceCommands();
+            var id = Guid.NewGuid();
+            var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", "", false,
+                new WorldRect { X = 100, Y = 100, W = 800, H = 600 }, "Placeholder");
+            using var form = new PlaceholderForm(commands, item);
+            form.Show();
+
+            var button = AllControls(form).OfType<Button>().FirstOrDefault(b => b.Text == "Open");
+            Assert.NotNull(button);
+
+            var buttonTopLeft = form.PointToClient(button.PointToScreen(new Point(0, 0)));
+            var buttonCenter = form.PointToClient(button.PointToScreen(new Point(button.Width / 2, button.Height / 2)));
+            var buttonBottomRight = form.PointToClient(button.PointToScreen(new Point(button.Width - 1, button.Height - 1)));
+
+            Assert.True(form.HitTestOpenButton(buttonTopLeft.X, buttonTopLeft.Y));
+            Assert.True(form.HitTestOpenButton(buttonCenter.X, buttonCenter.Y));
+            Assert.True(form.HitTestOpenButton(buttonBottomRight.X, buttonBottomRight.Y));
+
+            Assert.False(form.HitTestOpenButton(0, 0));
+            Assert.False(form.HitTestOpenButton(10, 10));
+            Assert.False(form.HitTestOpenButton(-10, -10));
+        });
+
+    [Fact]
+    public void PlaceholderOpenButtonActivatesAndClicksOnLButtonUp()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var commands = new TestWorkspaceCommands();
+            var id = Guid.NewGuid();
+            var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", "", false,
+                new WorldRect { X = 100, Y = 100, W = 800, H = 600 }, "Placeholder");
+            using var placeholder = new PlaceholderForm(commands, item);
+            placeholder.Show();
+
+            var button = AllControls(placeholder).OfType<PlaceholderOpenButton>().FirstOrDefault();
+            Assert.NotNull(button);
+
+            const uint WM_MOUSEACTIVATE = 0x0021;
+            var lResult = PInvoke.SendMessage((HWND)button.Handle, WM_MOUSEACTIVATE, new WPARAM((nuint)placeholder.Handle), (LPARAM)1);
+            Assert.Equal((nint)1 /* MA_ACTIVATE */, (nint)lResult.Value);
+
+            const uint WM_LBUTTONUP = 0x0202;
+            PInvoke.SendMessage((HWND)button.Handle, WM_LBUTTONUP, default, default);
+            Assert.True(commands.OpenCalled);
+            Assert.Equal(id, commands.LastOpenedId);
+        });
+
+    [Fact]
+    public void WorkspaceServiceCardItemReturnsIdForClosedPlaceholderCard()
+    {
+        var id = Guid.NewGuid();
+        var item = new WorkspaceItem { Id = id, Target = @"C:\Apps\App.exe", Bounds = new() { X = 100, Y = 100, W = 400, H = 300 } };
+        var doc = new WorkspaceDocument { Items = [item] };
+        using var harness = new WorkspaceHarness(doc);
+        harness.Workspace.Start();
+
+        var card = Assert.Single(harness.Cards.Created);
+        Assert.Equal(id, harness.Workspace.CardItem(card.Handle));
+        Assert.Null(harness.Workspace.LiveCardItem(card.Handle));
+    }
+
+    private static System.Collections.Generic.IEnumerable<Control> AllControls(Control parent)
+    {
+        foreach (Control c in parent.Controls)
+        {
+            yield return c;
+            foreach (var child in AllControls(c)) yield return child;
+        }
+    }
 }
