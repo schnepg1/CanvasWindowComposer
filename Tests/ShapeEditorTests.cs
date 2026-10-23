@@ -335,4 +335,80 @@ public class ShapeEditorTests
                 if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
         });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void ShapeEditorSupportsSolidTintedAndOutlineFillStyles()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var doc = new AnnotationDocument();
+            var shape = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Rectangle, new(100, 100), new(300, 200), "#60A5FA");
+            doc.Put(shape);
+
+            using var editor = new AnnotationShapeEditor(shape, doc, Desktop);
+            // Initially outline (None)
+            Assert.Equal(AnnotationCardFill.None, editor.SelectedCardFill);
+
+            // Click Solid
+            editor.FillSolidButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(AnnotationCardFill.Solid, editor.SelectedCardFill);
+            Assert.Equal(AnnotationCardFill.Solid, editor.CurrentItem.CardFill);
+
+            // Click Tinted
+            editor.FillTintedButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(AnnotationCardFill.Tinted, editor.SelectedCardFill);
+            Assert.Equal(AnnotationCardFill.Tinted, editor.CurrentItem.CardFill);
+
+            // Click Outline
+            editor.FillOutlineButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(AnnotationCardFill.None, editor.SelectedCardFill);
+            Assert.Equal(AnnotationCardFill.None, editor.CurrentItem.CardFill);
+
+            // Set to Solid and Save
+            editor.FillSolidButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            ShapeEditorResult? result = null;
+            editor.Finished += r => result = r;
+            editor.SaveBtn.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+            Assert.NotNull(result);
+            Assert.True(result.Save);
+            Assert.Equal(AnnotationCardFill.Solid, result.UpdatedItem.CardFill);
+        });
+
+    [Theory]
+    [InlineData(AnnotationKind.Rectangle)]
+    [InlineData(AnnotationKind.Ellipse)]
+    [Trait("Category", "NativeRendering")]
+    public void ShapeVisualRendersSolidTintedAndOutlineFills(AnnotationKind kind)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop = Guid.NewGuid();
+            var center = new System.Drawing.Point(150, 110);
+
+            byte AlphaAtCenter(AnnotationCardFill fill)
+            {
+                var item = new CanvasAnnotation(Guid.NewGuid(), desktop, kind, new(50, 50), new(250, 170), "#FBBF24", Stroke: 3, CardFill: fill);
+                var doc = new AnnotationDocument([item]);
+                var surface = new OverviewAnnotationSurface();
+                surface.SetDrawingLayers([new CanvasAnnotationLayer(doc, new AnnotationCanvasTool(doc, () => desktop), () => desktop, () => true)]);
+                surface.Update(OverviewAnnotationSnapshot.Create([], 0, 0, 1, new(0, 0, 300, 220), null, false, showHints: false));
+                surface.Measure(new System.Windows.Size(300, 220));
+                surface.Arrange(new System.Windows.Rect(0, 0, 300, 220));
+                surface.UpdateLayout();
+                var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(300, 220, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bmp.Render(surface);
+                var pixels = new byte[300 * 220 * 4];
+                bmp.CopyPixels(pixels, 1200, 0);
+                return pixels[(center.Y * 300 + center.X) * 4 + 3];
+            }
+
+            // Outline has transparent interior (alpha = 0)
+            Assert.Equal(0, AlphaAtCenter(AnnotationCardFill.None));
+
+            // Tinted has translucent tint (alpha = 42)
+            Assert.Equal(42, AlphaAtCenter(AnnotationCardFill.Tinted));
+
+            // Solid has completely opaque interior (alpha = 255)
+            Assert.Equal(255, AlphaAtCenter(AnnotationCardFill.Solid));
+        });
 }

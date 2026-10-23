@@ -7,11 +7,45 @@ public enum ZOrderAction { None, BringToFront, SendToBack, BringForward, SendBac
 public enum AnnotationTextAlign { Left, Center, Right }
 public enum AnnotationTextEmphasis { Normal, Bold, Italic, BoldItalic }
 public enum AnnotationCardFill { Solid, Tinted, None }
-public sealed record CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
-    CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "", double FontSize = 18,
-    AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
-    AnnotationCardFill CardFill = AnnotationCardFill.Solid, bool InBackground = false)
+public sealed record CanvasAnnotation
 {
+    public Guid Id { get; init; }
+    public Guid DesktopId { get; init; }
+    public AnnotationKind Kind { get; init; }
+    public CanvasPoint A { get; init; }
+    public CanvasPoint B { get; init; }
+    public string Color { get; init; } = "#FBBF24";
+    public double Stroke { get; init; } = 3;
+    public string Text { get; init; } = "";
+    public double FontSize { get; init; } = 18;
+    public AnnotationTextAlign TextAlign { get; init; } = AnnotationTextAlign.Left;
+    public AnnotationTextEmphasis Emphasis { get; init; } = AnnotationTextEmphasis.Normal;
+    public AnnotationCardFill CardFill { get; init; }
+    public bool InBackground { get; init; }
+
+    [System.Text.Json.Serialization.JsonConstructor]
+    public CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
+        CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "", double FontSize = 18,
+        AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
+        AnnotationCardFill CardFill = (AnnotationCardFill)(-1), bool InBackground = false)
+    {
+        this.Id = Id;
+        this.DesktopId = DesktopId;
+        this.Kind = Kind;
+        this.A = A;
+        this.B = B;
+        this.Color = Color;
+        this.Stroke = Stroke;
+        this.Text = Text;
+        this.FontSize = FontSize;
+        this.TextAlign = TextAlign;
+        this.Emphasis = Emphasis;
+        this.CardFill = CardFill != (AnnotationCardFill)(-1)
+            ? CardFill
+            : (Kind == AnnotationKind.Text ? AnnotationCardFill.Solid : AnnotationCardFill.None);
+        this.InBackground = InBackground;
+    }
+
     public CanvasRect Bounds => new(Math.Min(A.X, B.X), Math.Min(A.Y, B.Y), Math.Abs(B.X - A.X), Math.Abs(B.Y - A.Y));
     public CanvasAnnotation Translate(double x, double y) => this with { A = new(A.X + x, A.Y + y), B = new(B.X + x, B.Y + y) };
 }

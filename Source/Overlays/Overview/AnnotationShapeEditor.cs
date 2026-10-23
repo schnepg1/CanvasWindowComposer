@@ -60,6 +60,10 @@ internal sealed class AnnotationShapeEditor : Form
     // Exposed controls for testing and automation
     internal Button TypeRectButton { get; }
     internal Button TypeEllipseButton { get; }
+    internal Button FillSolidButton { get; }
+    internal Button FillTintedButton { get; }
+    internal Button FillOutlineButton { get; }
+    public AnnotationCardFill SelectedCardFill => CurrentItem.CardFill;
     internal List<Button> ColorSwatchButtons { get; } = [];
     internal TextBox HexInput { get; }
     internal List<Button> StrokePresetButtons { get; } = [];
@@ -266,6 +270,38 @@ internal sealed class AnnotationShapeEditor : Form
         Grid.SetColumn(TypeEllipseButton, 1);
         shapeTypeGrid.Children.Add(TypeEllipseButton);
         propertiesStack.Children.Add(shapeTypeGrid);
+
+        // --- SECTION: Fill Style ---
+        propertiesStack.Children.Add(CreateSectionLabel("FILL STYLE"));
+        var fillGrid = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        FillSolidButton = CreateStyledButton("⬛  Solid", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
+        FillSolidButton.Height = 32;
+        FillSolidButton.ToolTip = "Solid opaque background fill";
+        FillSolidButton.Margin = new Thickness(0, 0, 2, 0);
+        FillSolidButton.Click += (_, _) => SetFill(AnnotationCardFill.Solid);
+        Grid.SetColumn(FillSolidButton, 0);
+        fillGrid.Children.Add(FillSolidButton);
+
+        FillTintedButton = CreateStyledButton("▨  Tinted", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
+        FillTintedButton.Height = 32;
+        FillTintedButton.ToolTip = "Translucent color tint fill";
+        FillTintedButton.Margin = new Thickness(2, 0, 2, 0);
+        FillTintedButton.Click += (_, _) => SetFill(AnnotationCardFill.Tinted);
+        Grid.SetColumn(FillTintedButton, 1);
+        fillGrid.Children.Add(FillTintedButton);
+
+        FillOutlineButton = CreateStyledButton("▢  Outline", BrushFromHex("#1E293B"), BrushFromHex("#334155"), BrushFromHex("#CBD5E1"), 11);
+        FillOutlineButton.Height = 32;
+        FillOutlineButton.ToolTip = "Outline only with transparent interior";
+        FillOutlineButton.Margin = new Thickness(2, 0, 0, 0);
+        FillOutlineButton.Click += (_, _) => SetFill(AnnotationCardFill.None);
+        Grid.SetColumn(FillOutlineButton, 2);
+        fillGrid.Children.Add(FillOutlineButton);
+        propertiesStack.Children.Add(fillGrid);
 
         // --- SECTION: Color Setting ---
         var colorHeader = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
@@ -596,6 +632,14 @@ internal sealed class AnnotationShapeEditor : Form
         RefreshActiveState();
     }
 
+    public void SetFill(AnnotationCardFill fill)
+    {
+        if (!Enum.IsDefined(fill)) throw new ArgumentException("Invalid card fill.");
+        CurrentItem = CurrentItem with { CardFill = fill };
+        _artworkPreview.Update(CurrentItem);
+        RefreshActiveState();
+    }
+
     private void SetColor(string hex, bool fromHexInput = false)
     {
         if (!AnnotationDocument.ValidColor(hex)) return;
@@ -666,6 +710,11 @@ internal sealed class AnnotationShapeEditor : Form
         bool isRect = CurrentItem.Kind == AnnotationKind.Rectangle;
         HighlightButton(TypeRectButton, isRect);
         HighlightButton(TypeEllipseButton, !isRect);
+
+        // Fill style buttons
+        HighlightButton(FillSolidButton, CurrentItem.CardFill == AnnotationCardFill.Solid);
+        HighlightButton(FillTintedButton, CurrentItem.CardFill == AnnotationCardFill.Tinted);
+        HighlightButton(FillOutlineButton, CurrentItem.CardFill == AnnotationCardFill.None);
 
         // Color swatches
         for (int i = 0; i < Palette.Length && i < ColorSwatchButtons.Count; i++)

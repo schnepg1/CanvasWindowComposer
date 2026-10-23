@@ -70,8 +70,9 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         }
         _creating=true; SelectedId=null;
         var kind=Mode switch { AnnotationMode.Arrow=>AnnotationKind.Arrow,AnnotationMode.Rectangle=>AnnotationKind.Rectangle,AnnotationMode.Ellipse=>AnnotationKind.Ellipse,_=>AnnotationKind.Text };
+        var fill=kind==AnnotationKind.Text?CardFill:AnnotationCardFill.None;
         Preview=new(Guid.NewGuid(),_gestureDesktop,kind,_start,_start,Color,Stroke,FontSize:FontSize,
-            TextAlign:TextAlign,Emphasis:Emphasis,CardFill:CardFill);
+            TextAlign:TextAlign,Emphasis:Emphasis,CardFill:fill);
         return true;
     }
     public void PointerMove(CanvasPointer p)
