@@ -1,4 +1,5 @@
 using CanvasDesktop;
+using CanvasDesktop.CanvasView;
 using System.Drawing;
 using System.Windows.Forms;
 using Windows.Win32;
