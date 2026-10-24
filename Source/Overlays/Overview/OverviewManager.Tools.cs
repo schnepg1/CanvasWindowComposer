@@ -21,6 +21,7 @@ internal sealed partial class OverviewManager
         if (_annotationLayer != null) attached.Add(_annotationLayer);
         if (_composerLayer != null) attached.Add(_composerLayer);
         if (_selectionLayer != null) attached.Add(_selectionLayer);
+        if (_interactionLayer != null) attached.Add(_interactionLayer);
         if (layers != null) attached.AddRange(layers);
         _drawingLayers = attached;
         foreach (var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
@@ -33,7 +34,7 @@ internal sealed partial class OverviewManager
         double dpi = pass.DeviceDpi / 96.0;
         var view = new CanvasViewTransform(_camera.X, _camera.Y, _camera.Zoom,
             new(b.X, b.Y, b.Width, b.Height), dpi, dpi);
-        var modifiers = Control.ModifierKeys;
+        var modifiers = _dispatchInteractionKeys ?? Control.ModifierKeys;
         var flags = CanvasModifiers.None;
         if ((modifiers & Keys.Shift) != 0) flags |= CanvasModifiers.Shift;
         if ((modifiers & Keys.Control) != 0) flags |= CanvasModifiers.Control;
@@ -99,6 +100,7 @@ internal sealed partial class OverviewManager
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
         if (CloseActiveMenus()) return;
         if (_controlsPopup != null && _controlsPopup.Visible) { _controlsPopup.Hide(); FocusOverview(); return; }
+        if (_interactMode) { SetInteractMode(false); return; }
         if (EndWindowInteraction(focus: true)) return;
         if (StopTutorialTravel()) { RefreshTourUi();return; }
         if (_annotationEditor==null && _shapeEditor==null && _composerWindow==null && GuidedTutorialActive && !_tools.Active)
