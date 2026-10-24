@@ -129,12 +129,13 @@ internal sealed partial class OverviewManager
                 // Reuse an existing immutable card image or cached native source.
                 // A title card is immediate when no image exists; never capture here.
                 var image = (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.CachedOverviewImage;
+                var logo = (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.OverviewLogo;
                 bool cachedThumbnail = _thumbnails.HasVisibleSource(entry.HWnd)
                     || (_cardSources.TryGetValue(entry.HWnd, out var cachedSource) && _thumbnails.HasVisibleSource(cachedSource));
                 if (cachedThumbnail) image = null;
                 (gestureCards ??= new()).Add(new(entry.HWnd, GestureTitle(entry.HWnd), entry.World, priority,
                     image, new ArraySegment<WorldRect>(occluders, 0, i), ImageOpacity: image != null || cachedThumbnail ? 1 : 0,
-                    LabelOpacity: image != null ? 0 : 1));
+                    LabelOpacity: image != null ? 0 : 1, Logo: logo));
                 hasRestoreFallback |= restoreFallback;
             }
             else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
@@ -149,7 +150,8 @@ internal sealed partial class OverviewManager
                     if (simple) card.ReleaseOverviewImage();
                     bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
-                        simple ? null : card.GetOverviewImage(), new ArraySegment<WorldRect>(occluders, 0, i)),
+                        simple ? null : card.GetOverviewImage(), new ArraySegment<WorldRect>(occluders, 0, i),
+                        Logo: card.OverviewLogo),
                         simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger));
                 }
                 else
@@ -214,7 +216,9 @@ internal sealed partial class OverviewManager
                 frame ??= OverviewAnnotationSnapshot.Create(zones, camera.X, camera.Y, camera.Zoom, p.Screen.Bounds,
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
-                zooming && !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, AnnotationHint);
+                !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError)
+                with { WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
+                    ? "Auto-minimize: on" : "Auto-minimize: off" };
                 var b = p.Screen.Bounds;
                 p.StageAnnotations(frame with { Screen = new(b.X, b.Y, b.Width, b.Height), ShowIntroTitle = p.Screen.Primary });
                 firstPass ??= p;

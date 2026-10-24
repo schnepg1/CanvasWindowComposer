@@ -10,7 +10,9 @@ internal static class StartupIntroTitle
 {
     public static void Draw(DrawingContext dc, Size size, DpiScale dpi, StartupIntroFrame frame)
     {
-        if (frame.TitleOpacity <= 0 || size.Width < 160 || size.Height < 140) return;
+        if (frame.Complete || size.Width < 160 || size.Height < 140) return;
+        DrawLandingHint(dc, size, dpi, frame);
+        if (frame.TitleOpacity <= 0) return;
         dc.PushOpacity(frame.TitleOpacity);
         double centerX = size.Width / 2, centerY = size.Height * .44;
         var shade = new RadialGradientBrush();
@@ -27,11 +29,22 @@ internal static class StartupIntroTitle
             centerX, centerY + fontSize * .55, new SolidColorBrush(Color.FromRgb(182, 203, 228)), FontWeights.Medium, dpi);
         var accent = new SolidColorBrush(Color.FromArgb(180, 147, 197, 253));
         dc.DrawRoundedRectangle(accent, null, new Rect(centerX - 24, centerY + fontSize * 1.05, 48, 1), .5, .5);
-        var hint = new FormattedText("Click, scroll or press any key to skip", CultureInfo.CurrentUICulture,
+        dc.Pop();
+    }
+
+    private static void DrawLandingHint(DrawingContext dc, Size size, DpiScale dpi, StartupIntroFrame frame)
+    {
+        dc.PushOpacity(frame.RevealOpacity);
+        var hint = new FormattedText("Press any key, click or scroll to land", CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight, new Typeface("Segoe UI"), 12,
             new SolidColorBrush(Color.FromRgb(166, 180, 201)), dpi.PixelsPerDip);
         if (hint.Width < size.Width - 32)
-            dc.DrawText(hint, new Point(centerX - hint.Width / 2, Math.Max(16, size.Height - 58)));
+        {
+            var position = new Point((size.Width - hint.Width) / 2, Math.Max(16, size.Height - 58));
+            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(210, 11, 17, 29)), null,
+                new Rect(position.X - 14, position.Y - 8, hint.Width + 28, hint.Height + 16), 8, 8);
+            dc.DrawText(hint, position);
+        }
         dc.Pop();
     }
 

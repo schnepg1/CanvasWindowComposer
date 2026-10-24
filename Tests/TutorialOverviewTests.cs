@@ -27,8 +27,12 @@ public class TutorialOverviewTests
                 overview.AttachAnnotations(new FakeVirtualDesktops(),Path.Combine(folder,"annotations.json"));
                 overview.AttachTutorial(Path.Combine(folder,"tutorial.json"));
                 Assert.True(overview.TryStartStartupIntro());
-                if(skip) overview.TrySkipStartupIntro();
-                else overview.AdvanceStartupIntro(3.5);
+                if(skip)
+                {
+                    overview.TrySkipStartupIntro();
+                    overview.AdvanceStartupIntro(StartupIntroLanding.DurationSeconds);
+                }
+                else overview.AdvanceStartupIntro(overview.StartupIntroDurationSeconds);
                 Assert.True(overview.TutorialNotesVisible);
                 Assert.Equal(overview.TutorialReadingView(overview.CurrentTutorial!.Layout),overview.OverviewView);
                 Assert.False(wm.SuspendAutomaticParking);
@@ -76,9 +80,9 @@ public class TutorialOverviewTests
     {
         var saved=new CanvasCamera(100,-100,.7);var landing=new CanvasCamera(3000,800,.95);
         var flight=new StartupIntroFlight(saved,new(-1920,0,1920,1080),[],landing:landing);
-        var frame=flight.Sample(3.5);
+        var frame=flight.Sample(flight.DurationSeconds);
         Assert.Equal(landing,new CanvasCamera(frame.X,frame.Y,frame.Zoom));
-        var before=flight.Sample(3.49999);
+        var before=flight.Sample(flight.DurationSeconds - .00001);
         Assert.Equal(landing.X,before.X,4);Assert.Equal(landing.Y,before.Y,4);Assert.Equal(landing.Zoom,before.Zoom,4);
         var reduced=new StartupIntroFlight(saved,new(0,0,1920,1080),[],true,landing);
         Assert.Equal(reduced.Sample(0).X,reduced.Sample(.2).X);

@@ -25,8 +25,18 @@ public class StartupIntroIntegrationTests
             Assert.True(wm.SuspendAutomaticParking);
             overview.AdvanceStartupIntro(1.8);
             Assert.Equal(1234, canvas.CamX); Assert.Equal(-345, canvas.CamY); Assert.Equal(.7, canvas.Zoom);
-            if (skip) Assert.True(overview.TrySkipStartupIntro());
-            else overview.AdvanceStartupIntro(3.5);
+            if (skip)
+            {
+                var before = overview.ViewCamera;
+                Assert.True(overview.TrySkipStartupIntro());
+                Assert.True(overview.IsStartupIntroActive);
+                Assert.True(wm.SuspendAutomaticParking);
+                Assert.Equal(before, overview.ViewCamera);
+                overview.AdvanceStartupIntro(2.2);
+                Assert.True(overview.TrySkipStartupIntro()); // Key repeat must not restart the landing.
+                overview.AdvanceStartupIntro(1.8 + StartupIntroLanding.DurationSeconds);
+            }
+            else overview.AdvanceStartupIntro(overview.StartupIntroDurationSeconds);
             Assert.False(overview.IsStartupIntroActive);
             Assert.False(wm.SuspendAutomaticParking);
             Assert.False(overview.TryStartStartupIntro());
@@ -58,6 +68,36 @@ public class StartupIntroIntegrationTests
             Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
             Assert.Equal(800, canvas.CamX); Assert.Equal(-200, canvas.CamY);
             Assert.False(overview.StartupIntroInputSuppressed);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void ProjectZonesWithoutLiveWindowsExtendTheTourAndKeepTheSavedCamera()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            Assert.True(GridRenderer.CompileShaders());
+            var canvas = new Canvas();
+            var saved = canvas.Camera;
+            var api = new FakeWindowApi(); var input = new FakeInputRouter(); var config = new FakeAppConfig();
+            var document = new WorkspaceDocument { Zones = new()
+            {
+                new() { Bounds = new WorldRect { X = -100000, W = 2000, H = 1500 } },
+                new() { Bounds = new WorldRect { X = 100000, W = 2000, H = 1500 } }
+            } };
+            using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+            using var overview = new OverviewManager(canvas, wm, api, input, config,
+                prefersReducedStartupMotion: () => false);
+            overview.AttachZones(new ZoneService(document, () => Guid.Empty, () => true));
+            Assert.True(overview.TryStartStartupIntro());
+            double duration = overview.StartupIntroDurationSeconds;
+            Assert.True(duration > StartupIntroFlight.MinimumDurationSeconds);
+            overview.AdvanceStartupIntro(duration / 2);
+            Assert.True(overview.IsStartupIntroActive);
+            Assert.Equal(saved, canvas.Camera);
+            overview.AdvanceStartupIntro(duration);
+            Assert.False(overview.IsStartupIntroActive);
+            Assert.Equal(saved, canvas.Camera);
+            Assert.False(wm.SuspendAutomaticParking);
         });
 
     [Fact]

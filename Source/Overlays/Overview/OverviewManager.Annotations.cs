@@ -81,17 +81,6 @@ internal sealed partial class OverviewManager
     {
         if(!_disposed && CurrentMode==OverviewMode.Zooming) _passes.FirstOrDefault(p=>p.Visible)?.Activate();
     }
-    private string? AnnotationHint => _windowInteraction.Active
-        ? "Interacting: mouse and keyboard go to the app  ·  Ctrl/Alt+wheel: canvas zoom  ·  Esc or middle-click: return to canvas"
-        : _interactionError ?? (_annotationTool?.Mode switch
-    {
-        AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
-        AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: Select mode",
-        AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: Select mode",
-        AnnotationMode.Text => "Click or drag to add a note  ·  Ctrl+Enter: save  ·  Style and size in the editor  ·  Esc: cancel  ·  Middle drag: pan",
-        AnnotationMode.Navigate => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
-        _ => null
-    });
     private void HideAnnotationUi()
     {
         _annotationToolbar?.Hide();

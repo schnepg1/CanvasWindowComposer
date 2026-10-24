@@ -7,140 +7,116 @@ internal readonly record struct StartupIntroFrame(
     double X, double Y, double Zoom, double TitleOpacity,
     double TitleSpacing, double RevealOpacity, bool Complete);
 
-/// <summary>
-/// A sampled, screen-centered overview flight. It owns no clocks, native windows,
-/// or canvas state; sampling out of order is safe, including after completion.
-/// </summary>
+/// <summary>A deterministic tour of project areas and window clusters. Owns no clocks or canvas state.</summary>
 internal sealed class StartupIntroFlight
 {
-    public const double DurationSeconds = 3.5;
+    public const double MinimumDurationSeconds = 12;
     public const double ReducedMotionDurationSeconds = 0.45;
-
+    private const double RevealSeconds = 0.6;
+    private const double CruiseSwellPeriodSeconds = 14;
     private readonly CanvasCamera _saved, _landing;
     private readonly bool _reducedMotion;
-    private readonly double _screenCenterX, _screenCenterY;
-    private readonly double _pullbackZoom;
-    private readonly double _panX, _panY, _arcX, _arcY;
+    private readonly double _screenCenterX, _screenCenterY, _cruiseZoom, _worldWidth, _worldHeight;
+    private readonly StartupIntroRoute _route;
+
+    public double DurationSeconds { get; }
 
     public StartupIntroFlight(CanvasCamera savedCamera, ScreenRect primaryScreen,
-        IReadOnlyList<WorldRect> nearbyWindows, bool reducedMotion = false, CanvasCamera? landing = null)
+        IReadOnlyList<WorldRect> nearbyWindows, bool reducedMotion = false, CanvasCamera? landing = null,
+        IReadOnlyList<WorldRect>? projectRegions = null)
     {
-        if (!double.IsFinite(savedCamera.X) || !double.IsFinite(savedCamera.Y) ||
-            !double.IsFinite(savedCamera.Zoom) || savedCamera.Zoom < OverviewCamera.ZoomMin ||
-            savedCamera.Zoom > OverviewCamera.ZoomMax)
-            throw new ArgumentOutOfRangeException(nameof(savedCamera),
-                "The saved camera must be finite and within overview zoom limits.");
-
+        ValidateCamera(savedCamera, nameof(savedCamera));
         _saved = savedCamera;
         _landing = landing ?? savedCamera;
-        if (!double.IsFinite(_landing.X) || !double.IsFinite(_landing.Y) || !double.IsFinite(_landing.Zoom)
-            || _landing.Zoom < OverviewCamera.ZoomMin || _landing.Zoom > OverviewCamera.ZoomMax)
-            throw new ArgumentOutOfRangeException(nameof(landing));
+        ValidateCamera(_landing, nameof(landing));
         _reducedMotion = reducedMotion;
-        _pullbackZoom = Math.Min(savedCamera.Zoom, 0.4);
-
         double width = primaryScreen.Width > 0 ? primaryScreen.Width : 1920;
         double height = primaryScreen.Height > 0 ? primaryScreen.Height : 1080;
-        // Virtual screen coordinates include monitor origins. Using only half the
-        // dimensions would drift toward (0,0) on a negative-origin monitor.
         _screenCenterX = primaryScreen.X + width / 2;
         _screenCenterY = primaryScreen.Y + height / 2;
 
-        if (reducedMotion || nearbyWindows is null) return;
-
-        double worldWidth = width / savedCamera.Zoom;
-        double worldHeight = height / savedCamera.Zoom;
-        double centerX = savedCamera.X + _screenCenterX / savedCamera.Zoom;
-        double centerY = savedCamera.Y + _screenCenterY / savedCamera.Zoom;
-        var candidates = new List<(double Distance, double X, double Y)>();
-        foreach (WorldRect window in nearbyWindows)
-        {
-            if (window.PinnedToScreen || !double.IsFinite(window.X) ||
-                !double.IsFinite(window.Y) || !double.IsFinite(window.W) ||
-                !double.IsFinite(window.H) || window.W <= 0 || window.H <= 0)
-                continue;
-
-            double dx = window.X + window.W / 2 - centerX;
-            double dy = window.Y + window.H / 2 - centerY;
-            if (!double.IsFinite(dx) || !double.IsFinite(dy) ||
-                Math.Abs(dx) > worldWidth * 1.5 || Math.Abs(dy) > worldHeight * 1.5)
-                continue;
-
-            double distance = Square(dx / worldWidth) + Square(dy / worldHeight);
-            if (distance <= 2.25) candidates.Add((distance, dx, dy));
-        }
-
-        if (candidates.Count == 0) return;
-        candidates.Sort((a, b) =>
-        {
-            int distance = a.Distance.CompareTo(b.Distance);
-            if (distance != 0) return distance;
-            int x = a.X.CompareTo(b.X);
-            return x != 0 ? x : a.Y.CompareTo(b.Y);
-        });
-
-        double targetX = 0, targetY = 0, weightSum = 0;
-        for (int i = 0; i < Math.Min(3, candidates.Count); i++)
-        {
-            var candidate = candidates[i];
-            double weight = 1 / (1 + candidate.Distance);
-            targetX += candidate.X * weight;
-            targetY += candidate.Y * weight;
-            weightSum += weight;
-        }
-
-        _panX = Math.Clamp(targetX / weightSum * 0.3, -worldWidth * 0.18, worldWidth * 0.18);
-        _panY = Math.Clamp(targetY / weightSum * 0.3, -worldHeight * 0.14, worldHeight * 0.14);
-        _arcX = worldWidth * 0.035 * (_panX < 0 ? -1 : 1);
-        _arcY = worldHeight * 0.035;
+        var destinations = StartupIntroRoute.Destinations(nearbyWindows, projectRegions,
+            width / savedCamera.Zoom, height / savedCamera.Zoom);
+        _cruiseZoom = Math.Min(savedCamera.Zoom, 0.2);
+        foreach (var area in destinations)
+            _cruiseZoom = Math.Min(_cruiseZoom, Math.Min(width * 0.8 / area.W, height * 0.65 / area.H));
+        _cruiseZoom = Math.Clamp(_cruiseZoom, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
+        _worldWidth = width / _cruiseZoom;
+        _worldHeight = height / _cruiseZoom;
+        _route = new StartupIntroRoute(
+            new(_saved.X + _screenCenterX / _saved.Zoom, _saved.Y + _screenCenterY / _saved.Zoom),
+            new(_landing.X + _screenCenterX / _landing.Zoom, _landing.Y + _screenCenterY / _landing.Zoom),
+            destinations, _worldWidth, _worldHeight, MinimumDurationSeconds - RevealSeconds);
+        DurationSeconds = reducedMotion ? ReducedMotionDurationSeconds : RevealSeconds + _route.Duration;
     }
 
     public StartupIntroFrame Sample(double elapsedSeconds)
     {
-        double duration = _reducedMotion ? ReducedMotionDurationSeconds : DurationSeconds;
-        double t = double.IsNaN(elapsedSeconds) ? 0 : Math.Clamp(elapsedSeconds, 0, duration);
-        bool complete = t >= duration;
-        double reveal = Ease(t / (_reducedMotion ? 0.12 : 0.5));
+        double t = double.IsNaN(elapsedSeconds) ? 0 : Math.Clamp(elapsedSeconds, 0, DurationSeconds);
+        bool complete = t >= DurationSeconds;
+        double reveal = StartupIntroMotion.Ease(t / (_reducedMotion ? 0.12 : RevealSeconds));
         double title = _reducedMotion
-            ? Ease(t / 0.12) * (1 - Ease((t - 0.2) / 0.25))
-            : Ease((t - 0.5) / 0.45) * (1 - Ease((t - 1.55) / 0.55));
-        double spacing = _reducedMotion ? 1 : 1 + 3 * Ease(t / 2.1);
-
-        // Keep exact endpoints. Reduced motion stays at the reading target throughout
-        // the fade; ordinary intros keep the saved camera as their target.
+            ? StartupIntroMotion.Ease(t / 0.12) * (1 - StartupIntroMotion.Ease((t - 0.2) / 0.25))
+            : StartupIntroMotion.Ease((t - 0.6) / 0.5) * (1 - StartupIntroMotion.Ease((t - 1.8) / 0.6));
+        double spacing = _reducedMotion ? 1 : 1 + 3 * StartupIntroMotion.Ease(t / 3.6);
         if (_reducedMotion || complete)
             return new(_landing.X, _landing.Y, _landing.Zoom, title, spacing, reveal, complete);
-        if (t <= 0) return new(_saved.X, _saved.Y, _saved.Zoom, title, spacing, reveal, false);
+        if (t <= RevealSeconds)
+            return new(_saved.X, _saved.Y, _saved.Zoom, title, spacing, reveal, false);
 
-        double zoom = t <= 2.6
-            ? Lerp(_saved.Zoom, _pullbackZoom, Ease((t - 0.5) / 0.7))
-            : Lerp(_pullbackZoom, _landing.Zoom, Ease((t - 2.6) / 0.9));
-        zoom = Math.Clamp(zoom, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
-
-        // Each segment has zero first and second derivatives at its endpoints.
-        // The shallow arc never rotates the horizon and keeps a fixed zoom while
-        // surveying. The outgoing envelope joins the final centered settle.
-        double excursion = Ease((t - 1.2) / 0.7) * (1 - Ease((t - 2.6) / 0.9));
-        double angle = 0.7 * Ease((t - 1.2) / 1.4);
-        double dx = excursion * (_panX + _arcX * Math.Sin(angle));
-        double dy = excursion * (_panY + _arcY * (1 - Math.Cos(angle)));
-        double centerScale = 1 / _saved.Zoom - 1 / zoom;
-        double x = _saved.X + _screenCenterX * centerScale + dx;
-        double y = _saved.Y + _screenCenterY * centerScale + dy;
-        double settle = Ease((t - 2.1) / 1.4);
-        x += (_landing.X - _saved.X - _screenCenterX * (1 / _saved.Zoom - 1 / _landing.Zoom)) * settle;
-        y += (_landing.Y - _saved.Y - _screenCenterY * (1 / _saved.Zoom - 1 / _landing.Zoom)) * settle;
-        return new(x, y, zoom, title, spacing, reveal, false);
+        double travelTime = t - RevealSeconds;
+        var (center, leg, progress) = _route.Sample(travelTime);
+        double envelope = StartupIntroMotion.Ease(travelTime / _route.TakeoffDuration)
+            * (1 - StartupIntroMotion.Ease((travelTime - _route.LandingStart) / _route.LandingDuration));
+        // A subtle, slow swell follows elapsed time rather than restarting at every
+        // region. Short route legs must not accelerate the camera's breathing.
+        // The smooth envelope joins takeoff and landing with no added velocity or acceleration.
+        double phase = 2 * Math.PI * travelTime / CruiseSwellPeriodSeconds;
+        double wave = Math.Sin(phase);
+        double lift = _worldHeight * 0.015 * wave * envelope;
+        double bank = _worldWidth * 0.003 * Math.Sin(phase / 2) * envelope;
+        double zoom = leg == 0
+            ? StartupIntroMotion.Geometric(_saved.Zoom, _cruiseZoom, StartupIntroMotion.Ease(progress))
+            : travelTime >= _route.LandingStart
+                ? StartupIntroMotion.Geometric(_cruiseZoom, _landing.Zoom, StartupIntroMotion.Ease(progress))
+                : _cruiseZoom;
+        double breathing = Math.Max(0, Math.Min(0.006, Math.Min(Math.Log(zoom / OverviewCamera.ZoomMin),
+            Math.Log(Math.Max(_saved.Zoom, _landing.Zoom) / zoom))));
+        zoom *= Math.Exp(breathing * wave * envelope);
+        return new(center.X + bank - _screenCenterX / zoom,
+            center.Y + lift - _screenCenterY / zoom, zoom, title, spacing, reveal, false);
     }
 
-    private static double Square(double value) => value * value;
-    private static double Lerp(double from, double to, double amount)
-        => from + (to - from) * amount;
+    public StartupIntroLanding CreateLanding(double elapsedSeconds)
+        => new(this, elapsedSeconds, _landing, _screenCenterX, _screenCenterY, _reducedMotion);
 
-    // Quintic smootherstep has zero velocity AND acceleration at each join.
-    private static double Ease(double progress)
+    private static void ValidateCamera(CanvasCamera camera, string name)
+    {
+        if (!double.IsFinite(camera.X) || !double.IsFinite(camera.Y) || !double.IsFinite(camera.Zoom)
+            || camera.Zoom < OverviewCamera.ZoomMin || camera.Zoom > OverviewCamera.ZoomMax)
+            throw new ArgumentOutOfRangeException(name);
+    }
+}
+
+internal static class StartupIntroMotion
+{
+    public static double Ease(double progress)
     {
         double p = Math.Clamp(progress, 0, 1);
         return Math.Clamp(p * p * p * (p * (p * 6 - 15) + 10), 0, 1);
+    }
+
+    public static double Geometric(double from, double to, double amount)
+        => Math.Exp(Math.Log(from) + (Math.Log(to) - Math.Log(from)) * amount);
+
+    // Quintic Hermite interpolation: shared velocity and acceleration give C2 joins.
+    public static double Interpolate(double from, double to, double velocity, double endVelocity,
+        double acceleration, double duration, double progress)
+    {
+        double p = Math.Clamp(progress, 0, 1), p2 = p * p, p3 = p2 * p, p4 = p3 * p, p5 = p4 * p;
+        return from + (to - from) * Ease(p)
+            + velocity * duration * (p - 6 * p3 + 8 * p4 - 3 * p5)
+            + endVelocity * duration * (-4 * p3 + 7 * p4 - 3 * p5)
+            + acceleration * duration * duration * (p2 - 3 * p3 + 3 * p4 - p5) / 2;
     }
 }

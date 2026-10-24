@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 /// </summary>
 internal sealed class OverviewCamera
 {
-    public const double ZoomMin = 0.05;
+    public const double ZoomMin = 0.02;
     public const double ZoomMax = 1.0;
     public const double ZoomStep = 0.1;
     public const double ZoomEpsilon = 0.0001;

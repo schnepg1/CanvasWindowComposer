@@ -30,7 +30,7 @@ public class OverviewAnnotationLayerTests
                 var pixels = new byte[800 * 300 * 4]; bitmap.CopyPixels(pixels, 3200, 0); return pixels;
             }
             var pixels = Render();
-            int cardPixel = (110 * 800 + 110) * 4;
+            int cardPixel = (160 * 800 + 110) * 4; // Below the two-line window stats HUD.
             Assert.Equal(255, pixels[cardPixel + 2]); Assert.Equal(0, pixels[cardPixel]);
             int hudPixel = (22 * 800 + 40) * 4;
             Assert.NotEqual(255, pixels[hudPixel + 2]); // HUD background is above the red drawing layer.

@@ -221,6 +221,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     // DrawToBitmap/pixel conversion in response to a pointer or wheel event.
     internal System.Windows.Media.ImageSource? CachedOverviewImage => _overviewImage;
 
+    internal System.Windows.Media.ImageSource? OverviewLogo => _title.OverviewLogo;
+
     internal void ReleaseOverviewImage() => _overviewImage = null;
 
     internal bool HitTestOpenButton(int clientX, int clientY)

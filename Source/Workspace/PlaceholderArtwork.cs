@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Windows.Forms;
+using System.Windows.Media.Imaging;
 
 namespace CanvasDesktop;
 
@@ -11,6 +12,7 @@ namespace CanvasDesktop;
 internal sealed class PlaceholderArtwork : Control
 {
     private Bitmap? _symbol;
+    private BitmapSource? _overviewLogo;
     private string? _symbolKey;
     private bool _folder;
 
@@ -34,6 +36,7 @@ internal sealed class PlaceholderArtwork : Control
             _symbolKey = key;
             _symbol?.Dispose();
             _symbol = null;
+            _overviewLogo = null;
             if (!item.IsFolder)
             {
                 try
@@ -52,9 +55,37 @@ internal sealed class PlaceholderArtwork : Control
                     System.Runtime.InteropServices.ExternalException)
                 { /* Missing/unreadable icons must never prevent a saved place opening. */ }
                 _symbol ??= SystemIcons.Application.ToBitmap();
+                _overviewLogo = CreateOverviewLogo(_symbol);
             }
         }
         Invalidate();
+    }
+
+    /// <summary>A tiny immutable icon for title-only overview cards.</summary>
+    internal BitmapSource? OverviewLogo => _overviewLogo;
+
+    private static BitmapSource CreateOverviewLogo(Bitmap source)
+    {
+        using var thumbnail = new Bitmap(32, 32, PixelFormat.Format32bppPArgb);
+        using (var graphics = Graphics.FromImage(thumbnail))
+        {
+            graphics.Clear(Color.Transparent);
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            float scale = Math.Min(28f / source.Width, 28f / source.Height);
+            float width = source.Width * scale, height = source.Height * scale;
+            graphics.DrawImage(source, new RectangleF((32 - width) / 2, (32 - height) / 2, width, height));
+        }
+        var rect = new Rectangle(0, 0, thumbnail.Width, thumbnail.Height);
+        var bits = thumbnail.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            var image = BitmapSource.Create(32, 32, 96, 96, System.Windows.Media.PixelFormats.Pbgra32,
+                null, bits.Scan0, checked(bits.Stride * 32), bits.Stride);
+            image.Freeze();
+            return image;
+        }
+        finally { thumbnail.UnlockBits(bits); }
     }
 
     protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }

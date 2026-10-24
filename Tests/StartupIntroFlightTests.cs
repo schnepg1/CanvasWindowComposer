@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using CanvasDesktop;
 using Xunit;
 
@@ -14,161 +15,281 @@ public class StartupIntroFlightTests
         new() { X = 700, Y = 250, W = 500, H = 400 }
     ];
 
+    private static (double X, double Y) Center(StartupIntroFrame frame, ScreenRect? screen = null)
+    {
+        var s = screen ?? Screen;
+        return (frame.X + (s.X + s.Width / 2.0) / frame.Zoom,
+            frame.Y + (s.Y + s.Height / 2.0) / frame.Zoom);
+    }
+
     [Fact]
-    public void StartAndFinishPreserveExactSavedCameraAndStayFinished()
+    public void StartAndFinishPreserveExactSavedCameraAndSamplingHasNoState()
     {
         var flight = new StartupIntroFlight(Saved, Screen, Nearby);
-        foreach (double time in new[] { -1, 0, 3.5, 4, double.PositiveInfinity })
+        foreach (double time in new[] { -1, 0, flight.DurationSeconds, flight.DurationSeconds + 1, double.PositiveInfinity })
         {
             var frame = flight.Sample(time);
-            Assert.Equal(Saved.X, frame.X);
-            Assert.Equal(Saved.Y, frame.Y);
-            Assert.Equal(Saved.Zoom, frame.Zoom);
-            Assert.Equal(time >= 3.5, frame.Complete);
+            Assert.Equal(Saved, new CanvasCamera(frame.X, frame.Y, frame.Zoom));
+            Assert.Equal(time >= flight.DurationSeconds, frame.Complete);
         }
-        Assert.Equal(flight.Sample(3.5), flight.Sample(999));
-        // Sampling has no accumulated state, even after a completed sample.
+        Assert.Equal(flight.Sample(flight.DurationSeconds), flight.Sample(double.PositiveInfinity));
         Assert.Equal(flight.Sample(1.7), new StartupIntroFlight(Saved, Screen, Nearby).Sample(1.7));
     }
 
     [Fact]
-    public void PullbackAndSettleAreMonotonicAndNeverOvershoot()
+    public void TakeoffStartsAtRestAndAcceleratesGraduallyAfterTheReveal()
     {
         var flight = new StartupIntroFlight(Saved, Screen, Nearby);
-        double previous = Saved.Zoom;
-        for (int i = 0; i <= 120; i++)
-        {
-            double zoom = flight.Sample(i / 100.0).Zoom;
-            Assert.InRange(zoom, 0.4 - 1e-12, previous + 1e-12);
-            previous = zoom;
-        }
-        Assert.Equal(0.4, previous, 12);
-        for (int i = 260; i <= 350; i++)
-        {
-            double zoom = flight.Sample(i / 100.0).Zoom;
-            Assert.InRange(zoom, previous - 1e-12, Saved.Zoom + 1e-12);
-            previous = zoom;
-        }
-        Assert.Equal(Saved.Zoom, previous);
+        var initial = flight.Sample(0.6);
+        Assert.Equal(Saved, new CanvasCamera(initial.X, initial.Y, initial.Zoom));
+        var early = flight.Sample(0.61);
+        Assert.InRange(Math.Abs(early.X - initial.X), 0, 0.01);
+        Assert.InRange(Math.Abs(early.Y - initial.Y), 0, 0.01);
+        Assert.InRange(Math.Abs(early.Zoom - initial.Zoom), 0, 0.00001);
+        // At the old takeoff's completion time we are still gently pulling away.
+        Assert.InRange(flight.Sample(1.4).Zoom, 0.65, Saved.Zoom);
+        Assert.True(flight.Sample(3).Zoom < flight.Sample(1.4).Zoom);
     }
 
     [Theory]
     [InlineData(0.05)]
+    [InlineData(0.15)]
     [InlineData(0.2)]
-    [InlineData(0.4)]
-    public void AlreadyWideSavedViewNeverZoomsInForThePullback(double zoom)
+    [InlineData(0.85)]
+    public void ZoomRemainsWithinLimitsAndNeverZoomsCloserThanTheSavedView(double zoom)
     {
         var flight = new StartupIntroFlight(Saved with { Zoom = zoom }, Screen, Nearby);
-        for (int i = 0; i <= 350; i++)
-            Assert.Equal(zoom, flight.Sample(i / 100.0).Zoom);
-    }
-
-    [Theory]
-    [InlineData(0.5)]
-    [InlineData(1.2)]
-    [InlineData(1.9)]
-    [InlineData(2.6)]
-    [InlineData(3.5)]
-    public void StageJoinsHaveContinuousPositionAndVelocity(double time)
-    {
-        var flight = new StartupIntroFlight(Saved, Screen, Nearby);
-        const double h = 0.0001;
-        var before = flight.Sample(time - h);
-        var at = flight.Sample(time);
-        var after = flight.Sample(time + h);
-        Assert.InRange(Math.Abs(after.X - before.X), 0, 0.05);
-        Assert.InRange(Math.Abs(after.Y - before.Y), 0, 0.05);
-        Assert.InRange(Math.Abs(after.Zoom - before.Zoom), 0, 0.00001);
-        // Left and right velocities agree at every timeline join. This also
-        // catches the common sawtooth or triangle-wave orbit midpoint reversal.
-        Assert.InRange(Math.Abs((after.X - 2 * at.X + before.X) / h), 0, 0.02);
-        Assert.InRange(Math.Abs((after.Y - 2 * at.Y + before.Y) / h), 0, 0.02);
-        Assert.InRange(Math.Abs((after.Zoom - 2 * at.Zoom + before.Zoom) / h), 0, 0.0001);
-    }
-
-    [Fact]
-    public void SurveyArcHasNoMidpointStopOrReversal()
-    {
-        var flight = new StartupIntroFlight(Saved, Screen, Nearby);
-        var a = flight.Sample(2.1 - 0.001);
-        var b = flight.Sample(2.1);
-        var c = flight.Sample(2.1 + 0.001);
-        double beforeX = b.X - a.X, beforeY = b.Y - a.Y;
-        double afterX = c.X - b.X, afterY = c.Y - b.Y;
-        Assert.True(beforeX * afterX + beforeY * afterY > 0);
-        Assert.True(Math.Abs(afterX) + Math.Abs(afterY) > 0.00001);
+        for (double t = 0; t <= flight.DurationSeconds; t += 0.01)
+            Assert.InRange(flight.Sample(t).Zoom, OverviewCamera.ZoomMin, zoom + 1e-12);
     }
 
     [Theory]
     [InlineData(0, 0)]
     [InlineData(-1920, -1080)]
     [InlineData(-3000, 700)]
-    public void EmptyLayoutKeepsTheSameWorldPointAtMonitorCenter(int originX, int originY)
+    public void EmptyCanvasesGetAWideRollingMinimumSweepRelativeToTheirMonitor(int originX, int originY)
     {
         var screen = new ScreenRect(originX, originY, 1920, 1080);
         var flight = new StartupIntroFlight(Saved, screen, []);
-        double sx = originX + 960, sy = originY + 540;
-        double worldX = Saved.X + sx / Saved.Zoom;
-        double worldY = Saved.Y + sy / Saved.Zoom;
-        for (int i = 0; i <= 350; i++)
+        Assert.Equal(StartupIntroFlight.MinimumDurationSeconds, flight.DurationSeconds, 10);
+        var origin = Center(flight.Sample(0), screen);
+        var centers = Enumerable.Range(0, 1201).Select(i => Center(flight.Sample(i / 100.0), screen)).ToArray();
+        Assert.True(centers.Min(p => p.X) < origin.X - 3000);
+        Assert.True(centers.Max(p => p.X) > origin.X + 3000);
+        Assert.True(centers.Max(p => p.Y) - centers.Min(p => p.Y) > 1000);
+        int reversals = 0, previousDirection = 0;
+        for (int i = 1; i < centers.Length; i++)
         {
-            var frame = flight.Sample(i / 100.0);
-            Assert.Equal(worldX, frame.X + sx / frame.Zoom, 8);
-            Assert.Equal(worldY, frame.Y + sy / frame.Zoom, 8);
+            double dy = centers[i].Y - centers[i - 1].Y;
+            int direction = Math.Abs(dy) < 0.001 ? 0 : Math.Sign(dy);
+            if (direction == 0) continue;
+            if (previousDirection != 0 && direction != previousDirection) reversals++;
+            previousDirection = direction;
         }
+        Assert.InRange(reversals, 2, 3); // Broad arcs rather than rapid bobbing on each route leg.
     }
 
     [Fact]
-    public void NearbyWindowsProduceACurvedScreenBoundedExcursion()
+    public void TourVisitsEveryProjectRegionAndUnzonedClusterIncludingDistantContent()
+    {
+        WorldRect[] regions = [new() { X = -15000, Y = -4000, W = 2000, H = 1400 },
+            new() { X = 14000, Y = 3000, W = 2200, H = 1600 }];
+        WorldRect[] windows = [new() { X = -14000, Y = -3600, W = 800, H = 600 },
+            new() { X = -5000, Y = 2000, W = 800, H = 600 },
+            new() { X = 4000, Y = -3000, W = 800, H = 600 },
+            new() { X = 25000, Y = 0, W = 800, H = 600 }];
+        var flight = new StartupIntroFlight(Saved, Screen, windows, projectRegions: regions);
+        var targets = regions.Concat(windows.Skip(1)).ToArray();
+        foreach (var target in targets)
+        {
+            double closest = double.MaxValue, crossing = 0;
+            for (double t = 0; t < flight.DurationSeconds; t += 0.01)
+            {
+                var p = Center(flight.Sample(t));
+                double distance = Math.Sqrt(Math.Pow(p.X - target.X - target.W / 2, 2)
+                    + Math.Pow(p.Y - target.Y - target.H / 2, 2));
+                if (distance < closest) { closest = distance; crossing = t; }
+            }
+            Assert.True(closest < Math.Min(target.W, target.H) / 4,
+                $"Missed the central part of the region at {target.X}, {target.Y}: {closest}");
+            var a = Center(flight.Sample(crossing - .001));
+            var b = Center(flight.Sample(crossing + .001));
+            Assert.True(Math.Abs(b.X - a.X) + Math.Abs(b.Y - a.Y) > .01, "Stopped at a region crossing.");
+        }
+        Assert.True(flight.DurationSeconds > StartupIntroFlight.MinimumDurationSeconds);
+    }
+
+    [Fact]
+    public void DurationGrowsWithBothTheNumberOfAreasAndTravelDistance()
+    {
+        var empty = new StartupIntroFlight(Saved, Screen, []);
+        var local = new StartupIntroFlight(Saved, Screen, [], projectRegions: Nearby);
+        var several = new StartupIntroFlight(Saved, Screen, [], projectRegions:
+            Enumerable.Range(0, 8).Select(i => new WorldRect { X = i * 3000, W = 1000, H = 800 }).ToArray());
+        var distant = new StartupIntroFlight(Saved, Screen, [], projectRegions:
+            [new() { X = 100000, W = 1000, H = 800 }]);
+        Assert.True(local.DurationSeconds >= empty.DurationSeconds);
+        Assert.True(several.DurationSeconds > local.DurationSeconds);
+        Assert.True(distant.DurationSeconds > local.DurationSeconds);
+    }
+
+    [Fact]
+    public void WindowClustersAndProjectRegionsAreCombinedWithoutDuplicateVisits()
+    {
+        WorldRect zone = new() { X = 0, Y = 0, W = 3000, H = 2000 };
+        WorldRect[] windows = [new() { X = 100, Y = 100, W = 800, H = 600 },
+            new() { X = 6000, Y = 100, W = 800, H = 600 },
+            new() { X = 7200, Y = 100, W = 800, H = 600 },
+            new() { X = 8400, Y = 100, W = 800, H = 600 },
+            new() { X = 18000, Y = -5000, W = 800, H = 600 }];
+        var destinations = StartupIntroRoute.Destinations(windows, [zone], 1920, 1080);
+        Assert.Equal(3, destinations.Count);
+        Assert.Contains(zone, destinations);
+        Assert.Contains(destinations, b => b.X == 6000 && b.W == 3200);
+        var regionOnly = new StartupIntroFlight(Saved, Screen, [], projectRegions: [zone]);
+        var withMembers = new StartupIntroFlight(Saved, Screen, [windows[0]], projectRegions: [zone]);
+        Assert.Equal(regionOnly.DurationSeconds, withMembers.DurationSeconds);
+        Assert.Equal(regionOnly.Sample(5), withMembers.Sample(5));
+    }
+
+    [Fact]
+    public void EnumerationOrderAndDuplicateWindowsCannotChangeTheTour()
+    {
+        WorldRect[] regions = [new() { X = -8000, Y = 4000, W = 2000, H = 1500 },
+            new() { X = 14000, Y = -3000, W = 2000, H = 1500 }];
+        var a = new StartupIntroFlight(Saved, Screen, Nearby, projectRegions: regions);
+        var b = new StartupIntroFlight(Saved, Screen, Nearby.Reverse().Concat(Nearby).ToArray(),
+            projectRegions: regions.Reverse().ToArray());
+        Assert.Equal(a.DurationSeconds, b.DurationSeconds);
+        for (double t = 0; t < a.DurationSeconds; t += .13) Assert.Equal(a.Sample(t), b.Sample(t));
+    }
+
+    [Fact]
+    public void RowsAreTouredSidewaysBeforeBankingIntoTheNextRow()
+    {
+        WorldRect[] regions = [new() { X = 0, Y = 0, W = 800, H = 600 },
+            new() { X = 8000, Y = 0, W = 800, H = 600 },
+            new() { X = 0, Y = 8000, W = 800, H = 600 },
+            new() { X = 8000, Y = 8000, W = 800, H = 600 }];
+        var flight = new StartupIntroFlight(new(0, 0, 1), Screen, [], projectRegions: regions);
+        var crossings = regions.Select(region =>
+        {
+            double distance = double.MaxValue, crossing = 0;
+            for (double t = 0; t < flight.DurationSeconds; t += .01)
+            {
+                var center = Center(flight.Sample(t));
+                double d = Math.Pow(center.X - region.X - region.W / 2, 2) + Math.Pow(center.Y - region.Y - region.H / 2, 2);
+                if (d < distance) { distance = d; crossing = t; }
+            }
+            return crossing;
+        }).ToArray();
+        Assert.True(crossings[0] < crossings[1] && crossings[1] < crossings[3] && crossings[3] < crossings[2]);
+    }
+
+    [Theory]
+    [InlineData(-1920, -1080)]
+    [InlineData(0, 0)]
+    public void AbortingOnAnyMonitorCanLandOnADifferentTutorialTarget(int screenX, int screenY)
+    {
+        var target = new CanvasCamera(8000, -2500, .95);
+        var flight = new StartupIntroFlight(Saved, new(screenX, screenY, 1920, 1080), Nearby, landing: target);
+        var landing = flight.CreateLanding(5);
+        Assert.Equal(flight.Sample(5), landing.Sample(0));
+        var frame = landing.Sample(StartupIntroLanding.DurationSeconds);
+        Assert.Equal(target, new CanvasCamera(frame.X, frame.Y, frame.Zoom));
+        var almost = landing.Sample(StartupIntroLanding.DurationSeconds - .0001);
+        Assert.InRange(Math.Abs(almost.X - target.X) + Math.Abs(almost.Y - target.Y), 0, .001);
+    }
+
+    [Fact]
+    public void DenseTourKeepsCruiseZoomAndVerticalSwellSmallAndSlow()
+    {
+        var regions = Enumerable.Range(0, 12).Select(i =>
+            new WorldRect { X = i * 2000, W = 800, H = 600 }).ToArray();
+        var flight = new StartupIntroFlight(Saved, Screen, [], projectRegions: regions);
+        const double h = .01;
+        double previousCrossing = double.NaN;
+        int crossings = 0;
+        // Sample the middle of the long row, clear of takeoff and the return to the saved view.
+        for (double t = 8; t < 22; t += h)
+        {
+            var before = flight.Sample(t - h);
+            var frame = flight.Sample(t);
+            var after = flight.Sample(t + h);
+            double logBefore = Math.Log(before.Zoom / .2), logZoom = Math.Log(frame.Zoom / .2);
+            double logAfter = Math.Log(after.Zoom / .2);
+            Assert.InRange(Math.Abs(logZoom), 0, .00601); // Less than 0.61% in either direction.
+            Assert.InRange(Math.Abs((logAfter - logBefore) / (2 * h)), 0, .003);
+            Assert.InRange(Math.Abs((logAfter - 2 * logZoom + logBefore) / (h * h)), 0, .0015);
+            Assert.InRange(Math.Abs(Center(frame).Y - 300), 0, 90);
+            if (logBefore * logZoom < 0)
+            {
+                if (!double.IsNaN(previousCrossing)) Assert.InRange(t - previousCrossing, 6.9, 7.1);
+                previousCrossing = t;
+                crossings++;
+            }
+        }
+        Assert.True(crossings >= 2, "The long tour should retain a gentle, slow swell.");
+    }
+
+    [Fact]
+    public void EntireTourHasContinuousVelocityIncludingRollingCurvesAndStageJoins()
     {
         var flight = new StartupIntroFlight(Saved, Screen, Nearby);
-        var baseline = new StartupIntroFlight(Saved, Screen, []);
-        for (int i = 0; i <= 350; i++)
+        const double h = .0001;
+        for (double t = 0; t <= flight.DurationSeconds + h; t += .01)
         {
-            var frame = flight.Sample(i / 100.0);
-            var centered = baseline.Sample(i / 100.0);
-            Assert.InRange(Math.Abs(frame.X - centered.X), 0, Screen.Width / Saved.Zoom * 0.3);
-            Assert.InRange(Math.Abs(frame.Y - centered.Y), 0, Screen.Height / Saved.Zoom * 0.25);
+            var before = flight.Sample(t - h); var at = flight.Sample(t); var after = flight.Sample(t + h);
+            Assert.InRange(Math.Abs((after.X - 2 * at.X + before.X) / h), 0, 2);
+            Assert.InRange(Math.Abs((after.Y - 2 * at.Y + before.Y) / h), 0, 2);
+            Assert.InRange(Math.Abs((after.Zoom - 2 * at.Zoom + before.Zoom) / h), 0, .001);
         }
-        var a = flight.Sample(1.9);
-        var a0 = baseline.Sample(1.9);
-        var b = flight.Sample(2.5);
-        var b0 = baseline.Sample(2.5);
-        // A nonzero cross product distinguishes a curved survey from a straight
-        // outward-and-back translation while making no pixel-timing assumptions.
-        double cross = (a.X - a0.X) * (b.Y - b0.Y) - (a.Y - a0.Y) * (b.X - b0.X);
-        Assert.True(Math.Abs(cross) > 1);
+    }
+
+    [Theory]
+    [InlineData(0.2)]
+    [InlineData(0.61)]
+    [InlineData(1.8)]
+    [InlineData(4.5)]
+    [InlineData(8)]
+    [InlineData(11.9)]
+    public void AbortingJoinsTheCurrentMotionAndLandsExactlyWithoutASnap(double time)
+    {
+        var flight = new StartupIntroFlight(Saved, Screen, Nearby);
+        var landing = flight.CreateLanding(time);
+        Assert.Equal(flight.Sample(time), landing.Sample(0));
+        const double h = .0001;
+        var before = flight.Sample(time - h); var at = landing.Sample(0); var after = landing.Sample(h);
+        Assert.InRange(Math.Abs((after.X - 2 * at.X + before.X) / h), 0, 2);
+        Assert.InRange(Math.Abs((after.Y - 2 * at.Y + before.Y) / h), 0, 2);
+        Assert.InRange(Math.Abs((after.Zoom - 2 * at.Zoom + before.Zoom) / h), 0, .001);
+        var finish = landing.Sample(StartupIntroLanding.DurationSeconds);
+        Assert.True(finish.Complete);
+        Assert.Equal(Saved, new CanvasCamera(finish.X, finish.Y, finish.Zoom));
+        Assert.Equal(finish, landing.Sample(double.PositiveInfinity));
+        var almost = landing.Sample(StartupIntroLanding.DurationSeconds - h);
+        Assert.InRange(Math.Abs(almost.X - finish.X) + Math.Abs(almost.Y - finish.Y), 0, .001);
+        for (double t = 0; t < StartupIntroLanding.DurationSeconds; t += .01)
+        {
+            var frame = landing.Sample(t);
+            Assert.True(double.IsFinite(frame.X) && double.IsFinite(frame.Y));
+            Assert.InRange(frame.Zoom, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
+        }
     }
 
     [Fact]
-    public void PinnedDistantAndInvalidWindowsDoNotChangeTheFlight()
+    public void PinnedAndInvalidContentDoesNotChangeTheEmptySweep()
     {
-        WorldRect[] ignored =
-        [
-            new() { X = 1500, Y = 100, W = 800, H = 600, PinnedToScreen = true },
+        WorldRect[] ignored = [new() { X = 1500, W = 800, H = 600, PinnedToScreen = true },
             new() { X = 1e20, Y = 1e20, W = 800, H = 600 },
             new() { X = double.NaN, W = 800, H = 600 },
             new() { Y = double.PositiveInfinity, W = 800, H = 600 },
-            new() { W = -100, H = 600 },
-            new() { W = 800, H = double.PositiveInfinity },
-            new() { X = double.MaxValue, W = double.MaxValue, H = 1 }
-        ];
-        var flight = new StartupIntroFlight(Saved, Screen, ignored);
+            new() { W = -100, H = 600 }, new() { W = 800, H = double.PositiveInfinity },
+            new() { X = double.MaxValue, W = double.MaxValue, H = 1 }];
+        var flight = new StartupIntroFlight(Saved, Screen, ignored, projectRegions: ignored);
         var empty = new StartupIntroFlight(Saved, Screen, []);
-        for (int i = 0; i <= 350; i++)
-            Assert.Equal(empty.Sample(i / 100.0), flight.Sample(i / 100.0));
-    }
-
-    [Fact]
-    public void OnlyTheNearestNeighborhoodAffectsSurvey()
-    {
-        WorldRect nearest = new() { X = 1400, Y = 250, W = 200, H = 200 };
-        WorldRect second = nearest with { X = 1500 };
-        WorldRect third = nearest with { X = 1600 };
-        WorldRect fourth = nearest with { X = 2500 };
-        var nearestFlight = new StartupIntroFlight(Saved, Screen, [nearest, second, third]);
-        var withExtra = new StartupIntroFlight(Saved, Screen, [fourth, third, nearest, second]);
-        Assert.Equal(nearestFlight.Sample(2.2), withExtra.Sample(2.2));
+        Assert.Equal(empty.DurationSeconds, flight.DurationSeconds);
+        for (double t = 0; t < empty.DurationSeconds; t += .1) Assert.Equal(empty.Sample(t), flight.Sample(t));
     }
 
     [Fact]
@@ -177,11 +298,10 @@ public class StartupIntroFlightTests
         var flight = new StartupIntroFlight(Saved, new ScreenRect(int.MinValue, int.MaxValue, 0, -1), Nearby);
         Assert.Equal(flight.Sample(0), flight.Sample(double.NaN));
         Assert.Equal(flight.Sample(0), flight.Sample(double.NegativeInfinity));
-        foreach (double time in new[] { 0, 0.7, 1.9, 2.9, 3.5, double.PositiveInfinity })
+        foreach (double time in new[] { 0, .7, 1.9, 2.9, 3.5, double.PositiveInfinity })
         {
             var frame = flight.Sample(time);
-            Assert.True(double.IsFinite(frame.X));
-            Assert.True(double.IsFinite(frame.Y));
+            Assert.True(double.IsFinite(frame.X) && double.IsFinite(frame.Y));
             Assert.InRange(frame.Zoom, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
             Assert.InRange(frame.TitleOpacity, 0, 1);
             Assert.InRange(frame.RevealOpacity, 0, 1);
@@ -195,47 +315,39 @@ public class StartupIntroFlightTests
     [InlineData(0, 0, double.NaN)]
     [InlineData(0, 0, 0)]
     [InlineData(0, 0, 1.1)]
-    public void InvalidSavedCameraIsRejectedRatherThanChangingItsDestination(double x, double y, double zoom)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new StartupIntroFlight(new CanvasCamera(x, y, zoom), Screen, []));
-    }
+    public void InvalidSavedCameraIsRejected(double x, double y, double zoom)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => new StartupIntroFlight(new(x, y, zoom), Screen, []));
 
     [Fact]
-    public void RevealAndTitleHaveIndependentSmoothEnvelopes()
+    public void RevealAndTitleRetainTheirIndependentSmoothEnvelopes()
     {
         var flight = new StartupIntroFlight(Saved, Screen, []);
         Assert.Equal(0, flight.Sample(0).RevealOpacity);
-        Assert.Equal(1, flight.Sample(0.5).RevealOpacity);
-        Assert.Equal(0, flight.Sample(0.5).TitleOpacity);
-        Assert.Equal(1, flight.Sample(1.2).TitleOpacity);
-        Assert.Equal(0, flight.Sample(2.1).TitleOpacity);
-        double previousSpacing = 1;
-        for (int i = 0; i <= 350; i++)
+        Assert.Equal(1, flight.Sample(.6).RevealOpacity);
+        Assert.Equal(0, flight.Sample(.6).TitleOpacity);
+        Assert.Equal(1, flight.Sample(1.1).TitleOpacity);
+        Assert.Equal(0, flight.Sample(2.4).TitleOpacity, 12);
+        for (double t = 2.4; t <= flight.DurationSeconds; t += .1)
         {
-            var frame = flight.Sample(i / 100.0);
-            Assert.InRange(frame.TitleSpacing, previousSpacing - 1e-12, 4 + 1e-12);
-            previousSpacing = frame.TitleSpacing;
-            if (i >= 50) Assert.Equal(1, frame.RevealOpacity);
-            if (i >= 210) Assert.Equal(0, frame.TitleOpacity);
+            Assert.Equal(0, flight.Sample(t).TitleOpacity, 12);
+            Assert.Equal(1, flight.Sample(t).RevealOpacity);
         }
     }
 
     [Fact]
-    public void ReducedMotionNeverChangesCameraAndCompletesQuickly()
+    public void ReducedMotionStaysAtTheLandingTargetAndAbortsImmediately()
     {
-        var flight = new StartupIntroFlight(Saved, Screen, Nearby, reducedMotion: true);
-        for (int i = 0; i <= 350; i++)
+        var target = new CanvasCamera(3000, 800, .95);
+        var flight = new StartupIntroFlight(Saved, Screen, Nearby, reducedMotion: true, landing: target,
+            projectRegions: [new() { X = 100000, W = 2000, H = 1000 }]);
+        Assert.Equal(StartupIntroFlight.ReducedMotionDurationSeconds, flight.DurationSeconds);
+        for (double t = 0; t <= 1; t += .01)
         {
-            var frame = flight.Sample(i / 100.0);
+            var frame = flight.Sample(t);
+            Assert.Equal(target, new CanvasCamera(frame.X, frame.Y, frame.Zoom));
             Assert.Equal(1, frame.TitleSpacing);
-            Assert.Equal(Saved.X, frame.X);
-            Assert.Equal(Saved.Y, frame.Y);
-            Assert.Equal(Saved.Zoom, frame.Zoom);
-            Assert.Equal(i >= 45, frame.Complete);
+            Assert.Equal(t >= flight.DurationSeconds, frame.Complete);
         }
-        Assert.True(flight.Sample(0.15).TitleOpacity > 0);
-        Assert.Equal(0, flight.Sample(0.45).TitleOpacity);
-        Assert.Equal(flight.Sample(0.45), flight.Sample(99));
+        Assert.True(flight.CreateLanding(.15).Sample(0).Complete);
     }
 }

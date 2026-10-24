@@ -39,6 +39,9 @@ public class WorkspaceViewTests
                 return pixels;
             }
             Assert.Contains(Pixels(saveFrame: true), value => value > 0);
+            drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false,
+                new StartupIntroFrame(0, 0, .4, 0, 4, 1, false), true));
+            Assert.Contains(Pixels(), value => value > 0); // Landing hint survives the title fade during a long tour.
             drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, .4, new System.Drawing.Rectangle(0, 0, 800, 500), null, false, null, [], false));
             Assert.False(Pixels().Any(value => value != 0), "Title pixels remained after processing the cleared layout.");
         });

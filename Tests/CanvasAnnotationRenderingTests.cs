@@ -26,7 +26,8 @@ public class CanvasAnnotationRenderingTests
             var surface=new OverviewAnnotationSurface();
             surface.SetDrawingLayers([new CanvasAnnotationLayer(document,annotations,()=>desktop,()=>true),new SelectionAnnotationLayer(selection,()=>items,tool,()=> (new CanvasPoint(520,360),320),()=>true)]);
             var area=new ZoneView(project.Key.Id,"Guardian","#60A5FA",new WorldRect { X=80,Y=90,W=820,H=500 });
-            surface.Update(OverviewAnnotationSnapshot.Create([area],0,0,1,new(0,0,1100,750),null,false,showHints:true,toolHint:"3 selected · Drag selected: move group · Escape: cancel"));
+            surface.Update(OverviewAnnotationSnapshot.Create([area],0,0,1,new(0,0,1100,750),null,false,showHints:true)
+                with { WindowStats = "Active: 3  ·  Minimized: 2 (auto: 1)", MinimizationStatus = "Auto-minimize: on" });
             surface.Measure(new Size(1100,750));surface.Arrange(new Rect(0,0,1100,750));surface.UpdateLayout();
             var bitmap=new RenderTargetBitmap(1100,750,96,96,PixelFormats.Pbgra32);bitmap.Render(surface);
             var pixels=new byte[1100*750*4];bitmap.CopyPixels(pixels,4400,0);Assert.Contains(pixels,b=>b!=0);

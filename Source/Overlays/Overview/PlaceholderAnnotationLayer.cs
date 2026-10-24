@@ -9,8 +9,9 @@ namespace CanvasDesktop;
 /// <summary>Placeholder cards and labels preserve thumbnail occlusion and fade semantics.</summary>
 internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
 {
-    private static readonly Brush CardFill = FrozenBrush(Color.FromRgb(28, 34, 46));
-    private static readonly Pen Outline = OutlinePen(Color.FromRgb(80, 103, 137), 1);
+    private static readonly Brush CardFill = FrozenBrush(Color.FromRgb(35, 53, 76));
+    private static readonly Brush LabelFill = FrozenBrush(Color.FromArgb(218, 10, 16, 25));
+    private static readonly Pen Outline = OutlinePen(Color.FromRgb(91, 125, 166), 1);
     private static readonly Typeface LabelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     private static Brush FrozenBrush(Color color) { var brush = new SolidColorBrush(color); brush.Freeze(); return brush; }
@@ -55,6 +56,7 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             dc.PushClip(VisibleCard(label.Card, context));
             dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
             var rect = label.Rect;
+            dc.DrawRoundedRectangle(LabelFill, null, rect, 6, 6);
             var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 LabelTypeface,
                 label.FontSize, Brushes.WhiteSmoke, context.Dpi.PixelsPerDip)
@@ -64,6 +66,8 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                 Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
             };
             dc.DrawText(text, new Point(rect.X, rect.Y + (rect.Height - text.Height) / 2));
+            if (label.Card.Logo != null && label.LogoRect is { } logoRect)
+                dc.DrawImage(label.Card.Logo, logoRect);
             dc.Pop();
             dc.Pop();
         }

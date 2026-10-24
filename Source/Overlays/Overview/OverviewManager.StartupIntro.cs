@@ -9,6 +9,8 @@ internal sealed partial class OverviewManager
 {
     private readonly Func<bool> _prefersReducedStartupMotion;
     private StartupIntroFlight? _startupFlight;
+    private StartupIntroLanding? _startupLanding;
+    private double _startupIntroElapsed, _startupLandingStartedAt;
     private StartupIntroFrame? _startupIntroFrame;
     private readonly Stopwatch _startupIntroClock = new();
     private Timer? _startupIntroTimer, _startupIntroInputCleanupTimer;
@@ -17,6 +19,7 @@ internal sealed partial class OverviewManager
     private bool _startupIntroLanded;
     public bool StartupIntroInputSuppressed => _startupIntroFilter != null && !IsStartupIntroActive;
     internal bool IsStartupIntroActive => _startupFlight != null;
+    internal double StartupIntroDurationSeconds => _startupFlight?.DurationSeconds ?? 0;
 
     public bool TryStartStartupIntro()
     {
@@ -28,9 +31,15 @@ internal sealed partial class OverviewManager
             Warmup();
             if (_passes.Count == 0 || _passes.Exists(p => p.Grid == null)) return false;
             var nearby = new List<WorldRect>(_mainCanvas.Windows.Values);
+            var regions = new List<WorldRect>();
+            if (_zones != null)
+                foreach (var zone in _zones.Items) regions.Add(zone.Bounds);
             bool reduced = _appConfig.ReduceStartupMotion || _prefersReducedStartupMotion();
             _tutorialIntroLanding = PrepareStartupTutorial();
-            _startupFlight = new StartupIntroFlight(_mainCanvas.Camera, _screens.PrimaryBounds, nearby, reduced, _tutorialIntroLanding);
+            _startupFlight = new StartupIntroFlight(_mainCanvas.Camera, _screens.PrimaryBounds,
+                nearby, reduced, _tutorialIntroLanding, regions);
+            _startupIntroElapsed = 0;
+            _startupLanding = null;
             _startupIntroFrame = _startupFlight.Sample(0);
             _parkingWasSuspended = _wm.SuspendAutomaticParking;
             _wm.SuspendAutomaticParking = true;
@@ -56,9 +65,15 @@ internal sealed partial class OverviewManager
         if (_disposed || _startupFlight == null) return;
         try
         {
-            var frame = _startupFlight.Sample(elapsedSeconds);
+            _startupIntroElapsed = elapsedSeconds;
+            var frame = _startupLanding?.Sample(elapsedSeconds - _startupLandingStartedAt)
+                ?? _startupFlight.Sample(elapsedSeconds);
             _startupIntroFrame = frame;
-            if (frame.Complete) { FinishStartupIntro(refresh: true); return; }
+            if (frame.Complete)
+            {
+                FinishStartupIntro(refresh: true, keepInputFilter: _startupLanding != null);
+                return;
+            }
             _camera.SetTo(frame.X, frame.Y, frame.Zoom);
             foreach (var pass in _passes)
             {
@@ -72,16 +87,20 @@ internal sealed partial class OverviewManager
     public bool TrySkipStartupIntro()
     {
         if (!IsStartupIntroActive) return false;
+        if (_startupLanding != null) return true; // Repeats must not restart the landing.
         _startupIntroFilter?.CaptureHeldInput();
         try
         {
-            FinishStartupIntro(refresh: true, keepInputFilter: true);
+            _startupLanding = _startupFlight!.CreateLanding(_startupIntroElapsed);
+            _startupLandingStartedAt = _startupIntroElapsed;
+            AdvanceStartupIntro(_startupIntroElapsed); // Reduced motion lands immediately.
             if (_startupIntroFilter != null)
             {
                 _startupIntroInputCleanupTimer = new Timer { Interval = 50 };
                 _startupIntroInputCleanupTimer.Tick += (_, _) =>
                 {
-                    if (_disposed || _startupIntroFilter?.HasPendingGesture != true) ClearStartupIntroInputFilter();
+                    if (_disposed || (!IsStartupIntroActive && _startupIntroFilter?.HasPendingGesture != true))
+                        ClearStartupIntroInputFilter();
                 };
                 _startupIntroInputCleanupTimer.Start();
             }
@@ -116,6 +135,7 @@ internal sealed partial class OverviewManager
         var tutorialLanding = _tutorialIntroLanding;
         _tutorialIntroLanding = null;
         _startupFlight = null;
+        _startupLanding = null;
         _startupIntroFrame = null;
         _startupIntroClock.Stop();
         var timer = _startupIntroTimer; _startupIntroTimer = null;
