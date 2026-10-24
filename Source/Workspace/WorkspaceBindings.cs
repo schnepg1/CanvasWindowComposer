@@ -15,6 +15,7 @@ internal sealed class WorkspaceLiveWindow
     public Guid? ItemId { get; internal set; }
     public bool Forgotten { get; set; }
     public long? WaitingForFolderSince { get; set; }
+    public long? WaitingForProjectSince { get; set; }
     public bool NeedsNativeGeometry { get; set; }
     public WorkspaceLiveWindow(WorkspaceWindowIdentity identity) { Identity = identity; }
 }

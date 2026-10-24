@@ -60,6 +60,9 @@ internal sealed class TestWorkspaceIdentity : IWorkspaceIdentity
     public Dictionary<IntPtr, string> AppIds = new();
     public string? ReadWindowAppId(IntPtr handle) => AppIds.GetValueOrDefault(handle);
     public string Exe = @"C:\Apps\Editor.exe";
+    public Dictionary<IntPtr, string?> VsCodeTargets = new();
+    public string? ReadVsCodeTarget(WorkspaceWindowIdentity window, string executablePath, string title)
+        => VsCodeTargets.GetValueOrDefault(window.Handle, "");
     public Dictionary<IntPtr, string> Folders = new();
     public Exception? Error;
     public long StartedAt = 1;

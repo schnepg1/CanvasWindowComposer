@@ -56,4 +56,5 @@ internal interface IWorkspaceIdentity
     Dictionary<IntPtr, string> ReadExplorerFolders();
     WorkspaceProcessIdentity? InspectProcess(uint pid);
     string? ReadWindowAppId(IntPtr handle);
+    string? ReadVsCodeTarget(WorkspaceWindowIdentity window, string executablePath, string title);
 }

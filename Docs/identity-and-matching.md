@@ -41,8 +41,28 @@ as the reopen target. Canvas now adds `--new-window` to VS Code and VS Code Insi
 launches and passes the target as one escaped argument. No shell wrapper is used.
 These options are documented in the [official VS Code CLI reference](https://code.visualstudio.com/docs/configure/command-line).
 
-For automatic project-path detection across restarts and active-file changes,
-optionally add this to your VS Code **user** settings JSON, preserving other settings:
+Canvas automatically captures single local project folders from live VS Code and
+VS Code Insiders windows. It reads the local diagnostics channel used by Code's
+`--status` command, verifies the pipe server's executable, PID and process start
+time, then associates a unique exact window caption with its reported full folder
+URI. It does not infer paths from folder basenames or scan project directories.
+No extension installation or settings changes are required.
+
+Polling runs in the background with a timeout. Existing saved entries without a
+target are upgraded when the window matches unambiguously. Captured folders follow
+folder changes in that window; choosing a target manually disables automatic target
+updates for that saved place. Old nonempty targets remain manual. At startup,
+Canvas briefly waits for already-open Code windows before launching saved projects,
+and does not duplicate an unresolved saved project during a diagnostics outage.
+
+Identical captions within one Code process remain ambiguous. Remote/SSH/WSL folders,
+network shares and multi-folder workspaces require a manual reopen target. VS Code's
+diagnostics protocol is internal, so an incompatible version falls back to manual
+selection. Detection has been verified against a live local Code window; multi-window
+matching and failure handling are covered with injected diagnostics and windows.
+
+The earlier full-path title adapter is still available as an optional alternative.
+Add this to your VS Code **user** settings JSON, preserving other settings:
 
 ```json
 "window.title": "${dirty}${activeEditorShort}${separator}${rootName}${separator}${appName} [CanvasRoot:${rootPath}]"
@@ -56,10 +76,8 @@ and supplies it from the workspace in its
 Canvas has **not** changed your VS Code settings. The suffix exposes the local
 workspace path in the window title, so enable it only if that is acceptable.
 
-Local fully-qualified Windows paths are supported. Remote/SSH/WSL URI identities,
-untitled multi-root workspaces and VS Code's separate Agents windows are not
-claimed. Missing or malformed markers fall back to conservative matching/manual
-linking. The adapter seam allows additional app-specific identity providers later.
+The title adapter supports local fully-qualified Windows paths. Missing or malformed
+markers fall back to live diagnostics, conservative matching or manual linking.
 
 ## Optional named launch places
 
@@ -85,6 +103,9 @@ characters). Old v1 documents load unchanged. Bounds, slot IDs, camera data and
 launch opt-ins keep their existing format. Runtime PIDs, start times, HWNDs and
 selection tokens are never serialized. Older binaries ignore and may drop names
 when saving; use the retained workspace copy when rolling back.
+
+`AutoDetectedTarget` (default false) records whether Canvas owns updates to a Code
+folder target. Older documents load without migration, preserving manual choices.
 
 This is not a universal document-identity guarantee or a security boundary.
 Missed destroy notifications followed by HWND reuse **inside the same process**

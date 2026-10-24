@@ -9,6 +9,9 @@ namespace CanvasDesktop;
 
 internal sealed class WorkspaceIdentity : IWorkspaceIdentity
 {
+    private readonly VsCodeProjectDiscovery _vsCodeProjects = new();
+    public string? ReadVsCodeTarget(WorkspaceWindowIdentity window, string executablePath, string title)
+        => _vsCodeProjects.Read(window, executablePath, title);
     public string? ReadWindowAppId(IntPtr handle) => WorkspaceWindowProperties.ReadAppId(handle);
     private Dictionary<IntPtr, string> _folderSnapshot = new();
     private int _folderRequest;

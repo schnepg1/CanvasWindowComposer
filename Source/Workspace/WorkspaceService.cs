@@ -120,6 +120,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         }
         Capture();
         EnsureCards();
+        OpenStartupItems();
         foreach (var id in _queued.ToArray())
         {
             var item = Document.Items.FirstOrDefault(i => i.Id == id);
@@ -193,7 +194,14 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private void OpenStartupItems()
     {
         foreach (var item in Document.Items.Where(i => i.DesktopId == _desktop && i.OpenOnStartup).ToArray())
+        {
+            // Existing Code windows may still be waiting on their first folder
+            // snapshot. Launching now would duplicate a window already open.
+            if (WorkspaceTargetIdentity.IsVsCode(item.ExecutablePath) && (_ambiguous.Contains(item.Id)
+                || _bindings.Windows.Any(w => w.WaitingForProjectSince is { } since
+                    && _clock.TickCount64 - since < 8000 && _desktops.IsOnCurrentDesktop(w.Identity.Handle)))) continue;
             if (_startupAttempted.Add(item.Id) && !IsOpen(item)) Open(item);
+        }
     }
 
     private void Capture()
@@ -276,6 +284,18 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             bool explorer = string.Equals(Path.GetFileName(exe), "explorer.exe", StringComparison.OrdinalIgnoreCase);
             string target = explorer && _folders.TryGetValue(handle, out var folder) ? folder
                 : WorkspaceTargetIdentity.Read(exe, title);
+            if (WorkspaceTargetIdentity.IsVsCode(exe) && target.Length == 0)
+            {
+                string? detected = _identity.ReadVsCodeTarget(live.Identity, exe, title);
+                if (detected == null && !live.ItemId.HasValue)
+                {
+                    live.WaitingForProjectSince ??= _clock.TickCount64;
+                    if (_clock.TickCount64 - live.WaitingForProjectSince.Value < 8000) continue;
+                }
+                target = detected ?? "";
+                if (detected != null) live.WaitingForProjectSince = null;
+            }
+            if (target.Length > 0) live.WaitingForProjectSince = null;
             if (explorer && target.Length == 0 && !live.ItemId.HasValue)
             {
                 live.WaitingForFolderSince ??= _clock.TickCount64;
@@ -293,8 +313,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                     old.ExecutablePath = exe;
                     if (chromeProfile != null && old.CaptureChromeProfile) old.ChromeProfilePath = chromeProfile;
                     // Explorer navigation updates this slot's saved folder.
-                    if (explorer && target.Length > 0) { old.Target = target; old.IsFolder = true; }
-                    else if (target.Length > 0) old.Target = target;
+                    CaptureTarget(old, exe, target, explorer);
                     if (old.DesktopId != _desktop) Zones.ForgetItem(old.Id);
                     old.DesktopId = _desktop;
                     continue;
@@ -329,17 +348,34 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             {
                 if (!WorkspaceGeometry.ValidBounds(world) || Document.Items.Count >= 2000) continue;
                 item = new WorkspaceItem { DesktopId = _desktop, Title = input.Title, ExecutablePath = input.ExecutablePath,
-                    Target = input.Target, IsFolder = explorer && input.Target.Length > 0, Bounds = world };
+                    Target = input.Target, AutoDetectedTarget = WorkspaceTargetIdentity.IsVsCode(input.ExecutablePath) && input.Target.Length > 0,
+                    IsFolder = explorer && input.Target.Length > 0, Bounds = world };
                 Document.Items.Add(item);
             }
             if (input.ChromeProfilePath != null && item.CaptureChromeProfile) item.ChromeProfilePath = input.ChromeProfilePath;
             if (_bindings.Bind(live, item.Id))
             {
                 item.ExecutablePath = input.ExecutablePath;
+                CaptureTarget(item, input.ExecutablePath, input.Target, explorer);
                 if (restore) RestoreBinding(live, item);
             }
         }
         Document.Cameras[_desktop] = new WorkspaceCamera { X = _canvas.CamX, Y = _canvas.CamY, Zoom = _canvas.Zoom };
+    }
+
+    private static void CaptureTarget(WorkspaceItem item, string exe, string target, bool explorer)
+    {
+        if (target.Length == 0) return;
+        if (WorkspaceTargetIdentity.IsVsCode(exe))
+        {
+            if (item.Target.Length == 0 || item.AutoDetectedTarget)
+            { item.Target = target; item.AutoDetectedTarget = true; }
+        }
+        else
+        {
+            item.Target = target;
+            if (explorer) item.IsFolder = true;
+        }
     }
 
     private (WorkspaceWindowIdentity Identity, string Exe)? InspectWindow(IntPtr handle)
@@ -660,6 +696,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (Find(id) is not { } item || string.IsNullOrWhiteSpace(selected)) return;
         item.Target = selected;
+        item.AutoDetectedTarget = false;
         // A project folder for an editor is an argument to that editor; a folder
         // for Explorer is opened through Explorer's folder-launch path.
         item.IsFolder = folder && string.Equals(Path.GetFileName(item.ExecutablePath), "explorer.exe", StringComparison.OrdinalIgnoreCase);

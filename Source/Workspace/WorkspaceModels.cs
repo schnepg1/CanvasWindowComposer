@@ -12,6 +12,7 @@ internal sealed class WorkspaceItem
     public string Name { get; set; } = ""; // Optional user label; never overwritten by a changing window title.
     public string ExecutablePath { get; set; } = "";
     public string Target { get; set; } = "";
+    public bool AutoDetectedTarget { get; set; } // Manual choices (including older saved targets) take precedence.
     public string ChromeProfilePath { get; set; } = "";
     public bool CaptureChromeProfile { get; set; } = true;
     public bool IsFolder { get; set; }

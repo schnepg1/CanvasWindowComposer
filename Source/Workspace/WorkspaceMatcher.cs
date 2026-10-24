@@ -60,6 +60,22 @@ internal static class WorkspaceMatcher
         if (exact.Length > 1 && remaining.Length > 0) return WorkspaceMatch.Ambiguous(remaining);
         if (remaining.Length == 1) return WorkspaceMatch.Found(remaining[0],
             target.Length > 0 ? WorkspaceMatchStrength.Target : WorkspaceMatchStrength.Title);
+        if (target.Length > 0 && WorkspaceTargetIdentity.IsVsCode(exe))
+        {
+            // Upgrade old caption-only slots after the first successful diagnostics
+            // poll. Never borrow a slot already saved for a different full path.
+            var legacy = appItems.Where(i => i.Target.Length == 0 && i.Title == title).ToArray();
+            var strength = WorkspaceMatchStrength.Title;
+            if (legacy.Length == 0 && WorkspaceTargetIdentity.ReadProjectCaption(exe, title) is { } caption)
+            {
+                legacy = appItems.Where(i => i.Target.Length == 0
+                    && WorkspaceTargetIdentity.ReadProjectCaption(exe, i.Title) == caption).ToArray();
+                strength = WorkspaceMatchStrength.ProjectCaption;
+            }
+            var unbound = legacy.Where(i => !used.Contains(i.Id)).ToArray();
+            if (legacy.Length > 1 && unbound.Length > 0) return WorkspaceMatch.Ambiguous(unbound);
+            if (unbound.Length == 1) return WorkspaceMatch.Found(unbound[0], strength);
+        }
         if (target.Length == 0 && WorkspaceTargetIdentity.ReadProjectCaption(exe, title) is { } project)
         {
             var projects = appItems.Where(i => i.Target.Length == 0
@@ -82,6 +98,15 @@ internal static class WorkspaceMatcher
         {
             var untargeted = available.Where(i => i.Target.Length == 0).ToArray();
             if (untargeted.Length > 0) return WorkspaceMatch.Ambiguous(untargeted);
+            if (WorkspaceTargetIdentity.IsVsCode(exe))
+            {
+                // A temporary diagnostics outage must not create a second saved
+                // slot for a window whose project path was captured previously.
+                string? caption = WorkspaceTargetIdentity.ReadProjectCaption(exe, title);
+                var unresolved = available.Where(i => i.Title == title || (caption != null
+                    && WorkspaceTargetIdentity.ReadProjectCaption(exe, i.Title) == caption)).ToArray();
+                if (unresolved.Length > 0) return WorkspaceMatch.Ambiguous(unresolved);
+            }
         }
         return WorkspaceMatch.None;
     }
