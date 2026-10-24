@@ -105,7 +105,7 @@ internal sealed partial class OverviewManager
         if (!CanInteract(pass, window)) return false;
         CancelInteraction();
         _interactionError = null;
-        _annotationTool?.SetMode(AnnotationMode.Navigate);
+        _annotationTool?.SetMode(AnnotationMode.Select);
         _zoneTool.Cancel();
         Selection.Clear();
         // Apply no-activate before foregrounding the source. Actual keyboard and
@@ -123,10 +123,10 @@ internal sealed partial class OverviewManager
         {
             if (_interactionMouseHook == null)
             {
-            long generation = _interactionGeneration;
-            var surfaces = new HashSet<IntPtr>(_passes.ConvertAll(p => p.Handle));
-            _interactionMouseHook = new(point => surfaces.Contains(PInvoke.WindowFromPoint(point)), QueueInteractionMouse,
-                () => pass.BeginInvoke(() => { if (generation == _interactionGeneration) EndWindowInteraction(); }));
+                long generation = _interactionGeneration;
+                var surfaces = new HashSet<IntPtr>(_passes.ConvertAll(p => p.Handle));
+                _interactionMouseHook = new(point => surfaces.Contains(PInvoke.WindowFromPoint(point)), QueueInteractionMouse,
+                    () => pass.BeginInvoke(() => { if (generation == _interactionGeneration) EndWindowInteraction(); }));
             }
         }
         catch (Exception ex)

@@ -174,6 +174,8 @@ public class OverviewWindowInteractionIntegrationTests
     public void QueuedTargetSwitchOrControlSelectionKeepsButtonUp(bool control)
         => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>
         {
+            string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "interact-selection-" + Guid.NewGuid().ToString("N"));
+            overview.AttachAnnotations(new FakeVirtualDesktops(), System.IO.Path.Combine(folder, "annotations.json"));
             overview.SetInteractMode(true);
             Assert.True(overview.BeginWindowInteraction(pass, source.Handle));
             var keys = control ? Keys.Control : Keys.None;
@@ -185,6 +187,8 @@ public class OverviewWindowInteractionIntegrationTests
             Assert.True(overview.InteractMode);
             Assert.Equal(clicksBefore + (control ? 0 : 1), api.Messages.Count(m => m.Id == 0x201));
             if (!control) Assert.Contains(api.Messages, m => m.Id == 0x202);
+            else Assert.NotEmpty(overview.Selection.Ids);
+            if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, true);
         }));
 
     [Fact]
@@ -204,7 +208,9 @@ public class OverviewWindowInteractionIntegrationTests
             Assert.False(requested);
             using var image = new Bitmap(form.Width, form.Height);
             form.DrawToBitmap(image, new Rectangle(0, 0, image.Width, image.Height));
-            image.Save(System.IO.Path.Combine(AppContext.BaseDirectory, "canvas-interact-toggle.png"));
+            string folder = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TestResults"));
+            System.IO.Directory.CreateDirectory(folder);
+            image.Save(System.IO.Path.Combine(folder, "canvas-interact-toggle.png"));
         });
 
     private static void WithOverview(Action<OverviewManager, OverviewOverlay, Form, FakeInputRouter,
