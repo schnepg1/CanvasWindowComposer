@@ -140,6 +140,22 @@ public class OverviewWindowInteractionIntegrationTests
             Assert.Empty(hidden.Items.Cast<ToolStripItem>());
         }));
 
+    [Theory]
+    [InlineData(Keys.Oemplus)]
+    [InlineData(Keys.OemMinus)]
+    [InlineData(Keys.Add)]
+    [InlineData(Keys.Subtract)]
+    [InlineData(Keys.Left)]
+    [InlineData(Keys.Delete)]
+    [InlineData(Keys.Z)]
+    public void CanvasChordKeysSuppressMomentaryInteraction(Keys key)
+    {
+        Assert.True(OverviewManager.IsMomentaryChordKey((int)key));
+        Assert.False(OverviewManager.IsMomentaryChordKey((int)Keys.ControlKey));
+        Assert.False(OverviewManager.IsMomentaryChordKey((int)Keys.LControlKey));
+        Assert.False(OverviewManager.IsMomentaryChordKey((int)Keys.RControlKey));
+    }
+
     private static void WithOverview(Action<OverviewManager, OverviewOverlay, Form, FakeInputRouter,
         OverviewWindowInteractionTests.PointerApi> action)
     {

@@ -32,11 +32,15 @@ internal sealed partial class OverviewManager
         }
         bool otherKey = false;
         if ((modifiers & Keys.Control) != 0 && !_controlConsumed && !_windowInteraction.Active)
-            for (int key = 0x30; key <= 0x5A; key++)
-                otherKey |= (PInvoke.GetAsyncKeyState(key) & 0x8000) != 0;
+            for (int key = 0x08; key <= 0xFE; key++)
+                if (IsMomentaryChordKey(key)) otherKey |= (PInvoke.GetAsyncKeyState(key) & 0x8000) != 0;
         UpdateMomentaryInteraction(modifiers, Cursor.Position, (IntPtr)PInvoke.GetForegroundWindow(),
             Environment.TickCount64, otherKey);
     }
+
+    // Include navigation, OEM, function and numpad keys, not just letters.
+    internal static bool IsMomentaryChordKey(int key) => key is >= 0x08 and <= 0xFE
+        && key is not (0x10 or 0x11 or 0x12 or 0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5);
 
     internal void UpdateMomentaryInteraction(Keys modifiers, Point point, IntPtr foreground, long now, bool otherKey = false)
     {

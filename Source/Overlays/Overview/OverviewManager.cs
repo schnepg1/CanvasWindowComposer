@@ -644,6 +644,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
+        if (e.Control && IsMomentaryChordKey((int)e.KeyCode)) _controlConsumed = true;
         if (HandleTutorialControlKey(e)) return;
 
         if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
