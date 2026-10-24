@@ -8,7 +8,7 @@ internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldR
     System.Windows.Media.ImageSource? Image = null, IReadOnlyList<WorldRect>? Occluders = null,
     double Opacity = 1, double? ImageOpacity = null, double? LabelOpacity = null,
     System.Windows.Media.ImageSource? Logo = null);
-internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize, Rect? LogoRect = null);
+internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
 /// <summary>Card-local titles: bounds, padding and type all scale with the camera.</summary>
 internal static class PlaceholderLabelLayout
@@ -23,7 +23,8 @@ internal static class PlaceholderLabelLayout
             new(monitor.X, monitor.Y, monitor.Width, monitor.Height), dpiX, dpiY);
         foreach (var card in cards)
         {
-            if ((card.LabelOpacity ?? (zoom < WindowManager.OverviewLivePreviewZoom ? 1 : 0)) <= 0
+            if (card.Logo != null
+                || (card.LabelOpacity ?? (zoom < WindowManager.OverviewLivePreviewZoom ? 1 : 0)) <= 0
                 || card.Opacity <= 0) continue;
             var b = card.Bounds;
             if (!WorkspaceGeometry.ValidBounds(b)) continue;
@@ -33,21 +34,10 @@ internal static class PlaceholderLabelLayout
             double paddingX = Math.Min(24, b.W * .08) * zoom / dpiX;
             double paddingY = Math.Min(24, b.H * .08) * zoom / dpiY;
             var rect = new Rect(x + paddingX, y + paddingY, w - 2 * paddingX, h - 2 * paddingY);
-            Rect? logoRect = null;
-            if (card.Logo != null && w >= 56 && h >= 44)
-            {
-                double logoSize = Math.Min(30, Math.Min(rect.Height * .72, rect.Width * .42));
-                if (logoSize >= 18)
-                {
-                    logoRect = new Rect(rect.Right - logoSize, rect.Y + (rect.Height - logoSize) / 2,
-                        logoSize, logoSize);
-                    rect = new Rect(rect.X, rect.Y, Math.Max(1, rect.Width - logoSize - 8), rect.Height);
-                }
-            }
             double fontSize = Math.Min(84 * zoom / dpiY, rect.Height / 3.6);
             // Do not clamp to the monitor or arbitrate collisions: each title
             // belongs to its card, including when that card is partly offscreen.
-            result.Add(new(card, rect, fontSize, logoRect));
+            result.Add(new(card, rect, fontSize));
         }
         return result;
     }

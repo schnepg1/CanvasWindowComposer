@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 /// <summary>Placeholder cards and labels preserve thumbnail occlusion and fade semantics.</summary>
 internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
 {
-    private static readonly Brush CardFill = FrozenBrush(Color.FromRgb(35, 53, 76));
+    private static readonly Brush CardFill = FrozenBrush(Color.FromRgb(28, 34, 46));
     private static readonly Brush LabelFill = FrozenBrush(Color.FromArgb(218, 10, 16, 25));
     private static readonly Pen Outline = OutlinePen(Color.FromRgb(91, 125, 166), 1);
     private static readonly Typeface LabelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
@@ -34,7 +34,18 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             dc.PushClip(VisibleCard(card, context));
             dc.PushOpacity(card.Opacity);
             if (imageOpacity < 1)
+            {
                 dc.DrawRoundedRectangle(CardFill, Outline, rect, 6, 6);
+                if (card.Logo is { Width: > 0, Height: > 0 } logo)
+                {
+                    // Fit the icon to the card in world space, so it scales with
+                    // the window at every zoom and never becomes a fixed-size badge.
+                    double scale = Math.Min(rect.Width / logo.Width, rect.Height / logo.Height);
+                    double width = logo.Width * scale, height = logo.Height * scale;
+                    dc.DrawImage(logo, new Rect(rect.X + (rect.Width - width) / 2,
+                        rect.Y + (rect.Height - height) / 2, width, height));
+                }
+            }
             if (card.Image != null && imageOpacity > 0)
             {
                 dc.PushOpacity(imageOpacity);
@@ -56,7 +67,6 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             dc.PushClip(VisibleCard(label.Card, context));
             dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
             var rect = label.Rect;
-            dc.DrawRoundedRectangle(LabelFill, null, rect, 6, 6);
             var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 LabelTypeface,
                 label.FontSize, Brushes.WhiteSmoke, context.Dpi.PixelsPerDip)
@@ -65,9 +75,10 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                 LineHeight = label.FontSize * 1.2, MaxLineCount = 3,
                 Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
             };
-            dc.DrawText(text, new Point(rect.X, rect.Y + (rect.Height - text.Height) / 2));
-            if (label.Card.Logo != null && label.LogoRect is { } logoRect)
-                dc.DrawImage(label.Card.Logo, logoRect);
+            double textY = rect.Y + (rect.Height - text.Height) / 2;
+            dc.DrawRoundedRectangle(LabelFill, null,
+                new Rect(rect.X, textY, rect.Width, text.Height), 3, 3);
+            dc.DrawText(text, new Point(rect.X, textY));
             dc.Pop();
             dc.Pop();
         }

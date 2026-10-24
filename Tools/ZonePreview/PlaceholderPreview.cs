@@ -18,21 +18,23 @@ internal static class PlaceholderPreview
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         using var heading = new Font("Segoe UI", 21, FontStyle.Bold);
         using var small = new Font("Segoe UI", 12);
-        g.DrawString("Placeholder cards · large titles and app symbols", heading, Brushes.WhiteSmoke, 32, 24);
+        g.DrawString("Placeholder cards · full-color icon backgrounds", heading, Brushes.WhiteSmoke, 32, 24);
         var folder = new WorkspaceItemView(Guid.NewGuid(), "Canvas project", @"C:\Windows\explorer.exe",
             @"G:\Coding\Projects\Canvas", false, new WorldRect { W = 800, H = 550 }, "Placeholder", IsFolder: true);
         string editor = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "notepad.exe");
         var app = folder with { Id = Guid.NewGuid(), Title = "Research notes", ExecutablePath = editor,
             Target = @"C:\Projects\research-notes.txt", IsFolder = false };
         var commands = new PreviewCommands(new[] { folder, app });
+        using var folderArtwork = new PlaceholderArtwork(); folderArtwork.UpdateItem(folder);
+        using var appArtwork = new PlaceholderArtwork(); appArtwork.UpdateItem(app);
         using var folderBitmap = RenderCard(commands, folder, 720, 430);
         using var appBitmap = RenderCard(commands, app, 720, 430);
         g.DrawImageUnscaled(folderBitmap, 32, 84);
         g.DrawImageUnscaled(appBitmap, 800, 84);
-        g.DrawString("Overview · 25% zoom · centered titles wrap inside each rectangle", small, Brushes.LightSteelBlue, 32, 542);
-        DrawOverview(g, folderBitmap, appBitmap, .25, 32, 578, 1496, 270);
-        g.DrawString("Overview · 10% zoom · titles shrink and stay attached to their cards", small, Brushes.LightSteelBlue, 32, 878);
-        DrawOverview(g, folderBitmap, appBitmap, .1, 32, 914, 1496, 270);
+        g.DrawString("Icon cards · 20% zoom · no text when an icon exists; title fallback at right", small, Brushes.LightSteelBlue, 32, 542);
+        DrawOverview(g, folderArtwork.OverviewLogo, appArtwork.OverviewLogo, .2, 32, 578, 1496, 270);
+        g.DrawString("Icon cards · 5% zoom · icons scale with the card and stay inside it", small, Brushes.LightSteelBlue, 32, 878);
+        DrawOverview(g, folderArtwork.OverviewLogo, appArtwork.OverviewLogo, .05, 32, 914, 1496, 270);
         sheet.Save(output, System.Drawing.Imaging.ImageFormat.Png);
     }
 
@@ -53,24 +55,23 @@ internal static class PlaceholderPreview
         return bitmap;
     }
 
-    private static void DrawOverview(Graphics g, Bitmap folder, Bitmap app, double zoom, int x, int y, int width, int height)
+    private static void DrawOverview(Graphics g, System.Windows.Media.ImageSource? folder,
+        System.Windows.Media.ImageSource? app, double zoom, int x, int y, int width, int height)
     {
         using var backdrop = new SolidBrush(Color.FromArgb(20, 28, 43));
         g.FillRectangle(backdrop, x, y, width, height);
         var cards = new[]
         {
-            new PlaceholderAnnotation((IntPtr)1, "Canvas project", new WorldRect { X = 220 / zoom, Y = 90 / zoom, W = 720, H = 430 }),
-            new PlaceholderAnnotation((IntPtr)2, "Research notes", new WorldRect { X = 720 / zoom, Y = 90 / zoom, W = 720, H = 430 }, true)
+            new PlaceholderAnnotation((IntPtr)1, "Canvas project", new WorldRect { X = 220 / zoom, Y = 90 / zoom, W = 720, H = 430 },
+                ImageOpacity: 0, LabelOpacity: 1, Logo: folder),
+            new PlaceholderAnnotation((IntPtr)2, "Research notes", new WorldRect { X = 720 / zoom, Y = 90 / zoom, W = 720, H = 430 },
+                ImageOpacity: 0, LabelOpacity: 1, Logo: app),
+            new PlaceholderAnnotation((IntPtr)3, "Missing icon: show title", new WorldRect { X = 1140 / zoom, Y = 90 / zoom, W = 720, H = 430 },
+                ImageOpacity: 0, LabelOpacity: 1)
         };
-        for (int i = 0; i < cards.Length; i++)
-        {
-            var b = cards[i].Bounds;
-            g.DrawImage(i == 0 ? folder : app, new Rectangle(x + (int)(b.X * zoom), y + (int)(b.Y * zoom),
-                (int)(b.W * zoom), (int)(b.H * zoom)));
-        }
         var drawing = new OverviewAnnotationSurface();
         drawing.Update(OverviewAnnotationSnapshot.Create(Array.Empty<ZoneView>(), 0, 0, zoom,
-            new Rectangle(0, 0, width, height), null, false, null, cards));
+            new Rectangle(0, 0, width, height), null, false, null, cards, showHints: false));
         drawing.Measure(new System.Windows.Size(width, height));
         drawing.Arrange(new System.Windows.Rect(0, 0, width, height));
         drawing.UpdateLayout();

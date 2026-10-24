@@ -30,10 +30,12 @@ public class OverviewAnnotationLayerTests
                 var pixels = new byte[800 * 300 * 4]; bitmap.CopyPixels(pixels, 3200, 0); return pixels;
             }
             var pixels = Render();
-            int cardPixel = (160 * 800 + 110) * 4; // Below the two-line window stats HUD.
+            int cardPixel = (110 * 800 + 110) * 4;
             Assert.Equal(255, pixels[cardPixel + 2]); Assert.Equal(0, pixels[cardPixel]);
             int hudPixel = (22 * 800 + 40) * 4;
             Assert.NotEqual(255, pixels[hudPixel + 2]); // HUD background is above the red drawing layer.
+            int statsPixel = (22 * 800 + 150) * 4;
+            Assert.NotEqual(255, pixels[statsPixel + 2]); // Counts sit to the right of zoom on the same row.
             surface.SetDrawingLayers([]);
             pixels = Render();
             Assert.NotEqual(255, pixels[cardPixel + 2]);

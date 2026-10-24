@@ -15,8 +15,11 @@ public class WindowPreviewTests
     private static AutomaticParkingToken Key(int handle = 42) => new(new((IntPtr)handle, 7, 100), Guid.NewGuid());
     private sealed class FakeCapture : IWindowPreviewCapture
     {
+        public long ScratchBytes;
         public Func<Size, Bitmap?> Produce = size => new Bitmap(size.Width, size.Height);
         public Bitmap? Capture(IntPtr handle, Size sourceSize, Size targetSize) => Produce(targetSize);
+        public long ReservationBytes(Size sourceSize, Size targetSize)
+            => (long)targetSize.Width * targetSize.Height * 4 + ScratchBytes;
     }
     private sealed class Surface : ICachedPreviewSurface
     {
@@ -44,6 +47,16 @@ public class WindowPreviewTests
     [InlineData(int.MaxValue, 1, 1024, 1)]
     public void ResolutionIsCappedWithoutUpscaling(int w, int h, int expectedW, int expectedH)
         => Assert.Equal(new Size(expectedW, expectedH), WindowPreviewCache.Fit(new(w, h)));
+
+    [Fact]
+    public void ScratchMemoryCannotStartCaptureBeyondCacheBudget()
+    {
+        using var cache = new WindowPreviewCache(new FakeCapture { ScratchBytes = 800 }, _ => new Surface(), budgetBytes: 800);
+        var key = Key(); cache.Observe(key.Identity.Handle, key);
+        Assert.False(cache.RequestCapture(key, new(10, 10)));
+        Assert.False(cache.CapturePending);
+        Assert.Equal(0, cache.ImageBytes);
+    }
 
     [Fact]
     public void ImageBudgetEvictsLeastRecentlyUsedAndCountsInflightReservation()
@@ -372,6 +385,22 @@ public class WindowPreviewTests
                 Assert.Empty(api.NativeStateCalls);
             }
             finally { thumbnails.Hide(); }
+        });
+
+    [Fact]
+    [Trait("Category", "NativePreview")]
+    public void FullContentCaptureScalesWholeWindowInsteadOfCroppingToThumbnail()
+        => OnSta(() =>
+        {
+            using var original = new PaintedWindow();
+            original.Location = new Point(Screen.PrimaryScreen!.WorkingArea.Left + 20, Screen.PrimaryScreen.WorkingArea.Top + 20);
+            original.Show(); original.Update();
+            Application.DoEvents();
+            Windows.Win32.PInvoke.DwmFlush();
+            using var image = WindowPreviewCapture.CaptureFullContent(original.Handle, original.Size, new(100, 50));
+            Assert.NotNull(image);
+            Assert.Equal(Color.Red.ToArgb(), image.GetPixel(5, 5).ToArgb());
+            Assert.Equal(Color.Blue.ToArgb(), image.GetPixel(95, 45).ToArgb());
         });
 
     [Fact]

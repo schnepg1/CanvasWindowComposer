@@ -80,7 +80,7 @@ internal sealed class SettingsWindow : Window
         Heading("Overview & Cards");
         _liveTier = Option("Live Previews tier (continuous DWM thumbnails when zoomed in)", preferences.LivePreviewsTier);
         _detailedTier = Option("Detailed Placeholder Cards tier (main resource saver)", preferences.DetailedCardsTier);
-        _simpleTier = Option("Simple Cards tier (title-only vector boxes when zoomed far out)", preferences.SimpleCardsTier);
+        _simpleTier = Option("Simple Cards tier (icons with title fallback when zoomed far out)", preferences.SimpleCardsTier);
         Hint("Detailed cards save memory and GPU by unregistering live thumbnails and enabling background window parking. Simple cards save texture cache and fillrate when zoomed far out.");
         _cardEnter = NumberInput("Detailed cards enter zoom (zoom out below):", preferences.CardEnterZoom);
         _cardExit = NumberInput("Detailed cards exit zoom (zoom in above):", preferences.CardExitZoom);

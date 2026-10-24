@@ -72,7 +72,7 @@ internal sealed class WindowPreviewCache : IDisposable
     public bool RequestCapture(AutomaticParkingToken key, Size sourceSize)
     {
         var size = Fit(sourceSize);
-        long bytes = (long)size.Width * size.Height * 4;
+        long bytes = _capture.ReservationBytes(sourceSize, size);
         lock (_workerGate)
         {
             if (_disposed || _busy || bytes == 0 || bytes > _budget || !IsObserved(key)) return false;

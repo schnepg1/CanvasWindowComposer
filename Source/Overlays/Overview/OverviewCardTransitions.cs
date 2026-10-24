@@ -18,6 +18,7 @@ internal sealed class OverviewCardTransitions
         public double Detail, Live, FromDetail, FromLive;
         public long Started;
         public ImageSource? Image;
+        public ImageSource? Logo;
         public string Title = "";
         public bool Moving;
     }
@@ -46,6 +47,7 @@ internal sealed class OverviewCardTransitions
             }
             Advance(e, now);
             if (input.Card.Image != null) e.Image = input.Card.Image;
+            if (input.Mode != OverviewCardMode.Live) e.Logo = input.Card.Logo;
             if (input.Card.Title.Length > 0) e.Title = input.Card.Title;
             // If a native window has already been manually minimized there are
             // no underlying pixels to fade from. Show its card without a hole.
@@ -65,14 +67,14 @@ internal sealed class OverviewCardTransitions
             if (input.Mode == OverviewCardMode.Live && !input.LiveReady && e.Live < 1)
                 HasPendingLiveSources = true;
             double cover = 1 - e.Live;
-            if (cover <= 0) continue;
+            if (cover <= 0) { e.Logo = null; continue; }
             double detail = Math.Clamp(e.Detail / cover, 0, 1);
             // Stagger the two title treatments through a plain rectangle so
             // the bitmap's title and the simplified title never overlap.
             double imageOpacity = Math.Max(0, detail * 2 - 1);
             double labelOpacity = Math.Max(0, 1 - detail * 2);
             result.Add(input.Card with { Title = e.Title, Image = e.Image, Opacity = cover,
-                ImageOpacity = imageOpacity, LabelOpacity = labelOpacity });
+                ImageOpacity = imageOpacity, LabelOpacity = labelOpacity, Logo = e.Logo });
         }
         _removed.Clear();
         foreach (var id in _entries.Keys)

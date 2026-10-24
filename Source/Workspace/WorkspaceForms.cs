@@ -35,13 +35,14 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         BackColor = Color.FromArgb(28, 34, 46);
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 11);
-        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), RowCount = 5, ColumnCount = 1 };
+        _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40),
+            BackColor = Color.Transparent, DrawSymbolBackground = false };
+        var panel = new PlaceholderCardPanel(_title) { Dock = DockStyle.Fill, Padding = new Padding(18), RowCount = 5, ColumnCount = 1 };
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40) };
         _pathHeader = new Label
         {
             Text = "Path:",
@@ -50,6 +51,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(160, 181, 208),
+            BackColor = Color.FromArgb(10, 16, 25),
             Padding = new Padding(0)
         };
         _details = new Label
@@ -60,6 +62,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 12.5f),
             ForeColor = Color.LightSteelBlue,
+            BackColor = Color.FromArgb(10, 16, 25),
             Padding = new Padding(0, 2, 0, 4)
         };
         int iconSize = Math.Max(14, (int)(15 * DeviceDpi / 96f));
@@ -96,6 +99,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             TextAlign = ContentAlignment.TopCenter,
             Dock = DockStyle.Top,
             ForeColor = Color.LightSteelBlue,
+            BackColor = Color.FromArgb(10, 16, 25),
             Padding = new Padding(0, 12, 0, 0)
         };
         panel.Controls.Add(_title);
@@ -179,6 +183,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         _overviewImage = null;
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
+        _title.Parent?.Invalidate(true);
         _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
         _open.Text = _item.State == "Opening…" ? "Opening…" : "Open";
         if (_item.State is "Minimized" or "Sleeping") _open.Text = "Restore";

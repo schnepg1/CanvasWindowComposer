@@ -8,11 +8,23 @@ namespace CanvasDesktop;
 internal interface IWindowPreviewCapture
 {
     Bitmap? Capture(IntPtr handle, Size sourceSize, Size targetSize);
+    long ReservationBytes(Size sourceSize, Size targetSize) => (long)targetSize.Width * targetSize.Height * 4;
 }
 
 /// <summary>Best-effort WM_PRINT capture. Only call on the bounded background worker.</summary>
 internal sealed class WindowPreviewCapture : IWindowPreviewCapture
 {
+    // Full-content printing ignores GDI scaling. Reserve its bounded scratch
+    // bitmap in the cache budget as well as the final thumbnail.
+    internal const long MaxScratchBytes = 24 * 1024 * 1024;
+    private static long ScratchBytes(Size size)
+    {
+        long pixels = (long)size.Width * size.Height;
+        return size.Width > 0 && size.Height > 0 && pixels <= MaxScratchBytes / 4 ? pixels * 4 : 0;
+    }
+    public long ReservationBytes(Size sourceSize, Size targetSize)
+        => (long)targetSize.Width * targetSize.Height * 4 + ScratchBytes(sourceSize);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PrintWindow(IntPtr hwnd, IntPtr dc, uint flags);
@@ -63,7 +75,31 @@ internal sealed class WindowPreviewCapture : IWindowPreviewCapture
         }
         catch { image.Dispose(); throw; }
         image.Dispose();
-        return null;
+        return CaptureFullContent(handle, sourceSize, targetSize);
+    }
+
+    internal static Bitmap? CaptureFullContent(IntPtr handle, Size sourceSize, Size targetSize)
+    {
+        if (ScratchBytes(sourceSize) == 0) return null;
+        using var source = new Bitmap(sourceSize.Width, sourceSize.Height, PixelFormat.Format32bppRgb);
+        using (var graphics = Graphics.FromImage(source))
+        {
+            graphics.Clear(Color.FromArgb(32, 32, 32));
+            var dc = graphics.GetHdc();
+            bool success;
+            try { success = PrintWindow(handle, dc, 2 /* PW_RENDERFULLCONTENT */); }
+            finally { graphics.ReleaseHdc(dc); }
+            if (!success) return null;
+        }
+        if (!HasCapturedPixels(source)) return null;
+        var image = new Bitmap(targetSize.Width, targetSize.Height, PixelFormat.Format32bppRgb);
+        try
+        {
+            using var graphics = Graphics.FromImage(image);
+            graphics.DrawImage(source, new Rectangle(Point.Empty, targetSize));
+            return image;
+        }
+        catch { image.Dispose(); throw; }
     }
 
     private static unsafe bool HasCapturedPixels(Bitmap image)

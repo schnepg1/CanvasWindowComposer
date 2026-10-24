@@ -124,13 +124,14 @@ internal sealed class OverviewHudLayer : IOverviewAnnotationLayer
         var zoomText = context.Text($"{Math.Round(context.View.Zoom * 100):0}%", 13, Brushes.White);
         dc.DrawRoundedRectangle(ZoomFill, null, new Rect(20, 20, zoomText.Width + 22, 32), 8, 8);
         dc.DrawText(zoomText, new Point(31, 27));
-        var text = context.Text(context.Frame.WindowStats + "\n" + context.Frame.MinimizationStatus, 13, Brushes.White);
-        dc.DrawRoundedRectangle(HudFill, null, new Rect(20, 62, text.Width + 28, text.Height + 16), 10, 10);
-        dc.DrawText(text, new Point(34, 70));
+        var text = context.Text(context.Frame.WindowStats + "  ·  " + context.Frame.MinimizationStatus, 13, Brushes.White);
+        double statsX = 20 + zoomText.Width + 22 + 10;
+        dc.DrawRoundedRectangle(HudFill, null, new Rect(statsX, 20, text.Width + 28, 32), 8, 8);
+        dc.DrawText(text, new Point(statsX + 14, 27));
         if (!string.IsNullOrWhiteSpace(context.Frame.ToolHint))
         {
             var status = context.Text(context.Frame.ToolHint, 13, Brushes.White);
-            double y = 62 + text.Height + 24;
+            double y = 62;
             dc.DrawRoundedRectangle(HudFill, null, new Rect(20, y, status.Width + 28, status.Height + 16), 10, 10);
             dc.DrawText(status, new Point(34, y + 8));
         }
