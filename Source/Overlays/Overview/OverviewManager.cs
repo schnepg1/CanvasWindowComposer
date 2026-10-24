@@ -437,7 +437,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         ClearCardTransitions();
         CancelInteraction();
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
-        _annotationToolbar?.Hide();
+        HideAnnotationUi();
         foreach (var p in _passes) p.HideZones();
         foreach (var p in _passes)
         {
@@ -483,7 +483,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (CurrentMode != OverviewMode.Zooming)
         {
             CancelInteraction();
-            _annotationToolbar?.Hide();
+            HideAnnotationUi();
             foreach (var p in _passes) p.HideZones();
         }
         bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
