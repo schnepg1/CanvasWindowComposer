@@ -184,7 +184,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         _inputs = new OverviewInputs(this, input, mainCanvas);
-        InitializeMomentaryInteraction();
+        InitializeWindowInteraction();
     }
 
     public void RefreshConfig()
@@ -648,7 +648,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
-        if (e.Control && IsMomentaryChordKey((int)e.KeyCode)) _controlConsumed = true;
         if (HandleTutorialControlKey(e)) return;
 
         if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
@@ -780,7 +779,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
 
         if (_annotationEditor != null || _shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
-        if (RouteWindowPointer(pass, e, down: true)) return;
+        if (RouteCanvasWindowPointer(pass, e, down: true)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
@@ -873,7 +872,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
         if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
-        if (RouteWindowPointer(pass, e)) return;
+        if (RouteCanvasWindowPointer(pass, e)) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -941,7 +940,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;
-        if (RouteWindowPointer(pass, e, up: true)) return;
+        if (RouteCanvasWindowPointer(pass, e, up: true)) return;
         var pointer = Pointer(pass, e);
         if (_tools.Kind == CanvasInteractionKind.Tool)
         {
@@ -1097,7 +1096,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(CancelVisualFrame);
         Attempt(ResetGesturePreviews);
-        Attempt(() => _momentaryInteractionTimer?.Dispose());
         Attempt(() => _gestureSettleTimer?.Dispose());
         Attempt(() => _visualFrameTimer?.Dispose());
         Attempt(DisposeGuidedTutorial);

@@ -7,6 +7,16 @@ namespace CanvasDesktop;
 internal sealed class CanvasControlsButton : Form
 {
     private readonly Button _button = new();
+    private readonly Button _arrange = new(), _interact = new();
+    public event Action<bool>? InteractionModeRequested;
+
+    public void SetInteractMode(bool enabled)
+    {
+        _arrange.BackColor = enabled ? Color.FromArgb(30, 36, 50) : Color.FromArgb(45, 80, 120);
+        _interact.BackColor = enabled ? Color.FromArgb(20, 100, 70) : Color.FromArgb(30, 36, 50);
+        _arrange.AccessibleDescription = enabled ? "Arrange mode, inactive" : "Arrange mode, active";
+        _interact.AccessibleDescription = enabled ? "Interact mode, active" : "Interact mode, inactive";
+    }
     public event Action? ControlsClicked;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x80; return cp; } }
@@ -37,7 +47,24 @@ internal sealed class CanvasControlsButton : Form
         _button.FlatAppearance.MouseOverBackColor = Color.FromArgb(45, 55, 75);
         _button.Click += (_, _) => ControlsClicked?.Invoke();
 
-        Controls.Add(_button);
+        var row = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = Padding.Empty };
+        foreach (var button in new[] { _arrange, _interact })
+        {
+            button.AutoSize = true;
+            button.FlatStyle = FlatStyle.Flat;
+            button.ForeColor = Color.White;
+            button.Font = new Font("Segoe UI", 9.25f);
+            button.Cursor = Cursors.Hand;
+            button.FlatAppearance.BorderColor = Color.FromArgb(55, 65, 81);
+            button.Padding = new Padding(5, 2, 5, 2);
+        }
+        _arrange.Text = "Arrange"; _interact.Text = "Interact";
+        _arrange.Click += (_, _) => InteractionModeRequested?.Invoke(false);
+        _interact.Click += (_, _) => InteractionModeRequested?.Invoke(true);
+        row.Controls.AddRange(new Control[] { _arrange, _interact, _button });
+        Controls.Add(row);
+        SetInteractMode(false);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -150,7 +177,9 @@ internal sealed class CanvasControlsPopup : Form
         }
 
         AddSection("Shortcuts & Commands", [
-            ("Hold Ctrl (live window)", "250 ms hold; release to stop"),
+            ("Arrange / Interact", "Top-right: choose click behavior"),
+            ("Interact: click content", "Control live app; click another to switch"),
+            ("Interact: drag header", "Move window using its Drag strip"),
             ("Right-click live window", "Enable persistent interaction"),
             ("Double-click Window", "Focus and jump to application"),
             ("Double-click Note", "Open text note editor"),
@@ -163,7 +192,7 @@ internal sealed class CanvasControlsPopup : Form
         AddSection("Selection & Elements", [
             ("Drag empty canvas", "Marquee selection box across all items"),
             ("Click / Drag element", "Select & move window, shape, note or project"),
-            ("Ctrl + Click", "Quick click: toggle selection"),
+            ("Ctrl + Click", "Toggle selection (also in Interact)"),
             ("Drag element handles", "Resize shapes, notes, and arrows"),
             ("Delete / Backspace", "Remove selected design elements")
         ]);

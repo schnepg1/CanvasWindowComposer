@@ -82,8 +82,8 @@ internal sealed partial class OverviewManager
         if(!_disposed && CurrentMode==OverviewMode.Zooming) _passes.FirstOrDefault(p=>p.Visible)?.Activate();
     }
     private string? AnnotationHint => _windowInteraction.Active
-        ? "Interacting: mouse and keyboard go to the app  ·  Ctrl/Alt+wheel: canvas zoom  ·  Esc or middle-click: return to canvas"
-        : _interactionError ?? (_annotationTool?.Mode switch
+        ? "Interacting: mouse and keyboard go to app  ·  Drag header: move  ·  Ctrl+click: select  ·  Esc: Arrange"
+        : _interactionError ?? (_interactMode && InteractionToolReady ? "Interact: click live content  ·  Drag header: move window  ·  Ctrl+click: select  ·  Esc: Arrange" : null) ?? (_annotationTool?.Mode switch
     {
         AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
         AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: Select mode",
@@ -116,8 +116,10 @@ internal sealed partial class OverviewManager
         {
             _controlsButton = new();
             _controlsButton.ControlsClicked += () => ToggleControlsPopup(pass);
+            _controlsButton.InteractionModeRequested += SetInteractMode;
             _controlsButton.KeyDown += (_, e) => HandleKeyDown(pass, e);
         }
+        _controlsButton.SetInteractMode(_interactMode);
         if (!_controlsButton.Visible)
         {
             _controlsButton.Show(pass);

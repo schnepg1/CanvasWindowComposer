@@ -19,6 +19,26 @@ far enough away to replace a live thumbnail with a card ends interaction. Losing
 app focus, minimizing or closing the target, changing tools or desktops, or
 closing the overview also ends the session and releases forwarded mouse buttons.
 
+## Arrange and Interact
+
+The fixed top-right **Arrange | Interact** control sits beside **Controls** and
+is visible only in canvas view. Arrange is the initial mode. In Interact, the
+first click in eligible live content operates the application; click another
+live thumbnail to switch directly. Keyboard focus follows the clicked app.
+The receiving window has a green border and a mouse indicator. A screen-sized
+**Drag window** strip at the top of each live thumbnail moves it without sending
+app clicks. Right-click that strip for the canvas context menu; right-click
+inside content for the application's context menu.
+
+Ctrl-click continues to select canvas elements. Middle-drag and Space-drag
+remain canvas navigation, and Ctrl/Alt-wheel remains canvas zoom. Ordinary wheel
+input scrolls the currently active app while over its thumbnail. Drawing/editing
+tools suspend direct interaction. Placeholders and cached/distant cards keep
+canvas behavior. Esc switches back to Arrange. The chosen mode survives target
+switches and leaving/reentering canvas view for this session; forwarded buttons
+and source focus ownership are released on focus loss or exit. The former
+Control-hold shortcut and its polling timer have been removed.
+
 ## Compatibility
 
 This is an experimental bridge for applications that handle standard Windows
