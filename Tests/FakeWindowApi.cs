@@ -150,6 +150,7 @@ internal sealed class FakeWindowApi : IWindowApi
     }
 
     public Action<System.Threading.CancellationToken>? BeforeBatchMove;
+    public bool QueueAsyncMoves;
 
     public WindowBatchResult BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, System.Threading.CancellationToken ct = default)
     {
@@ -161,6 +162,8 @@ internal sealed class FakeWindowApi : IWindowApi
         {
             if (ct.IsCancellationRequested) { results.Add(new("BatchMoveItem", item.HWnd.ToInt64(), NativeOperationStatus.Cancelled, null, 0)); continue; }
             if (FailedMoves.Contains(item.HWnd)) { results.Add(new("BatchMoveItem", item.HWnd.ToInt64(), NativeOperationStatus.Failed, 5, 0)); continue; }
+            if (QueueAsyncMoves && isAsync)
+            { results.Add(new("BatchMoveItem", item.HWnd.ToInt64(), NativeOperationStatus.Queued, null, 0)); continue; }
             if (Windows.TryGetValue(item.HWnd, out var win))
             {
                 var r = item.Rect;

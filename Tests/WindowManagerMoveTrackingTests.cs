@@ -82,6 +82,41 @@ public class WindowManagerMoveTrackingTests
         Assert.Equal(600, canvas.Windows[(IntPtr)1].X);
     }
 
+    [Fact]
+    public void QueuedNativeMoveDoesNotSaveTheOldScreenPositionUnderTheNewCamera()
+    {
+        using var rig = new WorkspaceHarness(config: new FakeAppConfig { DisableGreedyDraw = true });
+        IntPtr handle = (IntPtr)42;
+        rig.Api.AddWindow(handle, 100, 100, 800, 600, title: "ChatGPT");
+        rig.Workspace.Start();
+        var item = Assert.Single(rig.Workspace.Document.Items);
+        var saved = item.Bounds;
+        rig.Api.QueueAsyncMoves = true;
+        rig.Canvas.SetCamera(0, -500);
+        rig.Wm.ReprojectSync(isAsync: true);
+        // USER32 accepted the async request, but the app has not processed it yet.
+        rig.Input.RaiseWindowMoved(handle);
+        rig.Workspace.SaveNow();
+        Assert.Equal(saved, item.Bounds);
+
+        rig.Canvas.SetCamera(0, -600);
+        rig.Wm.ReprojectSync(isAsync: true);
+        rig.Api.Windows[handle].Y = 600; // An older queued move arrives first.
+        rig.Input.RaiseWindowMoved(handle);
+        rig.Workspace.SaveNow();
+        Assert.Equal(saved, item.Bounds);
+
+        rig.Api.Windows[handle].Y = 700; // The latest queued move finally arrives.
+        rig.Input.RaiseWindowMoved(handle);
+        rig.Workspace.SaveNow();
+        Assert.Equal(saved, item.Bounds);
+        // Once acknowledged, subsequent real movement must still be captured.
+        rig.Api.Windows[handle].Y = 750;
+        rig.Input.RaiseWindowMoved(handle);
+        rig.Workspace.SaveNow();
+        Assert.Equal(saved.Y + 50, item.Bounds.Y);
+    }
+
     private static (double, double, double, double) Bounds(WorldRect world)
         => (world.X, world.Y, world.W, world.H);
 }

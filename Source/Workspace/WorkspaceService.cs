@@ -284,12 +284,13 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (live.ItemId is { } id)
             {
                 var old = Document.Items.FirstOrDefault(i => i.Id == id);
-                if (old != null && string.Equals(old.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)
+                if (old != null && WorkspaceAppIdentity.Same(old.ExecutablePath, exe)
                     && (old.ChromeProfilePath.Length == 0 || chromeProfile == null
                         || string.Equals(old.ChromeProfilePath, chromeProfile, StringComparison.OrdinalIgnoreCase)))
                 {
                     if (WorkspaceGeometry.ValidBounds(world)) old.Bounds = world;
                     old.Title = title;
+                    old.ExecutablePath = exe;
                     if (chromeProfile != null && old.CaptureChromeProfile) old.ChromeProfilePath = chromeProfile;
                     // Explorer navigation updates this slot's saved folder.
                     if (explorer && target.Length > 0) { old.Target = target; old.IsFolder = true; }
@@ -301,7 +302,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 _bindings.Unbind(live);
             }
             Guid? requested = _launching.Keys.FirstOrDefault(key => Document.Items.Any(i => i.Id == key
-                && i.DesktopId == _desktop && string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase))
+                && i.DesktopId == _desktop && WorkspaceAppIdentity.Same(i.ExecutablePath, exe))
                 && _launchBaselines.TryGetValue(key, out var baseline) && !baseline.Contains(handle));
             var input = new WorkspaceMatchInput(live.Token, exe, title, target, requested == Guid.Empty ? null : requested)
             {
@@ -332,7 +333,11 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 Document.Items.Add(item);
             }
             if (input.ChromeProfilePath != null && item.CaptureChromeProfile) item.ChromeProfilePath = input.ChromeProfilePath;
-            if (_bindings.Bind(live, item.Id) && restore) RestoreBinding(live, item);
+            if (_bindings.Bind(live, item.Id))
+            {
+                item.ExecutablePath = input.ExecutablePath;
+                if (restore) RestoreBinding(live, item);
+            }
         }
         Document.Cameras[_desktop] = new WorkspaceCamera { X = _canvas.CamX, Y = _canvas.CamY, Zoom = _canvas.Zoom };
     }
@@ -503,7 +508,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     public void Forget(Guid id) { if (Find(id) is { } item) Forget(item); }
 
     private bool IsLaunchingApp(string exe) => _launching.Keys.Any(id => Document.Items.Any(i => i.Id == id
-        && string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)));
+        && WorkspaceAppIdentity.Same(i.ExecutablePath, exe)));
 
     private void Open(WorkspaceItem item)
     {
@@ -593,7 +598,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         => !live.Forgotten && !live.ItemId.HasValue && _api.IsWindowVisible(live.Identity.Handle)
             && _desktops.IsOnCurrentDesktop(live.Identity.Handle) && StillCurrent(live)
             && InspectWindow(live.Identity.Handle) is { } observed
-            && string.Equals(observed.Exe, item.ExecutablePath, StringComparison.OrdinalIgnoreCase)
+            && WorkspaceAppIdentity.Same(observed.Exe, item.ExecutablePath)
             && (item.ChromeProfilePath.Length == 0 || ReadChromeProfile(live.Identity.Handle, observed.Exe) is not { } profile
                 || string.Equals(item.ChromeProfilePath, profile, StringComparison.OrdinalIgnoreCase));
 
@@ -601,7 +606,9 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item)
             || _bindings.ForToken(candidateToken) is not { } live || !CanLink(live, item)
+            || InspectWindow(live.Identity.Handle) is not { } observed || observed.Identity != live.Identity
             || !_bindings.Bind(live, id)) return false;
+        item.ExecutablePath = observed.Exe;
         if (item.CaptureChromeProfile && ReadChromeProfile(live.Identity.Handle, item.ExecutablePath) is { } profile) item.ChromeProfilePath = profile;
         RestoreBinding(live, item);
         EnsureCards(); Save(); Changed?.Invoke();

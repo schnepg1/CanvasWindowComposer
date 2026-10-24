@@ -157,7 +157,8 @@ internal sealed partial class WindowManager : IDisposable
     private readonly Dictionary<IntPtr, (int x, int y, int w, int h)> _lastScreen = new();
     private readonly Dictionary<IntPtr, PendingMove> _pendingMoves = new();
     private long _nextMoveId;
-    private readonly record struct PendingMove(BatchMoveItem Item, WindowRect Expected);
+    private readonly record struct PendingMove(BatchMoveItem Item, WindowRect Expected,
+        List<WindowRect>? Superseded);
 
     // Windows with clipped (empty) region to prevent them from fighting off-screen
     private readonly HashSet<IntPtr> _clippedWindows = new();
@@ -630,7 +631,19 @@ internal sealed partial class WindowManager : IDisposable
             // visible while the worker is processing it. Neither is a user drag.
             if (Math.Abs(ax - expected.X) <= ReconcileTolerancePx && Math.Abs(ay - expected.Y) <= ReconcileTolerancePx &&
                 Math.Abs(aw - expected.W) <= ReconcileTolerancePx && Math.Abs(ah - expected.H) <= ReconcileTolerancePx)
+            {
+                _lastScreen[hWnd] = (ax, ay, aw, ah);
+                _pendingMoves.Remove(hWnd);
+                _unconfirmedMoves.Remove(hWnd);
                 return;
+            }
+            // During a pan, earlier queued requests can land before the newest
+            // one. They are also our placements, never evidence of a user drag.
+            if (pending.Superseded != null)
+                foreach (var earlier in pending.Superseded)
+                    if (Math.Abs(ax - earlier.X) <= ReconcileTolerancePx && Math.Abs(ay - earlier.Y) <= ReconcileTolerancePx &&
+                        Math.Abs(aw - earlier.W) <= ReconcileTolerancePx && Math.Abs(ah - earlier.H) <= ReconcileTolerancePx)
+                        return;
         }
 
         if (Math.Abs(ax - last.x) <= ReconcileTolerancePx && Math.Abs(ay - last.y) <= ReconcileTolerancePx &&
@@ -991,7 +1004,19 @@ internal sealed partial class WindowManager : IDisposable
         var expected = posOnly && _lastScreen.TryGetValue(hWnd, out var last)
             ? new WindowRect(rect.X, rect.Y, last.w, last.h) : rect;
         var item = new BatchMoveItem(hWnd, rect, posOnly) { RequestId = ++_nextMoveId };
-        _pendingMoves[hWnd] = new(item, expected);
+        List<WindowRect>? superseded = null;
+        if (_pendingMoves.TryGetValue(hWnd, out var previous))
+        {
+            superseded = previous.Superseded;
+            if (previous.Expected != expected)
+            {
+                superseded ??= new(4);
+                // Bound memory even if an application stops servicing its queue.
+                if (superseded.Count == 64) superseded.RemoveAt(0);
+                superseded.Add(previous.Expected);
+            }
+        }
+        _pendingMoves[hWnd] = new(item, expected, superseded);
         _unconfirmedMoves.Add(hWnd);
         return item;
     }
@@ -1007,13 +1032,20 @@ internal sealed partial class WindowManager : IDisposable
         // Identical rectangles can belong to different requests. Compare revisions
         // so an older worker completion cannot consume a newer pending placement.
         if (!_pendingMoves.TryGetValue(item.HWnd, out var pending) || pending.Item.RequestId != item.RequestId) return;
+        // USER32 queue acceptance is not an observed placement. Keep both the
+        // pending target and the old baseline until reconciliation sees it land;
+        // otherwise the old screen rect becomes a false drag under the new camera.
+        if (result.Status == NativeOperationStatus.Queued)
+        {
+            _unconfirmedMoves.Add(item.HWnd);
+            return;
+        }
         _pendingMoves.Remove(item.HWnd);
         if (result.Accepted)
         {
             var expected = pending.Expected;
             _lastScreen[item.HWnd] = (expected.X, expected.Y, expected.W, expected.H);
-            if (result.Status == NativeOperationStatus.Queued) _unconfirmedMoves.Add(item.HWnd);
-            else _unconfirmedMoves.Remove(item.HWnd);
+            _unconfirmedMoves.Remove(item.HWnd);
         }
         else
         {

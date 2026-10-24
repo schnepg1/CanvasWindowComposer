@@ -15,6 +15,8 @@ internal static class WorkspaceTargetIdentity
     private static readonly VsCodeTargetAdapter VsCode = new();
     private static readonly IWorkspaceTargetAdapter[] Adapters = { VsCode };
     public static bool IsVsCode(string exe) => VsCode.Supports(exe);
+    public static string? ReadProjectCaption(string exe, string title)
+        => VsCode.Supports(exe) ? VsCode.ReadProjectCaption(title) : null;
     public static string Read(string exe, string title)
     {
         foreach (var adapter in Adapters)
@@ -25,6 +27,27 @@ internal static class WorkspaceTargetIdentity
 
 internal sealed class VsCodeTargetAdapter : IWorkspaceTargetAdapter
 {
+    // Default VS Code captions have a changing active file followed by the
+    // workspace and app name. This is weaker evidence than an exact caption or
+    // full target path; duplicate project names must still require linking.
+    public string? ReadProjectCaption(string title)
+    {
+        foreach (string separator in new[] { " - ", " — ", " – " })
+        {
+            foreach (string app in new[] { "Visual Studio Code", "Visual Studio Code - Insiders" })
+            {
+                string suffix = separator + app;
+                if (!title.EndsWith(suffix, StringComparison.Ordinal)) continue;
+                string content = title[..^suffix.Length];
+                int split = content.LastIndexOf(separator, StringComparison.Ordinal);
+                if (split < 0) return null; // Welcome/untitled windows have no workspace evidence.
+                string project = content[(split + separator.Length)..].Trim();
+                return project.Length > 0 ? project : null;
+            }
+        }
+        return null;
+    }
+
     // Opt-in window.title suffix: " [CanvasRoot:${rootPath}]". Do not change
     // VS Code settings automatically or infer C:\A\Project from just "Project".
     public const string Marker = " [CanvasRoot:";

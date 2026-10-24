@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal enum WorkspaceMatchStrength { None, SingleApp, Profile, Title, Target, Launch }
+internal enum WorkspaceMatchStrength { None, SingleApp, Profile, ProjectCaption, Title, Target, Launch }
 
 internal sealed record WorkspaceMatch(WorkspaceItem? Item, IReadOnlyList<Guid> AmbiguousIds,
     WorkspaceMatchStrength Strength = WorkspaceMatchStrength.None)
@@ -35,7 +35,7 @@ internal static class WorkspaceMatcher
     {
         var used = new HashSet<Guid>(bound);
         var appItems = items.Where(i => i.DesktopId == desktop
-            && string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)).ToArray();
+            && WorkspaceAppIdentity.Same(i.ExecutablePath, exe)).ToArray();
         if (ChromeProfiles.Supports(exe))
         {
             var configured = appItems.Where(i => i.ChromeProfilePath.Length > 0).ToArray();
@@ -60,6 +60,14 @@ internal static class WorkspaceMatcher
         if (exact.Length > 1 && remaining.Length > 0) return WorkspaceMatch.Ambiguous(remaining);
         if (remaining.Length == 1) return WorkspaceMatch.Found(remaining[0],
             target.Length > 0 ? WorkspaceMatchStrength.Target : WorkspaceMatchStrength.Title);
+        if (target.Length == 0 && WorkspaceTargetIdentity.ReadProjectCaption(exe, title) is { } project)
+        {
+            var projects = appItems.Where(i => i.Target.Length == 0
+                && WorkspaceTargetIdentity.ReadProjectCaption(exe, i.Title) == project).ToArray();
+            var unbound = projects.Where(i => !used.Contains(i.Id)).ToArray();
+            if (projects.Length > 1 && unbound.Length > 0) return WorkspaceMatch.Ambiguous(unbound);
+            if (unbound.Length == 1) return WorkspaceMatch.Found(unbound[0], WorkspaceMatchStrength.ProjectCaption);
+        }
         // Profile identity distinguishes accounts, not several windows inside
         // one account. Keep unprofiled slots eligible for their title/target
         // evidence, and use a unique configured profile only as a fallback.
