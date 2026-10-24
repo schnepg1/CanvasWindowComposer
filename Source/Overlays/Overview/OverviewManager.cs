@@ -184,6 +184,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         _inputs = new OverviewInputs(this, input, mainCanvas);
+        InitializeMomentaryInteraction();
     }
 
     public void RefreshConfig()
@@ -643,6 +644,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
+        if (e.Control && IsMomentaryChordKey((int)e.KeyCode)) _controlConsumed = true;
         if (HandleTutorialControlKey(e)) return;
 
         if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
@@ -763,6 +765,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             {
                 _windowContextMenu?.Dispose();
                 _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
+                AddWindowInteractionCommand(_windowContextMenu, pass, _windows.Windows[rightHit].HWnd);
                 _windowContextMenu.Show(pass, new Point(e.X, e.Y));
                 return;
             }
@@ -1036,6 +1039,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(CancelVisualFrame);
         Attempt(ResetGesturePreviews);
+        Attempt(() => _momentaryInteractionTimer?.Dispose());
         Attempt(() => _gestureSettleTimer?.Dispose());
         Attempt(() => _visualFrameTimer?.Dispose());
         Attempt(DisposeGuidedTutorial);
