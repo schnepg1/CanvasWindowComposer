@@ -76,8 +76,14 @@ public class OverviewToolIntegrationTests
             pass.OnMouseButtonDown!(pass, new(MouseButtons.Right, 1, 300, 250, 0));
             var field = typeof(OverviewManager).GetField("_windowContextMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             var menu = Assert.IsType<WorkspaceContextMenu>(field.GetValue(overview));
+            Assert.True(menu.Visible);
+            // Releasing the right mouse button MUST NOT close the menu
+            pass.OnMouseButtonUp!(pass, new(MouseButtons.Right, 1, 300, 250, 0));
             Assert.True(menu.Visible); Assert.Empty(rig.Workspace.GetPlaceholderTitles());
-            Assert.Contains(menu.Items.OfType<ToolStripMenuItem>(), i => i.Text == "Rename…"); menu.Close();
+            Assert.Contains(menu.Items.OfType<ToolStripMenuItem>(), i => i.Text == "Rename…");
+            // CloseActiveMenus properly closes it
+            Assert.True(overview.CloseActiveMenus());
+            Assert.False(menu.Visible);
         });
 
     [Theory]

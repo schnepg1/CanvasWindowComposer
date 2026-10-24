@@ -23,9 +23,9 @@ internal sealed partial class WindowManager : IDisposable
     private readonly WindowVisibilityTracker _visibility = new();
     private CanvasCamera? _overviewViewport;
     private IReadOnlyList<(int x, int y, int w, int h)>? _overviewScreens;
-    internal const double OverviewLivePreviewZoom = 0.5;
-    internal const double OverviewCardEnterZoom = 0.45, OverviewCardExitZoom = 0.55;
-    internal const double OverviewSimpleCardEnterZoom = 0.32, OverviewSimpleCardExitZoom = 0.40;
+    internal const double OverviewLivePreviewZoom = 0.60;
+    internal const double OverviewCardEnterZoom = 0.60, OverviewCardExitZoom = 0.70;
+    internal const double OverviewSimpleCardEnterZoom = 0.20, OverviewSimpleCardExitZoom = 0.26;
     private bool _overviewUsesInfoCards;
     public bool OverviewUsesInfoCards => _overviewUsesInfoCards;
     private bool _overviewUsesSimpleCards;
@@ -38,12 +38,86 @@ internal sealed partial class WindowManager : IDisposable
         if (_disposed) return;
         if (camera is { } c && (!double.IsFinite(c.X) || !double.IsFinite(c.Y)
             || !double.IsFinite(c.Zoom) || c.Zoom <= 0)) return;
-        _overviewUsesInfoCards = camera is { } next && (_overviewViewport.HasValue
-            ? _overviewUsesInfoCards ? next.Zoom < OverviewCardExitZoom : next.Zoom < OverviewCardEnterZoom
-            : next.Zoom < OverviewLivePreviewZoom);
-        _overviewUsesSimpleCards = camera is { } simpleNext && (_overviewViewport.HasValue
-            ? _overviewUsesSimpleCards ? simpleNext.Zoom < OverviewSimpleCardExitZoom : simpleNext.Zoom < OverviewSimpleCardEnterZoom
-            : simpleNext.Zoom < OverviewSimpleCardEnterZoom);
+
+        if (camera is { } next)
+        {
+            double z = next.Zoom;
+            bool enableLive = _config.EnableLivePreviewsTier;
+            bool enableDetailed = _config.EnableDetailedCardsTier;
+            bool enableSimple = _config.EnableSimpleCardsTier;
+
+            double cardEnter = _config.OverviewCardEnterZoom;
+            if (cardEnter <= 0) cardEnter = OverviewCardEnterZoom;
+            double cardExit = _config.OverviewCardExitZoom;
+            if (cardExit <= cardEnter) cardExit = cardEnter * 1.15;
+
+            double simpleEnter = _config.OverviewSimpleCardEnterZoom;
+            if (simpleEnter <= 0) simpleEnter = OverviewSimpleCardEnterZoom;
+            double simpleExit = _config.OverviewSimpleCardExitZoom;
+            if (simpleExit <= simpleEnter) simpleExit = simpleEnter * 1.30;
+
+            if (!enableLive && !enableDetailed && !enableSimple)
+            {
+                enableLive = true;
+            }
+
+            if (!enableDetailed && !enableSimple)
+            {
+                _overviewUsesInfoCards = false;
+                _overviewUsesSimpleCards = false;
+            }
+            else if (!enableLive && !enableSimple)
+            {
+                _overviewUsesInfoCards = true;
+                _overviewUsesSimpleCards = false;
+            }
+            else if (!enableLive && !enableDetailed)
+            {
+                _overviewUsesInfoCards = true;
+                _overviewUsesSimpleCards = true;
+            }
+            else if (!enableDetailed)
+            {
+                bool isSimple = _overviewViewport.HasValue
+                    ? (_overviewUsesSimpleCards ? z < simpleExit : z < simpleEnter)
+                    : (z < simpleEnter);
+                _overviewUsesInfoCards = isSimple;
+                _overviewUsesSimpleCards = isSimple;
+            }
+            else if (!enableSimple)
+            {
+                bool isDetailed = _overviewViewport.HasValue
+                    ? (_overviewUsesInfoCards ? z < cardExit : z < cardEnter)
+                    : (z < cardEnter);
+                _overviewUsesInfoCards = isDetailed;
+                _overviewUsesSimpleCards = false;
+            }
+            else if (!enableLive)
+            {
+                bool isSimple = _overviewViewport.HasValue
+                    ? (_overviewUsesSimpleCards ? z < simpleExit : z < simpleEnter)
+                    : (z < simpleEnter);
+                _overviewUsesInfoCards = true;
+                _overviewUsesSimpleCards = isSimple;
+            }
+            else
+            {
+                bool isSimple = _overviewViewport.HasValue
+                    ? (_overviewUsesSimpleCards ? z < simpleExit : z < simpleEnter)
+                    : (z < simpleEnter);
+                bool isInfo = isSimple || (_overviewViewport.HasValue
+                    ? (_overviewUsesInfoCards ? z < cardExit : z < cardEnter)
+                    : (z < cardEnter));
+                _overviewUsesInfoCards = isInfo;
+                _overviewUsesSimpleCards = isSimple;
+            }
+        }
+        else
+        {
+            _overviewUsesInfoCards = false;
+            _overviewUsesSimpleCards = false;
+        }
+
         _overviewViewport = camera;
         _overviewScreens = camera.HasValue ? screens : null;
         UpdateRuntimeVisibility(refreshIdentity: false);

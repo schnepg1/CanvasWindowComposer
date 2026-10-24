@@ -68,7 +68,7 @@ public class PlaceholderLabelTests
     {
         var monitor = new ScreenRect(0, 0, 1920, 1080);
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, 1, monitor, 1, 1));
-        Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, .5, monitor, 1, 1));
+        Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, WindowManager.OverviewLivePreviewZoom, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card(x: -10000) }, 0, 0, .25, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card() }, 0, 0, .001, monitor, 1, 1));
         Assert.Empty(PlaceholderLabelLayout.Get(new[] { Card(priority: true) }, 0, 0, .001, monitor, 1, 1));

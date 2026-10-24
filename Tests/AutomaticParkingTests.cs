@@ -120,22 +120,22 @@ public class AutomaticParkingTests
     {
         using var h = new Harness();
         h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 1));
-        foreach (double zoom in new[] { .55, .5, .46, .45 })
+        foreach (double zoom in new[] { .70, .65, .61, .60 })
         {
             h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, zoom));
             Assert.False(h.Manager.OverviewUsesInfoCards);
         }
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .44));
-        foreach (double zoom in new[] { .45, .49, .51, .54 })
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .59));
+        foreach (double zoom in new[] { .60, .65, .68, .69 })
         {
             h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, zoom));
             Assert.True(h.Manager.OverviewUsesInfoCards);
         }
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .55));
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .70));
         Assert.False(h.Manager.OverviewUsesInfoCards);
         h.Manager.SetOverviewViewport(null);
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .49));
-        Assert.True(h.Manager.OverviewUsesInfoCards); // Initial session still uses the 50% default.
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .59));
+        Assert.True(h.Manager.OverviewUsesInfoCards); // Initial session uses default enter zoom.
         h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, double.NaN));
         Assert.True(h.Manager.OverviewUsesInfoCards);
         h.Manager.Reset();
@@ -150,22 +150,22 @@ public class AutomaticParkingTests
         Assert.False(h.Manager.OverviewUsesInfoCards);
         Assert.False(h.Manager.OverviewUsesSimpleCards);
 
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.35));
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.50));
         Assert.True(h.Manager.OverviewUsesInfoCards);
         Assert.False(h.Manager.OverviewUsesSimpleCards);
 
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.31));
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.18));
         Assert.True(h.Manager.OverviewUsesInfoCards);
         Assert.True(h.Manager.OverviewUsesSimpleCards);
 
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.38));
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.24));
         Assert.True(h.Manager.OverviewUsesSimpleCards);
 
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.41));
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.28));
         Assert.True(h.Manager.OverviewUsesInfoCards);
         Assert.False(h.Manager.OverviewUsesSimpleCards);
 
-        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.56));
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.72));
         Assert.False(h.Manager.OverviewUsesInfoCards);
         Assert.False(h.Manager.OverviewUsesSimpleCards);
     }
@@ -206,7 +206,7 @@ public class AutomaticParkingTests
         Assert.True(h.IsMinimized);
         h.Tick(5000);
         Assert.Empty(h.Api.ParkingRestoreCalls);
-        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, .55));
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, .75));
         Assert.False(h.IsMinimized);
         Assert.Equal(400, h.Api.Windows[h.Handle].W); // Native app is never shrunk to overview zoom.
         Assert.Equal(300, h.Api.Windows[h.Handle].H);
@@ -499,6 +499,117 @@ public class AutomaticParkingTests
         var projected = h.Canvas.Camera.Project(h.Canvas.Windows[h.Handle]);
         Assert.Equal(-960, projected.X + projected.W / 2);
         Assert.Equal(340, projected.Y + projected.H / 2);
+    }
+
+    [Fact]
+    public void OverviewTierThresholdsAndHysteresisFollowDefaults()
+    {
+        using var h = new Harness();
+        // Zoom 0.80: Live tier
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.80));
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom 0.55: Detailed Cards tier (enters at < 0.60)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.55));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom 0.18: Simple Cards tier (enters at < 0.20)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.18));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom in to 0.24: Hysteresis keeps Simple Cards active (< exit 0.26)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.24));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom in to 0.28: Transitions to Detailed Cards (> exit 0.26)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.28));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom in to 0.65: Hysteresis keeps Detailed Cards active (< exit 0.70)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.65));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom in to 0.72: Restores Live Previews (> exit 0.70)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.72));
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+    }
+
+    [Fact]
+    public void DisablingDetailedCardsTierTransitionsDirectlyFromLiveToSimple()
+    {
+        using var h = new Harness();
+        h.Config.EnableDetailedCardsTier = false;
+
+        // Zoom 0.55 (would normally be detailed cards): remains Live
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.55));
+        Assert.False(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom 0.18: switches directly to Simple Cards
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.18));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
+    }
+
+    [Fact]
+    public void DisablingSimpleCardsTierKeepsDetailedCardsAtExtremeZoomOut()
+    {
+        using var h = new Harness();
+        h.Config.EnableSimpleCardsTier = false;
+
+        // Zoom 0.55: Detailed Cards
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.55));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom 0.05: stays in Detailed Cards, never enters Simple Cards
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.05));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+    }
+
+    [Fact]
+    public void DisablingLivePreviewsTierKeepsCardsEvenWhenZoomedIn()
+    {
+        using var h = new Harness();
+        h.Config.EnableLivePreviewsTier = false;
+
+        // Zoom 1.0 (zoomed in): stays in Detailed Cards, never uses Live Previews
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 1.0));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom 0.15: Simple Cards
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.15));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
+    }
+
+    [Fact]
+    public void CustomTierThresholdsAreRespected()
+    {
+        using var h = new Harness();
+        h.Config.OverviewCardEnterZoom = 0.80;
+        h.Config.OverviewCardExitZoom = 0.90;
+        h.Config.OverviewSimpleCardEnterZoom = 0.40;
+        h.Config.OverviewSimpleCardExitZoom = 0.45;
+
+        // Zoom 0.75: enters Detailed (< 0.80)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.75));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.False(h.Manager.OverviewUsesSimpleCards);
+
+        // Zoom 0.35: enters Simple (< 0.40)
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, 0.35));
+        Assert.True(h.Manager.OverviewUsesInfoCards);
+        Assert.True(h.Manager.OverviewUsesSimpleCards);
     }
 }
 

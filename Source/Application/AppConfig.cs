@@ -37,6 +37,13 @@ internal interface IAppConfig
     /// you've turned off "Enhance pointer precision" and want truly linear pan.
     /// </summary>
     bool DisableMouseCurve { get; }
+    bool EnableLivePreviewsTier => true;
+    bool EnableDetailedCardsTier => true;
+    bool EnableSimpleCardsTier => true;
+    double OverviewCardEnterZoom => 0.60;
+    double OverviewCardExitZoom => 0.70;
+    double OverviewSimpleCardEnterZoom => 0.20;
+    double OverviewSimpleCardExitZoom => 0.26;
 }
 
 /// <summary>
@@ -73,6 +80,13 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool CheckForUpdates { get; private set; } = true;
     public string UpdateChannel { get; private set; } = "stable";
     public bool HasUpdateChannel { get; private set; }
+    public bool EnableLivePreviewsTier { get; private set; } = true;
+    public bool EnableDetailedCardsTier { get; private set; } = true;
+    public bool EnableSimpleCardsTier { get; private set; } = true;
+    public double OverviewCardEnterZoom { get; private set; } = 0.60;
+    public double OverviewCardExitZoom { get; private set; } = 0.70;
+    public double OverviewSimpleCardEnterZoom { get; private set; } = 0.20;
+    public double OverviewSimpleCardExitZoom { get; private set; } = 0.26;
 
     public AppConfig(IClock? clock = null, string? directory = null)
     {
@@ -108,6 +122,13 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             CheckForUpdates = GetBool(values, "CheckForUpdates", defaultValue: true);
             UpdateChannel = values.TryGetValue("UpdateChannel", out var channel) && channel == "preview" ? "preview" : "stable";
             HasUpdateChannel = channel is "stable" or "preview";
+            EnableLivePreviewsTier = GetBool(values, "EnableLivePreviewsTier", defaultValue: true);
+            EnableDetailedCardsTier = GetBool(values, "EnableDetailedCardsTier", defaultValue: true);
+            EnableSimpleCardsTier = GetBool(values, "EnableSimpleCardsTier", defaultValue: true);
+            OverviewCardEnterZoom = GetDouble(values, "OverviewCardEnterZoom", defaultValue: 0.60, min: 0.05, max: 2.0);
+            OverviewCardExitZoom = GetDouble(values, "OverviewCardExitZoom", defaultValue: 0.70, min: 0.05, max: 2.0);
+            OverviewSimpleCardEnterZoom = GetDouble(values, "OverviewSimpleCardEnterZoom", defaultValue: 0.20, min: 0.01, max: 1.0);
+            OverviewSimpleCardExitZoom = GetDouble(values, "OverviewSimpleCardExitZoom", defaultValue: 0.26, min: 0.01, max: 1.0);
         }
     }
 
@@ -149,7 +170,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
         {
             lock (_watcherGate) return new(!DisableSearch, !DisableAltPan, !DisableZoomHotkey,
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
-                EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode);
+                EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
+                EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
+                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom);
         }
     }
 
@@ -158,19 +181,26 @@ internal sealed class AppConfig : IAppConfig, IDisposable
         lock (_watcherGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            WriteValues(new(StringComparer.OrdinalIgnoreCase)
+            WriteStrings(new(StringComparer.OrdinalIgnoreCase)
             {
-                ["DisableSearch"] = !preferences.Search,
-                ["DisableAltPan"] = !preferences.AltPan,
-                ["DisableZoomHotkey"] = !preferences.ZoomHotkey,
-                ["DisableMouseCurve"] = !preferences.MouseCurve,
-                ["ShowScreenFixedWindowsDuringPan"] = preferences.ScreenFixedWindows,
-                ["DisableGreedyDraw"] = !preferences.ClipOffscreen,
-                ["EnableAutomaticMinimization"] = preferences.AutomaticMinimization,
-                ["EnableFlipRendering"] = preferences.FlipRendering,
-                ["EnableStartupIntro"] = preferences.StartupIntro,
-                ["ReduceStartupMotion"] = preferences.ReducedIntroMotion,
-                ["LowQualityMode"] = preferences.LowQualityMode
+                ["DisableSearch"] = (!preferences.Search).ToString().ToLowerInvariant(),
+                ["DisableAltPan"] = (!preferences.AltPan).ToString().ToLowerInvariant(),
+                ["DisableZoomHotkey"] = (!preferences.ZoomHotkey).ToString().ToLowerInvariant(),
+                ["DisableMouseCurve"] = (!preferences.MouseCurve).ToString().ToLowerInvariant(),
+                ["ShowScreenFixedWindowsDuringPan"] = preferences.ScreenFixedWindows.ToString().ToLowerInvariant(),
+                ["DisableGreedyDraw"] = (!preferences.ClipOffscreen).ToString().ToLowerInvariant(),
+                ["EnableAutomaticMinimization"] = preferences.AutomaticMinimization.ToString().ToLowerInvariant(),
+                ["EnableFlipRendering"] = preferences.FlipRendering.ToString().ToLowerInvariant(),
+                ["EnableStartupIntro"] = preferences.StartupIntro.ToString().ToLowerInvariant(),
+                ["ReduceStartupMotion"] = preferences.ReducedIntroMotion.ToString().ToLowerInvariant(),
+                ["LowQualityMode"] = preferences.LowQualityMode.ToString().ToLowerInvariant(),
+                ["EnableLivePreviewsTier"] = preferences.LivePreviewsTier.ToString().ToLowerInvariant(),
+                ["EnableDetailedCardsTier"] = preferences.DetailedCardsTier.ToString().ToLowerInvariant(),
+                ["EnableSimpleCardsTier"] = preferences.SimpleCardsTier.ToString().ToLowerInvariant(),
+                ["OverviewCardEnterZoom"] = preferences.CardEnterZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["OverviewCardExitZoom"] = preferences.CardExitZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["OverviewSimpleCardEnterZoom"] = preferences.SimpleCardEnterZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["OverviewSimpleCardExitZoom"] = preferences.SimpleCardExitZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
             });
             Load();
         }
@@ -283,6 +313,17 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Disable the Alt+Q overview/zoom global hotkey
 ; (frees Alt+Q for other apps; the overview is still reachable via pan)
 ;DisableZoomHotkey=false
+
+; Overview tiers (optionally disable any tier)
+;EnableLivePreviewsTier=true
+;EnableDetailedCardsTier=true
+;EnableSimpleCardsTier=true
+
+; Overview tier zoom thresholds
+;OverviewCardEnterZoom=0.60
+;OverviewCardExitZoom=0.70
+;OverviewSimpleCardEnterZoom=0.20
+;OverviewSimpleCardExitZoom=0.26
 ");
     }
 
@@ -312,6 +353,17 @@ internal sealed class AppConfig : IAppConfig, IDisposable
         if (!values.TryGetValue(key, out string? val))
             return defaultValue;
         return val.Equals("true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static double GetDouble(Dictionary<string, string> values, string key, double defaultValue, double min, double max)
+    {
+        if (values.TryGetValue(key, out string? val)
+            && double.TryParse(val, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double parsed)
+            && double.IsFinite(parsed) && parsed >= min && parsed <= max)
+        {
+            return parsed;
+        }
+        return defaultValue;
     }
 
     private void WriteBool(string key, bool value)
@@ -368,4 +420,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
 internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotkey, bool MouseCurve,
     bool ScreenFixedWindows, bool ClipOffscreen, bool AutomaticMinimization, bool FlipRendering,
-    bool StartupIntro = true, bool ReducedIntroMotion = false, bool LowQualityMode = false);
+    bool StartupIntro = true, bool ReducedIntroMotion = false, bool LowQualityMode = false,
+    bool LivePreviewsTier = true, bool DetailedCardsTier = true, bool SimpleCardsTier = true,
+    double CardEnterZoom = 0.60, double CardExitZoom = 0.70,
+    double SimpleCardEnterZoom = 0.20, double SimpleCardExitZoom = 0.26);

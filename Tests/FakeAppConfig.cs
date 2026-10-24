@@ -12,4 +12,11 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool ShowScreenFixedWindowsDuringPan { get; set; } = true;
     public bool DisableMouseCurve { get; set; }
     public bool DisableZoomHotkey { get; set; }
+    public bool EnableLivePreviewsTier { get; set; } = true;
+    public bool EnableDetailedCardsTier { get; set; } = true;
+    public bool EnableSimpleCardsTier { get; set; } = true;
+    public double OverviewCardEnterZoom { get; set; } = 0.60;
+    public double OverviewCardExitZoom { get; set; } = 0.70;
+    public double OverviewSimpleCardEnterZoom { get; set; } = 0.20;
+    public double OverviewSimpleCardExitZoom { get; set; } = 0.26;
 }

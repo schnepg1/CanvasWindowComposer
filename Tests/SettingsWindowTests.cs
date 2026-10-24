@@ -43,7 +43,7 @@ public class SettingsWindowTests
                 window.Width = 440; window.Height = 420;
                 WorkspaceViewTests.Render(window, "settings-shell-small-150-preview.png", 1.5);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(11, boxes.Length);
+                Assert.Equal(14, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Low quality mode").IsChecked = true;
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))

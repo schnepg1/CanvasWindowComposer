@@ -739,6 +739,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     public bool CloseActiveMenus()
     {
         bool hadMenu = false;
+        if (_activeCardMenu != null && _activeCardMenu.Visible)
+        {
+            _activeCardMenu.Close();
+            _activeCardMenu = null;
+            hadMenu = true;
+        }
         if (_windowContextMenu != null && _windowContextMenu.Visible)
         {
             _windowContextMenu.Close();
@@ -783,7 +789,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
             if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
             {
-                PInvoke.SetForegroundWindow((HWND)pass.Handle); card.ShowContextMenu(pass, new Point(e.X, e.Y));
+                PInvoke.SetForegroundWindow((HWND)pass.Handle); _activeCardMenu = card.ContextMenuStrip; card.ShowContextMenu(pass, new Point(e.X, e.Y));
                 return;
             }
             else if (rightHit >= 0 && _placeholderWorkspace != null
@@ -923,6 +929,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
         _visualFrames.Flush();
+        if (e.Button == MouseButtons.Right && ((_windowContextMenu != null && _windowContextMenu.Visible)
+            || (_interactionMenu != null && _interactionMenu.Visible)
+            || (_activeCardMenu != null && _activeCardMenu.Visible)))
+        {
+            return;
+        }
         if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;
         if (RouteWindowPointer(pass, e, up: true)) return;
