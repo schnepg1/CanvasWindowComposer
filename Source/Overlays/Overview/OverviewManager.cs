@@ -184,7 +184,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         _inputs = new OverviewInputs(this, input, mainCanvas);
-        InitializeMomentaryInteraction();
+        InitializeWindowInteraction();
     }
 
     public void RefreshConfig()
@@ -648,7 +648,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
-        if (e.Control && IsMomentaryChordKey((int)e.KeyCode)) _controlConsumed = true;
         if (HandleTutorialControlKey(e)) return;
 
         if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
@@ -780,7 +779,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
 
         if (_annotationEditor != null || _shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
-        if (RouteWindowPointer(pass, e, down: true)) return;
+        if (RouteCanvasWindowPointer(pass, e, down: true)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
 
@@ -873,7 +872,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
         if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
-        if (RouteWindowPointer(pass, e)) return;
+        if (RouteCanvasWindowPointer(pass, e)) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -941,7 +940,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;
-        if (RouteWindowPointer(pass, e, up: true)) return;
+        if (RouteCanvasWindowPointer(pass, e, up: true)) return;
         var pointer = Pointer(pass, e);
         if (_tools.Kind == CanvasInteractionKind.Tool)
         {
@@ -1007,7 +1006,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_windowInteraction.Active) return;
         if (_composerWindow is { WaitingForBrowser: true })
         {
-            if (e.Button != MouseButtons.Left || (Control.ModifierKeys & (Keys.Shift | Keys.Control)) != 0) return;
+            if (e.Button != MouseButtons.Left || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & (Keys.Shift | Keys.Control)) != 0) return;
             int composerVx = e.X + pass.OriginX;
             int composerVy = e.Y + pass.OriginY;
             var (composerWx, composerWy) = _camera.WorldFromVirtual(composerVx, composerVy);
@@ -1019,7 +1018,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             }
             return;
         }
-        if (_composerWindow != null || (Control.ModifierKeys & Keys.Control) != 0) return;
+        if (_composerWindow != null || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & Keys.Control) != 0) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
@@ -1034,7 +1033,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             }
             if (annotationTool.Mode!=AnnotationMode.Select) return;
         }
-        if (e.Button != MouseButtons.Left || (_tools.ToolHasPendingInteraction && _selectionTool?.HasPendingInteraction != true) || (Control.ModifierKeys & (Keys.Shift|Keys.Control)) != 0) return;
+        if (e.Button != MouseButtons.Left || (_tools.ToolHasPendingInteraction && _selectionTool?.HasPendingInteraction != true) || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & (Keys.Shift|Keys.Control)) != 0) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -1097,7 +1096,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(CancelVisualFrame);
         Attempt(ResetGesturePreviews);
-        Attempt(() => _momentaryInteractionTimer?.Dispose());
         Attempt(() => _gestureSettleTimer?.Dispose());
         Attempt(() => _visualFrameTimer?.Dispose());
         Attempt(DisposeGuidedTutorial);

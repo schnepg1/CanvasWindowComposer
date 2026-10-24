@@ -8,74 +8,67 @@ namespace CanvasDesktop;
 internal sealed partial class OverviewManager
 {
     private readonly OverviewWindowInteraction _windowInteraction;
-    private System.Windows.Forms.Timer? _momentaryInteractionTimer;
-    private bool _temporaryInteraction, _controlConsumed;
-    private long _controlStarted;
+    private bool _interactMode;
+    private IOverviewAnnotationLayer? _interactionLayer;
+    internal bool InteractMode => _interactMode;
+    private bool InteractionRoutingEnabled => _interactMode && CurrentMode == OverviewMode.Zooming && !_disposed;
 
-    private void InitializeMomentaryInteraction()
+    private void InitializeWindowInteraction()
     {
-        // Keyboard focus belongs to the source app during interaction, so form
-        // KeyUp cannot reliably release Control. Poll physical state on the UI thread.
-        _momentaryInteractionTimer = new() { Interval = 30 };
-        _momentaryInteractionTimer.Tick += (_, _) => UpdateMomentaryInteraction();
-        _momentaryInteractionTimer.Start();
+        _interactionLayer = new WindowInteractionAnnotationLayer(this);
+        _drawingLayers = new[] { _interactionLayer };
     }
 
-    private void UpdateMomentaryInteraction()
+    internal void SetInteractMode(bool enabled)
     {
-        var modifiers = WindowInteractionMouseHook.ReadModifiers();
-        if (CurrentMode != OverviewMode.Zooming)
-        {
-            _controlConsumed = (modifiers & Keys.Control) != 0;
-            _controlStarted = 0;
-            return;
-        }
-        bool otherKey = false;
-        if ((modifiers & Keys.Control) != 0 && !_controlConsumed && !_windowInteraction.Active)
-            for (int key = 0x08; key <= 0xFE; key++)
-                if (IsMomentaryChordKey(key)) otherKey |= (PInvoke.GetAsyncKeyState(key) & 0x8000) != 0;
-        UpdateMomentaryInteraction(modifiers, Cursor.Position, (IntPtr)PInvoke.GetForegroundWindow(),
-            Environment.TickCount64, otherKey);
+        if (_disposed) return;
+        _interactMode = enabled;
+        CancelInteraction();
+        if (enabled) _annotationTool?.SetMode(AnnotationMode.Select);
+        _interactionError = null;
+        RefreshToolPreview();
+        FocusOverview();
     }
 
-    // Include navigation, OEM, function and numpad keys, not just letters.
-    internal static bool IsMomentaryChordKey(int key) => key is >= 0x08 and <= 0xFE
-        && key is not (0x10 or 0x11 or 0x12 or 0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5);
+    private bool InteractionToolReady => !_tools.Active && !_tools.ToolHasPendingInteraction
+        && _annotationEditor == null && _shapeEditor == null && _composerWindow == null
+        && (_annotationTool == null || _annotationTool.Mode is AnnotationMode.Select or AnnotationMode.Navigate)
+        && !GuidedTutorialActive && !IsStartupIntroActive;
 
-    internal void UpdateMomentaryInteraction(Keys modifiers, Point point, IntPtr foreground, long now, bool otherKey = false)
+    internal static Rectangle InteractionHeader(Rectangle destination, int dpi)
+        => new(destination.X, destination.Y, destination.Width, Math.Min(destination.Height, (int)Math.Ceiling(24 * dpi / 96.0)));
+
+    private bool RouteCanvasWindowPointer(OverviewOverlay pass, MouseEventArgs e, bool down = false, bool up = false)
     {
-        bool held = (modifiers & Keys.Control) != 0;
-        if (!held)
+        // A drag already forwarded into the app keeps ownership until button-up.
+        if (down && !_windowInteraction.Captured && InteractionRoutingEnabled && InteractionToolReady)
         {
-            _controlConsumed = false;
-            _controlStarted = 0;
-            if (_temporaryInteraction) EndWindowInteraction(focus: true);
-            return;
+            var point = new Point(e.X + pass.OriginX, e.Y + pass.OriginY);
+            var world = _camera.WorldFromVirtual(point.X, point.Y);
+            int hit = HitOverviewWindow(pass, e.X, e.Y, world.x, world.y);
+            bool canvasGesture = (InteractionKeys & Keys.Control) != 0 || e.Button == MouseButtons.Middle
+                || (PInvoke.GetAsyncKeyState((int)VIRTUAL_KEY.VK_SPACE) & 0x8000) != 0;
+            bool live = hit >= 0 && CanInteract(pass, _windows.Windows[hit].HWnd);
+            bool header = live && _thumbnails.TryGetInteractionGeometry(pass, _windows.Windows[hit].HWnd, out var g)
+                && InteractionHeader(g.Destination, pass.DeviceDpi).Contains(point);
+            if (canvasGesture || header || !live)
+            {
+                EndWindowInteraction(focus: true);
+                if (header && !canvasGesture && e.Button == MouseButtons.Left)
+                {
+                    BringWindowToFront(hit);
+                    _tools.TryBeginNavigation(CanvasInteractionKind.Window, Pointer(pass, e));
+                    _dragIndex = 0;
+                    _dragStartVx = point.X; _dragStartVy = point.Y;
+                    ApplyPointerCapture();
+                    return true;
+                }
+                return false; // Selection, menus, tools and navigation use normal canvas routing.
+            }
+            var target = _windows.Windows[hit].HWnd;
+            if (_windowInteraction.Window != target && !BeginWindowInteraction(pass, target)) return true;
         }
-        if (_disposed || CurrentMode != OverviewMode.Zooming || !_cfg.InputEnabled)
-        {
-            _controlConsumed = true;
-            if (_temporaryInteraction) EndWindowInteraction();
-            return;
-        }
-        if (_controlConsumed || _windowInteraction.Active) return;
-        // A brief hold keeps quick Ctrl+click selection and Ctrl keyboard
-        // commands usable. Shift/Alt combinations and active tools stay canvas input.
-        if ((modifiers & (Keys.Shift | Keys.Alt)) != 0
-            || _tools.Active || _tools.ToolHasPendingInteraction || _annotationEditor != null
-            || _shapeEditor != null || _composerWindow != null || GuidedTutorialActive || IsStartupIntroActive)
-        { _controlConsumed = true; return; }
-        if (otherKey) { _controlConsumed = true; return; }
-        var pass = _passes.Find(p => p.Visible && p.Screen.Bounds.Contains(point));
-        if (pass == null || !_passes.Exists(p => p.Handle == foreground))
-        { _controlConsumed = true; return; }
-        if (_controlStarted == 0) { _controlStarted = now; return; }
-        if (now - _controlStarted < 250) return;
-        var world = _camera.WorldFromVirtual(point.X, point.Y);
-        int hit = HitOverviewWindow(pass, point.X - pass.OriginX, point.Y - pass.OriginY, world.x, world.y);
-        if (hit < 0 || !CanInteract(pass, _windows.Windows[hit].HWnd)) return;
-        _controlConsumed = true;
-        if (BeginWindowInteraction(pass, _windows.Windows[hit].HWnd)) _temporaryInteraction = true;
+        return RouteWindowPointer(pass, e, down, up);
     }
 
     internal void AddWindowInteractionCommand(ContextMenuStrip menu, OverviewOverlay pass, IntPtr window)
@@ -113,7 +106,7 @@ internal sealed partial class OverviewManager
         if (!CanInteract(pass, window)) return false;
         CancelInteraction();
         _interactionError = null;
-        _annotationTool?.SetMode(AnnotationMode.Navigate);
+        _annotationTool?.SetMode(AnnotationMode.Select);
         _zoneTool.Cancel();
         Selection.Clear();
         // Apply no-activate before foregrounding the source. Actual keyboard and
@@ -129,10 +122,13 @@ internal sealed partial class OverviewManager
         }
         try
         {
-            long generation = _interactionGeneration;
-            var surfaces = new HashSet<IntPtr>(_passes.ConvertAll(p => p.Handle));
-            _interactionMouseHook = new(point => surfaces.Contains(PInvoke.WindowFromPoint(point)), QueueInteractionMouse,
-                () => pass.BeginInvoke(() => { if (generation == _interactionGeneration) EndWindowInteraction(); }));
+            if (_interactionMouseHook == null)
+            {
+                long generation = _interactionGeneration;
+                var surfaces = new HashSet<IntPtr>(_passes.ConvertAll(p => p.Handle));
+                _interactionMouseHook = new(point => surfaces.Contains(PInvoke.WindowFromPoint(point)), QueueInteractionMouse,
+                    () => pass.BeginInvoke(() => { if (generation == _interactionGeneration) EndWindowInteraction(); }));
+            }
         }
         catch (Exception ex)
         {
@@ -160,12 +156,16 @@ internal sealed partial class OverviewManager
 
     private bool EndWindowInteraction(bool focus = false)
     {
-        _temporaryInteraction = false;
-        _interactionMouseHook?.Dispose(); _interactionMouseHook = null;
-        lock (_interactionEventGate)
+        // Keep one input hook while Interact is armed. Switching target or
+        // beginning a canvas drag must not discard already queued button-up events.
+        if (!InteractionRoutingEnabled)
         {
-            _interactionEvents.Clear(); _pendingInteractionMove = null; _interactionGeneration++;
-            _interactionDispatchQueued = false;
+            _interactionMouseHook?.Dispose(); _interactionMouseHook = null;
+            lock (_interactionEventGate)
+            {
+                _interactionEvents.Clear(); _pendingInteractionMove = null; _interactionGeneration++;
+                _interactionDispatchQueued = false;
+            }
         }
         bool ended = _windowInteraction.End();
         var capture = _interactionCapture;
@@ -270,7 +270,7 @@ internal sealed partial class OverviewManager
         return true;
     }
 
-    private void QueueInteractionMouse(InteractionMouseEvent input)
+    internal void QueueInteractionMouse(InteractionMouseEvent input)
     {
         long generation;
         lock (_interactionEventGate)
@@ -294,7 +294,7 @@ internal sealed partial class OverviewManager
                 {
                     if (_disposed || generation != _interactionGeneration) return;
                     FlushInteractionMove();
-                    if (_interactionEvents.Count == 0 || !_windowInteraction.Active)
+                    if (_interactionEvents.Count == 0 || (!_windowInteraction.Active && !InteractionRoutingEnabled))
                     { _interactionDispatchQueued = false; return; }
                     next = _interactionEvents.Dequeue();
                 }
@@ -309,7 +309,11 @@ internal sealed partial class OverviewManager
                     else
                     {
                         var args = new MouseEventArgs(next.Button, next.Clicks, x, y, 0);
-                        if (next.Down) HandleMouseDown(pass, args);
+                        if (next.Down)
+                        {
+                            HandleMouseDown(pass, args);
+                            if (next.Clicks > 1 && !_windowInteraction.Active) HandleDoubleClick(pass, args);
+                        }
                         else if (next.Up) HandleMouseUp(pass, args);
                         else HandleMouseMove(pass, args);
                     }

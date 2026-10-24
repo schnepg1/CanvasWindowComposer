@@ -58,7 +58,7 @@ public class UnifiedCanvasControlTests
                 Assert.True(overview.ControlsButton.Visible);
 
                 // Click Controls button to open popup
-                var btn = overview.ControlsButton.Controls.OfType<Button>().Single();
+                var btn = overview.ControlsButton.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b => b.Text.Contains("Controls"));
                 btn.PerformClick();
 
                 Assert.NotNull(overview.ControlsPopup);
