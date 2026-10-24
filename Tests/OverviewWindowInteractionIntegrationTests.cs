@@ -230,6 +230,23 @@ public class OverviewWindowInteractionIntegrationTests
                     new(50, 450), new(300, 550), Text: "Edit me"));
                 overview.SetInteractMode(true);
                 Assert.True(overview.BeginWindowInteraction(pass, source.Handle));
+                // Render the same layers used by startup, including live chrome.
+                var drawing = new OverviewAnnotationSurface();
+                drawing.SetDrawingLayers(layers.ToArray());
+                var bounds = pass.Screen.Bounds;
+                drawing.Update(OverviewAnnotationSnapshot.Create([], 0, 0, 1, bounds, null, false, null));
+                var size = new System.Windows.Size(bounds.Width, bounds.Height);
+                drawing.Measure(size); drawing.Arrange(new System.Windows.Rect(size)); drawing.UpdateLayout();
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(bounds.Width, bounds.Height, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(drawing);
+                var pixels = new byte[bounds.Width * bounds.Height * 4];
+                bitmap.CopyPixels(pixels, bounds.Width * 4, 0);
+                Assert.Contains(Enumerable.Range(0, pixels.Length / 4), i => pixels[i * 4 + 1] > 180 && pixels[i * 4] > 80 && pixels[i * 4 + 2] < 80);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                string results = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TestResults"));
+                System.IO.Directory.CreateDirectory(results);
+                using (var stream = System.IO.File.Create(System.IO.Path.Combine(results, "canvas-live-interaction-chrome.png"))) encoder.Save(stream);
                 overview.SelectAnnotationMode(AnnotationMode.Select);
                 overview.QueueInteractionMouse(new(new(150, 480), MouseButtons.Left, true, false, Clicks: 2));
                 overview.QueueInteractionMouse(new(new(150, 480), MouseButtons.Left, false, true, Clicks: 2));
