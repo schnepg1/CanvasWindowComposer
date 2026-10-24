@@ -76,6 +76,70 @@ public class OverviewWindowInteractionIntegrationTests
             Assert.False(pass.WindowInteractionActive);
         }));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativeRendering")]
+    public void ControlReleaseRestoresPersistentOrCanvasMode(bool persistent)
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api) =>
+        {
+            if (persistent) Assert.True(overview.BeginWindowInteraction(pass, source.Handle));
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1000);
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1300);
+            Assert.True(overview.WindowInteractionActive);
+            overview.UpdateMomentaryInteraction(Keys.None, new(150, 150), source.Handle, 1400);
+            Assert.Equal(persistent, overview.WindowInteractionActive);
+            Assert.Equal(persistent, pass.WindowInteractionActive);
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+        }));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativeRendering")]
+    public void TemporaryInteractionDoesNotRestartAfterFocusLossOrModeExit(bool leaveCanvas)
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api) =>
+        {
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1000);
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1300);
+            Assert.True(overview.WindowInteractionActive);
+            if (leaveCanvas) overview.TransitionTo(OverviewMode.Hidden);
+            else input.RaiseWindowFocused((IntPtr)900);
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1500);
+            Assert.False(overview.WindowInteractionActive);
+            Assert.False(pass.WindowInteractionActive);
+        }));
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void QuickControlAndKeyboardChordsDoNotStartInteraction()
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api) =>
+        {
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1000);
+            overview.UpdateMomentaryInteraction(Keys.None, new(150, 150), pass.Handle, 1100);
+            Assert.False(overview.WindowInteractionActive);
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1200, otherKey: true);
+            overview.UpdateMomentaryInteraction(Keys.Control, new(150, 150), pass.Handle, 1600);
+            Assert.False(overview.WindowInteractionActive);
+        }));
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void SharedMenuOffersInteractionOnlyForEligibleLiveGeometry()
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api) =>
+        {
+            using var live = new ContextMenuStrip();
+            overview.AddWindowInteractionCommand(live, pass, source.Handle);
+            Assert.Contains(live.Items.Cast<ToolStripItem>(), i => i.Text == "Interact with window (mouse and keyboard)");
+            using var missing = new ContextMenuStrip();
+            overview.AddWindowInteractionCommand(missing, pass, (IntPtr)900);
+            Assert.Empty(missing.Items.Cast<ToolStripItem>());
+            overview.TransitionTo(OverviewMode.Hidden);
+            using var hidden = new ContextMenuStrip();
+            overview.AddWindowInteractionCommand(hidden, pass, source.Handle);
+            Assert.Empty(hidden.Items.Cast<ToolStripItem>());
+        }));
+
     private static void WithOverview(Action<OverviewManager, OverviewOverlay, Form, FakeInputRouter,
         OverviewWindowInteractionTests.PointerApi> action)
     {
