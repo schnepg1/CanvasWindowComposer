@@ -1006,7 +1006,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_windowInteraction.Active) return;
         if (_composerWindow is { WaitingForBrowser: true })
         {
-            if (e.Button != MouseButtons.Left || (Control.ModifierKeys & (Keys.Shift | Keys.Control)) != 0) return;
+            if (e.Button != MouseButtons.Left || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & (Keys.Shift | Keys.Control)) != 0) return;
             int composerVx = e.X + pass.OriginX;
             int composerVy = e.Y + pass.OriginY;
             var (composerWx, composerWy) = _camera.WorldFromVirtual(composerVx, composerVy);
@@ -1018,7 +1018,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             }
             return;
         }
-        if (_composerWindow != null || (Control.ModifierKeys & Keys.Control) != 0) return;
+        if (_composerWindow != null || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & Keys.Control) != 0) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
@@ -1033,7 +1033,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             }
             if (annotationTool.Mode!=AnnotationMode.Select) return;
         }
-        if (e.Button != MouseButtons.Left || (_tools.ToolHasPendingInteraction && _selectionTool?.HasPendingInteraction != true) || (Control.ModifierKeys & (Keys.Shift|Keys.Control)) != 0) return;
+        if (e.Button != MouseButtons.Left || (_tools.ToolHasPendingInteraction && _selectionTool?.HasPendingInteraction != true) || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & (Keys.Shift|Keys.Control)) != 0) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;

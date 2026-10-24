@@ -213,6 +213,38 @@ public class OverviewWindowInteractionIntegrationTests
             image.Save(System.IO.Path.Combine(folder, "canvas-interact-toggle.png"));
         });
 
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void StartupAttachmentKeepsChromeAndHookDispatchesCanvasDoubleClicks()
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>
+        {
+            string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "interact-note-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, System.IO.Path.Combine(folder, "annotations.json"));
+                var layers = (IEnumerable<IOverviewAnnotationLayer>)typeof(OverviewManager)
+                    .GetField("_drawingLayers", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(overview)!;
+                Assert.Contains(layers, l => l.GetType().Name == "WindowInteractionAnnotationLayer");
+                overview.Annotations!.Put(new(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text,
+                    new(50, 450), new(300, 550), Text: "Edit me"));
+                overview.SetInteractMode(true);
+                Assert.True(overview.BeginWindowInteraction(pass, source.Handle));
+                overview.SelectAnnotationMode(AnnotationMode.Select);
+                overview.QueueInteractionMouse(new(new(150, 480), MouseButtons.Left, true, false, Clicks: 2));
+                overview.QueueInteractionMouse(new(new(150, 480), MouseButtons.Left, false, true, Clicks: 2));
+                Application.DoEvents();
+                Application.DoEvents();
+                Assert.NotNull(overview.AnnotationEditor);
+                overview.HandleEscape();
+            }
+            finally
+            {
+                overview.CancelInteraction();
+                if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, true);
+            }
+        }));
+
     private static void WithOverview(Action<OverviewManager, OverviewOverlay, Form, FakeInputRouter,
         OverviewWindowInteractionTests.PointerApi, Form> action)
     {

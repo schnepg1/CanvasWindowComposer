@@ -24,6 +24,7 @@ internal sealed partial class OverviewManager
         if (_disposed) return;
         _interactMode = enabled;
         CancelInteraction();
+        if (enabled) _annotationTool?.SetMode(AnnotationMode.Select);
         _interactionError = null;
         RefreshToolPreview();
         FocusOverview();
@@ -308,7 +309,11 @@ internal sealed partial class OverviewManager
                     else
                     {
                         var args = new MouseEventArgs(next.Button, next.Clicks, x, y, 0);
-                        if (next.Down) HandleMouseDown(pass, args);
+                        if (next.Down)
+                        {
+                            HandleMouseDown(pass, args);
+                            if (next.Clicks > 1 && !_windowInteraction.Active) HandleDoubleClick(pass, args);
+                        }
                         else if (next.Up) HandleMouseUp(pass, args);
                         else HandleMouseMove(pass, args);
                     }

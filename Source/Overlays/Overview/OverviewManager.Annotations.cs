@@ -43,7 +43,7 @@ internal sealed partial class OverviewManager
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
         _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
-        _drawingLayers=[_annotationLayer, _composerLayer, _selectionLayer!];
+        _drawingLayers=[_annotationLayer, _composerLayer, _selectionLayer!, _interactionLayer!];
         foreach(var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
         _tools.SetTool(_annotationRouter);
         _annotationDocument.Changed+=OnAnnotationsChanged;
