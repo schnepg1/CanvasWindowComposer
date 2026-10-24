@@ -100,7 +100,7 @@ internal static class Program
                     pass = overview.MonitorHandles.Select(h => (OverviewOverlay)Control.FromHandle(h)!).First(p => p.Screen.Primary);
                     // Desktop panning follows the main canvas at native zoom 1.
                     int delta = phase == "Panning" ? 0 : PresentationProfile.WheelDelta(overview.ViewCamera.Zoom, presentation.Zoom);
-                    if (delta != 0) pass.OnWheel!(pass, pass.Width / 2, pass.Height / 2, delta, false, true);
+                    if (delta != 0) pass.OnWheel!(pass, pass.Width / 2, pass.Height / 2, delta, false, true, false);
                     overview.TickGesturePreviews();
                     if (phase == "Panning") overview.TransitionTo(OverviewMode.Panning);
                 }
@@ -153,7 +153,7 @@ internal static class Program
                     {
                         zoomTargets.Add(targetZoom);
                         int wheelDelta = PresentationProfile.WheelDelta(overview.ViewCamera.Zoom, targetZoom);
-                        if (wheelDelta != 0) pass!.OnWheel!(pass, pointerX, pointerY, wheelDelta, false, true);
+                        if (wheelDelta != 0) pass!.OnWheel!(pass, pointerX, pointerY, wheelDelta, false, true, false);
                     }
                     if (phase == "Restoration" && elapsed - lastCycle >= 0.5)
                     {

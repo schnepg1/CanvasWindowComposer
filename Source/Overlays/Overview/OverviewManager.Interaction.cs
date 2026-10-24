@@ -24,9 +24,16 @@ internal sealed partial class OverviewManager
     private void UpdateMomentaryInteraction()
     {
         var modifiers = WindowInteractionMouseHook.ReadModifiers();
+        if (CurrentMode != OverviewMode.Zooming)
+        {
+            _controlConsumed = (modifiers & Keys.Control) != 0;
+            _controlStarted = 0;
+            return;
+        }
         bool otherKey = false;
-        for (int key = 0x30; key <= 0x5A; key++)
-            otherKey |= (PInvoke.GetAsyncKeyState(key) & 0x8000) != 0;
+        if ((modifiers & Keys.Control) != 0 && !_controlConsumed && !_windowInteraction.Active)
+            for (int key = 0x30; key <= 0x5A; key++)
+                otherKey |= (PInvoke.GetAsyncKeyState(key) & 0x8000) != 0;
         UpdateMomentaryInteraction(modifiers, Cursor.Position, (IntPtr)PInvoke.GetForegroundWindow(),
             Environment.TickCount64, otherKey);
     }

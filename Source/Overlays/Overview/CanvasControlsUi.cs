@@ -150,8 +150,8 @@ internal sealed class CanvasControlsPopup : Form
         }
 
         AddSection("Shortcuts & Commands", [
-            ("Hold Ctrl over live window", "Interact temporarily (brief hold); release to return"),
-            ("Right-click live window", "Enable persistent mouse and keyboard interaction"),
+            ("Hold Ctrl (live window)", "250 ms hold; release to stop"),
+            ("Right-click live window", "Enable persistent interaction"),
             ("Double-click Window", "Focus and jump to application"),
             ("Double-click Note", "Open text note editor"),
             ("P", "Open Project Navigator"),
@@ -163,7 +163,7 @@ internal sealed class CanvasControlsPopup : Form
         AddSection("Selection & Elements", [
             ("Drag empty canvas", "Marquee selection box across all items"),
             ("Click / Drag element", "Select & move window, shape, note or project"),
-            ("Ctrl + Click", "Quick click: toggle selection before hold interaction"),
+            ("Ctrl + Click", "Quick click: toggle selection"),
             ("Drag element handles", "Resize shapes, notes, and arrows"),
             ("Delete / Backspace", "Remove selected design elements")
         ]);

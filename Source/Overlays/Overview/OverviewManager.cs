@@ -166,7 +166,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         input.WindowDestroyed += OnInteractionWindowLost;
         input.WindowMinimized += OnInteractionWindowLost;
         input.WindowFocused += OnInteractionForegroundChanged;
-        InitializeMomentaryInteraction();
         _screens = screens ?? WinFormsScreens.Instance;
         _camera = new OverviewCamera(_screens);
         _visualFrames = new OverviewFrameScheduler(ScheduleVisualFrame, ReconcileVisuals);
@@ -185,6 +184,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         _inputs = new OverviewInputs(this, input, mainCanvas);
+        InitializeMomentaryInteraction();
     }
 
     public void RefreshConfig()

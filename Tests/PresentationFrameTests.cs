@@ -138,7 +138,7 @@ public class PresentationFrameTests
             var layer = new Recorder(); bool once = true;
             layer.OnDraw = () => { if (once) { once = false; canvas.SetCamera(800, 200); } };
             pass.SetDrawingLayers([layer]);
-            pass.OnWheel!(pass, 200, 200, -30, false, true);
+            pass.OnWheel!(pass, 200, 200, -30, false, true, false);
             var requested = overview.ViewCamera;
             overview.TickGesturePreviews();
             var published = pass.Grid!.CaptureSnapshot(new float[64]);
