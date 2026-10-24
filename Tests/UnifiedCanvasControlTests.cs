@@ -68,6 +68,25 @@ public class UnifiedCanvasControlTests
                 overview.HandleEscape();
                 Assert.False(overview.ControlsPopup.Visible);
                 Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+
+                // Leaving canvas view must hide both independent topmost windows.
+                foreach (var target in new[] { OverviewMode.Hidden, OverviewMode.Panning })
+                {
+                    btn.PerformClick();
+                    Assert.True(overview.ControlsPopup.Visible);
+
+                    overview.TransitionTo(target);
+                    Assert.False(overview.ControlsButton.Visible);
+                    Assert.False(overview.ControlsPopup.Visible);
+
+                    // A stale click must not reopen help outside canvas view.
+                    btn.PerformClick();
+                    Assert.False(overview.ControlsPopup.Visible);
+
+                    overview.TransitionTo(OverviewMode.Zooming);
+                    Assert.True(overview.ControlsButton.Visible);
+                    Assert.False(overview.ControlsPopup.Visible);
+                }
             }
             finally
             {

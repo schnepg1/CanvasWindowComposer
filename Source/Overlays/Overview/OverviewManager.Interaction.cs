@@ -8,6 +8,90 @@ namespace CanvasDesktop;
 internal sealed partial class OverviewManager
 {
     private readonly OverviewWindowInteraction _windowInteraction;
+    private System.Windows.Forms.Timer? _momentaryInteractionTimer;
+    private bool _temporaryInteraction, _controlConsumed;
+    private long _controlStarted;
+
+    private void InitializeMomentaryInteraction()
+    {
+        // Keyboard focus belongs to the source app during interaction, so form
+        // KeyUp cannot reliably release Control. Poll physical state on the UI thread.
+        _momentaryInteractionTimer = new() { Interval = 30 };
+        _momentaryInteractionTimer.Tick += (_, _) => UpdateMomentaryInteraction();
+        _momentaryInteractionTimer.Start();
+    }
+
+    private void UpdateMomentaryInteraction()
+    {
+        var modifiers = WindowInteractionMouseHook.ReadModifiers();
+        if (CurrentMode != OverviewMode.Zooming)
+        {
+            _controlConsumed = (modifiers & Keys.Control) != 0;
+            _controlStarted = 0;
+            return;
+        }
+        bool otherKey = false;
+        if ((modifiers & Keys.Control) != 0 && !_controlConsumed && !_windowInteraction.Active)
+            for (int key = 0x08; key <= 0xFE; key++)
+                if (IsMomentaryChordKey(key)) otherKey |= (PInvoke.GetAsyncKeyState(key) & 0x8000) != 0;
+        UpdateMomentaryInteraction(modifiers, Cursor.Position, (IntPtr)PInvoke.GetForegroundWindow(),
+            Environment.TickCount64, otherKey);
+    }
+
+    // Include navigation, OEM, function and numpad keys, not just letters.
+    internal static bool IsMomentaryChordKey(int key) => key is >= 0x08 and <= 0xFE
+        && key is not (0x10 or 0x11 or 0x12 or 0xA0 or 0xA1 or 0xA2 or 0xA3 or 0xA4 or 0xA5);
+
+    internal void UpdateMomentaryInteraction(Keys modifiers, Point point, IntPtr foreground, long now, bool otherKey = false)
+    {
+        bool held = (modifiers & Keys.Control) != 0;
+        if (!held)
+        {
+            _controlConsumed = false;
+            _controlStarted = 0;
+            if (_temporaryInteraction) EndWindowInteraction(focus: true);
+            return;
+        }
+        if (_disposed || CurrentMode != OverviewMode.Zooming || !_cfg.InputEnabled)
+        {
+            _controlConsumed = true;
+            if (_temporaryInteraction) EndWindowInteraction();
+            return;
+        }
+        if (_controlConsumed || _windowInteraction.Active) return;
+        // A brief hold keeps quick Ctrl+click selection and Ctrl keyboard
+        // commands usable. Shift/Alt combinations and active tools stay canvas input.
+        if ((modifiers & (Keys.Shift | Keys.Alt)) != 0
+            || _tools.Active || _tools.ToolHasPendingInteraction || _annotationEditor != null
+            || _shapeEditor != null || _composerWindow != null || GuidedTutorialActive || IsStartupIntroActive)
+        { _controlConsumed = true; return; }
+        if (otherKey) { _controlConsumed = true; return; }
+        var pass = _passes.Find(p => p.Visible && p.Screen.Bounds.Contains(point));
+        if (pass == null || !_passes.Exists(p => p.Handle == foreground))
+        { _controlConsumed = true; return; }
+        if (_controlStarted == 0) { _controlStarted = now; return; }
+        if (now - _controlStarted < 250) return;
+        var world = _camera.WorldFromVirtual(point.X, point.Y);
+        int hit = HitOverviewWindow(pass, point.X - pass.OriginX, point.Y - pass.OriginY, world.x, world.y);
+        if (hit < 0 || !CanInteract(pass, _windows.Windows[hit].HWnd)) return;
+        _controlConsumed = true;
+        if (BeginWindowInteraction(pass, _windows.Windows[hit].HWnd)) _temporaryInteraction = true;
+    }
+
+    internal void AddWindowInteractionCommand(ContextMenuStrip menu, OverviewOverlay pass, IntPtr window)
+    {
+        // Saved live windows also use WorkspaceContextMenu. Do not let that
+        // branch hide the interaction action; placeholders/cached cards cannot forward input.
+        if (!CanInteract(pass, window)) return;
+        var interact = new ToolStripMenuItem("Interact with window (mouse and keyboard)");
+        interact.Click += (_, _) => pass.BeginInvoke(() =>
+        {
+            if (!_disposed && CurrentMode == OverviewMode.Zooming) BeginWindowInteraction(pass, window);
+        });
+        menu.Items.Insert(0, interact);
+        menu.Items.Insert(1, new ToolStripSeparator());
+    }
+
     private OverviewOverlay? _interactionCapture;
     private ContextMenuStrip? _interactionMenu;
     private WindowInteractionMouseHook? _interactionMouseHook;
@@ -76,6 +160,7 @@ internal sealed partial class OverviewManager
 
     private bool EndWindowInteraction(bool focus = false)
     {
+        _temporaryInteraction = false;
         _interactionMouseHook?.Dispose(); _interactionMouseHook = null;
         lock (_interactionEventGate)
         {

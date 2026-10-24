@@ -92,14 +92,19 @@ internal sealed partial class OverviewManager
         AnnotationMode.Navigate => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
         _ => null
     });
+    private void HideAnnotationUi()
+    {
+        _annotationToolbar?.Hide();
+        _controlsButton?.Hide();
+        _controlsPopup?.Hide();
+    }
+
     private void RefreshAnnotationUi()
     {
         if(_annotationTool==null) return;
         if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser)
         {
-            _annotationToolbar?.Hide();
-            _controlsButton?.Hide();
-            _controlsPopup?.Hide();
+            HideAnnotationUi();
             return;
         }
         var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
@@ -159,6 +164,11 @@ internal sealed partial class OverviewManager
 
     private void ToggleControlsPopup(OverviewOverlay pass)
     {
+        if (_disposed || CurrentMode != OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser)
+        {
+            HideAnnotationUi();
+            return;
+        }
         if (_controlsPopup?.IsDisposed == true) _controlsPopup = null;
         if (_controlsPopup == null)
         {
