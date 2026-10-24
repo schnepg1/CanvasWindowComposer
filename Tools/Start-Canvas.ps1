@@ -94,6 +94,9 @@ try {
     }
     exit 0
 } catch {
+    # A modal error report can stay open indefinitely. Publishing has stopped;
+    # release ownership now so closing Canvas and retrying can actually succeed.
+    if ($lock) { $lock.Dispose(); $lock = $null }
     $report = "Canvas could not start.`r`n`r`n$($_.Exception.Message)`r`n`r`n"
     if ($log -and (Test-Path -LiteralPath $log)) { $report += "Log: $log`r`n`r`n" + (Get-Content -Raw -LiteralPath $log) }
     [Console]::Error.WriteLine($report)
