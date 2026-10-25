@@ -32,7 +32,10 @@ inside content for the application's context menu.
 
 Ctrl-click continues to select canvas elements. Middle-drag and Space-drag
 remain canvas navigation, and Ctrl/Alt-wheel remains canvas zoom. Ordinary wheel
-input scrolls the currently active app while over its thumbnail. Drawing/editing
+input scrolls live content under the pointer, without a preceding click, and
+switches the interaction target when you scroll over another live thumbnail.
+Both vertical and horizontal wheel input are forwarded. The drag header,
+placeholders, and empty canvas keep canvas wheel navigation. Drawing/editing
 tools suspend direct interaction. Placeholders and cached/distant cards keep
 canvas behavior. Esc switches back to Arrange. The chosen mode survives target
 switches and leaving/reentering canvas view for this session; forwarded buttons

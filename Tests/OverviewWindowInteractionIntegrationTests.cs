@@ -263,6 +263,41 @@ public class OverviewWindowInteractionIntegrationTests
             }
         }));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativeRendering")]
+    public void InteractScrollStartsWithoutClickAndSwitchesHoveredWindow(bool horizontal)
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>
+        {
+            overview.SetInteractMode(true);
+            uint message = horizontal ? 0x20Eu : 0x20Au;
+            pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
+            Assert.True(overview.WindowInteractionActive);
+            Assert.Single(api.Messages.Where(m => m.Id == message));
+            pass.OnWheel!(pass, 650 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
+            Assert.Equal(2, api.Messages.Count(m => m.Id == message));
+            Assert.Contains(api.Messages, m => m.Id == message && m.Point.X >= 600);
+            input.RaiseWindowFocused((IntPtr)900);
+            Assert.False(overview.WindowInteractionActive);
+            pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
+            Assert.Equal(3, api.Messages.Count(m => m.Id == message));
+            Assert.DoesNotContain(api.Messages, m => m.Id == 0x201);
+        }));
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void InteractControlWheelRemainsCanvasZoomWithoutActivatingApp()
+        => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>
+        {
+            overview.SetInteractMode(true);
+            var before = overview.ViewCamera.Zoom;
+            pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, false, true, false);
+            Assert.False(overview.WindowInteractionActive);
+            Assert.DoesNotContain(api.Messages, m => m.Id is 0x20A or 0x20E);
+            Assert.True(overview.ViewCamera.Zoom < before);
+        }));
+
     private static void WithOverview(Action<OverviewManager, OverviewOverlay, Form, FakeInputRouter,
         OverviewWindowInteractionTests.PointerApi, Form> action)
     {
