@@ -81,6 +81,28 @@ public class WindowInteractionNativeTests
         });
 
     [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void ForwardedWheelActuallyScrollsNativeList()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var app = new Form { StartPosition = FormStartPosition.Manual, Location = new(100, 100), Size = new(400, 300) };
+            using var list = new ListBox { Dock = DockStyle.Fill };
+            for (int i = 0; i < 200; i++) list.Items.Add("Row " + i);
+            app.Controls.Add(list); app.Show(); list.Focus(); Application.DoEvents();
+            var bridge = new OverviewWindowInteraction(new Win32WindowInteractionApi());
+            try
+            {
+                Assert.True(bridge.Begin(app.Handle));
+                var origin = list.PointToScreen(Point.Empty);
+                var geometry = new WindowInteractionGeometry(new Rectangle(0, 0, 200, 200), new Rectangle(origin, list.ClientSize));
+                Assert.Equal(0, list.TopIndex);
+                Assert.True(bridge.Wheel(geometry, new Point(100, 100), -120, false, 0));
+                PumpUntil(() => list.TopIndex > 0);
+            }
+            finally { bridge.End(); }
+        });
+
+    [Fact]
     public void UnrepresentableMessageCoordinatesAreRejected()
     {
         var api = new Win32WindowInteractionApi();
