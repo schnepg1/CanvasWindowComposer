@@ -28,7 +28,7 @@ public class UnifiedCanvasControlTests
         Assert.Contains("Text", topLevelTexts);
 
         // Shapes dropdown contains Arrow, Rectangle, Ellipse
-        var shapesBtn = strip.Items.OfType<ToolStripDropDownButton>().First(b => b.Text == "Shapes");
+        var shapesBtn = strip.Items.OfType<ToolStripSplitButton>().Single(b => b.Name == "Shapes");
         var shapeItems = shapesBtn.DropDownItems.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
         Assert.Contains("Arrow", shapeItems);
         Assert.Contains("Rectangle", shapeItems);

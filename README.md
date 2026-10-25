@@ -193,6 +193,12 @@ notes to edit, and choose **Arrange** at the top right to move windows. Shift co
 shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edits
 while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
 editing. Drawings save automatically per virtual desktop and return after restart.
+The compact dock keeps Select, Shapes, Text, Undo and Redo in reach; use More for
+editing, deletion, saving, nearby selection and AI Compose. The main Shapes button
+reuses your last shape, while its arrow opens the shape chooser. Color, stroke and
+text controls appear above the dock for the current tool or selected annotation.
+The dock sits at the bottom of the screen, or immediately above the Windows taskbar
+when it is shown. Hover feedback respects reduced motion and low quality settings.
 Notes open in a card preview with matching colors, proportions, typography and wrapping.
 The editor changes text size from 8 to 96 with a numeric control, quick presets or
 Ctrl +/- and saves it with the note. Save with Ctrl+Enter or cancel with Esc. Selected

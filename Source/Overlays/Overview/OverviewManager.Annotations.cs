@@ -153,7 +153,15 @@ internal sealed partial class OverviewManager
             _annotationToolbar.KeyDown+=(_,e)=>HandleKeyDown(pass,e);
         }
         var toolbarArea = _appConfig.ShowTaskbarInCanvas ? area : pass.Screen.Bounds;
-        _annotationToolbar.UpdateState(_annotationTool.Mode,_annotationError??_annotationStore?.Status,Selection.Ids.Count);
+        _annotationToolbar.UpdateState(new AnnotationToolbarState(
+            _annotationTool.Mode, _annotationError ?? _annotationStore?.Status, Selection.Ids.Count, _annotationTool.Selected,
+            _annotationTool.Color, _annotationTool.Stroke, _annotationTool.FontSize, _annotationTool.TextAlign,
+            _annotationTool.Emphasis, _annotationTool.CardFill,
+            CanUndo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), false) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(false) ?? 0) > 0,
+            CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
+            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation),
+            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode));
+        _annotationToolbar.SetAvailableWidth(toolbarArea.Width);
         if(!_annotationToolbar.Visible)
         {
             _annotationToolbar.Show(pass);
