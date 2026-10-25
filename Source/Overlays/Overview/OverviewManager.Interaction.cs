@@ -254,10 +254,22 @@ internal sealed partial class OverviewManager
 
     private bool RouteWindowWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool zoomModifier)
     {
-        if (!_windowInteraction.Active) return false;
         if (zoomModifier) return false; // Ctrl/Alt+wheel always controls canvas zoom.
-        var world = _camera.WorldFromVirtual(x + pass.OriginX, y + pass.OriginY);
-        int hit = _windows.HitTest(world.x, world.y);
+        var point = new Point(x + pass.OriginX, y + pass.OriginY);
+        var world = _camera.WorldFromVirtual(point.X, point.Y);
+        int hit = HitOverviewWindow(pass, x, y, world.x, world.y);
+        if (InteractionRoutingEnabled && InteractionToolReady && !_windowInteraction.Captured)
+        {
+            // Scrolling is an interaction gesture too: it must not require a
+            // preceding click or silently disappear over a different thumbnail.
+            if (hit < 0 || !CanInteract(pass, _windows.Windows[hit].HWnd)
+                || !_thumbnails.TryGetInteractionGeometry(pass, _windows.Windows[hit].HWnd, out var hovered)
+                || !hovered.Destination.Contains(point)
+                || InteractionHeader(hovered.Destination, pass.DeviceDpi).Contains(point)) return false;
+            var target = _windows.Windows[hit].HWnd;
+            if (_windowInteraction.Window != target && !BeginWindowInteraction(pass, target)) return true;
+        }
+        if (!_windowInteraction.Active) return false;
         if (hit < 0 || _windows.Windows[hit].HWnd != _windowInteraction.Window) return true;
         if (_thumbnails.TryGetInteractionGeometry(pass, _windowInteraction.Window, out var geometry))
             _windowInteraction.Wheel(geometry, new(x + pass.OriginX, y + pass.OriginY), delta, horizontal, InteractionModifiers);
