@@ -32,8 +32,8 @@ public class OverviewAnnotationLayerTests
             var pixels = Render();
             int cardPixel = (110 * 800 + 110) * 4;
             Assert.Equal(255, pixels[cardPixel + 2]); Assert.Equal(0, pixels[cardPixel]);
-            int hudPixel = (22 * 800 + 40) * 4;
-            Assert.NotEqual(255, pixels[hudPixel + 2]); // HUD background is above the red drawing layer.
+            int controlsPixel = (22 * 800 + 40) * 4;
+            Assert.Equal(255, pixels[controlsPixel + 2]); // Interactive zoom controls live in their own owned window.
             int statsPixel = (22 * 800 + 150) * 4;
             Assert.NotEqual(255, pixels[statsPixel + 2]); // Counts sit to the right of zoom on the same row.
             surface.SetDrawingLayers([]);

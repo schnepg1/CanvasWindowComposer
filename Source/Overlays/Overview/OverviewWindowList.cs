@@ -33,7 +33,8 @@ internal sealed class OverviewWindowList
 
     /// <summary>Rebuild the list from canvas + Z-order. Resets selection.</summary>
     public void Refresh(bool includeScreenFixedWindows = false,
-        IReadOnlyDictionary<IntPtr, IntPtr>? representedWindows = null, bool preserveSelection = false)
+        IReadOnlyDictionary<IntPtr, IntPtr>? representedWindows = null, bool preserveSelection = false,
+        IntPtr navigationTarget = default)
     {
         var selected = preserveSelection && SelectedIndex >= 0 && SelectedIndex < _windows.Count
             ? _windows[SelectedIndex].HWnd : IntPtr.Zero;
@@ -46,12 +47,12 @@ internal sealed class OverviewWindowList
             if (representedWindows != null && representedWindows.TryGetValue(hWnd, out var proxy)
                 && _canvas.Windows.TryGetValue(proxy, out var proxyWorld))
             {
-                AddCanvasWindow(proxy, proxyWorld, includeScreenFixedWindows);
+                AddCanvasWindow(proxy, proxyWorld, includeScreenFixedWindows, proxy == navigationTarget);
                 return true;
             }
             if (_canvas.Windows.TryGetValue(hWnd, out var world))
             {
-                AddCanvasWindow(hWnd, world, includeScreenFixedWindows);
+                AddCanvasWindow(hWnd, world, includeScreenFixedWindows, hWnd == navigationTarget);
             }
             else if (includeScreenFixedWindows && TryGetUntrackedMaximizedWindow(hWnd, out var fixedWorld))
             {
@@ -62,12 +63,16 @@ internal sealed class OverviewWindowList
         if (selected != IntPtr.Zero) SelectedIndex = _windows.FindIndex(e => e.HWnd == selected);
     }
 
-    private void AddCanvasWindow(IntPtr hWnd, WorldRect world, bool includeScreenFixedWindows)
+    private void AddCanvasWindow(IntPtr hWnd, WorldRect world, bool includeScreenFixedWindows, bool navigationTarget)
     {
         if (world.State == WindowState.Minimized)
             return;
 
         bool screenFixed = world.PinnedToScreen || world.State == WindowState.Maximized;
+        // A selected maximized app still has saved normal bounds on the canvas.
+        // Render its thumbnail there without changing its native maximize state.
+        if (navigationTarget && world.State == WindowState.Maximized && !world.PinnedToScreen)
+            screenFixed = false;
         if (!screenFixed || includeScreenFixedWindows)
             _windows.Add(new Entry(hWnd, world, screenFixed));
     }

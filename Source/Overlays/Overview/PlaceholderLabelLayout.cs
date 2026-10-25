@@ -7,7 +7,7 @@ namespace CanvasDesktop;
 internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldRect Bounds, bool Priority = false,
     System.Windows.Media.ImageSource? Image = null, IReadOnlyList<WorldRect>? Occluders = null,
     double Opacity = 1, double? ImageOpacity = null, double? LabelOpacity = null,
-    System.Windows.Media.ImageSource? Logo = null);
+    System.Windows.Media.ImageSource? Logo = null, string? LaunchStatus = null);
 internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
 /// <summary>Card-local titles: bounds, padding and type all scale with the camera.</summary>

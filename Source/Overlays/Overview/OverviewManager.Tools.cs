@@ -78,6 +78,7 @@ internal sealed partial class OverviewManager
 
     public bool CancelInteraction()
     {
+        StopWindowNavigation();
         StopTutorialTravel();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
         bool cancelled = EndWindowInteraction();
@@ -98,6 +99,7 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (CloseSettingsPopup()) return;
         if (CloseActiveMenus()) return;
         if (_controlsPopup != null && _controlsPopup.Visible) { _controlsPopup.Hide(); FocusOverview(); return; }
         if (_interactMode) { SetInteractMode(false); return; }

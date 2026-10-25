@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
 
@@ -23,6 +24,14 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
     private readonly MessageWindow _msgWindow;
     private readonly Win32EventRouter _winEvents;
     private bool _disposed;
+    private readonly TaskbarSelectionIntent _taskbarSelection = new() { Enabled = true };
+    private readonly AltTabSelectionIntent _altTabSelection = new();
+    private ShellSelectionInputHook? _shellSelection;
+    private System.Windows.Forms.Timer? _switchSettleTimer;
+    private long _switchGeneration;
+    private long _switchWaitStarted;
+    private Func<IntPtr, bool>? _canSelectWindow;
+    public void SetWindowSelectionTarget(Func<IntPtr, bool>? canSelect) => _canSelectWindow = canSelect;
 
     // Drainable mouse state, populated on the UI thread by DrainRing.
     private int _pendingPanDx;
@@ -60,6 +69,16 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
     public event Action<IntPtr>? WindowMoved;
     public event Action? AltTabStarted;
     public event Action? AltTabEnded;
+    public event Action<IntPtr>? WindowSelected;
+
+    public void SetTaskbarNavigationEnabled(bool enabled)
+    {
+        if (_disposed) return;
+        // Foreground taskbar choices navigate in both desktop and Canvas views.
+        // Only Canvas view converts the current app's minimize toggle into navigation.
+        _taskbarSelection.NavigateMinimize = enabled;
+        _taskbarSelection.Cancel();
+    }
 
     public Win32InputRouter(IAppConfig config)
     {
@@ -72,7 +91,8 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
                 onSearchHotkey: config.DisableSearch ? null : () => SearchHotkey?.Invoke(),
                 onOverviewHotkey: config.DisableZoomHotkey ? null : () => OverviewHotkey?.Invoke());
 
-            _winEvents = new Win32EventRouter();
+            _winEvents = new Win32EventRouter(_taskbarSelection, _altTabSelection,
+                window => _canSelectWindow?.Invoke(window) == true);
             _winEvents.WindowMinimized += h => WindowMinimized?.Invoke(h);
             _winEvents.WindowDestroyed += h => WindowDestroyed?.Invoke(h);
             _winEvents.WindowShown += h => WindowShown?.Invoke(h);
@@ -81,6 +101,12 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
             _winEvents.WindowMoved += h => WindowMoved?.Invoke(h);
             _winEvents.AltTabStarted += () => AltTabStarted?.Invoke();
             _winEvents.AltTabEnded += () => AltTabEnded?.Invoke();
+            _winEvents.WindowSelected += h => WindowSelected?.Invoke(h);
+
+            var context = SynchronizationContext.Current ?? new System.Windows.Forms.WindowsFormsSynchronizationContext();
+            _shellSelection = new(_taskbarSelection, _altTabSelection,
+                () => context.Post(_ => { if (!_disposed) _winEvents.BeginKeyboardSwitch(); }, null),
+                generation => context.Post(_ => ScheduleSwitchCompletion(generation), null));
 
             _mouse.Install();
         }
@@ -90,6 +116,34 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
             catch (Exception ex) { TrayApp.Log("Input startup rollback failed: " + ex); }
             throw;
         }
+    }
+
+    private void ScheduleSwitchCompletion(long generation)
+    {
+        if (_disposed) return;
+        _switchGeneration = generation;
+        _switchWaitStarted = Environment.TickCount64;
+        if (_switchSettleTimer == null)
+        {
+            _switchSettleTimer = new() { Interval = 30 };
+            _switchSettleTimer.Tick += (_, _) =>
+            {
+                if (_disposed) return;
+                // Let Windows finish the release before reading its selected HWND.
+                // This path also covers fast switches with no native SWITCHEND.
+                var window = PInvoke.GetForegroundWindow();
+                bool targetReady = _canSelectWindow?.Invoke(window) == true;
+                // The shell's transient switcher can remain foreground for the
+                // first frame after Alt is released. Wait for an enrolled app,
+                // not a guessed shell class or the previously focused app.
+                if (!targetReady && Environment.TickCount64 - _switchWaitStarted < 1000) return;
+                _switchSettleTimer.Stop();
+                if (_altTabSelection.TryComplete(_switchGeneration, out bool selected))
+                    _winEvents.CompleteKeyboardSwitch(window, selected && targetReady);
+            };
+        }
+        _switchSettleTimer.Stop();
+        _switchSettleTimer.Start();
     }
 
     /// <summary>
@@ -221,6 +275,8 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(DisableMiddleButtonBlock);
+        Attempt(() => _switchSettleTimer?.Dispose());
+        Attempt(() => _shellSelection?.Dispose());
         Attempt(() => _winEvents?.Dispose());
         Attempt(() => _mouse?.Dispose());
         Attempt(() => _msgWindow?.Dispose());

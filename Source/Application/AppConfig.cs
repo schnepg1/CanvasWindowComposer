@@ -16,6 +16,8 @@ internal interface IAppConfig
     bool EnableAutomaticMinimization => false;
     bool EnableFlipRendering => false;
     bool LowQualityMode => false;
+    bool ShowTaskbarInCanvas => true;
+    bool AnimateWindowNavigation => true;
     bool EnableStartupIntro => true;
     bool ReduceStartupMotion => false;
     double SelectionRadius => 1200;
@@ -40,10 +42,10 @@ internal interface IAppConfig
     bool EnableLivePreviewsTier => true;
     bool EnableDetailedCardsTier => true;
     bool EnableSimpleCardsTier => true;
-    double OverviewCardEnterZoom => 0.60;
-    double OverviewCardExitZoom => 0.70;
-    double OverviewSimpleCardEnterZoom => 0.20;
-    double OverviewSimpleCardExitZoom => 0.26;
+    double OverviewCardEnterZoom => OverviewZoomDefaults.CardEnter;
+    double OverviewCardExitZoom => OverviewZoomDefaults.CardExit;
+    double OverviewSimpleCardEnterZoom => OverviewZoomDefaults.SimpleCardEnter;
+    double OverviewSimpleCardExitZoom => OverviewZoomDefaults.SimpleCardExit;
 }
 
 /// <summary>
@@ -72,6 +74,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool EnableAutomaticMinimization { get; private set; }
     public bool EnableFlipRendering { get; private set; }
     public bool LowQualityMode { get; private set; }
+    public bool ShowTaskbarInCanvas { get; private set; } = true;
+    public bool AnimateWindowNavigation { get; private set; } = true;
     public bool EnableStartupIntro { get; private set; } = true;
     public bool ReduceStartupMotion { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
@@ -83,10 +87,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool EnableLivePreviewsTier { get; private set; } = true;
     public bool EnableDetailedCardsTier { get; private set; } = true;
     public bool EnableSimpleCardsTier { get; private set; } = true;
-    public double OverviewCardEnterZoom { get; private set; } = 0.60;
-    public double OverviewCardExitZoom { get; private set; } = 0.70;
-    public double OverviewSimpleCardEnterZoom { get; private set; } = 0.20;
-    public double OverviewSimpleCardExitZoom { get; private set; } = 0.26;
+    public double OverviewCardEnterZoom { get; private set; } = OverviewZoomDefaults.CardEnter;
+    public double OverviewCardExitZoom { get; private set; } = OverviewZoomDefaults.CardExit;
+    public double OverviewSimpleCardEnterZoom { get; private set; } = OverviewZoomDefaults.SimpleCardEnter;
+    public double OverviewSimpleCardExitZoom { get; private set; } = OverviewZoomDefaults.SimpleCardExit;
 
     public AppConfig(IClock? clock = null, string? directory = null)
     {
@@ -114,6 +118,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
             EnableFlipRendering = GetBool(values, "EnableFlipRendering", defaultValue: false);
             LowQualityMode = GetBool(values, "LowQualityMode", defaultValue: false);
+            ShowTaskbarInCanvas = GetBool(values, "ShowTaskbarInCanvas", defaultValue: true);
+            AnimateWindowNavigation = GetBool(values, "AnimateWindowNavigation", defaultValue: true);
             EnableStartupIntro = GetBool(values, "EnableStartupIntro", defaultValue: true);
             ReduceStartupMotion = GetBool(values, "ReduceStartupMotion", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
@@ -125,10 +131,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             EnableLivePreviewsTier = GetBool(values, "EnableLivePreviewsTier", defaultValue: true);
             EnableDetailedCardsTier = GetBool(values, "EnableDetailedCardsTier", defaultValue: true);
             EnableSimpleCardsTier = GetBool(values, "EnableSimpleCardsTier", defaultValue: true);
-            OverviewCardEnterZoom = GetDouble(values, "OverviewCardEnterZoom", defaultValue: 0.60, min: 0.05, max: 2.0);
-            OverviewCardExitZoom = GetDouble(values, "OverviewCardExitZoom", defaultValue: 0.70, min: 0.05, max: 2.0);
-            OverviewSimpleCardEnterZoom = GetDouble(values, "OverviewSimpleCardEnterZoom", defaultValue: 0.20, min: 0.01, max: 1.0);
-            OverviewSimpleCardExitZoom = GetDouble(values, "OverviewSimpleCardExitZoom", defaultValue: 0.26, min: 0.01, max: 1.0);
+            OverviewCardEnterZoom = GetDouble(values, "OverviewCardEnterZoom", defaultValue: OverviewZoomDefaults.CardEnter, min: 0.05, max: 2.0);
+            OverviewCardExitZoom = GetDouble(values, "OverviewCardExitZoom", defaultValue: OverviewZoomDefaults.CardExit, min: 0.05, max: 2.0);
+            OverviewSimpleCardEnterZoom = GetDouble(values, "OverviewSimpleCardEnterZoom", defaultValue: OverviewZoomDefaults.SimpleCardEnter, min: 0.01, max: 1.0);
+            OverviewSimpleCardExitZoom = GetDouble(values, "OverviewSimpleCardExitZoom", defaultValue: OverviewZoomDefaults.SimpleCardExit, min: 0.01, max: 1.0);
         }
     }
 
@@ -172,7 +178,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
-                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom);
+                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation);
         }
     }
 
@@ -194,6 +200,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["EnableStartupIntro"] = preferences.StartupIntro.ToString().ToLowerInvariant(),
                 ["ReduceStartupMotion"] = preferences.ReducedIntroMotion.ToString().ToLowerInvariant(),
                 ["LowQualityMode"] = preferences.LowQualityMode.ToString().ToLowerInvariant(),
+                ["ShowTaskbarInCanvas"] = preferences.ShowTaskbarInCanvas.ToString().ToLowerInvariant(),
+                ["AnimateWindowNavigation"] = preferences.AnimateWindowNavigation.ToString().ToLowerInvariant(),
                 ["EnableLivePreviewsTier"] = preferences.LivePreviewsTier.ToString().ToLowerInvariant(),
                 ["EnableDetailedCardsTier"] = preferences.DetailedCardsTier.ToString().ToLowerInvariant(),
                 ["EnableSimpleCardsTier"] = preferences.SimpleCardsTier.ToString().ToLowerInvariant(),
@@ -289,6 +297,13 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Applies immediately from Settings; normal visual quality remains the default
 ;LowQualityMode=false
 
+; Keep the real Windows taskbar visible and clickable in canvas view
+; Windows taskbar auto-hide is still respected
+;ShowTaskbarInCanvas=true
+
+; Animate Alt+Tab and taskbar navigation within canvas view; false jumps immediately
+;AnimateWindowNavigation=true
+
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true
 
@@ -320,10 +335,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ;EnableSimpleCardsTier=true
 
 ; Overview tier zoom thresholds
-;OverviewCardEnterZoom=0.60
-;OverviewCardExitZoom=0.70
-;OverviewSimpleCardEnterZoom=0.20
-;OverviewSimpleCardExitZoom=0.26
+;OverviewCardEnterZoom=0.40
+;OverviewCardExitZoom=0.45
+;OverviewSimpleCardEnterZoom=0.10
+;OverviewSimpleCardExitZoom=0.13
 ");
     }
 
@@ -422,5 +437,6 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool ScreenFixedWindows, bool ClipOffscreen, bool AutomaticMinimization, bool FlipRendering,
     bool StartupIntro = true, bool ReducedIntroMotion = false, bool LowQualityMode = false,
     bool LivePreviewsTier = true, bool DetailedCardsTier = true, bool SimpleCardsTier = true,
-    double CardEnterZoom = 0.60, double CardExitZoom = 0.70,
-    double SimpleCardEnterZoom = 0.20, double SimpleCardExitZoom = 0.26);
+    double CardEnterZoom = OverviewZoomDefaults.CardEnter, double CardExitZoom = OverviewZoomDefaults.CardExit,
+    double SimpleCardEnterZoom = OverviewZoomDefaults.SimpleCardEnter, double SimpleCardExitZoom = OverviewZoomDefaults.SimpleCardExit,
+    bool ShowTaskbarInCanvas = true, bool AnimateWindowNavigation = true);

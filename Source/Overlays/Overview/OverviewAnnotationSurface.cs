@@ -107,7 +107,6 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
 internal sealed class OverviewHudLayer : IOverviewAnnotationLayer
 {
     private static readonly Brush HudFill = FrozenBrush(Color.FromArgb(240, 23, 29, 41));
-    private static readonly Brush ZoomFill = FrozenBrush(Color.FromArgb(240, 10, 16, 25));
 
     private static Brush FrozenBrush(Color color)
     {
@@ -121,11 +120,8 @@ internal sealed class OverviewHudLayer : IOverviewAnnotationLayer
         if (context.Frame.Intro is { } intro && context.Frame.ShowIntroTitle)
             StartupIntroTitle.Draw(dc, context.Size, context.Dpi, intro);
         if (!context.Frame.ShowHints) return;
-        var zoomText = context.Text($"{Math.Round(context.View.Zoom * 100):0}%", 13, Brushes.White);
-        dc.DrawRoundedRectangle(ZoomFill, null, new Rect(20, 20, zoomText.Width + 22, 32), 8, 8);
-        dc.DrawText(zoomText, new Point(31, 27));
         var text = context.Text(context.Frame.WindowStats + "  ·  " + context.Frame.MinimizationStatus, 13, Brushes.White);
-        double statsX = 20 + zoomText.Width + 22 + 10;
+        double statsX = 20 + CanvasZoomControls.LogicalWidth + 10;
         dc.DrawRoundedRectangle(HudFill, null, new Rect(statsX, 20, text.Width + 28, 32), 8, 8);
         dc.DrawText(text, new Point(statsX + 14, 27));
         if (!string.IsNullOrWhiteSpace(context.Frame.ToolHint))

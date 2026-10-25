@@ -134,6 +134,7 @@ REDRAW_WINDOW_FLAGS
 GetKeyState
 GetAsyncKeyState
 VIRTUAL_KEY
+KBDLLHOOKSTRUCT
 
 // Global hotkeys
 RegisterHotKey

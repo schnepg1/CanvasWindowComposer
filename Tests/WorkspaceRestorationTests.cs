@@ -4,6 +4,71 @@ namespace CanvasDesktop.Tests;
 
 public class WorkspaceRestorationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AlreadyDiscoveredWindowsAreMatchedBeforeRestoredCameraProjectsThem(bool suspendProjection)
+    {
+        var item = Item(@"C:\Apps\WhatsApp.exe", "WhatsApp");
+        var saved = item.Bounds;
+        var document = new WorkspaceDocument { Items = new() { item } };
+        document.Cameras[Guid.Empty] = new() { X = -5000, Y = 2000, Zoom = 1 };
+        using var rig = new WorkspaceHarness(document);
+        rig.Identity.Exe = item.ExecutablePath;
+        IntPtr handle = (IntPtr)42;
+        rig.Api.AddWindow(handle, 100, 200, 800, 600, title: item.Title);
+        rig.Wm.DiscoverNewWindows(); // A show event can discover it before Workspace.Start.
+        rig.Wm.SuspendProjection = suspendProjection;
+        rig.Wm.SuspendAutomaticParking = suspendProjection;
+        rig.Clock.Now = 1000;
+        var projected = new List<WorldRect>();
+        rig.Api.BeforeBatchMove = _ => projected.Add(rig.Canvas.Windows[handle]);
+
+        rig.Workspace.Start();
+        rig.Wm.ReprojectSync();
+        rig.Workspace.SaveNow();
+
+        Assert.NotEmpty(projected);
+        Assert.All(projected, bounds => Assert.Equal(saved, bounds));
+        Assert.Equal(saved, item.Bounds);
+        Assert.True(rig.Workspace.IsOpen(item));
+        Assert.Single(rig.Workspace.Items);
+        Assert.Empty(rig.Launcher.Opened);
+        Assert.Equal(suspendProjection, rig.Wm.SuspendProjection);
+        Assert.Equal(suspendProjection, rig.Wm.SuspendAutomaticParking);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AppOpenedBeforeOrAfterCanvasUsesTheSameSavedSlot(bool alreadyOpen)
+    {
+        var item = Item(@"C:\Apps\WhatsApp.exe", "WhatsApp");
+        var saved = item.Bounds;
+        var document = new WorkspaceDocument { Items = new() { item } };
+        document.Cameras[Guid.Empty] = new() { X = -5000, Y = 2000, Zoom = 1 };
+        using var rig = new WorkspaceHarness(document);
+        rig.Identity.Exe = item.ExecutablePath;
+        IntPtr handle = (IntPtr)42;
+        if (alreadyOpen) rig.Api.AddWindow(handle, 100, 200, 800, 600, title: item.Title);
+        rig.Workspace.Start();
+        if (!alreadyOpen)
+        {
+            rig.Api.AddWindow(handle, 100, 200, 800, 600, title: item.Title);
+            rig.Input.RaiseWindowShown(handle);
+            rig.Workspace.Tick();
+        }
+        rig.Wm.ReprojectSync();
+        rig.Input.RaiseWindowMoved(handle);
+        rig.Workspace.SaveNow();
+
+        Assert.True(rig.Workspace.IsOpen(item));
+        Assert.Equal(saved, rig.Canvas.Windows[handle]);
+        Assert.Equal(saved, item.Bounds);
+        Assert.Single(rig.Workspace.Items);
+        Assert.Empty(rig.Launcher.Opened);
+    }
+
     private const string OldChatGpt = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.1016.8622.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe";
     private const string NewChatGpt = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.1022.10000.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe";
     private static WorkspaceItem Item(string exe, string title, double y = -8126) => new()

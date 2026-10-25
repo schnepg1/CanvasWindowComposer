@@ -163,7 +163,7 @@ public class UiBugsAndShapesTests
     }
 
     [Fact]
-    public void PlaceholderFormOpenButtonClickCallsWorkspaceOpen()
+    public void PlaceholderFormDoubleClickCallsWorkspaceOpen()
         => WorkspaceViewTests.OnSta(() =>
         {
             var commands = new TestWorkspaceCommands();
@@ -171,54 +171,33 @@ public class UiBugsAndShapesTests
             var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", "", false,
                 new WorldRect { X = 100, Y = 100, W = 800, H = 600 }, "Placeholder");
             using var form = new PlaceholderForm(commands, item);
-            form.Show();
-            var button = AllControls(form).OfType<Button>().FirstOrDefault(b => b.Text == "Open");
-            Assert.NotNull(button);
-            Assert.True(button.Visible);
-            Assert.True(button.Enabled);
-            var centerInForm = form.PointToClient(button.PointToScreen(new Point(button.Width / 2, button.Height / 2)));
-            var childAtCenter = form.GetChildAtPoint(centerInForm);
-            Assert.NotNull(childAtCenter);
-            var panel = childAtCenter as TableLayoutPanel;
-            Assert.NotNull(panel);
-            var centerInPanel = panel.PointToClient(button.PointToScreen(new Point(button.Width / 2, button.Height / 2)));
-            var childInPanel = panel.GetChildAtPoint(centerInPanel);
-            Assert.Same(button, childInPanel);
-
-            button.PerformClick();
+            form.ShowAt(new WindowRect(-10000, -10000, 800, 600));
+            Assert.Empty(AllControls(form).OfType<Button>());
+            WorkspaceViewTests.DoubleClick(form);
             Assert.True(commands.OpenCalled);
             Assert.Equal(id, commands.LastOpenedId);
         });
 
     [Fact]
-    public void PlaceholderFormHitTestOpenButtonAccuratelyIdentifiesButtonArea()
+    public void PlaceholderFormHasOnlyTitleAndLargePathRows()
         => WorkspaceViewTests.OnSta(() =>
         {
             var commands = new TestWorkspaceCommands();
             var id = Guid.NewGuid();
-            var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", "", false,
+            var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", @"C:\Work\Project", false,
                 new WorldRect { X = 100, Y = 100, W = 800, H = 600 }, "Placeholder");
             using var form = new PlaceholderForm(commands, item);
-            form.Show();
-
-            var button = AllControls(form).OfType<Button>().FirstOrDefault(b => b.Text == "Open");
-            Assert.NotNull(button);
-
-            var buttonTopLeft = form.PointToClient(button.PointToScreen(new Point(0, 0)));
-            var buttonCenter = form.PointToClient(button.PointToScreen(new Point(button.Width / 2, button.Height / 2)));
-            var buttonBottomRight = form.PointToClient(button.PointToScreen(new Point(button.Width - 1, button.Height - 1)));
-
-            Assert.True(form.HitTestOpenButton(buttonTopLeft.X, buttonTopLeft.Y));
-            Assert.True(form.HitTestOpenButton(buttonCenter.X, buttonCenter.Y));
-            Assert.True(form.HitTestOpenButton(buttonBottomRight.X, buttonBottomRight.Y));
-
-            Assert.False(form.HitTestOpenButton(0, 0));
-            Assert.False(form.HitTestOpenButton(10, 10));
-            Assert.False(form.HitTestOpenButton(-10, -10));
+            form.ShowAt(new WindowRect(-10000, -10000, 800, 600));
+            var panel = form.Controls.OfType<TableLayoutPanel>().Single();
+            Assert.Equal(3, panel.Controls.Cast<Control>().Count(control => control.Visible));
+            Assert.Single(panel.Controls.OfType<PlaceholderArtwork>());
+            var path = panel.Controls.OfType<Label>().Single(label => label.Text == item.Target);
+            Assert.True(path.Font.SizeInPoints >= 20);
+            Assert.True(path.Width < panel.Width);
         });
 
     [Fact]
-    public void PlaceholderOpenButtonActivatesAndClicksOnLButtonUp()
+    public void PlaceholderActivatesAndItsPathSupportsDoubleClick()
         => WorkspaceViewTests.OnSta(() =>
         {
             var commands = new TestWorkspaceCommands();
@@ -226,17 +205,14 @@ public class UiBugsAndShapesTests
             var item = new WorkspaceItemView(id, "Test App", @"C:\Test\app.exe", "", false,
                 new WorldRect { X = 100, Y = 100, W = 800, H = 600 }, "Placeholder");
             using var placeholder = new PlaceholderForm(commands, item);
-            placeholder.Show();
-
-            var button = AllControls(placeholder).OfType<PlaceholderOpenButton>().FirstOrDefault();
-            Assert.NotNull(button);
+            placeholder.ShowAt(new WindowRect(-10000, -10000, 800, 600));
 
             const uint WM_MOUSEACTIVATE = 0x0021;
-            var lResult = PInvoke.SendMessage((HWND)button.Handle, WM_MOUSEACTIVATE, new WPARAM((nuint)placeholder.Handle), (LPARAM)1);
+            var lResult = PInvoke.SendMessage((HWND)placeholder.Handle, WM_MOUSEACTIVATE, new WPARAM((nuint)placeholder.Handle), (LPARAM)1);
             Assert.Equal((nint)1 /* MA_ACTIVATE */, (nint)lResult.Value);
 
-            const uint WM_LBUTTONUP = 0x0202;
-            PInvoke.SendMessage((HWND)button.Handle, WM_LBUTTONUP, default, default);
+            var path = AllControls(placeholder).OfType<Label>().Single(label => label.Text == "app.exe");
+            WorkspaceViewTests.DoubleClick(path);
             Assert.True(commands.OpenCalled);
             Assert.Equal(id, commands.LastOpenedId);
         });

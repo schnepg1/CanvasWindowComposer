@@ -30,7 +30,6 @@ internal sealed class TrayApp : ApplicationContext
     private readonly WorkspaceService _workspace;
     private readonly ZoneUi _zoneUi;
     private WorkspaceWindow? _workspaceWindow;
-    private SettingsWindow? _settingsWindow;
     private readonly ApplicationLifecycle _lifecycle = new(failure => Log($"Shutdown step '{failure.Step}' failed: {failure.Error}"));
     private readonly Control _dispatcher;
     private bool _enabled = true;
@@ -75,7 +74,7 @@ internal sealed class TrayApp : ApplicationContext
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             _lifecycle.Register(ShutdownPhase.ReleaseUi, "Workspace and settings windows", () =>
             {
-                _workspaceWindow?.Close(); _settingsWindow?.Close();
+                _workspaceWindow?.Close();
             });
             _zoneUi = _lifecycle.Own(new ZoneUi(_workspace, _overview), ShutdownPhase.ReleaseUi, "Project area UI");
 
@@ -142,20 +141,11 @@ internal sealed class TrayApp : ApplicationContext
                 }
                 catch (Exception ex) { MessageBox.Show(ex.Message, "Performance diagnostics"); }
             }));
-            menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) =>
+            _overview.SettingsApplied += () =>
             {
-                if (_settingsWindow == null)
-                {
-                    _settingsWindow = new SettingsWindow(_config, () =>
-                    {
-                        showScreenFixedItem.Checked = _config.ShowScreenFixedWindowsDuringPan;
-                        _overview.RefreshConfig();
-                    });
-                    _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-                    System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(_settingsWindow);
-                }
-                _settingsWindow.Show(); _settingsWindow.Activate();
-            }));
+                showScreenFixedItem.Checked = _config.ShowScreenFixedWindowsDuringPan;
+            };
+            menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => _overview.ShowSettings()));
             var tutorialMenu = new ToolStripMenuItem("Tutorial");
             tutorialMenu.DropDownItems.Add("Start / resume guided tour", null, (_, _) => _overview.StartGuidedTutorial());
             tutorialMenu.DropDownItems.Add("Restart guided tour", null, (_, _) => _overview.StartGuidedTutorial(restart:true));

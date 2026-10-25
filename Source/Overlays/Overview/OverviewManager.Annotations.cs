@@ -24,7 +24,7 @@ internal sealed partial class OverviewManager
     private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
     private string? _annotationError;
-    public bool CanvasInputSuspended => _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
+    public bool CanvasInputSuspended => _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
     internal AnnotationDocument? Annotations => _annotationDocument;
     internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
@@ -152,15 +152,16 @@ internal sealed partial class OverviewManager
             };
             _annotationToolbar.KeyDown+=(_,e)=>HandleKeyDown(pass,e);
         }
+        var toolbarArea = _appConfig.ShowTaskbarInCanvas ? area : pass.Screen.Bounds;
         _annotationToolbar.UpdateState(_annotationTool.Mode,_annotationError??_annotationStore?.Status,Selection.Ids.Count);
         if(!_annotationToolbar.Visible)
         {
             _annotationToolbar.Show(pass);
-            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height);
+            _annotationToolbar.Location=new Point(Math.Max(toolbarArea.Left,toolbarArea.Left+(toolbarArea.Width-_annotationToolbar.Width)/2),toolbarArea.Bottom-_annotationToolbar.Height);
         }
         else
         {
-            _annotationToolbar.Location=new Point(Math.Max(area.Left,area.Left+(area.Width-_annotationToolbar.Width)/2),area.Bottom-_annotationToolbar.Height);
+            _annotationToolbar.Location=new Point(Math.Max(toolbarArea.Left,toolbarArea.Left+(toolbarArea.Width-_annotationToolbar.Width)/2),toolbarArea.Bottom-_annotationToolbar.Height);
         }
     }
 

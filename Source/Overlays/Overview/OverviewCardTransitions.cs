@@ -6,7 +6,8 @@ using System.Windows.Media;
 namespace CanvasDesktop;
 
 internal enum OverviewCardMode { Simple, Detailed, Live }
-internal readonly record struct OverviewCardInput(Guid Id, PlaceholderAnnotation Card, OverviewCardMode Mode, bool LiveReady = true, long StaggerDelay = 0);
+internal readonly record struct OverviewCardInput(Guid Id, PlaceholderAnnotation Card, OverviewCardMode Mode,
+    bool LiveReady = true, long StaggerDelay = 0, bool DetailReady = true);
 
 /// <summary>Visible-only, UI-thread transition state. Images are immutable borrowed snapshots.</summary>
 internal sealed class OverviewCardTransitions
@@ -41,7 +42,8 @@ internal sealed class OverviewCardTransitions
             _seen.Add(input.Id);
             if (!_entries.TryGetValue(input.Id, out var e))
             {
-                e = new Entry { Target = input.Mode, Detail = input.Mode == OverviewCardMode.Detailed ? 1 : 0,
+                var initial = input.Mode == OverviewCardMode.Detailed && !input.DetailReady ? OverviewCardMode.Simple : input.Mode;
+                e = new Entry { Target = initial, Detail = initial == OverviewCardMode.Detailed ? 1 : 0,
                     Live = input.Mode == OverviewCardMode.Live ? 1 : 0 };
                 _entries.Add(input.Id, e);
             }
@@ -53,12 +55,14 @@ internal sealed class OverviewCardTransitions
             // no underlying pixels to fade from. Show its card without a hole.
             if (input.Mode != OverviewCardMode.Live && !input.LiveReady && e.Live > 0)
             {
-                e.Target = input.Mode; e.Live = 0;
-                e.Detail = input.Mode == OverviewCardMode.Detailed ? 1 : 0;
+                e.Target = input.Mode == OverviewCardMode.Detailed && !input.DetailReady ? OverviewCardMode.Simple : input.Mode;
+                e.Live = 0;
+                e.Detail = e.Target == OverviewCardMode.Detailed ? 1 : 0;
                 e.Moving = false;
             }
             // A restored window remains covered until its live DWM source is registered.
-            if (input.Mode != e.Target && (input.Mode != OverviewCardMode.Live || input.LiveReady))
+            if (input.Mode != e.Target && (input.Mode != OverviewCardMode.Live || input.LiveReady)
+                && (input.Mode != OverviewCardMode.Detailed || input.DetailReady))
             {
                 e.FromDetail = e.Detail; e.FromLive = e.Live;
                 e.Target = input.Mode; e.Started = now + Math.Max(0, input.StaggerDelay); e.Moving = true;

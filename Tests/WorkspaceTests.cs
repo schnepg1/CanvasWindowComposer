@@ -222,7 +222,7 @@ public class WorkspaceTests : IDisposable
     }
 
     [Fact]
-    public void PlaceholderRendersWithAnOpenAction()
+    public void PlaceholderRendersItsTitleAndTarget()
     {
         OnSta(() =>
         {
@@ -237,8 +237,9 @@ public class WorkspaceTests : IDisposable
             using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
             bitmap.Save(Path.Combine(AppContext.BaseDirectory, "placeholder-preview.png"));
-            Assert.Contains(AllControls(form).OfType<System.Windows.Forms.Button>(),
-                b => b.Text == "Open" && b.Visible);
+            Assert.Contains(item.Title, form.Text);
+            Assert.Contains(AllControls(form).OfType<System.Windows.Forms.Label>(),
+                label => label.Text == item.Target && label.Visible);
         });
     }
 

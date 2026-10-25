@@ -18,6 +18,18 @@ internal sealed class OverviewOverlay : Form
 
     public GridRenderer? Grid { get; private set; }
     private OverviewAnnotationWindow? _annotations;
+    private bool _showTaskbar;
+    private readonly OverviewTaskbarRegion _taskbarRegion = new();
+
+    public void SetTaskbarVisible(bool visible)
+    {
+        _showTaskbar = visible;
+        _taskbarRegion.Apply(Handle, Bounds, Screen.WorkingArea, visible);
+        _annotations?.SetTaskbarVisible(Screen.WorkingArea, visible);
+    }
+    private CanvasZoomControls? _zoomControls;
+    internal CanvasZoomControls? ZoomControls => _zoomControls;
+    public Action<OverviewOverlay, bool>? OnSettingsRequested;
     private System.Collections.Generic.IReadOnlyList<IOverviewAnnotationLayer> _drawingLayers = Array.Empty<IOverviewAnnotationLayer>();
 
     public void SetDrawingLayers(System.Collections.Generic.IReadOnlyList<IOverviewAnnotationLayer> layers)
@@ -39,8 +51,22 @@ internal sealed class OverviewOverlay : Form
         {
             _annotations = new OverviewAnnotationWindow(Handle);
             _annotations.SetDrawingLayers(_drawingLayers);
+            _annotations.SetTaskbarVisible(Screen.WorkingArea, _showTaskbar);
         }
         _annotations.StageUpdate(frame);
+        if (frame.ShowHints && frame.Intro == null)
+        {
+            if (_zoomControls == null)
+            {
+                _zoomControls = new CanvasZoomControls();
+                _zoomControls.SettingsRequested += zoomOnly => OnSettingsRequested?.Invoke(this, zoomOnly);
+            }
+            _zoomControls.UpdateZoom(frame.Zoom);
+            if (!_zoomControls.Visible) _zoomControls.Show(this);
+            double scale = DeviceDpi / 96.0;
+            _zoomControls.Location = new Point(OriginX + (int)Math.Round(20 * scale), OriginY + (int)Math.Round(20 * scale));
+        }
+        else _zoomControls?.Hide();
     }
 
     public void PrepareAnnotations() => _annotations?.PrepareFrame();
@@ -57,6 +83,7 @@ internal sealed class OverviewOverlay : Form
 
     public void HideZones()
     {
+        _zoomControls?.Hide();
         _annotations?.Clear();
         _annotations?.Hide();
     }
@@ -92,6 +119,7 @@ internal sealed class OverviewOverlay : Form
 
     public OverviewOverlay(Screen screen)
     {
+        Text = "Canvas overview";
         Screen = screen;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -224,6 +252,8 @@ internal sealed class OverviewOverlay : Form
         }
 
         base.WndProc(ref m);
+        if (m.Msg == 0x1A && IsHandleCreated) // WM_SETTINGCHANGE: taskbar position / auto-hide.
+            SetTaskbarVisible(_showTaskbar);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -241,6 +271,8 @@ internal sealed class OverviewOverlay : Form
     {
         if (disposing)
         {
+            _zoomControls?.Dispose();
+            _zoomControls = null;
             _annotations?.Close();
             _annotations = null;
             var grid = Grid;

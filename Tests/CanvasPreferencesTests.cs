@@ -4,6 +4,23 @@ namespace CanvasDesktop.Tests;
 
 public class CanvasPreferencesTests : IDisposable
 {
+    [Fact]
+    public void AppNavigationAnimationDefaultsOnAndCanBeDisabledWithoutChangingStartupMotion()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "EnableStartupIntro=false\nReduceStartupMotion=true\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.AnimateWindowNavigation);
+        foreach (bool enabled in new[] { false, true })
+        {
+            config.SavePreferences(config.Preferences with { AnimateWindowNavigation = enabled });
+            using var reopened = new AppConfig(directory: _directory); reopened.Load();
+            Assert.Equal(enabled, reopened.AnimateWindowNavigation);
+            Assert.False(reopened.EnableStartupIntro);
+            Assert.True(reopened.ReduceStartupMotion);
+        }
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "canvas-preferences-" + Guid.NewGuid().ToString("N"));
 
     [Fact]
@@ -13,6 +30,10 @@ public class CanvasPreferencesTests : IDisposable
         Assert.Equal(new(true, true, true, true, true, false, false, false), config.Preferences);
         Assert.Contains(";EnableFlipRendering=false", File.ReadAllText(Path.Combine(_directory, "config.ini")));
         Assert.False(config.LowQualityMode);
+        Assert.Equal(.40, config.OverviewCardEnterZoom);
+        Assert.Equal(.45, config.OverviewCardExitZoom);
+        Assert.Equal(.10, config.OverviewSimpleCardEnterZoom);
+        Assert.Equal(.13, config.OverviewSimpleCardExitZoom);
     }
 
     [Fact]

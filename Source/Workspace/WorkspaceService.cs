@@ -116,6 +116,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         {
             _launching.Remove(id);
             _launchBaselines.Remove(id);
+            _launchMessages[id] = "Still waiting for a matching app window. Keep waiting, double-click to retry, or right-click to link an open window.";
             _status = "No matching window appeared. The placeholder is kept; you can retry or choose a launch target.";
         }
         Capture();
@@ -135,8 +136,23 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private void RestoreCamera()
     {
         if (Document.Cameras.TryGetValue(_desktop, out var c))
-            _canvas.LoadState(new CanvasState { CamX = c.X, CamY = c.Y, Zoom = c.Zoom,
-                Windows = new Dictionary<IntPtr, WorldRect>(_canvas.Windows) });
+        {
+            // Already-open windows may have been discovered by startup events.
+            // Their desktop rectangles are not saved canvas positions yet: let
+            // Capture match their slots before camera motion can project/park them.
+            bool projection = _wm.SuspendProjection, parking = _wm.SuspendAutomaticParking;
+            _wm.SuspendProjection = _wm.SuspendAutomaticParking = true;
+            try
+            {
+                _canvas.LoadState(new CanvasState { CamX = c.X, CamY = c.Y, Zoom = c.Zoom,
+                    Windows = new Dictionary<IntPtr, WorldRect>(_canvas.Windows) });
+            }
+            finally
+            {
+                _wm.SuspendProjection = projection;
+                _wm.SuspendAutomaticParking = parking;
+            }
+        }
     }
 
     private void BeforeSwitch()
@@ -343,6 +359,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (!StillCurrent(live)) continue;
             var handle = live.Identity.Handle;
             var item = match.Item;
+            if (item != null && (_launching.ContainsKey(item.Id) || _launchMessages.ContainsKey(item.Id))
+                && !CanFinishLaunch(item, live, input)) continue;
             bool restore = item != null;
             if (item == null)
             {
@@ -417,10 +435,6 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     private void RestoreBinding(WorkspaceLiveWindow live, WorkspaceItem item)
     {
-        RemoveCard(item.Id);
-        _launching.Remove(item.Id);
-        _launchBaselines.Remove(item.Id);
-        _ambiguous.Remove(item.Id);
         if (!StillCurrent(live)) { _bindings.Unbind(live); return; }
         var handle = live.Identity.Handle;
         var placed = item.Bounds;
@@ -431,9 +445,17 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             placed.State = WindowState.Minimized;
             item.Bounds = placed;
         }
-        _api.RestoreNativeState(handle, _canvas.WorldToScreen(placed), placed.State);
+        var restored = _api.RestoreNativeState(handle, _canvas.WorldToScreen(placed), placed.State);
+        if (!restored.Accepted || !StillCurrent(live)) { _bindings.Unbind(live); return; }
         if (placed.State == WindowState.Normal) _wm.RestorePlacement(handle, placed);
         else _canvas.RestoreWindow(handle, placed);
+        // Keep the progress card until the matched window has actually accepted
+        // its saved placement; failed/native-stale handoffs can retry next tick.
+        RemoveCard(item.Id);
+        _launching.Remove(item.Id);
+        _launchBaselines.Remove(item.Id);
+        _launchMessages.Remove(item.Id);
+        _ambiguous.Remove(item.Id);
     }
 
     private void OnRemoving(IntPtr handle)
@@ -524,7 +546,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         : _ambiguous.Contains(item.Id) ? "Needs linking" : "Placeholder";
 
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
-        item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath);
+        item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath,
+        _launchMessages.GetValueOrDefault(item.Id));
 
     private string? ReadChromeProfile(IntPtr handle, string exe, string? additionalProfile = null)
     {
@@ -538,7 +561,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     private WorkspaceItem? Find(Guid id) => _disposed ? null : Document.Items.FirstOrDefault(i => i.Id == id);
 
-    public void Open(Guid id) { if (Find(id) is { } item) Open(item); }
+    public void Open(Guid id) { if (Find(id) is { } item) Open(item, focusPlaceholder: true); }
     public void FocusItem(Guid id) { if (Find(id) is { } item) FocusItem(item); }
     public void CloseToPlaceholder(Guid id) { if (Find(id) is { } item) CloseToPlaceholder(item); }
     public void Forget(Guid id) { if (Find(id) is { } item) Forget(item); }
@@ -546,7 +569,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private bool IsLaunchingApp(string exe) => _launching.Keys.Any(id => Document.Items.Any(i => i.Id == id
         && WorkspaceAppIdentity.Same(i.ExecutablePath, exe)));
 
-    private void Open(WorkspaceItem item)
+    private void Open(WorkspaceItem item, bool focusPlaceholder = false)
     {
         if (BoundWindow(item.Id) is { } live)
         {
@@ -556,11 +579,13 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             Changed?.Invoke();
             return;
         }
-        if (_launching.ContainsKey(item.Id)) return;
+        if (_launching.ContainsKey(item.Id)) { RefreshLaunchCard(item, focusPlaceholder); return; }
+        _launchMessages.Remove(item.Id);
         // Launch windows from the same app one at a time, so project/file slots
         // cannot steal one another's first new HWND.
         if (item.DesktopId != _desktop || IsLaunchingApp(item.ExecutablePath))
-        { _queued.Add(item.Id); Changed?.Invoke(); return; }
+        { _queued.Add(item.Id); RefreshLaunchCard(item, focusPlaceholder); Changed?.Invoke(); return; }
+        _queued.Remove(item.Id);
         try
         {
             // Include even inaccessible HWNDs. Later gaining permission to inspect
@@ -569,8 +594,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             _api.EnumWindows(handle => { baseline.Add(handle); return true; });
             _launchBaselines[item.Id] = baseline;
             _launching[item.Id] = _clock.TickCount64 + 30000;
-            if (_cards.TryGetValue(item.Id, out var card))
-                card.UpdateItem(View(item));
+            RefreshLaunchCard(item, focusPlaceholder);
+            _nextCapture = 0;
             _launcher.Open(item);
             _status = null;
         }
@@ -579,6 +604,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             _launching.Remove(item.Id);
             _launchBaselines.Remove(item.Id);
             _status = "Could not open " + item.Title + ": " + ex.Message;
+            _launchMessages[item.Id] = "Could not start the app. Double-click to retry.";
+            RefreshLaunchCard(item, focus: false);
             LaunchFailed?.Invoke(_status);
         }
         Changed?.Invoke();
@@ -614,6 +641,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _launchBaselines.Remove(item.Id);
         _ambiguous.Remove(item.Id);
         _queued.Remove(item.Id);
+        _launchMessages.Remove(item.Id);
         Document.Items.Remove(item);
         Zones.ForgetItem(item.Id);
         RemoveCard(item.Id);
@@ -738,6 +766,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         }
         _bindings.Clear();
         _launchBaselines.Clear();
+        _launchMessages.Clear();
         if (failures.Count > 0) throw new AggregateException("Workspace shutdown failed.", failures);
     }
 }

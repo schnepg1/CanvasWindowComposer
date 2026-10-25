@@ -34,10 +34,11 @@ internal sealed class OverviewState
         InputEnabled: false,
         InertiaAllowed: false);
 
+    // The interactive taskbar is exposed by OverviewOverlay, not by DWM previews.
     public static readonly OverviewModeConfig PanningConfig = new(
         GridVisible: false,
         DesktopOpacity: 255,
-        TaskbarVisible: true,
+        TaskbarVisible: false,
         InputEnabled: false,
         InertiaAllowed: true);
 

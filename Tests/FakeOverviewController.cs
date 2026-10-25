@@ -31,6 +31,8 @@ internal sealed class FakeOverviewController : IOverviewController
     public int ReleaseInertiaCalls;
     public List<(int dx, int dy)> RecordedDeltas = new();
     public List<OverviewMode> Transitions = new();
+    public List<IntPtr> NavigatedWindows = new();
+    public bool NavigateToWindow(IntPtr window) { NavigatedWindows.Add(window); return true; }
     public bool PendingInteraction;
     public int EscapeCalls, CancelInteractionCalls;
 

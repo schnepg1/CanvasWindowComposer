@@ -40,6 +40,12 @@ internal sealed class FakeInputRouter : IInputRouter
     public event Action<IntPtr>? WindowMoved;
     public event Action? AltTabStarted;
     public event Action? AltTabEnded;
+    public event Action<IntPtr>? WindowSelected;
+    public bool TaskbarNavigationEnabled;
+    public Func<IntPtr, bool>? WindowSelectionTarget;
+    public void SetWindowSelectionTarget(Func<IntPtr, bool>? canSelect) => WindowSelectionTarget = canSelect;
+    public void SetTaskbarNavigationEnabled(bool enabled) => TaskbarNavigationEnabled = enabled;
+    public void RaiseWindowSelected(IntPtr window) => WindowSelected?.Invoke(window);
 
     public bool Enabled { get; set; } = true;
 

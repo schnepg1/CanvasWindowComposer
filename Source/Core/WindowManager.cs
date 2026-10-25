@@ -23,9 +23,9 @@ internal sealed partial class WindowManager : IDisposable
     private readonly WindowVisibilityTracker _visibility = new();
     private CanvasCamera? _overviewViewport;
     private IReadOnlyList<(int x, int y, int w, int h)>? _overviewScreens;
-    internal const double OverviewLivePreviewZoom = 0.60;
-    internal const double OverviewCardEnterZoom = 0.60, OverviewCardExitZoom = 0.70;
-    internal const double OverviewSimpleCardEnterZoom = 0.20, OverviewSimpleCardExitZoom = 0.26;
+    internal const double OverviewLivePreviewZoom = OverviewZoomDefaults.CardEnter;
+    internal const double OverviewCardEnterZoom = OverviewZoomDefaults.CardEnter, OverviewCardExitZoom = OverviewZoomDefaults.CardExit;
+    internal const double OverviewSimpleCardEnterZoom = OverviewZoomDefaults.SimpleCardEnter, OverviewSimpleCardExitZoom = OverviewZoomDefaults.SimpleCardExit;
     private bool _overviewUsesInfoCards;
     public bool OverviewUsesInfoCards => _overviewUsesInfoCards;
     private bool _overviewUsesSimpleCards;
@@ -178,6 +178,10 @@ internal sealed partial class WindowManager : IDisposable
     // Our own placeholder forms are explicitly enrolled, never discovered as apps.
     public void RestorePlacement(IntPtr hWnd, WorldRect world)
     {
+        // A queued camera projection may still contain the window's pre-match
+        // desktop geometry. Finish/cancel it before applying the saved slot so
+        // it cannot land later and be mistaken for a user move.
+        _projection?.ClearPending();
         DrainProjectionResults();
         TrackForDesktopRestore(hWnd);
         _canvas.RestoreWindow(hWnd, world);

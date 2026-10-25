@@ -153,11 +153,10 @@ internal sealed class RawMouseInput : IDisposable
         // inertia + thumbnail updates) would leave events undrained -> coalesced.
         int bufferBytes = RawInputBufferInitialBytes;
         IntPtr buffer = Marshal.AllocHGlobal(bufferBytes);
-        HANDLE shutdown = (HANDLE)_shutdown.SafeWaitHandle.DangerousGetHandle();
 
         try
         {
-            while (WaitForInput(shutdown))
+            while (WaitForInput(_shutdown))
             {
                 if (DrainInput(ref buffer, ref bufferBytes)
                     && Interlocked.Exchange(ref _uiPostPending, 1) == 0)
@@ -203,17 +202,23 @@ internal sealed class RawMouseInput : IDisposable
     /// the wake was triggered by raw input (caller should drain), false on
     /// shutdown / wait failure (caller should exit the loop).
     /// </summary>
-    private unsafe bool WaitForInput(HANDLE shutdown)
+    internal static unsafe bool WaitForInput(EventWaitHandle shutdown)
     {
-        // By accident also clears stale WM_INPUT flag, which would cause MsgWaitForMultipleObjects to wait
+        // Shutdown takes priority even when input keeps arriving.
+        if (shutdown.WaitOne(0)) return false;
+
         const uint QS_RAWINPUT = (uint)QUEUE_STATUS_FLAGS.QS_RAWINPUT;
-        if ((PInvoke.GetQueueStatus(QUEUE_STATUS_FLAGS.QS_RAWINPUT) & QS_RAWINPUT) != QS_RAWINPUT)
+        // The high word describes input still queued; the low word only records
+        // arrivals since the last query. GetQueueStatus marks that input as seen,
+        // so drain pending input before waiting for a new arrival. An empty queue
+        // must reach the blocking wait, otherwise this thread burns a whole core.
+        if (((PInvoke.GetQueueStatus(QUEUE_STATUS_FLAGS.QS_RAWINPUT) >> 16) & QS_RAWINPUT) != 0)
         {
             return true;
         }
 
         HANDLE* handles = stackalloc HANDLE[1];
-        handles[0] = shutdown;
+        handles[0] = (HANDLE)shutdown.SafeWaitHandle.DangerousGetHandle();
         uint result = (uint)PInvoke.MsgWaitForMultipleObjects(
             1, handles, false, INFINITE, QUEUE_STATUS_FLAGS.QS_RAWINPUT);
         return result != WAIT_OBJECT_0 && result != WAIT_FAILED;

@@ -41,6 +41,17 @@ internal sealed class Win32WindowApi : IWindowApi
         return PInvoke.IsWindowVisible((HWND)hWnd);
     }
 
+    public unsafe bool HasVisibleClientArea(IntPtr hWnd)
+    {
+        var window = (HWND)hWnd;
+        if (!PInvoke.IsWindowVisible(window) || !PInvoke.GetClientRect(window, out var client)
+            || client.right <= client.left || client.bottom <= client.top) return false;
+        int cloaked = 0;
+        var result = PInvoke.DwmGetWindowAttribute(window, DWMWINDOWATTRIBUTE.DWMWA_CLOAKED,
+            &cloaked, sizeof(int));
+        return result.Succeeded && cloaked == 0;
+    }
+
     public int GetWindowStyle(IntPtr hWnd)
     {
         return PInvoke.GetWindowLong((HWND)hWnd, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
@@ -159,6 +170,17 @@ internal sealed class Win32WindowApi : IWindowApi
         => _moves.Move(new(hWnd, new(x, y, w, h), false), flags);
 
     public IntPtr GetForegroundWindow() => PInvoke.GetForegroundWindow();
+
+    public NativeOperationResult RestoreForNavigation(IntPtr handle)
+    {
+        long started = Stopwatch.GetTimestamp();
+        // SW_RESTORE honors Windows' restore-to-maximized flag. Its return value
+        // describes previous visibility, so confirm the resulting state instead.
+        PInvoke.ShowWindow((HWND)handle, SHOW_WINDOW_CMD.SW_RESTORE);
+        bool restored = PInvoke.IsWindow((HWND)handle)
+            && (GetWindowStyle(handle) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0;
+        return _diagnostics.Complete("RestoreForNavigation", handle, started, restored, 0);
+    }
 
     public unsafe bool CanAutomaticallyMinimize(IntPtr hWnd)
     {

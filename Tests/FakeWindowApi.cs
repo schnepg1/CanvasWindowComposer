@@ -18,6 +18,10 @@ internal sealed class FakeWindowApi : IWindowApi
 
     public readonly Dictionary<IntPtr, WindowInfo> Windows = new();
     public readonly HashSet<IntPtr> ClippedWindows = new();
+    public readonly HashSet<IntPtr> WindowsWithoutClientArea = new();
+    public bool HasVisibleClientArea(IntPtr handle)
+        => IsWindowVisible(handle) && !WindowsWithoutClientArea.Contains(handle)
+            && Windows.TryGetValue(handle, out var window) && window.W > 0 && window.H > 0;
     public readonly List<BatchMoveItem> LastBatch = new();
     public readonly List<(IntPtr hWnd, int x, int y, int w, int h, uint flags)> SetPositionCalls = new();
     public readonly List<(IntPtr hWnd, WindowRect rect, WindowState state)> NativeStateCalls = new();
@@ -41,6 +45,13 @@ internal sealed class FakeWindowApi : IWindowApi
     public Action<IntPtr>? AfterParkingRestore;
 
     public IntPtr GetForegroundWindow() => Foreground;
+    public readonly List<IntPtr> NavigationRestores = new();
+    public NativeOperationResult RestoreForNavigation(IntPtr handle)
+    {
+        NavigationRestores.Add(handle);
+        Windows[handle].Style &= ~(int)WINDOW_STYLE.WS_MINIMIZE;
+        return NativeOperationResult.Success("RestoreForNavigation", handle);
+    }
     public bool CanAutomaticallyMinimize(IntPtr handle)
     {
         ParkingEligibilityQueries++;
@@ -150,6 +161,7 @@ internal sealed class FakeWindowApi : IWindowApi
     }
 
     public Action<System.Threading.CancellationToken>? BeforeBatchMove;
+    public Action? AfterBatchMove;
     public bool QueueAsyncMoves;
 
     public WindowBatchResult BatchMove(List<BatchMoveItem> items, bool isAsync, bool isTransient, System.Threading.CancellationToken ct = default)
@@ -174,6 +186,7 @@ internal sealed class FakeWindowApi : IWindowApi
         }
         var status = results.Exists(r => r.Status == NativeOperationStatus.Failed) ? NativeOperationStatus.Failed
             : ct.IsCancellationRequested ? NativeOperationStatus.Cancelled : NativeOperationStatus.Succeeded;
+        AfterBatchMove?.Invoke();
         return new(new("BatchMove", 0, status, null, 0, items.Count), results);
     }
 

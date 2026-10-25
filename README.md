@@ -18,6 +18,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Minimap** — Canvas overview, fades after inactivity
 - **Virtual desktops** — Independent canvas per desktop
 - **Auto-focus** — Camera follows focused windows
+- **App switching** — Alt+Tab and taskbar selections center the selected app while keeping Canvas view and its zoom. Fly-to animation defaults on; disable it in Settings → Interaction for immediate navigation. Outside Canvas view, Alt+Tab jumps to the app at desktop size. Automatic proximity restores never request navigation.
 - **Off-screen hiding** — Windows hidden when panned out of view
 - **System tray** — Toggle, reset, exit
 - **Low quality mode** — Settings → Rendering offers a simple grid and cached previews or title cards during movement. Live previews return after settling. Applies immediately; normal quality is the default.
@@ -70,6 +71,8 @@ A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first 
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
 | `LowQualityMode` | `false` | Simple grid without nebula/decorations; cached previews or title cards during pan/zoom/window dragging. Change through Settings → Rendering for immediate application |
+| `ShowTaskbarInCanvas` | `true` | Keep the real Windows taskbar visible and clickable while panning and zooming. Toggle in Settings > Rendering; applies immediately. Disable Windows taskbar auto-hide for permanent visibility |
+| `AnimateWindowNavigation` | `true` | Animate app selection from Alt+Tab or the taskbar within Canvas view. Disable in Settings > Interaction for an immediate jump. Applies immediately; Windows animation preferences are respected |
 
 Performance changes, validation limits and the remaining optimization roadmap are
 tracked in [the canvas performance work log](Docs/canvas-performance.md).

@@ -18,6 +18,9 @@ internal sealed class BenchmarkInput : IInputRouter
     public event Action<IntPtr>? WindowMoved { add { } remove { } }
     public event Action? AltTabStarted { add { } remove { } }
     public event Action? AltTabEnded { add { } remove { } }
+    public event Action<IntPtr>? WindowSelected { add { } remove { } }
+    public void SetTaskbarNavigationEnabled(bool enabled) { }
+    public void SetWindowSelectionTarget(Func<IntPtr, bool>? canSelect) { }
     public bool TryDrainPanDelta(out int dx, out int dy) { dx = dy = 0; return false; }
     public bool TryDrainDragEnded() => false;
     public bool TryDrainZoom() => false;

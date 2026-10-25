@@ -8,14 +8,16 @@ namespace CanvasDesktop;
 /// <summary>Detached edits; opening or cancelling settings never changes resource policy.</summary>
 internal sealed class SettingsWindow : Window
 {
-    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality;
-    private readonly CheckBox _liveTier, _detailedTier, _simpleTier;
-    private readonly TextBox _cardEnter, _cardExit, _simpleEnter, _simpleExit;
+    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation;
+    private readonly ZoomSettingsControl _zoomSettings;
+    internal bool ZoomOnly { get; }
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
 
-    public SettingsWindow(AppConfig config, Action applied)
+    public SettingsWindow(AppConfig config, Action applied, bool zoomOnly = false)
     {
+        ZoomOnly = zoomOnly;
         Title = "Settings · Canvas"; Width = 580; Height = 820; MinWidth = 440; MinHeight = 420;
+        if (zoomOnly) { Title = "Zoom settings · Canvas"; Width = 460; Height = 760; MinWidth = 360; }
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ZoneTheme.Apply(this);
         var root = new DockPanel { Margin = new Thickness(24) };
@@ -24,7 +26,8 @@ internal sealed class SettingsWindow : Window
         footer.Children.Add(_status);
         var actions = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2, Margin = new Thickness(0, 12, 0, 0) };
         var body = new StackPanel();
-        root.Children.Add(new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        root.Children.Add(new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Padding = new Thickness(0, 0, 12, 0) });
         void Heading(string text) => body.Children.Add(new TextBlock { Text = text, FontSize = 22,
             FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 12) });
         void Hint(string text) => body.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap,
@@ -36,25 +39,6 @@ internal sealed class SettingsWindow : Window
             AutomationProperties.SetName(box, text);
             body.Children.Add(box); return box;
         }
-        TextBox NumberInput(string label, double value)
-        {
-            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-            panel.Children.Add(new TextBlock { Text = label, Width = 280, VerticalAlignment = VerticalAlignment.Center });
-            var box = new TextBox
-            {
-                Text = value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
-                Width = 70,
-                Padding = new Thickness(4, 2, 4, 2),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            AutomationProperties.SetName(box, label);
-            panel.Children.Add(box);
-            body.Children.Add(panel);
-            return box;
-        }
-        double ParseZoom(TextBox box, double fallback, double min, double max)
-            => double.TryParse(box.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)
-               && double.IsFinite(v) && v >= min && v <= max ? v : fallback;
         var preferences = config.Preferences;
         Heading("Interaction");
         _search = Option("Window search · Alt+S", preferences.Search);
@@ -62,6 +46,8 @@ internal sealed class SettingsWindow : Window
         _altPan = Option("Pan over windows with Alt+middle-click", preferences.AltPan);
         _curve = Option("Match Windows pointer acceleration when panning", preferences.MouseCurve);
         _fixed = Option("Show pinned and fullscreen windows while panning", preferences.ScreenFixedWindows);
+        _navigation = Option("Animate navigation to apps selected with Alt+Tab or the taskbar", preferences.AnimateWindowNavigation);
+        Hint("Stays in Canvas view at the current zoom. Turn off for an immediate jump with less rendering work.");
         Hint("Shortcut changes take effect after restarting Canvas.");
         Heading("Window resources");
         _clip = Option("Clip windows outside the desktop", preferences.ClipOffscreen);
@@ -73,34 +59,29 @@ internal sealed class SettingsWindow : Window
         _reducedMotion = Option("Reduce startup motion · use a short title fade", preferences.ReducedIntroMotion);
         Hint("Click, scroll, or press any key to skip. Windows animation preferences are respected.");
         Heading("Rendering");
+        _taskbar = Option("Show Windows taskbar in canvas view", preferences.ShowTaskbarInCanvas);
+        Hint("Keeps the taskbar visible and clickable while panning and zooming. Applies immediately. Turn off auto-hide in Windows taskbar settings to keep it visible permanently.");
         _lowQuality = Option("Low quality mode", preferences.LowQualityMode);
         Hint("Uses a simple grid and cached previews or title cards while panning, zooming or dragging windows. Live previews return after movement stops. Applies immediately.");
         _flip = Option("Use flip-model presentation · Experimental", preferences.FlipRendering);
         Hint("Requires a restart. Keep off if overview previews or minimap opacity render incorrectly. Canvas uses the compatibility renderer if initialization fails.");
-        Heading("Overview & Cards");
-        _liveTier = Option("Live Previews tier (continuous DWM thumbnails when zoomed in)", preferences.LivePreviewsTier);
-        _detailedTier = Option("Detailed Placeholder Cards tier (main resource saver)", preferences.DetailedCardsTier);
-        _simpleTier = Option("Simple Cards tier (icons with title fallback when zoomed far out)", preferences.SimpleCardsTier);
-        Hint("Detailed cards save memory and GPU by unregistering live thumbnails and enabling background window parking. Simple cards save texture cache and fillrate when zoomed far out.");
-        _cardEnter = NumberInput("Detailed cards enter zoom (zoom out below):", preferences.CardEnterZoom);
-        _cardExit = NumberInput("Detailed cards exit zoom (zoom in above):", preferences.CardExitZoom);
-        _simpleEnter = NumberInput("Simple cards enter zoom (zoom out below):", preferences.SimpleCardEnterZoom);
-        _simpleExit = NumberInput("Simple cards exit zoom (zoom in above):", preferences.SimpleCardExitZoom);
-        Hint("Defaults: Detailed cards 0.60 enter / 0.70 exit, Simple cards 0.20 enter / 0.26 exit.");
+        if (zoomOnly) body.Children.Clear();
+        _zoomSettings = new ZoomSettingsControl(preferences);
+        body.Children.Add(_zoomSettings);
         var save = ZoneTheme.Button("Save settings", () =>
         {
             try
             {
-                double cardEnter = ParseZoom(_cardEnter, 0.60, 0.05, 2.0);
-                double cardExit = ParseZoom(_cardExit, 0.70, 0.05, 2.0);
-                double simpleEnter = ParseZoom(_simpleEnter, 0.20, 0.01, 1.0);
-                double simpleExit = ParseZoom(_simpleExit, 0.26, 0.01, 1.0);
-                config.SavePreferences(new(_search.IsChecked == true, _altPan.IsChecked == true,
-                    _zoom.IsChecked == true, _curve.IsChecked == true, _fixed.IsChecked == true,
-                    _clip.IsChecked == true, _parking.IsChecked == true, _flip.IsChecked == true,
-                    _intro.IsChecked == true, _reducedMotion.IsChecked == true, _lowQuality.IsChecked == true,
-                    _liveTier.IsChecked == true, _detailedTier.IsChecked == true, _simpleTier.IsChecked == true,
-                    cardEnter, cardExit, simpleEnter, simpleExit));
+                var draft = config.Preferences;
+                if (!zoomOnly) draft = draft with { Search = _search.IsChecked == true, AltPan = _altPan.IsChecked == true,
+                    ZoomHotkey = _zoom.IsChecked == true, MouseCurve = _curve.IsChecked == true,
+                    ScreenFixedWindows = _fixed.IsChecked == true, ClipOffscreen = _clip.IsChecked == true,
+                    AutomaticMinimization = _parking.IsChecked == true, FlipRendering = _flip.IsChecked == true,
+                    StartupIntro = _intro.IsChecked == true, ReducedIntroMotion = _reducedMotion.IsChecked == true,
+                    LowQualityMode = _lowQuality.IsChecked == true, ShowTaskbarInCanvas = _taskbar.IsChecked == true,
+                    AnimateWindowNavigation = _navigation.IsChecked == true };
+                if (!_zoomSettings.TryApply(draft, out var updated, out var error)) { _status.Text = error; return; }
+                config.SavePreferences(updated);
                 applied(); Close();
             }
             catch (Exception ex) { _status.Text = "Settings could not be saved. " + ex.Message; }

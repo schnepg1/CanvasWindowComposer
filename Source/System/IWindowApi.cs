@@ -20,6 +20,11 @@ internal interface IWindowApi
     long ScreenTopologyVersion => -1;
     // Query
     bool IsWindowVisible(IntPtr hWnd);
+    bool HasVisibleClientArea(IntPtr hWnd)
+    {
+        var rect = GetWindowRect(hWnd);
+        return IsWindowVisible(hWnd) && rect.w > 0 && rect.h > 0;
+    }
     int GetWindowStyle(IntPtr hWnd);
     (int x, int y, int w, int h) GetWindowRect(IntPtr hWnd);
     (int left, int top, int right, int bottom) GetFrameInset(IntPtr hWnd);
@@ -41,6 +46,7 @@ internal interface IWindowApi
     // Fail closed for backends without an explicit automatic-parking implementation.
     bool CanAutomaticallyMinimize(IntPtr hWnd) => false;
     IntPtr GetForegroundWindow() => IntPtr.Zero;
+    NativeOperationResult RestoreForNavigation(IntPtr handle);
     NativeOperationResult MinimizeForParking(IntPtr hWnd)
         => new("MinimizeForParking", hWnd.ToInt64(), NativeOperationStatus.Failed, null, 0);
     NativeOperationResult RestoreFromParking(IntPtr hWnd, WindowRect rect)

@@ -11,7 +11,7 @@ public class PlaceholderLabelTests
     [Theory]
     [InlineData(.1)]
     [InlineData(.25)]
-    [InlineData(.49)]
+    [InlineData(.39)]
     public void ZoomedOutTitlesStayCenteredInsideTheirCardsAndScaleWithZoom(double zoom)
     {
         var card = Card();

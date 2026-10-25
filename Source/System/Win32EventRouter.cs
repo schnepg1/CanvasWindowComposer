@@ -16,6 +16,10 @@ internal sealed class Win32EventRouter : IDisposable
     public event Action<IntPtr>? WindowMoved;      // location change (top-level only)
     public event Action? AltTabStarted;
     public event Action? AltTabEnded;
+    public event Action<IntPtr>? WindowSelected;
+    private readonly TaskbarSelectionIntent? _taskbar;
+    private readonly AltTabSelectionIntent? _altTab;
+    private readonly Func<IntPtr, bool>? _canSelectWindow;
 
     private readonly UnhookWinEventSafeHandle _hookMinimize;
     private readonly UnhookWinEventSafeHandle _hookForeground;
@@ -24,8 +28,12 @@ internal sealed class Win32EventRouter : IDisposable
     private readonly UnhookWinEventSafeHandle _hookLocationChange;
     private readonly WINEVENTPROC _winEventProc;
 
-    public Win32EventRouter()
+    public Win32EventRouter(TaskbarSelectionIntent? taskbar = null, AltTabSelectionIntent? altTab = null,
+        Func<IntPtr, bool>? canSelectWindow = null)
     {
+        _taskbar = taskbar;
+        _altTab = altTab;
+        _canSelectWindow = canSelectWindow;
         _winEventProc = OnWinEvent;
 
         uint flags = PInvoke.WINEVENT_OUTOFCONTEXT | PInvoke.WINEVENT_SKIPOWNPROCESS;
@@ -63,6 +71,9 @@ internal sealed class Win32EventRouter : IDisposable
         {
             case PInvoke.EVENT_SYSTEM_MINIMIZESTART:
                 WindowMinimized?.Invoke(hwnd);
+                if (_canSelectWindow?.Invoke(hwnd) != false
+                    && _taskbar?.TrySelect(hwnd, dwmsEventTime, minimizing: true) == true)
+                    WindowSelected?.Invoke(hwnd);
                 break;
 
             case PInvoke.EVENT_OBJECT_DESTROY:
@@ -83,6 +94,13 @@ internal sealed class Win32EventRouter : IDisposable
 
             case PInvoke.EVENT_SYSTEM_SWITCHEND:
                 AltTabEnded?.Invoke();
+                // SWITCHEND carries the chosen HWND, even for a quick switch
+                // or an unmatched SWITCHSTART. Do not guess from transient focus.
+                if (_canSelectWindow?.Invoke(hwnd) != false)
+                {
+                    _altTab?.CompleteNative();
+                    WindowSelected?.Invoke(hwnd);
+                }
                 break;
 
             case PInvoke.EVENT_SYSTEM_MINIMIZEEND:
@@ -91,6 +109,10 @@ internal sealed class Win32EventRouter : IDisposable
 
             case PInvoke.EVENT_SYSTEM_FOREGROUND:
                 WindowFocused?.Invoke(hwnd);
+                if (_taskbar?.Enabled == true && _canSelectWindow?.Invoke(hwnd) != false
+                    && !ShellSelectionInputHook.IsTaskbarWindow(hwnd)
+                    && _taskbar?.TrySelect(hwnd, dwmsEventTime) == true)
+                    WindowSelected?.Invoke(hwnd);
                 break;
 
             case PInvoke.EVENT_OBJECT_LOCATIONCHANGE:
@@ -98,6 +120,13 @@ internal sealed class Win32EventRouter : IDisposable
                     WindowMoved?.Invoke(hwnd);
                 break;
         }
+    }
+
+    public void BeginKeyboardSwitch() => AltTabStarted?.Invoke();
+    public void CompleteKeyboardSwitch(IntPtr window, bool selected)
+    {
+        AltTabEnded?.Invoke();
+        if (selected) WindowSelected?.Invoke(window);
     }
 
     public void Dispose()

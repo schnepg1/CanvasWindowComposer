@@ -12,6 +12,41 @@ internal static class Program
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
+        if (args.Length == 2 && args[0] == "--render-launching-placeholders")
+        {
+            PlaceholderPreview.Render(args[1], optimized: true, state: "Opening…");
+            return;
+        }
+        if (args.Length == 2 && args[0] == "--render-controls")
+        {
+            using var popup = new CanvasControlsPopup();
+            using var controlsHost = new Panel { Size = popup.ClientSize, BackColor = popup.BackColor,
+                ForeColor = popup.ForeColor, Font = popup.Font, Padding = popup.Padding };
+            foreach (Control child in popup.Controls.Cast<Control>().ToArray()) controlsHost.Controls.Add(child);
+            controlsHost.CreateControl(); controlsHost.PerformLayout();
+            using (var bitmap = new Bitmap(controlsHost.Width, controlsHost.Height))
+            {
+                controlsHost.DrawToBitmap(bitmap, new Rectangle(Point.Empty, controlsHost.Size));
+                bitmap.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
+            }
+            // Expand the same content for an inspectable preview of every row.
+            controlsHost.Height = 1600; controlsHost.PerformLayout();
+            using var expanded = new Bitmap(controlsHost.Width, controlsHost.Height);
+            controlsHost.DrawToBitmap(expanded, new Rectangle(Point.Empty, controlsHost.Size));
+            expanded.Save(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(args[1])!,
+                System.IO.Path.GetFileNameWithoutExtension(args[1]) + "-all.png"), System.Drawing.Imaging.ImageFormat.Png);
+            return;
+        }
+        if (args.Length == 2 && args[0] == "--benchmark-placeholders")
+        {
+            PlaceholderPreview.Benchmark(args[1]);
+            return;
+        }
+        if (args.Length == 2 && args[0] == "--render-overview-cards")
+        {
+            PlaceholderPreview.Render(args[1], optimized: true);
+            return;
+        }
         if (args.Length == 2 && args[0] == "--render-placeholders")
         {
             PlaceholderPreview.Render(args[1]);

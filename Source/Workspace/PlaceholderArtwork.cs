@@ -14,7 +14,6 @@ internal sealed class PlaceholderArtwork : Control
     private Bitmap? _symbol;
     private BitmapSource? _overviewLogo;
     private string? _symbolKey;
-    private bool _folder;
 
     public PlaceholderArtwork()
     {
@@ -29,7 +28,6 @@ internal sealed class PlaceholderArtwork : Control
     {
         Text = item.Title;
         AccessibleName = item.Title;
-        _folder = item.IsFolder;
         string key = item.IsFolder ? "folder" : item.ExecutablePath;
         if (_symbolKey != key)
         {
@@ -111,18 +109,17 @@ internal sealed class PlaceholderArtwork : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        var g = e.Graphics;
+        if (DrawSymbolBackground) DrawIconBackground(e.Graphics, ClientRectangle);
+        DrawForeground(e.Graphics);
+    }
+
+    internal void DrawForeground(Graphics g)
+    {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         float dpi = DeviceDpi / 96f;
-        if (DrawSymbolBackground) DrawIconBackground(g, ClientRectangle);
-        using var captionFont = new Font("Segoe UI", 13 * dpi, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var captionBrush = new SolidBrush(Color.FromArgb(160, 181, 208));
-        using var captionFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-        var captionRect = new RectangleF(0, 4 * dpi, Width, 20 * dpi);
-        DrawBackedText(g, _folder ? "SAVED FOLDER" : "SAVED APPLICATION", captionFont, captionBrush, captionRect, captionFormat, dpi);
-        var titleRect = new RectangleF(4 * dpi, 28 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 32 * dpi));
+        var titleRect = new RectangleF(4 * dpi, 4 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 8 * dpi));
         using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisWord, FormatFlags = StringFormatFlags.LineLimit };
         float fontSize = Math.Min(84 * dpi, titleRect.Height * .65f);
@@ -140,7 +137,7 @@ internal sealed class PlaceholderArtwork : Control
         DrawBackedText(g, Text, titleFont, titleBrush, titleRect, format, dpi);
     }
 
-    private static void DrawBackedText(Graphics graphics, string text, Font font, Brush brush,
+    internal static void DrawBackedText(Graphics graphics, string text, Font font, Brush brush,
         RectangleF area, StringFormat format, float dpi)
     {
         var measured = graphics.MeasureString(text, font, area.Size, format);
@@ -157,8 +154,8 @@ internal sealed class PlaceholderArtwork : Control
     internal static float CalculateCardTitleFontSize(string text, float cardWidth, float cardHeight)
     {
         float artworkWidth = Math.Max(40, cardWidth - 36);
-        float artworkHeight = Math.Max(40, cardHeight - 184);
-        var titleRect = new RectangleF(4, 28, Math.Max(1, artworkWidth - 8), Math.Max(1, artworkHeight - 32));
+        float artworkHeight = Math.Max(40, cardHeight - 128);
+        var titleRect = new RectangleF(4, 4, Math.Max(1, artworkWidth - 8), Math.Max(1, artworkHeight - 8));
         float fontSize = Math.Min(84, titleRect.Height * .65f);
         float minimum = 20;
         fontSize = Math.Max(minimum, fontSize);

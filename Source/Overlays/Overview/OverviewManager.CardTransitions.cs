@@ -7,6 +7,7 @@ namespace CanvasDesktop;
 internal sealed partial class OverviewManager
 {
     private readonly OverviewCardTransitions _cardTransitions = new();
+    private readonly OverviewCardImageQueue _cardImages = new();
     private IReadOnlyDictionary<IntPtr, Guid> _overviewItemIds = new Dictionary<IntPtr, Guid>();
     private IReadOnlyDictionary<IntPtr, IntPtr> _cardSources = WorkspaceOverviewSnapshot.Empty.CardSources;
     private Timer? _cardAnimationTimer;
@@ -32,7 +33,7 @@ internal sealed partial class OverviewManager
 
     private void UpdateCardAnimationTimer()
     {
-        if (_cardTransitions.IsAnimating || _cardTransitions.HasPendingLiveSources)
+        if (_cardTransitions.IsAnimating || _cardTransitions.HasPendingLiveSources || _cardImages.HasPending)
         {
             if (_cardAnimationTimer == null)
             {
@@ -40,6 +41,7 @@ internal sealed partial class OverviewManager
                 _cardAnimationTimer.Tick += (_, _) =>
                 {
                     if (_disposed || CurrentMode == OverviewMode.Hidden) { ClearCardTransitions(); return; }
+                    if (!GesturePreviewsActive && !_wm.OverviewUsesSimpleCards) _cardImages.Process();
                     RefreshCardIdentities();
                     _thumbnails.Reconcile();
                     RefreshZoneAnnotations();
@@ -49,7 +51,7 @@ internal sealed partial class OverviewManager
             }
             // Readiness failures need a retry even before a fade can start.
             // Waiting sources poll slowly; normal idle overview has no timer.
-            _cardAnimationTimer.Interval = _cardTransitions.IsAnimating ? 16 : 250;
+            _cardAnimationTimer.Interval = _cardTransitions.IsAnimating || _cardImages.HasPending ? 16 : 250;
             _cardAnimationTimer.Start();
         }
         else _cardAnimationTimer?.Stop();
@@ -92,6 +94,7 @@ internal sealed partial class OverviewManager
     {
         _cardAnimationTimer?.Stop();
         _cardTransitions.Clear();
+        _cardImages.Clear();
         _cardSources = WorkspaceOverviewSnapshot.Empty.CardSources;
         _overviewItemIds = WorkspaceOverviewSnapshot.Empty.ItemIds;
         _lastZoomFocalWorld = null;

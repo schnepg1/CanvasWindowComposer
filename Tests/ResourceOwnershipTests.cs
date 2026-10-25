@@ -45,6 +45,8 @@ public class ResourceOwnershipTests : IDisposable
         Assert.Equal(1, Subscribers(input, "WindowFocused"));
         foreground.Dispose(); foreground.Dispose();
         Assert.Equal(0, Subscribers(input, "WindowFocused"));
+        Assert.Null(input.WindowSelectionTarget);
+        Assert.False(input.TaskbarNavigationEnabled);
         Assert.Equal(0, Subscribers(overview, "BeforeModeChanged"));
         canvas.SetWindow((IntPtr)1, 5000, 5000, 800, 600);
         input.RaiseWindowFocused((IntPtr)1);

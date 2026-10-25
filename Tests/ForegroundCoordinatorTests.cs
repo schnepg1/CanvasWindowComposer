@@ -6,6 +6,86 @@ namespace CanvasDesktop.Tests;
 
 public class ForegroundCoordinatorTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeliberateSelectionNavigatesEvenDuringRecentFocusSuppression(bool canvasOpen)
+    {
+        var h = new Harness();
+        using var foreground = h.Foreground;
+        IntPtr selected = (IntPtr)2;
+        h.Canvas.SetWindow(selected, 5000, 5000, 400, 300);
+        h.Clock.Now = 10000;
+        h.Input.RaiseWindowMinimized((IntPtr)1);
+        if (canvasOpen) h.Overview.TransitionTo(OverviewMode.Zooming);
+        h.Input.RaiseWindowSelected(selected);
+        if (canvasOpen)
+        {
+            Assert.Equal(selected, Assert.Single(h.Overview.NavigatedWindows));
+            Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
+            Assert.Equal(0, h.Canvas.CamX);
+        }
+        else
+        {
+            Assert.Empty(h.Overview.NavigatedWindows);
+            var center = h.Canvas.WorldToScreen(5200, 5150);
+            Assert.Equal((960d, 520d), center);
+            Assert.Equal(1, h.Canvas.Zoom);
+        }
+    }
+
+    [Fact]
+    public void FastSelectionAfterClosingCanvasIsNotLostToOverlaySuppression()
+    {
+        var h = new Harness();
+        using var foreground = h.Foreground;
+        h.Canvas.LoadState(new() { CamX = 0, CamY = 0, Zoom = .25, Windows = new() });
+        h.Canvas.SetWindow((IntPtr)2, 5000, 5000, 400, 300);
+        h.Clock.Now = 10000;
+        h.Overview.TransitionTo(OverviewMode.Zooming);
+        Assert.True(h.Input.WindowSelectionTarget!((IntPtr)2));
+        Assert.False(h.Input.WindowSelectionTarget!((IntPtr)999));
+        h.Overview.TransitionTo(OverviewMode.Hidden);
+        h.Input.RaiseWindowSelected((IntPtr)2);
+        Assert.Equal(1, h.Canvas.Zoom);
+        Assert.Equal((960d, 520d), h.Canvas.WorldToScreen(5200, 5150));
+    }
+
+    [Fact]
+    public void IncidentalFocusAndAutomaticRestoreDoNotNavigateTheOverview()
+    {
+        var h = new Harness();
+        using var foreground = h.Foreground;
+        h.Canvas.SetWindow((IntPtr)2, 5000, 5000, 400, 300);
+        h.Clock.Now = 10000;
+        h.Overview.TransitionTo(OverviewMode.Zooming);
+        h.Input.RaiseWindowRestored((IntPtr)2);
+        h.Input.RaiseWindowFocused((IntPtr)2);
+        Assert.Empty(h.Overview.NavigatedWindows);
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.True(h.Input.TaskbarNavigationEnabled);
+        h.Overview.TransitionTo(OverviewMode.Panning);
+        Assert.False(h.Input.TaskbarNavigationEnabled);
+        h.Overview.TransitionTo(OverviewMode.Hidden);
+        Assert.False(h.Input.TaskbarNavigationEnabled);
+    }
+
+    [Fact]
+    public void DisabledInputUntrackedAndPinnedWindowsAreNotNavigationTargets()
+    {
+        var h = new Harness();
+        using var foreground = h.Foreground;
+        h.Overview.TransitionTo(OverviewMode.Zooming);
+        h.Input.RaiseWindowSelected((IntPtr)999);
+        h.Canvas.SetWindow((IntPtr)2, 5000, 5000, 400, 300);
+        h.Input.Enabled = false;
+        h.Input.RaiseWindowSelected((IntPtr)2);
+        h.Input.Enabled = true;
+        h.Canvas.SetPinnedToScreen((IntPtr)2, true);
+        h.Input.RaiseWindowSelected((IntPtr)2);
+        Assert.Empty(h.Overview.NavigatedWindows);
+    }
+
     private sealed class Harness
     {
         public Canvas Canvas = new();

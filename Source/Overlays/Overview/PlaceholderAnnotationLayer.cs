@@ -52,6 +52,24 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                 dc.DrawImage(card.Image, rect);
                 dc.Pop();
             }
+            if (imageOpacity < 1 && card.LaunchStatus is { Length: > 0 } status && rect.Width >= 30 && rect.Height >= 30)
+            {
+                dc.PushOpacity(1 - imageOpacity);
+                double height = Math.Min(24, rect.Height * .25);
+                int lineBreak = status.IndexOf('\n');
+                var text = context.Text(lineBreak < 0 ? status : status[..lineBreak], height * .6, Brushes.LightSkyBlue);
+                text.MaxTextWidth = Math.Max(1, rect.Width * .9);
+                text.MaxTextHeight = height;
+                text.MaxLineCount = 1;
+                text.Trimming = TextTrimming.CharacterEllipsis;
+                text.TextAlignment = TextAlignment.Center;
+                var point = new Point(rect.X + rect.Width * .05, rect.Bottom - height - rect.Height * .04);
+                double width = Math.Min(text.MaxTextWidth, text.Width + 6);
+                dc.DrawRoundedRectangle(LabelFill, null,
+                    new Rect(point.X + (text.MaxTextWidth - width) / 2, point.Y, width, height), 3, 3);
+                dc.DrawText(text, point);
+                dc.Pop();
+            }
             dc.Pop();
             dc.Pop();
         }
@@ -76,8 +94,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                 Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center
             };
             double textY = rect.Y + (rect.Height - text.Height) / 2;
+            double backingWidth = Math.Min(rect.Width, text.Width + label.FontSize * .4);
             dc.DrawRoundedRectangle(LabelFill, null,
-                new Rect(rect.X, textY, rect.Width, text.Height), 3, 3);
+                new Rect(rect.X + (rect.Width - backingWidth) / 2, textY, backingWidth, text.Height), 3, 3);
             dc.DrawText(text, new Point(rect.X, textY));
             dc.Pop();
             dc.Pop();

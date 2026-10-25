@@ -44,6 +44,10 @@ internal interface IInputRouter
     event Action<IntPtr>? WindowMoved;
     event Action? AltTabStarted;
     event Action? AltTabEnded;
+    // Intentional shell selection, distinct from focus/minimize/restore side effects.
+    event Action<IntPtr>? WindowSelected;
+    void SetTaskbarNavigationEnabled(bool enabled);
+    void SetWindowSelectionTarget(Func<IntPtr, bool>? canSelect);
 
     bool Enabled { get; set; }
     void SetExtraPanSurfaces(IEnumerable<IntPtr> handles);

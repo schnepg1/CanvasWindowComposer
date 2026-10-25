@@ -86,6 +86,8 @@ internal sealed class AnnotationToolbar : Form
 
         var bar = new ToolStrip
         {
+            // Tools must respond to the click that activates this floating form.
+            AllowClickThrough = true,
             Dock = DockStyle.None,
             GripStyle = ToolStripGripStyle.Hidden,
             BackColor = BackColor,

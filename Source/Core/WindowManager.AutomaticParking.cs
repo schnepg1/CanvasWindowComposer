@@ -197,6 +197,9 @@ internal sealed partial class WindowManager
 
     private void CenterManuallyRestoredWindow(IntPtr handle)
     {
+        // The overview's explicit shell-selection navigation owns its camera.
+        // Restoring a parked app there must not also move the desktop camera.
+        if (_overviewViewport.HasValue) return;
         if (!_canvas.Windows.TryGetValue(handle, out var world) || world.PinnedToScreen) return;
         var screens = _win32.GetScreenWorkingAreas();
         if (WindowPlacementPlanner.IntersectsAnyScreen(_canvas.Camera.Project(world), screens) || screens.Count == 0) return;

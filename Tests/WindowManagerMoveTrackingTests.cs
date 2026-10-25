@@ -4,6 +4,47 @@ namespace CanvasDesktop.Tests;
 
 public class WindowManagerMoveTrackingTests
 {
+    [Fact]
+    public void SavedPlacementWinsOverAnEarlierInFlightProjection()
+    {
+        var api = new FakeWindowApi(); var canvas = new Canvas(); var input = new FakeInputRouter();
+        using var entered = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        using var completed = new ManualResetEventSlim();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig { DisableGreedyDraw = true }, input,
+            useAsyncProjection: true);
+        IntPtr handle = (IntPtr)42;
+        api.AddWindow(handle, 100, 100, 800, 600);
+        wm.RegisterWindow(handle);
+        canvas.SetWindow(handle, 300, 100, 800, 600);
+        api.BeforeBatchMove = token =>
+        {
+            using var cancelled = new ManualResetEventSlim();
+            using var registration = token.Register(() => cancelled.Set());
+            entered.Set();
+            WaitHandle.WaitAny(new[] { resume.WaitHandle, cancelled.WaitHandle }, TimeSpan.FromSeconds(5));
+        };
+        api.AfterBatchMove = () => completed.Set();
+        wm.Reproject(); // Still contains the window's original desktop position.
+        try
+        {
+            Assert.True(entered.Wait(5000));
+            var saved = new WorldRect { X = -3400, Y = 2100, W = 900, H = 650 };
+            wm.RestorePlacement(handle, saved);
+            resume.Set();
+            Assert.True(completed.Wait(5000));
+            input.RaiseWindowMoved(handle);
+            Assert.Equal((-3400, 2100, 900, 650), api.GetWindowRect(handle));
+            Assert.Equal(saved, canvas.Windows[handle]);
+        }
+        finally
+        {
+            resume.Set();
+            api.BeforeBatchMove = null;
+            api.AfterBatchMove = null;
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

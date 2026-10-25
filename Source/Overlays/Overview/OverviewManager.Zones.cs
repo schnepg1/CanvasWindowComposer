@@ -42,7 +42,8 @@ internal sealed partial class OverviewManager
 
     private void RefreshOverviewWindows()
         => _windows.Refresh(includeScreenFixedWindows: ShouldShowScreenFixedWindowsDuringPan,
-            representedWindows: _placeholderWorkspace?.GetRepresentedWindows(), preserveSelection: true);
+            representedWindows: _placeholderWorkspace?.GetRepresentedWindows(), preserveSelection: true,
+            navigationTarget: _navigationDisplayTarget);
 
     private int HitOverviewWindow(OverviewOverlay pass, int x, int y, double wx, double wy)
     {
@@ -104,6 +105,7 @@ internal sealed partial class OverviewManager
         var camera = SceneCamera;
         var focal = GetTransitionFocalPoint(camera);
         var inputs = new List<OverviewCardInput>();
+        _cardImages.BeginFrame();
         List<PlaceholderAnnotation>? gestureCards = null;
         bool hasRestoreFallback = false;
         // Each card borrows a prefix of one detached frame array. Copying every
@@ -135,7 +137,8 @@ internal sealed partial class OverviewManager
                 if (cachedThumbnail) image = null;
                 (gestureCards ??= new()).Add(new(entry.HWnd, GestureTitle(entry.HWnd), entry.World, priority,
                     image, new ArraySegment<WorldRect>(occluders, 0, i), ImageOpacity: image != null || cachedThumbnail ? 1 : 0,
-                    LabelOpacity: image != null ? 0 : 1, Logo: logo));
+                    LabelOpacity: image != null ? 0 : 1, Logo: logo,
+                    LaunchStatus: (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.LaunchStatus));
                 hasRestoreFallback |= restoreFallback;
             }
             else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
@@ -148,11 +151,23 @@ internal sealed partial class OverviewManager
                     // The transition controller retains the outgoing frozen image
                     // only until the fade ends; distant cards create no new bitmap.
                     if (simple) card.ReleaseOverviewImage();
+                    var image = simple ? null : card.CachedOverviewImage;
+                    double projectedEdge = Math.Max(entry.World.W, entry.World.H) * camera.Zoom;
+                    int dimension = OverviewCardImageQueue.ImageDimension(projectedEdge);
+                    bool upgrade = image is System.Windows.Media.Imaging.BitmapSource bitmap
+                        && dimension > Math.Max(bitmap.PixelWidth, bitmap.PixelHeight)
+                        && projectedEdge > Math.Max(bitmap.PixelWidth, bitmap.PixelHeight) * 1.25;
+                    if (!simple && (image == null || upgrade))
+                        _cardImages.RequestImage(id, priority ? -1 : stagger, () =>
+                        {
+                            if (!card.IsDisposed) card.GetOverviewImage(dimension);
+                        });
                     bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
-                        simple ? null : card.GetOverviewImage(), new ArraySegment<WorldRect>(occluders, 0, i),
-                        Logo: card.OverviewLogo),
-                        simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger));
+                        image, new ArraySegment<WorldRect>(occluders, 0, i),
+                        Logo: card.OverviewLogo, LaunchStatus: card.LaunchStatus),
+                        simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger,
+                        DetailReady: simple || image != null));
                 }
                 else
                     inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i)),
@@ -168,6 +183,7 @@ internal sealed partial class OverviewManager
             }
             else occluders[i] = entry.World;
         }
+        _cardImages.EndFrame();
         IReadOnlyList<PlaceholderAnnotation> cards;
         if (GesturePreviewsActive)
         {

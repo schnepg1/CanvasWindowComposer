@@ -94,7 +94,7 @@ public class WorkspaceViewTests
     [Theory]
     [InlineData("Minimized")]
     [InlineData("Sleeping")]
-    public void MinimizedCardOffersRestoreInsteadOfClaimingTheAppIsClosed(string state)
+    public void MinimizedCardRestoresByDoubleClickWithoutAButtonOrStatusText(string state)
     {
         OnSta(() =>
         {
@@ -102,9 +102,9 @@ public class WorkspaceViewTests
             using var form = new PlaceholderForm(commands, commands.Items[0] with { State = state });
             form.ShowAt(new WindowRect(-10000, -10000, 800, 550));
             var panel = form.Controls.OfType<TableLayoutPanel>().Single();
-            Assert.Equal("Restore", panel.Controls.OfType<Button>().Single().Text);
+            Assert.Empty(panel.Controls.OfType<Button>());
             Assert.DoesNotContain(panel.Controls.OfType<Label>(), label => label.Text.Contains("closed"));
-            panel.Controls.OfType<Button>().Single().PerformClick();
+            DoubleClick(panel.Controls.OfType<PlaceholderArtwork>().Single());
             Assert.Equal(commands.Items[0].Id, commands.Opened);
         });
     }
@@ -173,8 +173,6 @@ public class WorkspaceViewTests
     [InlineData("target")]
     [InlineData("executable")]
     [InlineData("folder")]
-    [InlineData("state")]
-    [InlineData("startup")]
     public void VisualCardChangesInvalidateTheSnapshot(string change)
         => OnSta(() =>
         {
@@ -187,9 +185,7 @@ public class WorkspaceViewTests
                 "title" => item with { Title = "Renamed" },
                 "target" => item with { Target = @"C:\Other\file.txt" },
                 "executable" => item with { ExecutablePath = @"C:\Other\Other.exe" },
-                "folder" => item with { IsFolder = true },
-                "state" => item with { State = "Minimized" },
-                _ => item with { OpenOnStartup = true }
+                _ => item with { IsFolder = true }
             };
             form.UpdateItem(changed);
             Assert.Null(form.CachedOverviewImage);
@@ -256,16 +252,18 @@ public class WorkspaceViewTests
             var item = commands.Items[0];
             using var form = new PlaceholderForm(commands, item);
             form.ShowAt(new WindowRect(10, 20, 800, 550));
-            var open = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<Button>().Single();
-            open.PerformClick();
+            var title = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<PlaceholderArtwork>().Single();
+            DoubleClick(title);
             Assert.Equal(item.Id, commands.Opened);
             form.UpdateItem(item with { Title = "Changed", State = "Opening…", OpenOnStartup = true });
             Assert.Equal("Saved: Changed", form.Text);
-            Assert.Equal("Opening…", open.Text);
-            Assert.False(open.Enabled);
-            form.UpdateItem(item);
-            Assert.True(open.Enabled);
-            Assert.Equal("Open", open.Text);
+            Assert.Equal("Changed", title.Text);
+            var image = form.GetOverviewImage(512);
+            form.UpdateItem(item with { Title = "Changed", State = "Open", OpenOnStartup = false });
+            var opened = form.GetOverviewImage(512);
+            Assert.NotSame(image, opened); // Launch feedback has disappeared.
+            form.UpdateItem(item with { Title = "Changed", State = "Open", OpenOnStartup = true });
+            Assert.Same(opened, form.GetOverviewImage(512));
         });
     }
 
@@ -374,7 +372,7 @@ public class WorkspaceViewTests
     }
 
     [Fact]
-    public void AmbiguousPlaceholderOffersLinkingInsteadOfClaimingApplicationIsClosed()
+    public void AmbiguousPlaceholderKeepsLinkingInItsContextMenu()
     {
         OnSta(() =>
         {
@@ -382,8 +380,8 @@ public class WorkspaceViewTests
             using var form = new PlaceholderForm(commands, commands.Items[0] with { State = "Needs linking" });
             form.ShowAt(new WindowRect(10, 20, 800, 550));
             var panel = form.Controls.OfType<TableLayoutPanel>().Single();
-            Assert.Equal("Link open window…", panel.Controls.OfType<Button>().Single().Text);
-            Assert.Contains(panel.Controls.OfType<Label>(), label => label.Text.Contains("Several matches"));
+            Assert.Empty(panel.Controls.OfType<Button>());
+            Assert.Contains(form.ContextMenuStrip!.Items.OfType<ToolStripMenuItem>(), menu => menu.Text == "Link open window…");
             Assert.Contains(form.ContextMenuStrip!.Items.OfType<ToolStripMenuItem>(), menu => menu.Text == "Rename…");
             using var bitmap = new System.Drawing.Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, form.Width, form.Height));
@@ -451,6 +449,10 @@ public class WorkspaceViewTests
         encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
         using var stream = File.Create(Path.Combine(AppContext.BaseDirectory, fileName)); encoder.Save(stream);
     }
+
+    internal static void DoubleClick(Control control)
+        => typeof(Control).GetMethod("OnDoubleClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(control, [EventArgs.Empty]);
 
     internal static void OnSta(Action action)
     {

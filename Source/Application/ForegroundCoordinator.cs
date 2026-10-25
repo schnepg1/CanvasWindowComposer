@@ -35,17 +35,20 @@ internal sealed class ForegroundCoordinator : IDisposable
         _clock = clock;
         _screens = screens;
         _input = input;
+        _input.SetWindowSelectionTarget(_canvas.HasWindow);
 
         overview.BeforeModeChanged += OnOverviewModeChanged;
 
         input.WindowDestroyed += OnWindowDestroyed;
         input.WindowFocused   += OnWindowFocused;
         input.WindowMinimized += OnWindowMinimized;
+        input.WindowSelected += OnWindowSelected;
     }
 
     private void OnOverviewModeChanged(OverviewMode from, OverviewMode to)
     {
         if (_disposed) return;
+        _input.SetTaskbarNavigationEnabled(to == OverviewMode.Zooming);
         if (to == OverviewMode.Hidden)
             _lastOverlayClosedTick = _clock.TickCount64;
     }
@@ -89,6 +92,24 @@ internal sealed class ForegroundCoordinator : IDisposable
         }
     }
 
+    private void OnWindowSelected(IntPtr window)
+    {
+        if (_disposed || !_input.Enabled || !_canvas.Windows.TryGetValue(window, out var world)
+            || world.PinnedToScreen) return;
+        // A deliberate Alt+Tab/taskbar choice must survive the short suppression
+        // interval used for incidental focus after minimize, close, or overlay exit.
+        if (_overview.CurrentMode != OverviewMode.Hidden)
+        {
+            _overview.NavigateToWindow(window);
+            return;
+        }
+        _overview.CancelInertia();
+        var target = WindowNavigationFlight.Target(world, 1, _screens.PrimaryWorkingArea);
+        _canvas.LoadState(new CanvasState { CamX = target.X, CamY = target.Y, Zoom = 1,
+            Windows = new System.Collections.Generic.Dictionary<IntPtr, WorldRect>(_canvas.Windows) });
+        _canvas.Commit();
+    }
+
     private bool IsOnAnyScreen(WindowRect r)
     {
         foreach (var bounds in _screens.AllBounds)
@@ -108,5 +129,8 @@ internal sealed class ForegroundCoordinator : IDisposable
         _input.WindowDestroyed -= OnWindowDestroyed;
         _input.WindowFocused -= OnWindowFocused;
         _input.WindowMinimized -= OnWindowMinimized;
+        _input.WindowSelected -= OnWindowSelected;
+        _input.SetTaskbarNavigationEnabled(false);
+        _input.SetWindowSelectionTarget(null);
     }
 }

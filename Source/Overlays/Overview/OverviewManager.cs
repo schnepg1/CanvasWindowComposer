@@ -263,6 +263,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             {
                 if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
             };
+            pass.OnSettingsRequested = (owner, zoomOnly) => ShowSettings(zoomOnly, owner);
             pass.Deactivate += (_, _) => CloseActiveMenus();
             pass.OnKey = HandleKeyDown;
             pass.OnKeyReleased = HandleKeyUp;
@@ -376,6 +377,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             PauseGuidedTutorial();syncCameraOnClose=false;
         }
         if (target != OverviewMode.Zooming) { _tutorialOfferVisible=false;_tourPanel?.Hide(); }
+        StopWindowNavigation();
         if (!_state.SetMode(target)) return;
 
         BeforeModeChanged?.Invoke(from, target);
@@ -431,6 +433,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        CloseSettingsPopup(canvasOnly: true);
         CancelVisualFrame();
         CloseActiveMenus();
         ResetGesturePreviews();
@@ -486,6 +489,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         // holds foreground itself so it doesn't need the layered cost.
         if (CurrentMode != OverviewMode.Zooming)
         {
+            CloseSettingsPopup(canvasOnly: true);
             CancelInteraction();
             _annotationToolbar?.CloseDropDowns();
             HideAnnotationUi();
@@ -500,6 +504,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
                 p.Grid.DrawGrid = _cfg.GridVisible;
                 p.Grid.LowQuality = _appConfig.LowQualityMode;
             }
+            p.SetTaskbarVisible(_appConfig.ShowTaskbarInCanvas);
             p.SetModeStyle(wantLayered, wantNoActivate);
             p.SetClickThrough(!_cfg.InputEnabled);
         }
@@ -770,6 +775,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         _visualFrames.Flush();
         if (CloseActiveMenus()) return;
+        StopWindowNavigation();
         if (StopTutorialTravel()) RefreshTourUi();
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled)
@@ -832,20 +838,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             int hit = HitOverviewWindow(pass, e.X, e.Y, wx, wy);
             if (hit >= 0)
             {
-                var entry = _windows.Windows[hit];
-                if (Control.FromHandle(entry.HWnd) is PlaceholderForm card
-                    && _placeholderWorkspace?.CardItem(entry.HWnd) is { } cardItemId)
-                {
-                    double relX = wx - entry.World.X;
-                    double relY = wy - entry.World.Y;
-                    if (card.HitTestOpenButton((int)Math.Round(relX), (int)Math.Round(relY)))
-                    {
-                        TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
-                        _placeholderWorkspace.Open(cardItemId);
-                        return;
-                    }
-                }
-
                 BringWindowToFront(hit);
                 _tools.TryBeginNavigation(CanvasInteractionKind.Window, pointer);
                 ApplyPointerCapture();
@@ -974,6 +966,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void PanOverview(double virtualDx, double virtualDy)
     {
         if (virtualDx == 0 && virtualDy == 0) return;
+        StopWindowNavigation();
         StopTutorialTravel();ObserveTourPan(virtualDx,virtualDy);
         _startupIntroLanded = false;
         double worldDx = virtualDx / _camera.Zoom;
@@ -988,6 +981,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private void ZoomOverview(int virtualX, int virtualY, double notches)
     {
         StopTutorialTravel();
+        StopWindowNavigation();
         double before=_camera.Zoom;
         _lastZoomFocalWorld = new CanvasPoint(virtualX / before + _camera.X, virtualY / before + _camera.Y);
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
@@ -1095,6 +1089,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(CancelVisualFrame);
+        Attempt(() => _windowFlightTimer?.Dispose());
+        Attempt(() => CloseSettingsPopup());
         Attempt(ResetGesturePreviews);
         Attempt(() => _gestureSettleTimer?.Dispose());
         Attempt(() => _visualFrameTimer?.Dispose());
