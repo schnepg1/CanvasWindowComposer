@@ -5,7 +5,7 @@ visible managed window. With no visible windows, a sample canvas card provides t
 landmark; the tutorial never launches applications. Placement avoids windows,
 personal annotations and project areas without moving them.
 
-The cinematic intro lands at readable camera controls. Choose **Start tour** for
+The cinematic intro lands at a readable welcome note. Choose **Start tour** for
 guidance, or **Explore myself** to keep exploring freely. Dismissing or completing
 the tour suppresses future automatic invitations on that desktop. Disabling the
 startup intro also disables its automatic landing; the tour remains available
@@ -15,16 +15,24 @@ available independently of the guided tour.
 
 ## Guided stops
 
-1. Pan: middle-drag or trackpad two-finger scroll; 64 DIPs of movement checks the exercise.
-2. Zoom: pinch, Ctrl/Alt+scroll or +/−; an accumulated 12% logarithmic zoom change checks it.
-3. Windows: drag a window or double-click a window/card. Returning to a real window pauses the tour.
-4. Notes: create and save a new Text note. Editing an existing note, undo or redo does not count.
-5. Make it your workspace: a short overview of project areas, the project navigator and returning to the desktop.
+1. Look around: hold Space and left-drag, or use two-finger scrolling on a touchpad.
+2. Zoom in and out: hold Ctrl and scroll, or press +/−.
+3. Move a window: drag a window or app card in Arrange. Double-clicking opens the app at desktop size and pauses the tour.
+4. Write your first note: choose Text in the bottom toolbar, click empty space, type, and save with Ctrl+Enter.
+5. Ready to explore: finish the tour, learn how to leave and reopen the canvas, and find more help.
 
-Each stop has **Back**, **Next** (or **I understand — continue**), **Recenter** and
-**Skip tour**. Practice never advances the camera automatically, and no exercise
-is mandatory. **Finish** leaves the notes available. Instructions stay on the
-canvas; progress and navigation buttons stay readable in a screen-space panel.
+The tour introduces one action at a time. The complete reference, including selection,
+shapes, project areas and Arrange/Interact, lives in **Controls** at the top right of
+canvas mode. The offer and every tour stop also have a **Controls** button. Opening
+it stops camera travel without losing the current step; Escape closes the popup first,
+and Tab stays within the popup instead of jumping back to the tour.
+
+Each stop has **Back**, **Show note**, **Controls**, **Skip tour**, and a highlighted
+**Next** button in a consistent position. **Show note** brings the current note back
+into view if you move away. Practice never advances the camera automatically, and no
+exercise is mandatory. **Finish** leaves the notes available. The tour starts in
+Arrange; after finishing, zoom in and choose Interact to use live apps on the canvas.
+Short practice prompts, progress and navigation buttons stay readable in a screen-space panel.
 Tab from the canvas focuses the controls; standard buttons support Tab, Enter and access keys. The panel hides while drawing
 or editing text, and returns afterward.
 
@@ -50,7 +58,8 @@ Tutorial artwork lives in `tutorial.json`, separate from personal drawings and t
 undo/redo. Layouts, visibility and tour progress are desktop-local. The startup reveal
 flag remains application-wide. Layout identities and origin survive restarts and
 DPI changes. Notes are read-only examples; personal practice notes use the ordinary
-annotation document and save automatically.
+annotation document and save automatically. Saved tutorial instructions refresh to
+the current wording without changing positions, IDs, visibility or tour progress.
 
 Format version 2 adds the step, checked exercises and paused/completed/dismissed status.
 Version 1 files migrate without losing artwork, IDs or visibility. Atomic saves and

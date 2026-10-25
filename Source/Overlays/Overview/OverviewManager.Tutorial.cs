@@ -32,7 +32,7 @@ internal sealed partial class OverviewManager
         if(CurrentTutorial is not {} notes) return;
         try
         {
-            var layout=notes.Layout.WithScale(TutorialDpiScale);
+            var layout=notes.Layout.WithInstructions().WithScale(TutorialDpiScale);
             if(ReferenceEquals(layout,notes.Layout)) return;
             _tutorialStore!.SetLayout(_annotationDesktop(),layout);
             if(_tutorialReading && (_startupIntroLanded || GuidedTutorialActive))
@@ -55,7 +55,7 @@ internal sealed partial class OverviewManager
         var content=_annotationDocument!.Items.Where(a=>a.DesktopId==_annotationDesktop()).Select(a=>a.Bounds)
             .Concat(_zones?.Items.Select(z=>new CanvasRect(z.Bounds.X,z.Bounds.Y,z.Bounds.W,z.Bounds.H))??[]).ToArray();
         double dpi=TutorialDpiScale;
-        var layout=TutorialLayout.Create(_annotationDesktop(),viewport,windows,content,dpi,!_appConfig.DisableZoomHotkey,!_appConfig.DisableAltPan);
+        var layout=TutorialLayout.Create(_annotationDesktop(),viewport,windows,content,dpi);
         _tutorialStore!.SetLayout(_annotationDesktop(),layout);
         return layout;
     }

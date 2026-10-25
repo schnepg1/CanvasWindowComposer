@@ -27,12 +27,17 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 
 ## Controls
 
+Open **Controls** in the top-right corner of canvas mode for the full reference.
+Choose **Arrange** to move items or **Interact** to use a live app on the canvas.
+
 | Input | Action |
 |---|---|
 | Middle-click drag on desktop | Pan all windows |
 | Alt + middle-click drag anywhere | Pan (works over windows) |
 | Alt + Q | Toggle overview (map-view) |
 | Alt + scroll on desktop | Open overview |
+| Space + left-drag or middle-drag in overview | Look around the canvas |
+| Left-drag empty canvas / Ctrl+click an item | Select a group / add or remove an item from the selection |
 | Two-finger scroll in overview | Pan vertically or horizontally |
 | Shift + scroll in overview | Pan horizontally |
 | Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
@@ -40,7 +45,6 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 | Esc while interacting | Return to canvas navigation, keeping the overview open |
 | Ctrl + scroll, Alt + scroll, or + / - in overview | Zoom without a pinch gesture |
 | Alt + S | Fuzzy window search |
-| Shift + left-drag in overview | Draw a project area |
 | Drag an area corner in overview | Resize its boundary without moving members |
 | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) in overview | Undo / redo an area move or resize |
 | N in overview | Draw the next project area with a normal left-drag |
@@ -172,18 +176,20 @@ Configuration keys: `EnableStartupIntro=true`, `ReduceStartupMotion=false`.
 ### On-canvas tutorial
 
 On the first tutorial-enabled startup, notes and arrows are placed beside your visible
-windows and the intro lands at a readable camera-controls note. Explore the nearby
-zoom, window and drawing instructions at your own pace. Use **Tray → Tutorial** to
-hide the notes or return to them. Start the optional guided tour for Back/Next camera
-stops, practice checks and saved progress; Skip keeps the notes available. Resume or
-restart from the tray. Tutorial notes save separately from your own drawings.
+windows and the intro lands at a readable welcome note. The optional guided tour
+introduces moving, zooming, arranging windows and making a note, one action at a time.
+Every exercise is optional; **Show note** brings you back if you lose your place.
+Open **Controls** at the top right of canvas mode (or from the tour) for the full reference.
+Use **Tray → Tutorial** to hide the notes, return to them, or resume/restart the tour.
+Progress is saved; **Skip tour** keeps the notes available.
+Tutorial notes save separately from your own drawings.
 See [on-canvas tutorial](Docs/canvas-tutorial.md) for behaviour and limitations.
 
 ### Canvas annotations
 
 In canvas overview, use the toolbar to draw arrows, rectangles and ellipses, or
 click **Text** to add a note. Use **Select** to move/resize drawings, double-click
-notes to edit, and **Windows** to return to window navigation. Shift constrains
+notes to edit, and choose **Arrange** at the top right to move windows. Shift constrains
 shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edits
 while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
 editing. Drawings save automatically per virtual desktop and return after restart.

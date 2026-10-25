@@ -26,6 +26,27 @@ public class GuidedTutorialOverviewTests
 
     [Fact]
     [Trait("Category","NativeRendering")]
+    public void ControlsReferenceKeepsTheTourAtItsStepAndEscapeClosesHelpFirst()
+        =>WithOverview((overview,canvas,input,desktops,folder,api)=>
+        {
+            overview.TransitionTo(OverviewMode.Zooming);overview.SetInteractMode(true);
+            overview.StartGuidedTutorial();Assert.False(overview.InteractMode);
+            Assert.True(overview.GuidedTour!.Travelling);
+            var panel=overview.TourPanel!;
+            panel.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>()
+                .Single(b=>b.Text=="&Controls").PerformClick();
+            Assert.True(overview.ControlsPopup!.Visible);Assert.True(overview.GuidedTutorialActive);
+            Assert.False(overview.GuidedTour!.Travelling);
+            Assert.Equal(TutorialStep.Pan,overview.GuidedTour!.Step);
+            var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            var tab=new KeyEventArgs(Keys.Tab);pass.OnKey!(pass,tab);Assert.False(tab.Handled);
+            overview.HandleEscape();Assert.False(overview.ControlsPopup.Visible);
+            Assert.True(overview.GuidedTutorialActive);
+            overview.NextTutorialStep();Assert.Equal(TutorialStep.Zoom,overview.GuidedTour.Step);
+        },reduced:false);
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
     public void PanZoomPracticeWaitsForNextAndClosingPreservesTheDesktopAndOffersResume()
         =>WithOverview((overview,canvas,input,desktops,folder,api)=>
         {

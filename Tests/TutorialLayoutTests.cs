@@ -32,12 +32,28 @@ public class TutorialLayoutTests
     }
 
     [Fact]
-    public void DisabledShortcutsAreNotTaughtAsAvailable()
+    public void NotesIntroduceBasicActionsAndPointToTheFullControlsReference()
     {
-        var layout=TutorialLayout.Create(Desktop,View,[],[],overviewHotkey:false,altPan:false);
+        var layout=TutorialLayout.Create(Desktop,View,[],[]);
         Assert.DoesNotContain(layout.Items,a=>a.Text.Contains("Alt+Q") || a.Text.Contains("Alt+middle"));
-        Assert.Contains(layout.Items,a=>a.Text.Contains("Ctrl+scroll"));
+        Assert.Contains(layout.Items,a=>a.Text.Contains("Hold Ctrl and scroll"));
         Assert.Contains(layout.Items,a=>a.Text.Contains("two fingers"));
+        Assert.Contains(layout.Items,a=>a.Text.Contains("Controls is in the top-right corner"));
+    }
+
+    [Fact]
+    public void RefreshingSavedInstructionsPreservesArtwork()
+    {
+        var layout=TutorialLayout.Create(Desktop,View,[],[]);
+        var stale=layout with { Items=layout.Items.Select(a=>a.Kind==AnnotationKind.Text?a with { Text="Old controls" }:a).ToArray() };
+        var updated=stale.WithInstructions();
+        Assert.Equal(layout.Items.Select(a=>a.Id),updated.Items.Select(a=>a.Id));
+        Assert.Equal(layout.Items.Select(a=>a.Bounds),updated.Items.Select(a=>a.Bounds));
+        Assert.Equal(layout.LandmarkConnectorId,updated.LandmarkConnectorId);
+        Assert.Equal(layout.Welcome,updated.Welcome);
+        Assert.DoesNotContain(updated.Items,a=>a.Text=="Old controls" || a.Text.Contains("Alt+Q") || a.Text.Contains("Alt+middle"));
+        Assert.Equal(layout.Items.Where(a=>a.Kind!=AnnotationKind.Text),updated.Items.Where(a=>a.Kind!=AnnotationKind.Text));
+        Assert.Same(updated,updated.WithInstructions());
     }
 
     [Theory]

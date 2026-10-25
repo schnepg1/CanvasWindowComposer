@@ -35,7 +35,7 @@ internal sealed partial class OverviewManager
         try
         {
             if(IsStartupIntroActive)FinishStartupIntro(refresh:false);
-            PauseGuidedTutorial();CancelInteraction();Warmup();EnsureTutorialLayout();
+            PauseGuidedTutorial();SetInteractMode(false);Warmup();EnsureTutorialLayout();
             _tutorialStore.SetVisible(_annotationDesktop(),true);_tutorialStore.MarkPresented();
             var saved=_tutorialStore.TourForDesktop(_annotationDesktop());
             var progress=!restart && saved?.Status is TutorialTourStatus.Paused or TutorialTourStatus.InProgress
@@ -60,7 +60,7 @@ internal sealed partial class OverviewManager
             var target=notes[Math.Min(_tour.Progress.Step,notes.Length-1)].Bounds;
             return TutorialReadingView(layout,target);
         }
-        // The final stop surveys the neighbourhood; its short project-area explanation is in the controls.
+        // The final stop surveys the neighbourhood and explains how to leave and return.
         double x=notes.Min(a=>a.Bounds.X),y=notes.Min(a=>a.Bounds.Y);
         return TutorialReadingView(layout,new(x,y,notes.Max(a=>a.Bounds.X+a.Bounds.Width)-x,notes.Max(a=>a.Bounds.Y+a.Bounds.Height)-y));
     }
@@ -155,7 +155,7 @@ internal sealed partial class OverviewManager
     }
     private bool HandleTutorialControlKey(KeyEventArgs e)
     {
-        if(e.KeyCode!=Keys.Tab || e.Control || e.Alt || _tools.Active || _annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null
+        if(e.KeyCode!=Keys.Tab || e.Control || e.Alt || _tools.Active || _annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null || _controlsPopup is { Visible:true }
             || (!GuidedTutorialActive && !_tutorialOfferVisible))return false;
         RefreshTourUi();
         if(_tourPanel is not { Visible:true })return false;
@@ -179,6 +179,10 @@ internal sealed partial class OverviewManager
             _tourPanel.BackRequested+=PreviousTutorialStep;
             _tourPanel.NextRequested+=NextTutorialStep;
             _tourPanel.RecenterRequested+=TravelToTourStep;
+            _tourPanel.ControlsRequested+=()=>
+            {
+                StopTutorialTravel();RefreshTourUi();ToggleControlsPopup(pass);
+            };
             _tourPanel.KeyDown+=(_,e)=>
             {
                 if(e.KeyCode==Keys.Escape)
@@ -191,7 +195,7 @@ internal sealed partial class OverviewManager
                     HandleKeyDown(pass,e);
             };
         }
-        if(GuidedTutorialActive)_tourPanel.UpdateTour(_tour!,_tutorialStore?.Status);
+        if(GuidedTutorialActive)_tourPanel.UpdateTour(_tour!,_tutorialStore?.Status,!_appConfig.DisableZoomHotkey);
         else _tourPanel.Offer(_tutorialStore?.TourForDesktop(_annotationDesktop())?.Status is TutorialTourStatus.Paused or TutorialTourStatus.InProgress,_tutorialStore?.Status);
         if(!_tourPanel.Visible)_tourPanel.Show(pass);
         var area=pass.Screen.WorkingArea;
