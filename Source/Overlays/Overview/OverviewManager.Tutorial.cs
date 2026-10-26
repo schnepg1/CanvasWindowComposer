@@ -66,7 +66,7 @@ internal sealed partial class OverviewManager
     {
         var area=_screens.PrimaryWorkingArea;
         // Reserve space for the top hint and bottom toolbars. Fit the first note, never the whole desktop.
-        double margin=32*layout.Scale, top=64*layout.Scale, bottom=200*layout.Scale;
+        double margin=32*layout.Scale, top=64*layout.Scale, bottom=300*layout.Scale;
         double width=Math.Max(1,area.Width-2*margin),height=Math.Max(1,area.Height-top-bottom);
         double zoom=Math.Clamp(Math.Min(width/note.Width,height/note.Height),OverviewCamera.ZoomMin,OverviewCamera.ZoomMax);
         double x=area.X+area.Width/2.0, y=area.Y+top+height/2;

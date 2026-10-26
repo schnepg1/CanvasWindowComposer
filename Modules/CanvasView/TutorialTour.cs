@@ -1,14 +1,14 @@
 namespace CanvasDesktop.CanvasView;
 
 public enum TutorialTourStatus { InProgress, Paused, Completed, Dismissed }
-public enum TutorialStep { Pan, Zoom, Windows, Notes, Projects }
+public enum TutorialStep { Pan, Zoom, Windows, Notes, Projects, Desktop, ReopenCanvas }
 public sealed record TutorialTourProgress(Guid DesktopId, int Step = 0, int Practised = 0,
     TutorialTourStatus Status = TutorialTourStatus.Paused);
 
 /// <summary>Pure guided-tour state. Only explicit Next advances; camera animation never counts as practice.</summary>
 public sealed class TutorialTour
 {
-    public const int StepCount = 5;
+    public const int StepCount = 7;
     public TutorialTourProgress Progress { get; private set; }
     public bool Active { get; private set; }
     public bool Travelling { get; private set; }
@@ -18,7 +18,7 @@ public sealed class TutorialTour
     public TutorialTour(TutorialTourProgress progress) { Validate(progress); Progress=progress; }
     public static void Validate(TutorialTourProgress progress)
     {
-        if(progress is null || progress.Step is < 0 or >= StepCount || progress.Practised is < 0 or > 31 || !Enum.IsDefined(progress.Status))
+        if(progress is null || progress.Step is < 0 or >= StepCount || progress.Practised < 0 || progress.Practised >= (1 << StepCount) || !Enum.IsDefined(progress.Status))
             throw new ArgumentException("Invalid tutorial progress.");
     }
     public void Start() { Active=true;Travelling=false;Progress=Progress with { Status=TutorialTourStatus.InProgress }; }
@@ -55,4 +55,5 @@ public sealed class TutorialTour
     }
     public bool ObserveWindow() => Mark(TutorialStep.Windows);
     public bool ObserveNote() => Mark(TutorialStep.Notes);
+    public bool ObserveCanvasReopened() => Mark(TutorialStep.ReopenCanvas);
 }

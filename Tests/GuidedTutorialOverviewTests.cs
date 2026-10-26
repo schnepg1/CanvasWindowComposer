@@ -1,6 +1,8 @@
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using System.Windows.Forms;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace CanvasDesktop.Tests;
 
@@ -96,7 +98,8 @@ public class GuidedTutorialOverviewTests
             overview.Annotations.Put(existing with { Text="Edited" });Assert.False(overview.GuidedTour.Practised);
             overview.Annotations.Put(existing with { Id=Guid.NewGuid(),Text="New thought" });Assert.True(overview.GuidedTour.Practised);
             Assert.Equal(2,overview.Annotations.Items.Count);
-            overview.NextTutorialStep();overview.NextTutorialStep();Assert.False(overview.GuidedTutorialActive);
+            while(overview.GuidedTour.Active)overview.NextTutorialStep();
+            Assert.False(overview.GuidedTutorialActive);
             Assert.Equal(TutorialTourStatus.Completed,new TutorialPersistence(Path.Combine(folder,"tutorial.json")).TourForDesktop(desktops.CurrentDesktopId)!.Status);
             Assert.True(overview.TutorialNotesVisible);
         });
@@ -133,5 +136,84 @@ public class GuidedTutorialOverviewTests
             var store=new TutorialPersistence(Path.Combine(folder,"tutorial.json"));
             Assert.Equal(TutorialTourStatus.Paused,store.TourForDesktop(first)!.Status);
             Assert.Equal(TutorialTourStatus.Dismissed,store.TourForDesktop(second)!.Status);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void DesktopExplanationSurvivesCanvasCloseAndBothShortcutsReopenWithoutMovingTheDesktop()
+        =>WithOverview((overview,canvas,input,desktops,folder,api)=>
+        {
+            var saved=canvas.Camera;overview.StartGuidedTutorial();
+            for(int i=0;i<5;i++)overview.NextTutorialStep();
+            Assert.Equal(TutorialStep.Desktop,overview.GuidedTour!.Step);
+            Assert.Equal(OverviewMode.Hidden,overview.CurrentMode);
+            Assert.True(overview.GuidedTour.Active);Assert.False(overview.GuidedTutorialActive);
+            Assert.True(overview.TourPanel!.Visible);Assert.Null(overview.TourPanel.Owner);
+            Assert.Equal(saved,canvas.Camera);
+            Assert.Contains("Canvas view is closed",overview.TourPanel.StatusText);
+            var back=overview.TourPanel.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b=>b.Text=="&Back");
+            Assert.True(back.Visible);Assert.True(back.Enabled);
+            if(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is {} workspace)
+            {
+                string output=Path.Combine(workspace,"TestResults");Directory.CreateDirectory(output);
+                using var card=new Bitmap(overview.TourPanel.Width,overview.TourPanel.Height);
+                overview.TourPanel.DrawToBitmap(card,new Rectangle(Point.Empty,card.Size));
+                card.Save(Path.Combine(output,"guided-tutorial-desktop-card.png"),ImageFormat.Png);
+                // The STA test has no message loop. Paint and flush composition before
+                // reading desktop pixels, otherwise the screen can contain stale surfaces.
+                Application.DoEvents();overview.TourPanel.Refresh();Windows.Win32.PInvoke.DwmFlush();
+                var bounds=Screen.PrimaryScreen!.Bounds;
+                using var desktop=new Bitmap(bounds.Width,bounds.Height);
+                using(var g=Graphics.FromImage(desktop))g.CopyFromScreen(bounds.Location,Point.Empty,bounds.Size);
+                desktop.Save(Path.Combine(output,"guided-tutorial-desktop-screen.png"),ImageFormat.Png);
+            }
+            overview.NextTutorialStep();Assert.Equal(TutorialStep.ReopenCanvas,overview.GuidedTour.Step);
+            Assert.Contains("Alt+Q",overview.TourPanel.StatusText);
+            Assert.Contains("scroll out over an empty area",overview.TourPanel.StatusText);
+            input.RaiseOverviewHotkey();
+            Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);Assert.True(overview.GuidedTour.Practised);
+            Assert.NotNull(overview.TourPanel.Owner);Assert.Equal(saved,canvas.Camera);
+            overview.PreviousTutorialStep();overview.NextTutorialStep();
+            Assert.Equal(OverviewMode.Hidden,overview.CurrentMode);
+            Assert.True(overview.GuidedTour.Practised);
+            Assert.Contains("scroll out over an empty area",overview.TourPanel.StatusText);
+            Assert.DoesNotContain("You're back",overview.TourPanel.StatusText);
+            overview.NextTutorialStep();
+            overview.NextTutorialStep();Assert.Equal(TutorialTourStatus.Completed,overview.GuidedTour.Progress.Status);
+            Assert.False(overview.TourPanel.Visible);
+
+            overview.StartGuidedTutorial(restart:true);
+            for(int i=0;i<5;i++)overview.NextTutorialStep();
+            // A real Alt+wheel drain can return straight from the first desktop explanation.
+            input.PendingZoom=true;input.RaiseInputAvailable();
+            Assert.Equal(TutorialStep.ReopenCanvas,overview.GuidedTour.Step);
+            Assert.True(overview.GuidedTour.Practised);Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
+            Assert.Equal(saved,canvas.Camera);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void DesktopBackPauseResumeRestartAndNormalPanCleanUpTheTour()
+        =>WithOverview((overview,canvas,input,desktops,folder,api)=>
+        {
+            overview.StartGuidedTutorial();for(int i=0;i<5;i++)overview.NextTutorialStep();
+            overview.TourPanel!.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b=>b.Text=="&Back").PerformClick();
+            Assert.Equal(TutorialStep.Projects,overview.GuidedTour!.Step);Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
+            overview.NextTutorialStep();overview.NextTutorialStep();overview.PauseGuidedTutorial();
+            Assert.False(overview.TourPanel!.Visible);Assert.Null(overview.TourPanel.Owner);
+            overview.StartGuidedTutorial();
+            Assert.Equal(TutorialStep.ReopenCanvas,overview.GuidedTour.Step);
+            Assert.Equal(OverviewMode.Hidden,overview.CurrentMode);Assert.False(overview.GuidedTour.Practised);
+            Assert.True(overview.TourPanel.Visible);
+            overview.NextTutorialStep();Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
+            overview.StartGuidedTutorial(restart:true);Assert.Equal(TutorialStep.Pan,overview.GuidedTour.Step);
+            for(int i=0;i<5;i++)overview.NextTutorialStep();
+            var saved=canvas.Camera;
+            input.RaiseDragStarted();input.QueuePanAndRaise(35,20);
+            Assert.False(overview.GuidedTour.Active);Assert.Equal(OverviewMode.Panning,overview.CurrentMode);
+            Assert.NotEqual(saved,canvas.Camera);Assert.False(overview.TourPanel.Visible);
+            input.PendingDragEnded=true;input.RaiseInputAvailable();
+            overview.StartGuidedTutorial(restart:true);for(int i=0;i<5;i++)overview.NextTutorialStep();
+            desktops.SwitchTo(Guid.NewGuid());Assert.False(overview.GuidedTour.Active);Assert.False(overview.TourPanel.Visible);
         });
 }

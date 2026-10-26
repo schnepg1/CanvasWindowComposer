@@ -9,6 +9,7 @@ namespace CanvasDesktop;
 internal sealed partial class OverviewManager
 {
     private TutorialTour? _tour;
+    private bool _tutorialSurfaceTransition;
     private TutorialTourPanel? _tourPanel;
     private bool _tutorialOfferVisible;
     private Guid _tutorialOfferDesktop;
@@ -18,11 +19,13 @@ internal sealed partial class OverviewManager
     private HashSet<Guid> _tourKnownNotes=[];
     internal TutorialTour? GuidedTour => _tour;
     internal TutorialTourPanel? TourPanel => _tourPanel;
-    public bool GuidedTutorialActive => _tour?.Active==true;
+    // Global desktop input only becomes tutorial practice while canvas is visible.
+    public bool GuidedTutorialActive => _tour?.Active==true && CurrentMode==OverviewMode.Zooming;
+    private bool DesktopTutorialActive => _tour?.Active==true && _tour.Step>=TutorialStep.Desktop && CurrentMode==OverviewMode.Hidden;
 
     private void OfferTutorialTour(bool explicitly=false)
     {
-        if(_tutorialStore==null || !TutorialNotesVisible || GuidedTutorialActive)return;
+        if(_tutorialStore==null || !TutorialNotesVisible || _tour?.Active==true)return;
         var progress=_tutorialStore.TourForDesktop(_annotationDesktop());
         if(!explicitly && progress?.Status is TutorialTourStatus.Completed or TutorialTourStatus.Dismissed)return;
         _tutorialOfferVisible=true;_tutorialOfferDesktop=_annotationDesktop();
@@ -42,7 +45,8 @@ internal sealed partial class OverviewManager
                 ? saved : new TutorialTourProgress(_annotationDesktop());
             _tour=new(progress!);_tour.Start();_tutorialOfferVisible=false;
             _tourKnownNotes=_annotationDocument!.Items.Where(a=>a.DesktopId==_annotationDesktop() && a.Kind==AnnotationKind.Text).Select(a=>a.Id).ToHashSet();
-            TransitionTo(OverviewMode.Zooming);SelectAnnotationMode(AnnotationMode.Navigate);
+            if(_tour.Step<TutorialStep.Desktop)TransitionTo(OverviewMode.Zooming);
+            SelectAnnotationMode(AnnotationMode.Navigate);
             SaveTourProgress();TravelToTourStep();
         }
         catch(Exception ex)
@@ -67,8 +71,19 @@ internal sealed partial class OverviewManager
 
     private void TravelToTourStep()
     {
-        if(!GuidedTutorialActive || CurrentTutorial==null)return;
+        if(_tour?.Active!=true || CurrentTutorial==null)return;
         StopTutorialTravel();CancelInteraction();
+        if(_tour.Step>=TutorialStep.Desktop)
+        {
+            // Detach the prompt before hiding its canvas owner. This is the one intentional
+            // close that continues the tour, and never commits the temporary reading camera.
+            if(_tourPanel!=null)_tourPanel.Owner=null;
+            _tutorialSurfaceTransition=true;
+            try { TransitionTo(OverviewMode.Hidden,syncCameraOnClose:false); }
+            finally { _tutorialSurfaceTransition=false; }
+            RefreshTourUi();return;
+        }
+        if(CurrentMode!=OverviewMode.Zooming)TransitionTo(OverviewMode.Zooming);
         // Each reading/travel position is temporary, including the user's practice pans.
         _tutorialReading=true;_startupIntroLanded=true;
         var target=TourTarget();
@@ -105,12 +120,16 @@ internal sealed partial class OverviewManager
     }
     internal void NextTutorialStep()
     {
+        if(DesktopTutorialActive && _tour!.Step==TutorialStep.ReopenCanvas)
+        {
+            TransitionTo(OverviewMode.Zooming);return;
+        }
         if(_tour?.Next()!=true)return;
         SaveTourProgress();
         if(!_tour.Active)
         {
             StopTutorialTravel();_tutorialReading=true;_startupIntroLanded=true;
-            RefreshToolPreview();FocusOverview();return;
+            RefreshToolPreview();RefreshTourUi();FocusOverview();return;
         }
         SelectAnnotationMode(AnnotationMode.Navigate);TravelToTourStep();
     }
@@ -135,6 +154,16 @@ internal sealed partial class OverviewManager
             _tour.Dismiss();SaveTourProgress();
         }
         _tutorialOfferVisible=false;_startupIntroLanded=true;_tourPanel?.Hide();FocusOverview();
+    }
+    private void TutorialSurfaceChanged(OverviewMode from,OverviewMode to)
+    {
+        if(_tour?.Active!=true)return;
+        if(from==OverviewMode.Hidden && to==OverviewMode.Zooming && _tour.Step>=TutorialStep.Desktop)
+        {
+            if(_tour.Step==TutorialStep.Desktop)_tour.Next();
+            _tour.ObserveCanvasReopened();SaveTourProgress();
+        }
+        RefreshTourUi();
     }
     private void SaveTourProgress() { if(_tour!=null)_tutorialStore?.SetTour(_tour.Progress); }
     public void PanGuidedTutorial(int x,int y) { if(GuidedTutorialActive)PanOverview(x,y); }
@@ -166,9 +195,10 @@ internal sealed partial class OverviewManager
     private void RefreshTourUi()
     {
         bool offer=_tutorialOfferVisible && _tutorialOfferDesktop==_annotationDesktop();
-        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null || _tools.Active
-            || (!GuidedTutorialActive && !offer)) { _tourPanel?.Hide();return; }
-        var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
+        bool desktop=DesktopTutorialActive;
+        if(_disposed || (!_input.Enabled && desktop) || (!desktop && CurrentMode!=OverviewMode.Zooming) || IsStartupIntroActive || _annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null || _tools.Active
+            || (!GuidedTutorialActive && !desktop && !offer)) { _tourPanel?.Hide();return; }
+        var pass=_passes.FirstOrDefault(p=>(desktop || p.Visible) && p.Screen.Primary)??_passes.FirstOrDefault(p=>desktop || p.Visible);
         if(pass==null)return;
         if(_tourPanel==null)
         {
@@ -187,7 +217,7 @@ internal sealed partial class OverviewManager
             {
                 if(e.KeyCode==Keys.Escape)
                 {
-                    if(GuidedTutorialActive) { PauseGuidedTutorial();FocusOverview(); }
+                    if(_tour?.Active==true) { PauseGuidedTutorial();if(CurrentMode==OverviewMode.Zooming)FocusOverview(); }
                     else if(_tutorialOfferVisible)SkipGuidedTutorial();
                     e.Handled=true;e.SuppressKeyPress=true;
                 }
@@ -195,13 +225,16 @@ internal sealed partial class OverviewManager
                     HandleKeyDown(pass,e);
             };
         }
-        if(GuidedTutorialActive)_tourPanel.UpdateTour(_tour!,_tutorialStore?.Status,!_appConfig.DisableZoomHotkey);
+        if(_tour?.Active==true)_tourPanel.UpdateTour(_tour!,_tutorialStore?.Status,!_appConfig.DisableZoomHotkey,desktop);
         else _tourPanel.Offer(_tutorialStore?.TourForDesktop(_annotationDesktop())?.Status is TutorialTourStatus.Paused or TutorialTourStatus.InProgress,_tutorialStore?.Status);
-        if(!_tourPanel.Visible)_tourPanel.Show(pass);
+        // An owned form disappears with its owner. Desktop prompts must be independent.
+        _tourPanel.Owner=desktop?null:pass;
+        if(!_tourPanel.Visible)_tourPanel.Show();
         var area=pass.Screen.WorkingArea;
         int dpiPadding=(int)(12*TutorialDpiScale);
-        _tourPanel.Width=Math.Min((int)(560*TutorialDpiScale),area.Width-2*dpiPadding);
-        int bottom=_annotationToolbar is { Visible:true }?_annotationToolbar.Top-dpiPadding:area.Bottom-dpiPadding;
+        _tourPanel.FitToWidth(Math.Min((int)(640*TutorialDpiScale),area.Width-2*dpiPadding));
+        int bottom=!desktop && _annotationToolbar is { Visible:true }?_annotationToolbar.Top-dpiPadding:area.Bottom-dpiPadding;
+        if(!desktop && _annotationToolbar?.PropertiesSurface is { Visible:true } properties)bottom=Math.Min(bottom,properties.Top-dpiPadding);
         _tourPanel.Location=new(area.Left+Math.Max(dpiPadding,(area.Width-_tourPanel.Width)/2),Math.Max(area.Top,bottom-_tourPanel.Height));
     }
     private void DisposeGuidedTutorial()

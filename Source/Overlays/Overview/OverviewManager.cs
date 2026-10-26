@@ -372,9 +372,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         CancelInertia();
 
         OverviewMode from = CurrentMode;
-        if (target != OverviewMode.Zooming && GuidedTutorialActive)
+        if (target != OverviewMode.Zooming && _tour?.Active==true)
         {
-            PauseGuidedTutorial();syncCameraOnClose=false;
+            if (!_tutorialSurfaceTransition) PauseGuidedTutorial();syncCameraOnClose=false;
         }
         if (target != OverviewMode.Zooming) { _tutorialOfferVisible=false;_tourPanel?.Hide(); }
         StopWindowNavigation();
@@ -392,7 +392,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         else
             ApplyConfig();
 
-        AfterModeChanged?.Invoke(from, target);
+        AfterModeChanged?.Invoke(from, target);
+        TutorialSurfaceChanged(from,target);
     }
 
     private void ShowInternal()
