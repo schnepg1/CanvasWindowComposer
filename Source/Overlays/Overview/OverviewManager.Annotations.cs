@@ -36,6 +36,7 @@ internal sealed partial class OverviewManager
         _annotationDesktop=()=>desktops.CurrentDesktopId;
         _annotationDesktops=desktops;
         _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
+        _cameraBookmarks=new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path??Path.Combine(AppConfig.ConfigDir,"annotations.json")))!,"camera-bookmarks.json"));
         _annotationDocument=_annotationStore.Document;
         _annotationTool=new(_annotationDocument,_annotationDesktop);
         _annotationTool.SetMode(AnnotationMode.Select);

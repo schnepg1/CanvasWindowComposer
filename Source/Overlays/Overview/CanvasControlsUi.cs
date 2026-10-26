@@ -209,6 +209,11 @@ internal sealed class CanvasControlsPopup : Form
             ("+ / -", "Zoom around the screen center. Range: 2% to 100%.")
         ]);
 
+        AddSection("Camera bookmarks", [
+            ("Ctrl + 0-9", "Save or replace this camera position and zoom. Number row and numeric keypad supported."),
+            ("0-9", "Jump to a saved view. Slots are separate per virtual desktop and survive restarts. Click empty canvas first when using an app.")
+        ]);
+
         AddSection("Arrange, Interact & app cards", [
             ("Arrange", "Select and move canvas items with the mouse."),
             ("Interact", "Click live app content to use its mouse and keyboard controls. Click another live app to switch."),
