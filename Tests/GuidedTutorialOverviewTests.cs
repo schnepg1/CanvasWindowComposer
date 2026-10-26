@@ -168,6 +168,12 @@ public class GuidedTutorialOverviewTests
             input.RaiseOverviewHotkey();
             Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);Assert.True(overview.GuidedTour.Practised);
             Assert.NotNull(overview.TourPanel.Owner);Assert.Equal(saved,canvas.Camera);
+            overview.PreviousTutorialStep();overview.NextTutorialStep();
+            Assert.Equal(OverviewMode.Hidden,overview.CurrentMode);
+            Assert.True(overview.GuidedTour.Practised);
+            Assert.Contains("scroll out over an empty area",overview.TourPanel.StatusText);
+            Assert.DoesNotContain("You're back",overview.TourPanel.StatusText);
+            overview.NextTutorialStep();
             overview.NextTutorialStep();Assert.Equal(TutorialTourStatus.Completed,overview.GuidedTour.Progress.Status);
             Assert.False(overview.TourPanel.Visible);
 

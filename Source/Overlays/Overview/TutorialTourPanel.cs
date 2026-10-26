@@ -64,7 +64,7 @@ internal sealed class TutorialTourPanel : Form
         _title.Text=names[tour.Progress.Step];
         string reopen=overviewHotkey?"Press Alt+Q, or hold Alt and scroll out over an empty area of your desktop.":"Hold Alt and scroll out over an empty area of your desktop. The Alt+Q shortcut is turned off in Settings.";
         _status.Text=error??(tour.Travelling?"Moving to the next note. Any navigation input stops the movement."
-            :tour.Practised?tour.Step==TutorialStep.ReopenCanvas?"You're back in canvas. Your windows and notes are here, ready whenever you need more room. Choose Finish to explore.":"✓ You've got it. Choose Next when you're ready."
+            :tour.Practised && !(desktop && tour.Step==TutorialStep.ReopenCanvas)?tour.Step==TutorialStep.ReopenCanvas?"You're back in canvas. Your windows and notes are here, ready whenever you need more room. Choose Finish to explore.":"✓ You've got it. Choose Next when you're ready."
             :tour.Step switch
             {
                 TutorialStep.Pan => "Hold Space and drag with the left mouse button to look around. On a touchpad, scroll with two fingers. You can also choose Next without practising.",
@@ -83,7 +83,7 @@ internal sealed class TutorialTourPanel : Form
         _next.Text=tour.Step==TutorialStep.Projects?"Return to &desktop":tour.Step==TutorialStep.ReopenCanvas?desktop?"&Open canvas":"&Finish":"&Next";
         _next.AccessibleName=_next.Text.Replace("&","");
         _recenter.Enabled=!tour.Travelling;
-        _recenter.Visible &= tour.Step<TutorialStep.Desktop;
+        _recenter.Visible=!desktop && tour.Step<TutorialStep.Desktop;
         OrderButtons(_back,_recenter,_controls,_skip,_next);
         AcceptButton=_next;
     }
@@ -126,9 +126,11 @@ internal sealed class TutorialTourPanel : Form
         {
             e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
             using var outline=CanvasDockTheme.Outline(new(0,0,Width-1,Height-1),9*DeviceDpi/96f);
-            Color surface=primary?CanvasDockTheme.Active:CanvasDockTheme.Surface;
+            bool highlighted=primary && Enabled;
+            Color surface=highlighted?CanvasDockTheme.Active:CanvasDockTheme.Surface;
             using var brush=new SolidBrush(surface);e.Graphics.FillPath(brush,outline);
             using var pen=new Pen(Focused?CanvasDockTheme.Active:CanvasDockTheme.Border);e.Graphics.DrawPath(pen,outline);
+            if(Focused)ControlPaint.DrawFocusRectangle(e.Graphics,Rectangle.Inflate(ClientRectangle,-4,-4),highlighted?CanvasDockTheme.ActiveInk:CanvasDockTheme.Ink,surface);
             TextRenderer.DrawText(e.Graphics,Text,Font,ClientRectangle,Enabled?primary?CanvasDockTheme.ActiveInk:CanvasDockTheme.Ink:CanvasDockTheme.Muted,
                 TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
         }

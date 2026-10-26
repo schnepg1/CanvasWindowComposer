@@ -58,5 +58,9 @@ public class TutorialTourPanelTests
                 bitmap.Save(Path.Combine(workspace,"TestResults","guided-tutorial-controls.png"),ImageFormat.Png);
             }
             panel.Hide();
+            var restarted=new TutorialTour(new(Guid.Empty));restarted.Start();
+            panel.UpdateTour(restarted,null);panel.FitToWidth(640);panel.Show();
+            Assert.True(buttons.Controls.OfType<Button>().Single(b=>b.Text=="Show &note").Visible);
+            panel.Hide();
         });
 }
