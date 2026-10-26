@@ -652,6 +652,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (HandleCameraBookmarkKey(pass, e)) return;
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
         if (HandleTutorialControlKey(e)) return;
@@ -1103,6 +1104,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (CurrentMode != OverviewMode.Hidden)
                 TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
         });
+        Attempt(() => _cameraBookmarkFeedback?.Dispose());
         Attempt(() => { CancelInteraction(); });
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
         _zoneTool.Completed -= OnZoneToolCompleted;
