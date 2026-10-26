@@ -49,10 +49,20 @@ public class TutorialTourTests
     }
     [Theory]
     [InlineData(-1,0)]
-    [InlineData(5,0)]
-    [InlineData(1,32)]
+    [InlineData(7,0)]
+    [InlineData(1,128)]
     public void InvalidSavedStepsAreRejected(int step,int mask)
         =>Assert.Throws<ArgumentException>(()=>new TutorialTour(new(Guid.Empty,step,mask)));
+    [Fact]
+    public void DesktopStepsCanResumeAndReopeningOnlyChecksTheReturnStep()
+    {
+        var t=Tour((int)TutorialStep.Desktop);
+        Assert.False(t.ObserveCanvasReopened());t.Next();
+        Assert.Equal(TutorialStep.ReopenCanvas,t.Step);t.Pause();
+        t=new TutorialTour(t.Progress);t.Start();
+        Assert.True(t.ObserveCanvasReopened());Assert.True(t.Active);
+        Assert.True(t.Next());Assert.Equal(TutorialTourStatus.Completed,t.Progress.Status);
+    }
     [Fact]
     public void CameraTravelIsSampledFiniteAndEndsExactlyAtItsTarget()
     {
