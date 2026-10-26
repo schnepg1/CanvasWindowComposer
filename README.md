@@ -30,6 +30,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 Open **Controls** in the top-right corner of canvas mode for the full reference.
 
 Camera bookmarks work like strategy-game control groups: press **Ctrl + a number (0–9)** to save your current canvas view, then press **that number** to jump back instantly. Saving again replaces that slot. Both the number row and numeric keypad work. Bookmarks include zoom, survive restarts, and are separate for each Windows virtual desktop. Empty slots leave your view in place. When typing in a note, changing a numeric setting, or interacting with a live app, the app keeps its normal keys; click empty canvas to use camera bookmarks again.
+
 Choose **Arrange** to move items or **Interact** to use a live app on the canvas.
 
 | Input | Action |
