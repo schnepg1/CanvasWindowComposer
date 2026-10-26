@@ -151,12 +151,17 @@ public class GuidedTutorialOverviewTests
             Assert.True(overview.TourPanel!.Visible);Assert.Null(overview.TourPanel.Owner);
             Assert.Equal(saved,canvas.Camera);
             Assert.Contains("Canvas view is closed",overview.TourPanel.StatusText);
+            var back=overview.TourPanel.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b=>b.Text=="&Back");
+            Assert.True(back.Visible);Assert.True(back.Enabled);
             if(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is {} workspace)
             {
                 string output=Path.Combine(workspace,"TestResults");Directory.CreateDirectory(output);
                 using var card=new Bitmap(overview.TourPanel.Width,overview.TourPanel.Height);
                 overview.TourPanel.DrawToBitmap(card,new Rectangle(Point.Empty,card.Size));
                 card.Save(Path.Combine(output,"guided-tutorial-desktop-card.png"),ImageFormat.Png);
+                // The STA test has no message loop. Paint and flush composition before
+                // reading desktop pixels, otherwise the screen can contain stale surfaces.
+                Application.DoEvents();overview.TourPanel.Refresh();Windows.Win32.PInvoke.DwmFlush();
                 var bounds=Screen.PrimaryScreen!.Bounds;
                 using var desktop=new Bitmap(bounds.Width,bounds.Height);
                 using(var g=Graphics.FromImage(desktop))g.CopyFromScreen(bounds.Location,Point.Empty,bounds.Size);
@@ -192,7 +197,7 @@ public class GuidedTutorialOverviewTests
         =>WithOverview((overview,canvas,input,desktops,folder,api)=>
         {
             overview.StartGuidedTutorial();for(int i=0;i<5;i++)overview.NextTutorialStep();
-            overview.PreviousTutorialStep();
+            overview.TourPanel!.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b=>b.Text=="&Back").PerformClick();
             Assert.Equal(TutorialStep.Projects,overview.GuidedTour!.Step);Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
             overview.NextTutorialStep();overview.NextTutorialStep();overview.PauseGuidedTutorial();
             Assert.False(overview.TourPanel!.Visible);Assert.Null(overview.TourPanel.Owner);
