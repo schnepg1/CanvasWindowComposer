@@ -82,7 +82,7 @@ public sealed class CameraBookmarkOverviewTests
         => WithOverview((overview, canvas, desktops, folder) =>
         {
             var note = new CanvasAnnotation(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text,
-                new(100, 100), new(200, 100), Text: "Numbers belong here");
+                new(100, 100), new(300, 200), Text: "Numbers belong here");
             overview.Annotations!.Put(note); overview.AnnotationTool!.Select(note.Id);
             Press(overview, Keys.Enter); Application.DoEvents();
             Assert.NotNull(overview.AnnotationEditor);
