@@ -14,7 +14,8 @@ public class TutorialTourPanelTests
         =>WorkspaceViewTests.OnSta(()=>
         {
             using var panel=new TutorialTourPanel();
-            panel.Offer(false,null);panel.Show();panel.PerformLayout();
+            panel.Offer(false,null);panel.FitToWidth(640);panel.Show();panel.PerformLayout();
+            Snapshot(panel,"offer");
             Assert.True(panel.IsOffer);Assert.Equal("&Start tour",((Button)panel.AcceptButton!).Text);
             var tour=new TutorialTour(new(Guid.Empty));tour.Start();panel.UpdateTour(tour,null);panel.FitToWidth(640);panel.PerformLayout();
             Assert.False(panel.IsOffer);Assert.Equal("&Next",((Button)panel.AcceptButton!).Text);
@@ -29,6 +30,7 @@ public class TutorialTourPanelTests
             for(int step=0;step<TutorialTour.StepCount;step++)
             {
                 panel.UpdateTour(tour,null);panel.FitToWidth(640);panel.PerformLayout();
+                Snapshot(panel,$"canvas-step-{step+1}");
                 foreach(var b in buttons.Controls.OfType<Button>().Where(b=>b.Visible))
                     Assert.True(b.Right<=buttons.ClientSize.Width,$"Clipped button: {b.Text}");
                 Assert.Equal("&Back",buttons.Controls[0].Text);
@@ -63,4 +65,12 @@ public class TutorialTourPanelTests
             Assert.True(buttons.Controls.OfType<Button>().Single(b=>b.Text=="Show &note").Visible);
             panel.Hide();
         });
+    private static void Snapshot(TutorialTourPanel panel,string name)
+    {
+        if(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is not {} workspace)return;
+        string output=Path.Combine(workspace,"TestResults");Directory.CreateDirectory(output);
+        using var bitmap=new Bitmap(panel.Width,panel.Height);
+        panel.DrawToBitmap(bitmap,new Rectangle(Point.Empty,panel.Size));
+        bitmap.Save(Path.Combine(output,$"guided-tutorial-{name}.png"),ImageFormat.Png);
+    }
 }
