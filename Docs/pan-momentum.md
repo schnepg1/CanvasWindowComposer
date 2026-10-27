@@ -39,7 +39,12 @@ Task branch: `agent/pan-momentum`. Pull request: #28.
   phases, using production timers. Independent disable switches allow paired runs.
 - This Linux workspace has no .NET SDK or Windows desktop. Local checks are source
   review and `git diff --check`; build/test/native/presentation checks run in Windows CI.
-- Windows CI and final review results: pending. Update before merge.
+- First Windows validation at `727fd7f`: Release build succeeded; 1180 desktop
+  tests and 81 AI tests passed; one existing visibility regression failed because
+  the optimization also skipped visibility updates for non-overview projection
+  suspension. The gate is now limited to active overview viewports, preserving
+  transactional visibility semantics. No test was weakened.
+- Final Windows CI and review results: pending. Update before merge.
 
 ## Measurement limits
 

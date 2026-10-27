@@ -224,6 +224,11 @@ public class SettingsWindowTests
                 WorkspaceViewTests.Render(window, "settings-shell-preview.png");
                 window.Width = 440; window.Height = 420;
                 WorkspaceViewTests.Render(window, "settings-shell-small-150-preview.png", 1.5);
+                // Retain these owned-window renders with the CI results for visual review.
+                string renders = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../..", "TestResults", "PanMomentum"));
+                Directory.CreateDirectory(renders);
+                foreach (var name in new[] { "settings-shell-preview.png", "settings-shell-small-150-preview.png" })
+                    File.Copy(Path.Combine(AppContext.BaseDirectory, name), Path.Combine(renders, name), true);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
                 Assert.Equal(18, boxes.Length);
                 boxes[0].IsChecked = false;

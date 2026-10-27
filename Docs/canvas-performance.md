@@ -403,3 +403,12 @@ idle scheduling does not suppress inertia or lose the final interaction frame.
 
 See also [the existing visibility/performance work](upgrade_window_visibility_performance.md)
 and [the benchmark instructions](../Tools/PerformanceHarness/README.md).
+
+## Pan momentum follow-up, 27 October 2026
+
+Desktop panning now defers native projection and automatic parking until the
+final handoff, while its overlay owns a complete stopping click. Canvas dragging
+uses the same elapsed-time fractional momentum at the current zoom. Independent
+Desktop pan momentum and Canvas pan momentum settings default on. See
+[the delivery and validation record](pan-momentum.md) for the input handoff,
+regression coverage, benchmark coast phases, and target-hardware limits.

@@ -46,9 +46,9 @@ internal sealed class OverviewInputs : IDisposable
         else
             _input.ClearExtraPanSurfaces();
 
-        // Panning overlay is WS_EX_TRANSPARENT; without a low-level block a
-        // middle click during panning would reach whatever app is under the
-        // cursor (Chrome closes tabs, etc.).
+        // Keep native middle clicks blocked for the desktop gesture, including
+        // the initial transition and exposed taskbar/screen-fixed surfaces.
+        // Raw input retains ownership of the actual drag and release.
         if (to == OverviewMode.Panning)
             _input.EnableMiddleButtonBlock();
         else if (from == OverviewMode.Panning)
