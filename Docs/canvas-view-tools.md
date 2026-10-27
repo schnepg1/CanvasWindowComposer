@@ -67,7 +67,7 @@ For a first feature PR, implement free-positioned arrows, then text-note display
 and editing. Suspend overview shortcuts while an editor owns focus and handle
 Escape inside editing before closing the view. Decide explicitly whether annotations
 are visible only in interactive overview or also over the live desktop: the
-current annotations hide with the overview and panning remains click-through.
+current annotations hide with the overview and desktop panning owns stopping clicks until the final native handoff.
 
 Use retained `DrawingVisual` layers and viewport culling if measurements justify
 them for larger documents. Consider SkiaSharp only if profiling identifies a WPF

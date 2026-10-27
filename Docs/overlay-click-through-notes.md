@@ -1,4 +1,9 @@
-# Overlay click-through and opacity notes
+# Historical overlay click-through and opacity notes
+
+**27 October 2026:** Desktop panning now owns and consumes a complete stopping
+click while native placement is deferred. These notes describe the earlier
+click-through design and experiments, not current desktop-pan input behavior.
+See [pan momentum](pan-momentum.md).
 
 Context for `OverviewOverlay` (and similar full-screen layered overlays) on
 the question of "how do we let mouse clicks pass through the overlay to the

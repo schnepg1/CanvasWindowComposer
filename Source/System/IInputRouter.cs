@@ -9,6 +9,8 @@ namespace CanvasDesktop;
 /// events. Production wraps RawMouseInput + MessageWindow + Win32EventRouter
 /// trio; tests use <c>FakeInputRouter</c> to drive synthetic input.
 /// </summary>
+internal readonly record struct PanSample(int Dx, int Dy, long Timestamp);
+
 internal interface IInputRouter
 {
     /// <summary>
@@ -17,6 +19,9 @@ internal interface IInputRouter
     /// </summary>
     event Action? InputAvailable;
 
+    IReadOnlyList<PanSample> DrainPanSamples() => Array.Empty<PanSample>();
+    long? PanReleaseTimestamp => null;
+    long? PanStartTimestamp => null;
     bool TryDrainPanDelta(out int dx, out int dy);
     bool TryDrainDragEnded();
     bool TryDrainZoom();

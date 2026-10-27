@@ -169,4 +169,72 @@ public class InertiaTrackerTests
 
         Assert.True(tracker.Release());
     }
+    [Theory]
+    [InlineData(7)]
+    [InlineData(16)]
+    [InlineData(100)]
+    [InlineData(2000)]
+    public void FrameRateAndStallsDoNotChangeFinalDistance(int interval)
+    {
+        double Coast(int step)
+        {
+            var clock = new FakeClock(); var tracker = new InertiaTracker(clock);
+            tracker.Begin(0); tracker.RecordDelta(40, 0, 20); tracker.RecordDelta(40, 0, 40);
+            clock.Now = 40; Assert.True(tracker.Release(40));
+            double distance = 0;
+            while (tracker.IsActive) { clock.Advance(step); distance += tracker.Tick().dx; }
+            return distance;
+        }
+        Assert.Equal(Coast(1), Coast(interval), 8);
+    }
+
+    [Fact]
+    public void DelayedInputUsesEventTimeAndStationaryReleaseDoesNotCoast()
+    {
+        var clock = new FakeClock(500); var tracker = new InertiaTracker(clock);
+        tracker.Begin(0); tracker.RecordDelta(30, 0, 16); tracker.RecordDelta(30, 0, 32);
+        Assert.True(tracker.Release(40)); // UI processed all events much later.
+        clock.Advance(16); Assert.True(tracker.Tick().dx > 0);
+        tracker.Begin(600); tracker.RecordDelta(30, 0, 616);
+        Assert.False(tracker.Release(800)); // Intentional pause before release.
+    }
+
+    [Fact]
+    public void FinalTickReturnsItsFractionalDisplacementAndNewGestureClearsVelocity()
+    {
+        var clock = new FakeClock(); var tracker = new InertiaTracker(clock);
+        tracker.Begin(); tracker.RecordDelta(1, 0, 20); clock.Now = 20;
+        Assert.True(tracker.Release());
+        clock.Advance(1000); var final = tracker.Tick();
+        Assert.True(final.stopped); Assert.True(final.dx > 0);
+        Assert.NotEqual(Math.Round(final.dx), final.dx);
+        Assert.False(tracker.IsActive); Assert.Equal(0, tracker.Tick().dx);
+        tracker.Begin(); Assert.False(tracker.Release());
+    }
+
+    [Fact]
+    public void DuplicateTimestampsCannotProduceInfiniteVelocityOrPhantomTime()
+    {
+        var clock = new FakeClock(10); var tracker = new InertiaTracker(clock);
+        tracker.Begin(10); tracker.RecordDelta(20, 10, 10); tracker.RecordDelta(20, 10, 10);
+        Assert.False(tracker.Release(10));
+        tracker.Begin(0); tracker.RecordDelta(20, 10, 10); tracker.RecordDelta(20, 10, 10);
+        Assert.True(tracker.Release(10));
+        Assert.Equal(0, tracker.Tick().dx); // No elapsed time means no displacement.
+        clock.Advance(1); Assert.True(double.IsFinite(tracker.Tick().dx));
+    }
+
+    [Fact]
+    public void LongConstantSpeedGestureHasSameCoastAtRawAndPointerCadences()
+    {
+        double FirstStep(int cadence)
+        {
+            var clock = new FakeClock(200); var tracker = new InertiaTracker(clock);
+            tracker.Begin(0);
+            for (int time = cadence; time <= 200; time += cadence) tracker.RecordDelta(2 * cadence, 0, time);
+            Assert.True(tracker.Release(200)); clock.Advance(16); return tracker.Tick().dx;
+        }
+        Assert.Equal(FirstStep(1), FirstStep(20), 8);
+    }
+
 }

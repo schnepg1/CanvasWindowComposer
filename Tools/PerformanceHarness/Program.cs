@@ -37,7 +37,8 @@ internal static class Program
         string handlesPath = workload.HandlesPath;
         var diagnostics = PerformanceDiagnostics.Shared;
         var config = new BenchmarkConfig { EnableFlipRendering = args.Contains("--flip-rendering"),
-            LowQualityMode = args.Contains("--low-quality") };
+            LowQualityMode = args.Contains("--low-quality"),
+            DesktopPanMomentum = presentation.DesktopPanMomentum, CanvasPanMomentum = presentation.CanvasPanMomentum };
         var input = new BenchmarkInput();
         var canvas = new Canvas();
         var api = new Win32WindowApi(diagnostics: diagnostics);
@@ -79,6 +80,8 @@ internal static class Program
                 overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
                 wm.Reset();
                 bool overviewPhase = PresentationProfile.IsOverview(phase);
+                bool desktopMomentum = phase == "DesktopPanMomentum";
+                bool momentumPhase = desktopMomentum || phase == "CanvasPanMomentum";
                 config.DisableGreedyDraw = phase != "Clipped" && !overviewPhase;
                 for (int i = 0; i < handles.Length; i++)
                 {
@@ -94,7 +97,7 @@ internal static class Program
                     }
                 }
                 OverviewOverlay? pass = null;
-                if (overviewPhase)
+                if (overviewPhase && !desktopMomentum)
                 {
                     overview.TransitionTo(OverviewMode.Zooming);
                     pass = overview.MonitorHandles.Select(h => (OverviewOverlay)Control.FromHandle(h)!).First(p => p.Screen.Primary);
@@ -116,7 +119,13 @@ internal static class Program
                 var baseline = processes.Select(Capture).ToArray();
                 var latencies = new List<double>();
                 var inputPumpMs = new List<double>();
-                var startCamera = overview.ViewCamera;
+                CanvasCamera Camera() => desktopMomentum ? canvas.Camera : overview.ViewCamera;
+                var startCamera = Camera();
+                var panGesture = new PresentationPanGesture();
+                var momentumSamples = new List<object>();
+                var momentumReleases = new List<object>();
+                double lastMomentumSample = -1;
+                int momentumX = 0, momentumY = 0;
                 var zoomBursts = new PresentationZoomBursts(startCamera.Zoom);
                 var zoomTargets = new List<double>();
                 int pointerX = pass?.Width / 2 ?? 0, pointerY = pass?.Height / 2 ?? 0;
@@ -141,6 +150,31 @@ internal static class Program
                     VerifyOwnership();
                     long pumpStarted = Stopwatch.GetTimestamp();
                     double elapsed = Stopwatch.GetElapsedTime(started).TotalSeconds;
+                    if (momentumPhase)
+                    {
+                        foreach (var step in panGesture.Next(elapsed))
+                        {
+                            if (step.Action == PresentationPanAction.Begin)
+                            {
+                                momentumX = momentumY = 0;
+                                if (desktopMomentum) input.BeginPan();
+                                else pass!.OnMouseButtonDown!(pass, new(MouseButtons.Middle, 1, pointerX, pointerY, 0));
+                            }
+                            else if (step.Action == PresentationPanAction.Move)
+                            {
+                                if (desktopMomentum) input.Pan(step.X - momentumX, step.Y - momentumY);
+                                else pass!.OnMouseMoved!(pass, new(MouseButtons.Middle, 0, pointerX + step.X, pointerY + step.Y, 0));
+                                momentumX = step.X; momentumY = step.Y;
+                            }
+                            else
+                            {
+                                if (desktopMomentum) input.ReleasePan();
+                                else pass!.OnMouseButtonUp!(pass, new(MouseButtons.Middle, 1, pointerX + step.X, pointerY + step.Y, 0));
+                                momentumReleases.Add(new { step.Cycle, ElapsedSeconds = elapsed, Camera = Camera(),
+                                    Active = overview.MomentumActive, Mode = overview.CurrentMode });
+                            }
+                        }
+                    }
                     if (phase == "Panning")
                     {
                         canvas.SetCamera(Math.Sin(elapsed * 2) * 100, Math.Cos(elapsed * 2) * 50);
@@ -170,17 +204,26 @@ internal static class Program
                         restored = !restored; lastCycle = elapsed;
                     }
                     Application.DoEvents();
+                    if (momentumPhase && elapsed - lastMomentumSample >= .05)
+                    {
+                        lastMomentumSample = elapsed;
+                        momentumSamples.Add(new { ElapsedSeconds = Stopwatch.GetElapsedTime(started).TotalSeconds,
+                            Camera = Camera(), Active = overview.MomentumActive, Mode = overview.CurrentMode });
+                    }
                     if (overviewPhase) inputPumpMs.Add(Stopwatch.GetElapsedTime(pumpStarted).TotalMilliseconds);
                     Thread.Sleep(10);
                 }
-                // Capture the phase before release/cleanup adds a final native move.
+                // Sustained drags release after measurement. Momentum scenarios
+                // already released during the phase, including their coast/handoff.
                 double duration = Stopwatch.GetElapsedTime(started).TotalSeconds;
                 var phaseDiagnostics = diagnostics.Snapshot();
-                var endCamera = overview.ViewCamera;
+                var endCamera = Camera();
                 var after = processes.Select(Capture).ToArray();
                 results.Add(new { Repeat = repeat + 1, Phase = phase, DurationSeconds = duration,
                     CameraStart = startCamera, CameraEnd = endCamera,
                     ZoomBurstTargets = zoomTargets.ToArray(),
+                    MomentumReleases = momentumReleases.ToArray(), MomentumSamples = momentumSamples.ToArray(),
+                    MomentumActiveAtEnd = overview.MomentumActive, ModeAtEnd = overview.CurrentMode,
                     InputPumpMs = TimingSummary.From(inputPumpMs),
                     Processes = after.Select((sample, i) => new { Role = i == 0 ? "CanvasHarness" : i == 1 ? "Workload" : "DWM", sample.Pid, sample.Name, sample.Error,
                         CpuOneCorePercent = sample.CpuMs.HasValue && baseline[i].CpuMs.HasValue
@@ -196,12 +239,13 @@ internal static class Program
                 }
             }
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-            File.WriteAllText(output, JsonSerializer.Serialize(new { SchemaVersion = 2, CapturedUtc = DateTime.UtcNow,
+            File.WriteAllText(output, JsonSerializer.Serialize(new { SchemaVersion = 3, CapturedUtc = DateTime.UtcNow,
                 OS = RuntimeInformation.OSDescription, Framework = RuntimeInformation.FrameworkDescription,
                 LogicalProcessors = Environment.ProcessorCount, WindowCount = count, Repeats = repeats, SecondsPerPhase = seconds,
                 Workload = args.Contains("--always-work") ? "always-work" : "cooperative-minimize",
                 FlipRenderingRequested = config.EnableFlipRendering, RenderingBackends = overview.RenderingBackends,
                 LowQualityMode = config.LowQualityMode,
+                config.DesktopPanMomentum, config.CanvasPanMomentum,
                 PresentationOnly = presentation.Only, RequestedOverviewZoom = presentation.Zoom,
                 Monitors = Screen.AllScreens.Select(s => new { s.Bounds, s.WorkingArea }), Interrupted = interrupted, Results = results,
                 Limits = "Synthetic GDI/timer workload; DWM includes unrelated desktop activity. CPU is percent of one core. GPU values are separate engine counters, not an overall sum. Restore timing is API acknowledgement, not first painted frame." }, Json));
@@ -320,6 +364,8 @@ internal sealed class BenchmarkConfig : IAppConfig
 {
     public bool EnableFlipRendering { get; init; }
     public bool LowQualityMode { get; init; }
+    public bool DesktopPanMomentum { get; init; } = true;
+    public bool CanvasPanMomentum { get; init; } = true;
     public bool DisableGreedyDraw { get; set; } = true;
     public bool DisableSearch => true;
     public bool DisableAltPan => true;

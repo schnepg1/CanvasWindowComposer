@@ -73,7 +73,7 @@ comparison of both presentation backends, both quality modes and zoom 1/.5/.25:
 ./Tools/PerformanceHarness/Compare-Presentation.ps1 -Count 8 -Repeats 3 -Seconds 5
 ```
 
-The default 12 configurations, 3 repeats and 5 phases take roughly 15 minutes plus
+The default 12 configurations, 3 repeats and 7 phases take roughly 21 minutes plus
 setup. The script creates a timestamped directory in `results/`, with raw reports
 and `summary.csv` / `summary.json`. Case order rotates/reverses between repeats to
 reduce fixed thermal/backend order bias. Each report uses one repeat and the same
@@ -93,7 +93,9 @@ A short smoke run (also run in Windows CI) is:
 | OverviewPan | Held middle-button pan through the production overview input callbacks |
 | ZoomBursts | Fixed zoom targets at 0/40/80 ms of each 500 ms cycle, alternating out/back with pauses for low-quality restoration |
 | WindowDrag | Held drag of the first owned window through the production pointer callbacks |
-| Panning | Layered desktop-pan mode, following the main canvas at zoom 1 |
+| Panning | Desktop-pan mode, following the main canvas at zoom 1 |
+| CanvasPanMomentum | A 200 ms middle-button drag through production pointer callbacks, release, then the real momentum timer coasts at the requested zoom |
+| DesktopPanMomentum | Timestamped start/pan/release input through the production input binding, then the real momentum timer coasts at native zoom 1 |
 
 The tool invokes the controller's input callbacks; it does not synthesize OS-wide
 mouse/keyboard input. Requested zoom is applied via the production wheel scale,
@@ -101,6 +103,24 @@ with integer-delta rounding. `CameraStart` / `CameraEnd` are the actual values.
 Wheel bursts follow the same target trajectory rather than emitting more deltas
 on faster pump loops. Late pumps catch up to the current target; `ZoomBurstTargets`
 records which targets were submitted, so missed steps remain visible in the report.
+Momentum phases repeat every two seconds and alternate direction to limit camera
+drift. After release the driver sends no more motion until the next gesture, so
+coasting and desktop return-to-hidden are performed by production code. Slow
+pumps catch up to the current held-drag target; missed whole cycles are skipped,
+not replayed. A very slow pump can miss most of a drag and fail to establish
+release velocity; `MomentumReleases` makes that visible rather than claiming a
+successful coast. Schema 3 records release camera/active/mode, camera samples
+roughly every 50 ms during those phases, and final active/mode state. Inspect
+`MomentumSamples` alongside `MomentumReleases` to distinguish continued travel
+from a stop, including disabled-momentum comparisons. Samples are UI observations,
+not displayed-frame measurements.
+
+Use `--no-desktop-momentum` and/or `--no-canvas-momentum` with the harness to compare
+stopping on release. The comparison script exposes equivalent `-NoDesktopMomentum`
+and `-NoCanvasMomentum` switches. Reports and matrix summaries record both flags;
+these never change the installed app's settings. The one-second CI smoke matrix
+also includes both momentum phases, including their release/coast interval.
+
 The current workload still omits saved-workspace cards and the minimap; low-quality
 gesture cards are exercised, but this is not a complete full-app scene benchmark.
 
@@ -112,10 +132,14 @@ Schema 2 adds `InputPumpMs` nearest-rank p50/p95/p99/max and sample counts for e
 overview phase. A sample covers one synthetic-input/WinForms-pump iteration,
 including any scheduled frame processed during it, and excludes the 10 ms pacing
 sleep. Idle iterations are included. It is a UI wall-time distribution, not a
-present-to-screen measurement. Pointer-down/setup and pointer-up/final-release
-costs are not represented by that distribution; detailed real-app end-of-gesture
-latency still needs tracing. Process samples include ownership checks and harness
-measurement overhead. The final release occurs after phase diagnostics are captured.
+present-to-screen measurement. For sustained held-pan/window-drag phases,
+pointer-down/setup and cleanup pointer-up costs are outside that distribution.
+Momentum phases include pointer-down, release and timer-driven coast. Detailed
+real-app end-of-gesture latency still needs tracing. Process samples include
+ownership checks and harness measurement overhead. Held-pan/window-drag cleanup
+release occurs after phase diagnostics are captured.
+The two momentum phases release during measurement, so their release handling,
+coast, and any desktop final handoff are included in the phase diagnostics.
 
 The new diagnostics separate `GridUploadAndDraw` / `MinimapUploadAndDraw` from
 `GridPresentCall` / `MinimapPresentCall`. The former includes snapshot copying,

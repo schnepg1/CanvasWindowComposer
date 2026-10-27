@@ -97,7 +97,7 @@ internal sealed class Canvas
         CameraChanged?.Invoke();
     }
 
-    public void Pan(int screenDx, int screenDy)
+    public void Pan(double screenDx, double screenDy)
     {
         _camX -= screenDx / _zoom;
         _camY -= screenDy / _zoom;

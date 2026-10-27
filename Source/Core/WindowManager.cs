@@ -207,14 +207,26 @@ internal sealed partial class WindowManager : IDisposable
 
     /// <summary>
     /// While true, <see cref="OnCameraChanged"/> short-circuits — no transient
-    /// reproject is scheduled on the worker. Set during overview Zooming, when
+    /// reproject is scheduled on the worker. Set during visible overview modes, when
     /// click-through is off and real-window positions don't need to track the
     /// camera for hit-testing. Eliminates the worker-job wait at overview close
     /// (we'd otherwise queue a batch from the close-time SetCamera and then
     /// immediately wait for it inside ReprojectSync). <see cref="OnCommitted"/>
     /// bypasses this gate so the explicit close commit still runs.
     /// </summary>
-    public bool SuspendProjection { get; set; }
+    private bool _suspendProjection;
+    public bool SuspendProjection
+    {
+        get => _suspendProjection;
+        set
+        {
+            if (_suspendProjection == value) return;
+            _suspendProjection = value;
+            if (!value) return;
+            _projection?.ClearPending();
+            DrainProjectionResults();
+        }
+    }
 
     private bool _suspendReconcile;
     private bool _reconcilePending;
@@ -385,6 +397,9 @@ internal sealed partial class WindowManager : IDisposable
 
     private void OnCameraChanged()
     {
+        // Visible overlays evaluate proximity once per coalesced visual frame.
+        // Do not scan every window again for every raw input sample.
+        if (SuspendProjection && _overviewViewport.HasValue) return;
         UpdateRuntimeVisibility(refreshIdentity: false);
         ProcessAutomaticParking(cameraOnly: true);
         if (SuspendProjection) return;

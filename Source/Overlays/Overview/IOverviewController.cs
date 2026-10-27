@@ -24,6 +24,7 @@ internal interface IOverviewController
     void CancelStartupIntro() { }
     void CancelInertia();
     void SyncCamera();
-    void RecordPanDelta(int dx, int dy);
-    void ReleaseInertia();
+    void BeginPan(long? timestamp = null) => CancelInertia();
+    void RecordPanDelta(int dx, int dy, long? timestamp = null);
+    void ReleaseInertia(long? timestamp = null);
 }
