@@ -20,13 +20,13 @@ internal static class OverviewNavigationInput
             (word & 0x0004) != 0);
     }
 
-    // Windows sends two-finger scrolling as vertical/horizontal wheel messages.
-    // A precision touchpad pinch arrives as Ctrl+wheel. Preserve fractional
-    // deltas so smooth scrolling does not stall at low speed.
+    // Keep fractional wheel deltas for smooth zooming and panning.
     public static (double PanX, double PanY, double ZoomNotches) TranslateWheel(
-        int delta, bool horizontal, bool zoomModifier, bool shift = false)
+        int delta, bool horizontal, bool control, bool shift = false, bool alt = false)
     {
-        if (zoomModifier) return (0, 0, horizontal ? 0 : delta / WheelDelta);
-        return horizontal || shift ? (delta, 0, 0) : (0, delta, 0);
+        if (horizontal) return (delta, 0, 0);
+        if (control) return (0, delta, 0);
+        if (shift && !alt) return (delta, 0, 0);
+        return (0, 0, delta / WheelDelta);
     }
 }

@@ -43,7 +43,7 @@ public class TutorialTourPanelTests
             }
             panel.UpdateTour(tour,null,overviewHotkey:false,desktop:true);
             Assert.Contains("shortcut is turned off",panel.StatusText);
-            Assert.Contains("scroll out over an empty area",panel.StatusText);
+            Assert.Contains("over an empty area",panel.StatusText);
             foreach(int width in new[]{480,640,960})
             {
                 panel.FitToWidth(width);panel.PerformLayout();

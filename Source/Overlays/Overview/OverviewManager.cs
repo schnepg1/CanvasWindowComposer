@@ -916,10 +916,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
         CancelInertia();
         if (_composerWindow is { WaitingForBrowser: false }) return;
-        bool zoomModifier = control || ((_windowInteraction.Active ? InteractionKeys : Control.ModifierKeys) & Keys.Alt) != 0;
-        if (RouteWindowWheel(pass, x, y, delta, horizontal, zoomModifier)) return;
+        bool alt = ((_windowInteraction.Active ? InteractionKeys : Control.ModifierKeys) & Keys.Alt) != 0;
+        if (RouteWindowWheel(pass, x, y, delta, horizontal, control || alt)) return;
         if (_windowInteraction.Active && _windowInteraction.Captured) return;
-        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, zoomModifier, shift);
+        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, control, shift, alt);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
         else PanOverview(panX, panY);
     }

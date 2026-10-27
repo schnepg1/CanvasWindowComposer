@@ -252,9 +252,9 @@ internal sealed partial class OverviewManager
         if (capture != null) capture.Capture = false;
     }
 
-    private bool RouteWindowWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool zoomModifier)
+    private bool RouteWindowWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool canvasModifier)
     {
-        if (zoomModifier) return false; // Ctrl/Alt+wheel always controls canvas zoom.
+        if (canvasModifier) return false; // Ctrl and Alt reserve wheel input for canvas navigation.
         var point = new Point(x + pass.OriginX, y + pass.OriginY);
         var world = _camera.WorldFromVirtual(point.X, point.Y);
         int hit = HitOverviewWindow(pass, x, y, world.x, world.y);

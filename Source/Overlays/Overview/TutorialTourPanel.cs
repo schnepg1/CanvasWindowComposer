@@ -62,7 +62,7 @@ internal sealed class TutorialTourPanel : Form
         string[] names=["Look around","Zoom in and out","Move a window","Write your first note","Return to your desktop","Your desktop is still yours","Open canvas again"];
         _progress.Text=$"CANVAS TOUR  ·  {(desktop?"DESKTOP":"CANVAS")}  ·  STEP {tour.Progress.Step+1} OF {TutorialTour.StepCount}";
         _title.Text=names[tour.Progress.Step];
-        string reopen=overviewHotkey?"Press Alt+Q, or hold Alt and scroll out over an empty area of your desktop.":"Hold Alt and scroll out over an empty area of your desktop. The Alt+Q shortcut is turned off in Settings.";
+        string reopen=overviewHotkey?"Press Alt+Q, or scroll over an empty area of your desktop.":"Scroll over an empty area of your desktop. The Alt+Q shortcut is turned off in Settings.";
         _status.Text=error??(tour.Travelling?"Moving to the next note. Any navigation input stops the movement."
             :tour.Practised && !(desktop && tour.Step==TutorialStep.ReopenCanvas)?tour.Step==TutorialStep.ReopenCanvas?"You're back in canvas. Your windows and notes are here, ready whenever you need more room. Choose Finish to explore.":"✓ You've got it. Choose Next when you're ready."
             :tour.Step switch

@@ -37,7 +37,7 @@ public class CanvasPerformanceIntegrationTests
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
             Assert.Contains(source.Handle, dwm.Sources);
-            void Zoom() { pass.OnWheel!(pass, 200, 200, -30, false, true, false); overview.TickGesturePreviews(); }
+            void Zoom() { pass.OnWheel!(pass, 200, 200, -30, false, false, false); overview.TickGesturePreviews(); }
             Zoom();
             Assert.Equal(lowQuality, overview.GesturePreviewsActive);
             Assert.Equal(!lowQuality, dwm.VisibleSources.Contains(source.Handle));
@@ -81,12 +81,12 @@ public class CanvasPerformanceIntegrationTests
             pass.OnMouseButtonUp!(pass, new(MouseButtons.Left, 1, 250, 150, 0));
             overview.TickGesturePreviews();
             Assert.False(overview.GesturePreviewsActive); Assert.Contains(source.Handle, dwm.Sources);
-            pass.OnWheel!(pass, 200, 200, -30, false, true, false); overview.TickGesturePreviews();
+            pass.OnWheel!(pass, 200, 200, -30, false, false, false); overview.TickGesturePreviews();
             Assert.True(overview.GesturePreviewsActive);
             config.LowQualityMode = false; overview.RefreshConfig();
             Assert.False(overview.GesturePreviewsActive); Assert.Contains(source.Handle, dwm.Sources);
             config.LowQualityMode = true; overview.RefreshConfig();
-            pass.OnWheel!(pass, 200, 200, -30, false, true, false); overview.TickGesturePreviews();
+            pass.OnWheel!(pass, 200, 200, -30, false, false, false); overview.TickGesturePreviews();
             Assert.True(overview.GesturePreviewsActive);
             overview.TransitionTo(OverviewMode.Hidden); clock.Advance(1000); overview.TickGesturePreviews();
             Assert.False(overview.GesturePreviewsActive);
@@ -112,7 +112,7 @@ public class CanvasPerformanceIntegrationTests
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
             if (!retainedRegistration) dwm.FailedHides.Add(source.Handle);
-            pass.OnWheel!(pass, 200, 200, -30, false, true, false); overview.TickGesturePreviews();
+            pass.OnWheel!(pass, 200, 200, -30, false, false, false); overview.TickGesturePreviews();
             if (retainedRegistration) dwm.FailedShows.Add(source.Handle);
             else dwm.FailedSources.Add(source.Handle);
             clock.Advance(180); overview.TickGesturePreviews();
@@ -141,7 +141,7 @@ public class CanvasPerformanceIntegrationTests
             using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: dwm);
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
-            pass.OnWheel!(pass, 200, 200, -30, false, true, false); overview.TickGesturePreviews();
+            pass.OnWheel!(pass, 200, 200, -30, false, false, false); overview.TickGesturePreviews();
             var before = overview.GesturePreviewCards.ToArray();
             Assert.Equal(3, before.Length);
             var prefixes = before.Select(card => Assert.IsType<ArraySegment<WorldRect>>(card.Occluders)).ToArray();
@@ -178,7 +178,7 @@ public class CanvasPerformanceIntegrationTests
             using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: dwm);
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
-            pass.OnWheel!(pass, 200, 200, -30, false, true, false); overview.TickGesturePreviews();
+            pass.OnWheel!(pass, 200, 200, -30, false, false, false); overview.TickGesturePreviews();
             Assert.True(overview.GesturePreviewsActive);
             Assert.Contains((IntPtr)987, dwm.Sources); Assert.DoesNotContain(source.Handle, dwm.Sources);
             Assert.Equal(1d, Assert.Single(overview.GesturePreviewCards).ImageOpacity);

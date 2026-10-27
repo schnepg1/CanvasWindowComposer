@@ -15,7 +15,7 @@ Run through before each release. Test on the installed version, not debug.
 - [ ] Minimap appears during pan, fades after stopping
 
 ## Overview Map
-- [ ] Alt+scroll on desktop opens overview
+- [ ] Scroll on empty desktop opens overview
 - [ ] Alt+Q opens overview
 - [ ] Overview shows live window thumbnails at correct positions
 - [ ] Grid and X marks render in overview background

@@ -33,11 +33,11 @@ interaction; another closes the overview. Global hotkey and form events use the
 same operation. Wheel and keyboard camera navigation are blocked during a gesture;
 external camera changes cancel it before replacing the transform.
 
-In interactive overview, Windows wheel messages from two-finger trackpad
-scrolling pan the camera on either axis. A precision touchpad pinch, delivered
-by Windows as Ctrl+wheel, zooms around the pointer. Ctrl+wheel and Alt+wheel
-also zoom with a mouse, and + / - zoom from the keyboard. Windows reserves some three-
-and four-finger gestures for system actions; these are not intercepted.
+In canvas view, vertical wheel input zooms around the pointer; Ctrl+wheel
+pans vertically and Shift+wheel pans horizontally. Horizontal wheel input pans
+horizontally, and Alt+wheel and + / - also zoom. Windows sends precision touchpad
+pinch as Ctrl+wheel, so it pans vertically with this mapping. In Interact mode,
+ordinary wheel input over a live app is forwarded to the app.
 
 ## Recommended feature stack
 

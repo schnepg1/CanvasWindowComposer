@@ -28,7 +28,7 @@ public class PanMomentumIntegrationTests
     public void CanvasReleaseCoastsAtCurrentZoomAndStaysOpen(double zoom)
         => Run((canvas, api, input, clock, config, wm, overview, pass) =>
         {
-            pass.OnWheel!(pass, 200, 200, (int)(1200 * (zoom - 1)), false, true, false);
+            pass.OnWheel!(pass, 200, 200, (int)(1200 * (zoom - 1)), false, false, false);
             pass.OnMouseButtonDown!(pass, new(MouseButtons.Middle, 1, 500, 500, 0));
             clock.Advance(20); pass.OnMouseMoved!(pass, new(MouseButtons.Middle, 0, 540, 500, 0));
             clock.Advance(20); pass.OnMouseMoved!(pass, new(MouseButtons.Middle, 0, 580, 500, 0));
@@ -129,7 +129,7 @@ public class PanMomentumIntegrationTests
                 pass.OnMouseButtonUp!(pass, new(MouseButtons.Middle, 1, 550, 500, 0));
                 Assert.True(overview.MomentumActive);
             }
-            Coast(); pass.OnWheel!(pass, 200, 200, -30, false, true, false);
+            Coast(); pass.OnWheel!(pass, 200, 200, -30, false, false, false);
             Assert.False(overview.MomentumActive);
             Coast(); pass.OnMouseButtonDown!(pass, new(MouseButtons.Middle, 1, 500, 500, 0));
             Assert.False(overview.MomentumActive);
