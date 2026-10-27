@@ -8,7 +8,7 @@ namespace CanvasDesktop;
 /// <summary>Detached edits; opening or cancelling settings never changes resource policy.</summary>
 internal sealed class SettingsWindow : Window
 {
-    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation;
+    private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation, _desktopMomentum, _canvasMomentum;
     private readonly ZoomSettingsControl _zoomSettings;
     internal bool ZoomOnly { get; }
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
@@ -45,6 +45,9 @@ internal sealed class SettingsWindow : Window
         _zoom = Option("Overview shortcut · Alt+Q", preferences.ZoomHotkey);
         _altPan = Option("Pan over windows with Alt+middle-click", preferences.AltPan);
         _curve = Option("Match Windows pointer acceleration when panning", preferences.MouseCurve);
+        _desktopMomentum = Option("Desktop pan momentum", preferences.DesktopPanMomentum);
+        _canvasMomentum = Option("Canvas pan momentum", preferences.CanvasPanMomentum);
+        Hint("Continue gliding after releasing a pan. Turn either off to stop that view on release. Dragging still follows the pointer. Applies immediately.");
         _fixed = Option("Show pinned and fullscreen windows while panning", preferences.ScreenFixedWindows);
         _navigation = Option("Animate navigation to apps selected with Alt+Tab or the taskbar", preferences.AnimateWindowNavigation);
         Hint("Stays in Canvas view at the current zoom. Turn off for an immediate jump with less rendering work.");
@@ -79,7 +82,8 @@ internal sealed class SettingsWindow : Window
                     AutomaticMinimization = _parking.IsChecked == true, FlipRendering = _flip.IsChecked == true,
                     StartupIntro = _intro.IsChecked == true, ReducedIntroMotion = _reducedMotion.IsChecked == true,
                     LowQualityMode = _lowQuality.IsChecked == true, ShowTaskbarInCanvas = _taskbar.IsChecked == true,
-                    AnimateWindowNavigation = _navigation.IsChecked == true };
+                    AnimateWindowNavigation = _navigation.IsChecked == true,
+                    DesktopPanMomentum = _desktopMomentum.IsChecked == true, CanvasPanMomentum = _canvasMomentum.IsChecked == true };
                 if (!_zoomSettings.TryApply(draft, out var updated, out var error)) { _status.Text = error; return; }
                 config.SavePreferences(updated);
                 applied(); Close();

@@ -39,6 +39,18 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
     private bool _hasPendingPan;
     private bool _dragJustEnded;
     private bool _zoomPending;
+    private readonly List<PanSample> _panSamples = new();
+    public long? PanReleaseTimestamp { get; private set; }
+    public long? PanStartTimestamp { get; private set; }
+    public IReadOnlyList<PanSample> DrainPanSamples()
+    {
+        var samples = _panSamples.ToArray();
+        _panSamples.Clear();
+        return samples;
+    }
+
+    private static long EventMilliseconds(long timestamp) => Environment.TickCount64
+        - (long)System.Diagnostics.Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds;
 
     // WH_MOUSE_LL hook state (EnableMiddleButtonBlock). The delegate is held
     // in a field so it stays GC-rooted while the native hook references it.
@@ -162,18 +174,24 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
             switch (evt.Type)
             {
                 case MouseEventType.DragStarted:
+                    FlushPendingMouseFrame();
+                    PanStartTimestamp = EventMilliseconds(evt.Timestamp);
                     DragStarted?.Invoke();
                     break;
                 case MouseEventType.ButtonDown:
+                    FlushPendingMouseFrame();
                     ButtonDown?.Invoke();
                     break;
                 case MouseEventType.Pan:
+                    _panSamples.Add(new(evt.Dx, evt.Dy, EventMilliseconds(evt.Timestamp)));
                     _pendingPanDx += evt.Dx;
                     _pendingPanDy += evt.Dy;
                     _hasPendingPan = true;
                     break;
                 case MouseEventType.DragEnded:
                     _dragJustEnded = true;
+                    PanReleaseTimestamp = EventMilliseconds(evt.Timestamp);
+                    FlushPendingMouseFrame();
                     break;
                 case MouseEventType.Zoom:
                     _zoomPending = true;
@@ -183,6 +201,11 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
 
         if (any)
             InputAvailable?.Invoke();
+    }
+
+    private void FlushPendingMouseFrame()
+    {
+        if (_hasPendingPan || _dragJustEnded || _zoomPending) InputAvailable?.Invoke();
     }
 
     public bool TryDrainPanDelta(out int dx, out int dy)

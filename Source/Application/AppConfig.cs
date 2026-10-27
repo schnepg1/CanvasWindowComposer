@@ -18,6 +18,8 @@ internal interface IAppConfig
     bool LowQualityMode => false;
     bool ShowTaskbarInCanvas => true;
     bool AnimateWindowNavigation => true;
+    bool DesktopPanMomentum => true;
+    bool CanvasPanMomentum => true;
     bool EnableStartupIntro => true;
     bool ReduceStartupMotion => false;
     double SelectionRadius => 1200;
@@ -76,6 +78,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool LowQualityMode { get; private set; }
     public bool ShowTaskbarInCanvas { get; private set; } = true;
     public bool AnimateWindowNavigation { get; private set; } = true;
+    public bool DesktopPanMomentum { get; private set; } = true;
+    public bool CanvasPanMomentum { get; private set; } = true;
     public bool EnableStartupIntro { get; private set; } = true;
     public bool ReduceStartupMotion { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
@@ -120,6 +124,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             LowQualityMode = GetBool(values, "LowQualityMode", defaultValue: false);
             ShowTaskbarInCanvas = GetBool(values, "ShowTaskbarInCanvas", defaultValue: true);
             AnimateWindowNavigation = GetBool(values, "AnimateWindowNavigation", defaultValue: true);
+            DesktopPanMomentum = GetBool(values, "DesktopPanMomentum", defaultValue: true);
+            CanvasPanMomentum = GetBool(values, "CanvasPanMomentum", defaultValue: true);
             EnableStartupIntro = GetBool(values, "EnableStartupIntro", defaultValue: true);
             ReduceStartupMotion = GetBool(values, "ReduceStartupMotion", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
@@ -178,7 +184,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
-                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation);
+                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum);
         }
     }
 
@@ -202,6 +208,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["LowQualityMode"] = preferences.LowQualityMode.ToString().ToLowerInvariant(),
                 ["ShowTaskbarInCanvas"] = preferences.ShowTaskbarInCanvas.ToString().ToLowerInvariant(),
                 ["AnimateWindowNavigation"] = preferences.AnimateWindowNavigation.ToString().ToLowerInvariant(),
+                ["DesktopPanMomentum"] = preferences.DesktopPanMomentum.ToString().ToLowerInvariant(),
+                ["CanvasPanMomentum"] = preferences.CanvasPanMomentum.ToString().ToLowerInvariant(),
                 ["EnableLivePreviewsTier"] = preferences.LivePreviewsTier.ToString().ToLowerInvariant(),
                 ["EnableDetailedCardsTier"] = preferences.DetailedCardsTier.ToString().ToLowerInvariant(),
                 ["EnableSimpleCardsTier"] = preferences.SimpleCardsTier.ToString().ToLowerInvariant(),
@@ -303,6 +311,11 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
 ; Animate Alt+Tab and taskbar navigation within canvas view; false jumps immediately
 ;AnimateWindowNavigation=true
+
+; Continue gliding after releasing a pan gesture; independent of visual quality
+; False stops on release while dragging still follows the pointer
+;DesktopPanMomentum=true
+;CanvasPanMomentum=true
 
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true
@@ -439,4 +452,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool LivePreviewsTier = true, bool DetailedCardsTier = true, bool SimpleCardsTier = true,
     double CardEnterZoom = OverviewZoomDefaults.CardEnter, double CardExitZoom = OverviewZoomDefaults.CardExit,
     double SimpleCardEnterZoom = OverviewZoomDefaults.SimpleCardEnter, double SimpleCardExitZoom = OverviewZoomDefaults.SimpleCardExit,
-    bool ShowTaskbarInCanvas = true, bool AnimateWindowNavigation = true);
+    bool ShowTaskbarInCanvas = true, bool AnimateWindowNavigation = true,
+    bool DesktopPanMomentum = true, bool CanvasPanMomentum = true);

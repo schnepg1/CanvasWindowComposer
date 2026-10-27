@@ -3,131 +3,91 @@ using System.Collections.Generic;
 
 namespace CanvasDesktop;
 
-/// <summary>
-/// Tracks panning velocity from recorded deltas and decays it over time.
-/// Thread-safe: RecordDelta/Release/Cancel can be called from UI thread,
-/// Tick from a render thread.
-/// </summary>
+/// <summary>UI-owned, elapsed-time pan momentum in screen pixels, independent of presentation rate.</summary>
 internal sealed class InertiaTracker
 {
-    private const int SampleWindow = 15;
-    private const double FrictionPerFrame = 0.92;
-    private const double TargetFrameMs = 16.667;
     private const double StopThresholdPxPerMs = 0.02;
     private const long VelocityWindowMs = 100;
-    private const double MaxDeltaMs = 60;
-
-    private readonly object _lock = new();
-    private readonly List<(double dx, double dy, long ticks)> _samples = new();
+    private static readonly double DecayPerMs = -Math.Log(0.92) / 16.667;
+    private readonly List<(double dx, double dy, long time)> _samples = new();
     private readonly IClock _clock;
     private double _vx, _vy;
-    private volatile bool _active;
     private long _lastTick;
+    public bool IsActive { get; private set; }
 
-    public InertiaTracker(IClock? clock = null)
+    public InertiaTracker(IClock? clock = null) => _clock = clock ?? SystemClock.Instance;
+
+    public void Begin(long? timestamp = null)
     {
-        _clock = clock ?? SystemClock.Instance;
+        Cancel();
+        _samples.Add((0, 0, timestamp ?? _clock.TickCount64));
     }
 
-    public bool IsActive
+    public void RecordDelta(int dx, int dy, long? timestamp = null)
     {
-        get { return _active; }
-    }
-
-    public void RecordDelta(int dx, int dy)
-    {
-        lock (_lock)
+        long time = timestamp ?? _clock.TickCount64;
+        if (_samples.Count > 0)
         {
-            _samples.Add((dx, dy, _clock.TickCount64));
-            if (_samples.Count > SampleWindow)
-                _samples.RemoveRange(0, _samples.Count - SampleWindow);
-        }
-    }
-
-    /// <summary>
-    /// Compute velocity from recent samples and start decaying.
-    /// Returns true if inertia is active (velocity above stop threshold).
-    /// </summary>
-    public bool Release()
-    {
-        bool hasVelocity = false;
-        lock (_lock)
-        {
-            if (_samples.Count >= 2)
+            var previous = _samples[^1];
+            time = Math.Max(time, previous.time);
+            if (time == previous.time)
             {
-                double sumDx = 0, sumDy = 0;
-                long now = _clock.TickCount64;
-                long oldest = now;
-
-                for (int i = _samples.Count - 1; i >= 0; i--)
-                {
-                    var s = _samples[i];
-                    if (now - s.ticks > VelocityWindowMs) break;
-                    sumDx += s.dx;
-                    sumDy += s.dy;
-                    oldest = s.ticks;
-                }
-
-                long elapsed = now - oldest;
-                if (elapsed >= 1)
-                {
-                    _vx = sumDx / elapsed;
-                    _vy = sumDy / elapsed;
-                    hasVelocity = Math.Abs(_vx) >= StopThresholdPxPerMs ||
-                                  Math.Abs(_vy) >= StopThresholdPxPerMs;
-                }
+                _samples[^1] = (previous.dx + dx, previous.dy + dy, time);
+                return;
             }
-            _samples.Clear();
         }
+        _samples.Add((dx, dy, time));
+        if (_samples.Count > 128) _samples.RemoveRange(0, _samples.Count - 128);
+    }
 
-        if (hasVelocity)
+    public bool Release(long? timestamp = null)
+    {
+        IsActive = false;
+        _vx = _vy = 0;
+        long released = timestamp ?? _clock.TickCount64;
+        long start = _samples.Count == 0 ? released : Math.Max(released - VelocityWindowMs, _samples[0].time);
+        double dx = 0, dy = 0;
+        for (int i = 1; i < _samples.Count; i++)
         {
-            _lastTick = _clock.TickCount64;
-            _active = true;
+            var previous = _samples[i - 1]; var sample = _samples[i];
+            long overlap = Math.Min(released, sample.time) - Math.Max(start, previous.time);
+            if (overlap <= 0 || sample.time <= previous.time) continue;
+            double fraction = (double)overlap / (sample.time - previous.time);
+            dx += sample.dx * fraction; dy += sample.dy * fraction;
         }
-        return hasVelocity;
+        _samples.Clear();
+        long elapsed = released - start;
+        if (elapsed <= 0) return false;
+        _vx = dx / elapsed; _vy = dy / elapsed;
+        IsActive = Math.Max(Math.Abs(_vx), Math.Abs(_vy)) >= StopThresholdPxPerMs;
+        // Input can have waited in the UI queue; use event time for velocity,
+        // but begin the visible coast now instead of jumping over its first frames.
+        _lastTick = _clock.TickCount64;
+        return IsActive;
     }
 
     public void Cancel()
     {
-        _active = false;
-        lock (_lock)
-        {
-            _vx = _vy = 0;
-            _samples.Clear();
-        }
+        IsActive = false;
+        _vx = _vy = 0;
+        _samples.Clear();
     }
 
-    /// <summary>
-    /// Advance inertia by one frame. Returns the deltas to apply and whether
-    /// inertia just stopped (caller should clean up).
-    /// </summary>
-    public (int dx, int dy, bool stopped) Tick()
+    public (double dx, double dy, bool stopped) Tick()
     {
-        if (!_active) return (0, 0, false);
-
+        if (!IsActive) return (0, 0, false);
         long now = _clock.TickCount64;
-        double dt = Math.Clamp(now - _lastTick, 1, MaxDeltaMs);
+        double dt = Math.Max(0, now - _lastTick);
         _lastTick = now;
-
-        double vx, vy;
-        lock (_lock)
-        {
-            double decay = Math.Pow(FrictionPerFrame, dt / TargetFrameMs);
-            _vx *= decay;
-            _vy *= decay;
-            vx = _vx;
-            vy = _vy;
-        }
-
-        if (Math.Abs(vx) < StopThresholdPxPerMs && Math.Abs(vy) < StopThresholdPxPerMs)
-        {
-            _active = false;
-            return (0, 0, true);
-        }
-
-        int dx = (int)Math.Round(vx * dt);
-        int dy = (int)Math.Round(vy * dt);
-        return (dx, dy, false);
+        double remaining = Math.Log(Math.Max(Math.Abs(_vx), Math.Abs(_vy)) / StopThresholdPxPerMs) / DecayPerMs;
+        bool stopped = dt >= remaining;
+        dt = Math.Min(dt, Math.Max(0, remaining));
+        double decay = Math.Exp(-DecayPerMs * dt);
+        // Integrate the decay exactly; retain subpixels and the final displacement.
+        double distance = (1 - decay) / DecayPerMs;
+        double dx = _vx * distance, dy = _vy * distance;
+        _vx *= decay; _vy *= decay;
+        if (stopped) IsActive = false;
+        return (dx, dy, stopped);
     }
 }

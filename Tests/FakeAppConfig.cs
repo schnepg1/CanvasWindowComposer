@@ -11,6 +11,8 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool LowQualityMode { get; set; }
     public bool ShowTaskbarInCanvas { get; set; } = true;
     public bool AnimateWindowNavigation { get; set; } = true;
+    public bool DesktopPanMomentum { get; set; } = true;
+    public bool CanvasPanMomentum { get; set; } = true;
     public bool ShowScreenFixedWindowsDuringPan { get; set; } = true;
     public bool DisableMouseCurve { get; set; }
     public bool DisableZoomHotkey { get; set; }

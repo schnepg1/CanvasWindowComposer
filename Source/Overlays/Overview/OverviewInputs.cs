@@ -13,7 +13,7 @@ internal sealed class OverviewInputs : IDisposable
     private readonly IOverviewController _overview;
     private readonly IInputRouter _input;
     private readonly Canvas _canvas;
-    private bool _disposed, _discardIntroDrag, _guidedDrag;
+    private bool _disposed, _discardIntroDrag, _guidedDrag, _rawDragActive;
 
     public OverviewInputs(IOverviewController overview, IInputRouter input, Canvas canvas)
     {
@@ -39,6 +39,8 @@ internal sealed class OverviewInputs : IDisposable
     private void OnOverviewModeChanged(OverviewMode from, OverviewMode to)
     {
         if (_disposed) return;
+        if (from == OverviewMode.Panning && to != OverviewMode.Panning && _rawDragActive)
+            _discardIntroDrag = true;
         if (to == OverviewMode.Panning)
             _input.SetExtraPanSurfaces(_overview.MonitorHandles);
         else
@@ -73,6 +75,8 @@ internal sealed class OverviewInputs : IDisposable
     private void OnDragStarted()
     {
         if (_disposed) return;
+        _rawDragActive = true;
+        _discardIntroDrag = false;
         if (_overview.CanvasInputSuspended || _overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed)
         {
             _discardIntroDrag = true;
@@ -80,16 +84,15 @@ internal sealed class OverviewInputs : IDisposable
         }
         _guidedDrag=_overview.GuidedTutorialActive;
         if (!_guidedDrag) _overview.TransitionTo(OverviewMode.Panning);
+        _overview.BeginPan(_input.PanStartTimestamp);
     }
 
     private void OnMouseButtonDown()
     {
         if (_disposed) return;
         if (_overview.TrySkipStartupIntro()) return;
-        // A non-pan click while the panning overview is up — close it so the
-        // click interacts with the underlying window normally.
-        if (_overview.CurrentMode == OverviewMode.Panning)
-            _overview.TransitionTo(OverviewMode.Hidden);
+        // Desktop pan overlays own stopping clicks until button-up. Closing
+        // here would expose stale native positions before Windows routes the click.
     }
 
     private void OnOverviewHotkey()
@@ -105,30 +108,40 @@ internal sealed class OverviewInputs : IDisposable
     private void OnCanvasInput()
     {
         if (_disposed) return;
+        var samples = _input.DrainPanSamples();
         // A gesture started in the tour must never leak into the real desktop after pause/close.
         if (_guidedDrag && !_overview.GuidedTutorialActive)
         {
             _input.TryDrainPanDelta(out _,out _);_input.TryDrainZoom();
-            if(_input.TryDrainDragEnded())_guidedDrag=false;
+            if(_input.TryDrainDragEnded()) { _guidedDrag=false; _rawDragActive=false; }
             return;
         }
         if (_overview.CanvasInputSuspended || _overview.TrySkipStartupIntro() || _overview.StartupIntroInputSuppressed || _discardIntroDrag)
         {
+            if (_overview.CanvasInputSuspended && _rawDragActive) _discardIntroDrag = true;
             _input.TryDrainPanDelta(out _, out _);
-            if (_input.TryDrainDragEnded()) { _discardIntroDrag = false;_guidedDrag=false; }
+            if (_input.TryDrainDragEnded()) { _discardIntroDrag = false;_guidedDrag=false;_rawDragActive=false; }
             _input.TryDrainZoom();
             return;
         }
         if (_input.TryDrainPanDelta(out int dx, out int dy))
         {
             if (_overview.GuidedTutorialActive) _overview.PanGuidedTutorial(dx,dy);
-            else { _canvas.Pan(dx, dy);_overview.RecordPanDelta(dx, dy); }
+            else
+            {
+                _canvas.Pan(dx, dy);
+                if (samples.Count == 0) _overview.RecordPanDelta(dx, dy);
+            }
         }
+
+        if (!_overview.GuidedTutorialActive)
+            foreach (var sample in samples) _overview.RecordPanDelta(sample.Dx, sample.Dy, sample.Timestamp);
 
         if (_input.TryDrainDragEnded())
         {
+            _rawDragActive=false;
             _guidedDrag=false;
-            if(!_overview.GuidedTutorialActive)_overview.ReleaseInertia();
+            if(!_overview.GuidedTutorialActive)_overview.ReleaseInertia(_input.PanReleaseTimestamp);
         }
 
         if (_input.TryDrainZoom())

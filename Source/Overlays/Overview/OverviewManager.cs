@@ -39,11 +39,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         "dock"
     };
 
-    private readonly InertiaTracker _inertia = new();
-    private readonly object _inertiaQueueLock = new();
-    private int _pendingInertiaDx, _pendingInertiaDy;
-    private bool _inertiaPanQueued;
-
     // Per-monitor passes
     private readonly List<OverviewOverlay> _passes = new();
 
@@ -160,6 +155,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _win32 = win32;
         _appConfig = appConfig;
         _gestureClock = gestureClock ?? SystemClock.Instance;
+        _inertia = new InertiaTracker(_gestureClock);
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
         _windowInteraction = new(interactionApi ?? new Win32WindowInteractionApi());
@@ -189,6 +185,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     public void RefreshConfig()
     {
+        if (_inertia.IsActive && !MomentumAllowed) FinishMomentum();
         if (CurrentMode != OverviewMode.Hidden)
             ApplyConfig();
     }
@@ -274,6 +271,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             pass.OnMouseDoubleClicked = HandleDoubleClick;
             pass.OnCaptureLost = _ =>
             {
+                if (_desktopStopSurface == pass)
+                {
+                    ClearDesktopStoppingClick();
+                    FinishMomentum();
+                    return;
+                }
+                if (_tools.Kind == CanvasInteractionKind.Pan) CancelInertia();
                 if (_interactionCapture == pass) { EndWindowInteraction(focus: true); return; }
                 if (_tools.CapturedSurface != _passes.IndexOf(pass)) return;
                 CancelInteraction();
@@ -282,83 +286,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
-    public void RecordPanDelta(int dx, int dy)
-    {
-        _inertia.RecordDelta(dx, dy);
-    }
-
-    public void ReleaseInertia()
-    {
-        bool active = _inertia.Release();
-        if (_passes.Count > 0 && _passes[0].Grid is { } grid) grid.FrameTicksRequired = active;
-        if (!active && CurrentMode != OverviewMode.Hidden)
-        {
-            TransitionTo(OverviewMode.Hidden);
-        }
-    }
-
-    public void CancelInertia()
-    {
-        _inertia.Cancel();
-        if (_passes.Count > 0 && _passes[0].Grid is { } grid) grid.FrameTicksRequired = false;
-        lock (_inertiaQueueLock)
-        {
-            _pendingInertiaDx = 0;
-            _pendingInertiaDy = 0;
-        }
-    }
-
-    /// <summary>Called on a grid render thread after Present. Drives inertia.</summary>
-    private void OnGridFrameTick()
-    {
-        if (_disposed) return;
-        var (dx, dy, stopped) = _inertia.Tick();
-
-        if (stopped)
-        {
-            if (_passes.Count > 0 && _passes[0].Grid is { } grid) grid.FrameTicksRequired = false;
-            if (_passes.Count > 0 && _passes[0].IsHandleCreated)
-                _passes[0].BeginInvoke(() => { if (!_disposed && CurrentMode != OverviewMode.Hidden) TransitionTo(OverviewMode.Hidden); });
-            return;
-        }
-
-        if ((dx != 0 || dy != 0) && _passes.Count > 0 && _passes[0].IsHandleCreated)
-        {
-            bool queue;
-            lock (_inertiaQueueLock)
-            {
-                _pendingInertiaDx += dx;
-                _pendingInertiaDy += dy;
-                queue = !_inertiaPanQueued;
-                if (queue) _inertiaPanQueued = true;
-            }
-
-            if (queue)
-            {
-                _passes[0].BeginInvoke(() =>
-                {
-                    int cdx, cdy;
-                    lock (_inertiaQueueLock)
-                    {
-                        cdx = _pendingInertiaDx;
-                        cdy = _pendingInertiaDy;
-                        _pendingInertiaDx = 0;
-                        _pendingInertiaDy = 0;
-                        _inertiaPanQueued = false;
-                    }
-                    if (_disposed || !_inertia.IsActive || (cdx == 0 && cdy == 0)) return;
-                    _mainCanvas.Pan(cdx, cdy);
-                });
-            }
-        }
-    }
-
     /// <summary>Sync overview camera to the main canvas and update visuals on all passes.</summary>
     public void SyncCamera()
     {
         if (IsStartupIntroActive) { CancelStartupIntro(); return; }
         if (CurrentMode == OverviewMode.Hidden) return;
-        CancelInteraction();
+        CancelInteractionCore();
         _camera.SyncFrom(_mainCanvas);
 
         _visualFrames.Request();
@@ -423,9 +356,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (ShouldShowScreenFixedWindowsDuringPan)
             RaiseMyDockFinderWindowsAboveOverview();
 
-        // Attach frame tick to the first pass's grid (drives inertia)
-        if (_passes.Count > 0 && _passes[0].Grid != null)
-            _passes[0].Grid!.OnFrameTick = OnGridFrameTick;
         OfferTutorialTour();
 
         foreach (var p in _passes)
@@ -434,6 +364,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        ClearDesktopStoppingClick();
+        RestoreDesktopPanResources();
         CloseSettingsPopup(canvasOnly: true);
         CancelVisualFrame();
         CloseActiveMenus();
@@ -481,6 +413,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void ApplyConfig()
     {
+        UpdateDesktopPanResources();
+        _wm.SuspendProjection = true;
         RefreshOverviewWindows();
 
         // WS_EX_LAYERED is added in Panning and removed in Zooming. Panning
@@ -507,7 +441,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             }
             p.SetTaskbarVisible(_appConfig.ShowTaskbarInCanvas);
             p.SetModeStyle(wantLayered, wantNoActivate);
-            p.SetClickThrough(!_cfg.InputEnabled);
+            // The desktop camera now moves previews only. Own the stopping
+            // click so it cannot target a native window at its old position.
+            p.SetClickThrough(false);
         }
         ReconcileVisuals();
         if (ShouldShowScreenFixedWindowsDuringPan && AnyPassVisible())
@@ -515,11 +451,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible() && !_composerWaitingForBrowser)
             RaiseOverviewPassesAboveTopmostWindows();
 
-        // During Zooming, real-window positions don't need to track the camera
-        // (click-through is off — clicks land on the overview form, not real
-        // windows). Suppressing projection eliminates the worker-job wait at
-        // close-time ReprojectSync.
-        _wm.SuspendProjection = (CurrentMode == OverviewMode.Zooming);
+        // Both visible modes own pointer input and render their own camera.
+        // Native windows are committed once, under the overlay, when it closes.
+        _wm.SuspendProjection = true;
     }
 
     private bool AnyPassVisible()
@@ -652,6 +586,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
+        CancelInertia();
         if (HandleCameraBookmarkKey(pass, e)) return;
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;
@@ -775,6 +710,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (CurrentMode == OverviewMode.Panning)
+        {
+            StopDesktopPanWithClick(pass, e);
+            return;
+        }
+        CancelInertia();
         _visualFrames.Flush();
         if (CloseActiveMenus()) return;
         StopWindowNavigation();
@@ -821,6 +762,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             ApplyPointerCapture();
             _panStartVx = vx;
             _panStartVy = vy;
+            BeginPan();
             return;
         }
 
@@ -831,6 +773,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             ApplyPointerCapture();
             _panStartVx = vx;
             _panStartVy = vy;
+            BeginPan();
             return;
         }
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
@@ -853,6 +796,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             ApplyPointerCapture();
             _panStartVx = vx;
             _panStartVy = vy;
+            BeginPan();
         }
         else if (e.Button == MouseButtons.Middle)
         {
@@ -860,6 +804,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             ApplyPointerCapture();
             _panStartVx = vx;
             _panStartVy = vy;
+            BeginPan();
         }
     }
 
@@ -920,11 +865,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _panStartVy = vy;
 
             PanOverview(dx, dy);
+            RecordPanDelta(dx, dy);
         }
     }
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (CompleteDesktopStoppingClick(pass, e)) return;
         _visualFrames.Flush();
         if (e.Button == MouseButtons.Right && ((_windowContextMenu != null && _windowContextMenu.Visible)
             || (_interactionMenu != null && _interactionMenu.Visible)
@@ -945,6 +892,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         var ended = _tools.EndNavigation(pointer);
         ApplyPointerCapture();
         if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.Pan) _visualFrames.Request();
+        if (ended == CanvasInteractionKind.Pan && !GuidedTutorialActive) ReleaseInertia();
         if (ended == CanvasInteractionKind.Window)
         {
             _wm.Reproject(true);
@@ -956,6 +904,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
+        CancelInertia();
         if (_composerWindow is { WaitingForBrowser: false }) return;
         bool zoomModifier = control || ((_windowInteraction.Active ? InteractionKeys : Control.ModifierKeys) & Keys.Alt) != 0;
         if (RouteWindowWheel(pass, x, y, delta, horizontal, zoomModifier)) return;
@@ -1112,7 +1061,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Attempt(() => _cardAnimationTimer?.Dispose());
         Attempt(() => _windowContextMenu?.Dispose());
         Attempt(_inputs.Dispose);
+        Attempt(ClearDesktopStoppingClick);
+        Attempt(RestoreDesktopPanResources);
         Attempt(CancelInertia);
+        Attempt(() => { _momentumTimer?.Dispose(); _momentumTimer = null; });
         // HideInternal may have failed after the state changed to Hidden.
         // Retry native ownership cleanup independently of that transition.
         Attempt(_thumbnails.Hide);

@@ -78,6 +78,12 @@ internal sealed partial class OverviewManager
 
     public bool CancelInteraction()
     {
+        CancelInertia();
+        return CancelInteractionCore();
+    }
+
+    private bool CancelInteractionCore()
+    {
         StopWindowNavigation();
         StopTutorialTravel();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;

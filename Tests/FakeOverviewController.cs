@@ -30,6 +30,8 @@ internal sealed class FakeOverviewController : IOverviewController
     public int SyncCameraCalls;
     public int ReleaseInertiaCalls;
     public List<(int dx, int dy)> RecordedDeltas = new();
+    public List<long?> RecordedTimes = new();
+    public long? ReleasedAt;
     public List<OverviewMode> Transitions = new();
     public List<IntPtr> NavigatedWindows = new();
     public bool NavigateToWindow(IntPtr window) { NavigatedWindows.Add(window); return true; }
@@ -71,13 +73,15 @@ internal sealed class FakeOverviewController : IOverviewController
         SyncCameraCalls++;
     }
 
-    public void RecordPanDelta(int dx, int dy)
+    public void RecordPanDelta(int dx, int dy, long? timestamp = null)
     {
         RecordedDeltas.Add((dx, dy));
+        RecordedTimes.Add(timestamp);
     }
 
-    public void ReleaseInertia()
+    public void ReleaseInertia(long? timestamp = null)
     {
         ReleaseInertiaCalls++;
+        ReleasedAt = timestamp;
     }
 }

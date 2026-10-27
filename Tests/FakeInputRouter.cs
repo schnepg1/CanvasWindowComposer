@@ -54,6 +54,13 @@ internal sealed class FakeInputRouter : IInputRouter
     public int ClearExtraCalls;
 
     // Drainable input
+    public readonly List<PanSample> PendingPanSamples = new();
+    public long? PanReleaseTimestamp { get; set; }
+    public long? PanStartTimestamp { get; set; }
+    public IReadOnlyList<PanSample> DrainPanSamples()
+    {
+        var result = PendingPanSamples.ToArray(); PendingPanSamples.Clear(); return result;
+    }
     public int PendingPanDx;
     public int PendingPanDy;
     public bool PendingDragEnded;

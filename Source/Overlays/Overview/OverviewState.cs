@@ -47,7 +47,7 @@ internal sealed class OverviewState
         DesktopOpacity: 120,
         TaskbarVisible: false,
         InputEnabled: true,
-        InertiaAllowed: false);
+        InertiaAllowed: true);
 
     public OverviewMode CurrentMode { get; private set; } = OverviewMode.Hidden;
     public OverviewModeConfig CurrentConfig { get; private set; } = HiddenConfig;

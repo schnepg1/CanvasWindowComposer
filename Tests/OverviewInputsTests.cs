@@ -117,7 +117,7 @@ public class OverviewInputsTests
     }
 
     [Fact]
-    public void MouseButtonDown_DuringPanning_HidesOverview()
+    public void RawMouseButtonDown_DuringPanning_LeavesStoppingClickToOverlay()
     {
         var h = new Harness();
         h.Input.RaiseDragStarted();
@@ -125,7 +125,7 @@ public class OverviewInputsTests
 
         h.Input.RaiseButtonDown();
 
-        Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode);
+        Assert.Equal(OverviewMode.Panning, h.Overview.CurrentMode);
     }
 
     [Fact]
@@ -237,6 +237,43 @@ public class OverviewInputsTests
         h.Input.QueuePanAndRaise(10, 20); // Next gesture is allowed.
         Assert.Equal(-10, h.Canvas.CamX);
         Assert.Equal(-20, h.Canvas.CamY);
+    }
+
+    [Fact]
+    public void DelayedCoalescedInputKeepsOriginalVelocitySamplesAndReleaseTime()
+    {
+        var h = new Harness();
+        h.Input.PendingPanSamples.AddRange([new(10, 2, 10), new(20, 3, 26)]);
+        h.Input.PendingPanDx = 30; h.Input.PendingPanDy = 5;
+        h.Input.PanReleaseTimestamp = 30; h.Input.PendingDragEnded = true;
+        h.Input.RaiseInputAvailable();
+        Assert.Equal(-30, h.Canvas.CamX);
+        Assert.Equal(new[] { (10, 2), (20, 3) }, h.Overview.RecordedDeltas);
+        Assert.Equal(new long?[] { 10, 26 }, h.Overview.RecordedTimes);
+        Assert.Equal(30, h.Overview.ReleasedAt);
+        Assert.Empty(h.Input.PendingPanSamples);
+    }
+
+    [Fact]
+    public void StoppingClickAfterReleaseDoesNotSuppressTheNextRawDrag()
+    {
+        var h = new Harness();
+        h.Input.RaiseDragStarted(); h.Input.PendingDragEnded = true; h.Input.RaiseInputAvailable();
+        h.Overview.CanvasInputSuspended = true; h.Input.RaiseButtonDown(); h.Input.RaiseInputAvailable();
+        h.Overview.CanvasInputSuspended = false; h.Overview.TransitionTo(OverviewMode.Hidden);
+        h.Input.RaiseDragStarted(); h.Input.QueuePanAndRaise(10, 20);
+        Assert.Equal(-10, h.Canvas.CamX); Assert.Equal(-20, h.Canvas.CamY);
+    }
+
+    [Fact]
+    public void ClosingDesktopPanWhileMiddleIsHeldDiscardsMotionUntilRelease()
+    {
+        var h = new Harness(); h.Input.RaiseDragStarted(); h.Input.QueuePanAndRaise(10, 0);
+        h.Overview.TransitionTo(OverviewMode.Hidden); h.Input.QueuePanAndRaise(100, 0);
+        Assert.Equal(-10, h.Canvas.CamX);
+        h.Input.PendingDragEnded = true; h.Input.RaiseInputAvailable();
+        h.Input.RaiseDragStarted(); h.Input.QueuePanAndRaise(20, 0);
+        Assert.Equal(-30, h.Canvas.CamX);
     }
 
 }

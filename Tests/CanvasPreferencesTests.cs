@@ -21,6 +21,35 @@ public class CanvasPreferencesTests : IDisposable
         }
     }
 
+    [Fact]
+    public void LegacyConfigDefaultsBothPanMomentumOptionsOn()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "LowQualityMode=true\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.DesktopPanMomentum);
+        Assert.True(config.CanvasPanMomentum);
+        Assert.True(config.Preferences.DesktopPanMomentum);
+        Assert.True(config.Preferences.CanvasPanMomentum);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void PanMomentumOptionsRoundTripIndependentlyOfQualityAndOtherMotion(bool desktop, bool canvas)
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        var wanted = config.Preferences with { DesktopPanMomentum = desktop, CanvasPanMomentum = canvas,
+            LowQualityMode = true, AnimateWindowNavigation = false, ReducedIntroMotion = true };
+        config.SavePreferences(wanted);
+        Assert.Equal(desktop, config.DesktopPanMomentum);
+        Assert.Equal(canvas, config.CanvasPanMomentum);
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.Equal(wanted, reopened.Preferences);
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "canvas-preferences-" + Guid.NewGuid().ToString("N"));
 
     [Fact]
@@ -30,6 +59,10 @@ public class CanvasPreferencesTests : IDisposable
         Assert.Equal(new(true, true, true, true, true, false, false, false), config.Preferences);
         Assert.Contains(";EnableFlipRendering=false", File.ReadAllText(Path.Combine(_directory, "config.ini")));
         Assert.False(config.LowQualityMode);
+        Assert.True(config.DesktopPanMomentum);
+        Assert.True(config.CanvasPanMomentum);
+        Assert.Contains(";DesktopPanMomentum=true", File.ReadAllText(Path.Combine(_directory, "config.ini")));
+        Assert.Contains(";CanvasPanMomentum=true", File.ReadAllText(Path.Combine(_directory, "config.ini")));
         Assert.Equal(.40, config.OverviewCardEnterZoom);
         Assert.Equal(.45, config.OverviewCardExitZoom);
         Assert.Equal(.10, config.OverviewSimpleCardEnterZoom);

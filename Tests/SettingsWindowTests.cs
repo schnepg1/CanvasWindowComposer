@@ -80,7 +80,8 @@ public class SettingsWindowTests
                 Assert.Equal(4, sliders.Length);
                 sliders[0].Value = 55; sliders[1].Value = 65;
                 sliders[2].Value = 15; sliders[3].Value = 22;
-                config.SavePreferences(config.Preferences with { LowQualityMode = true, Search = false });
+                config.SavePreferences(config.Preferences with { LowQualityMode = true, Search = false,
+                    DesktopPanMomentum = false, CanvasPanMomentum = false });
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(1, applied);
@@ -91,6 +92,8 @@ public class SettingsWindowTests
                 Assert.Equal(0.22, reloaded.OverviewSimpleCardExitZoom);
                 Assert.True(reloaded.LowQualityMode);
                 Assert.True(reloaded.DisableSearch);
+                Assert.False(reloaded.DesktopPanMomentum);
+                Assert.False(reloaded.CanvasPanMomentum);
                 Assert.False(reloaded.EnableAutomaticMinimization);
             }
             finally { Directory.Delete(directory, true); }
@@ -158,6 +161,37 @@ public class SettingsWindowTests
             finally { Directory.Delete(directory, true); }
         });
 
+    [Theory]
+    [InlineData("Save settings", false, true)]
+    [InlineData("Save settings", true, false)]
+    [InlineData("Cancel", false, false)]
+    public void PanMomentumCheckboxesAreIndependentAndCancelKeepsRunningPreferences(string action, bool desktop, bool canvas)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "canvas-momentum-settings-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var config = new AppConfig(directory: directory); config.Load();
+                int applied = 0;
+                var original = config.Preferences;
+                var window = new SettingsWindow(config, () => applied++);
+                var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
+                boxes.Single(b => (b.Content as TextBlock)?.Text == "Desktop pan momentum").IsChecked = desktop;
+                boxes.Single(b => (b.Content as TextBlock)?.Text == "Canvas pan momentum").IsChecked = canvas;
+                Assert.Equal(original, config.Preferences);
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, action))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expected = action == "Save settings"
+                    ? original with { DesktopPanMomentum = desktop, CanvasPanMomentum = canvas } : original;
+                Assert.Equal(action == "Save settings" ? 1 : 0, applied);
+                Assert.Equal(expected, config.Preferences);
+                using var reopened = new AppConfig(directory: directory); reopened.Load();
+                Assert.Equal(expected, reopened.Preferences);
+                window.Close();
+            }
+            finally { Directory.Delete(directory, true); }
+        });
+
     [Fact]
     public void OpeningEditingAndClosingSettingsDoesNotEnableExperimentalOptions()
         => WorkspaceViewTests.OnSta(() =>
@@ -191,7 +225,7 @@ public class SettingsWindowTests
                 window.Width = 440; window.Height = 420;
                 WorkspaceViewTests.Render(window, "settings-shell-small-150-preview.png", 1.5);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(16, boxes.Length);
+                Assert.Equal(18, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Animate navigation to apps selected with Alt+Tab or the taskbar").IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Show Windows taskbar in canvas view").IsChecked = false;

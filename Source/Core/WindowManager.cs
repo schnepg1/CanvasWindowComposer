@@ -214,7 +214,19 @@ internal sealed partial class WindowManager : IDisposable
     /// immediately wait for it inside ReprojectSync). <see cref="OnCommitted"/>
     /// bypasses this gate so the explicit close commit still runs.
     /// </summary>
-    public bool SuspendProjection { get; set; }
+    private bool _suspendProjection;
+    public bool SuspendProjection
+    {
+        get => _suspendProjection;
+        set
+        {
+            if (_suspendProjection == value) return;
+            _suspendProjection = value;
+            if (!value) return;
+            _projection?.ClearPending();
+            DrainProjectionResults();
+        }
+    }
 
     private bool _suspendReconcile;
     private bool _reconcilePending;
@@ -385,9 +397,11 @@ internal sealed partial class WindowManager : IDisposable
 
     private void OnCameraChanged()
     {
+        // Visible overlays evaluate proximity once per coalesced visual frame.
+        // Do not scan every window again for every raw input sample.
+        if (SuspendProjection) return;
         UpdateRuntimeVisibility(refreshIdentity: false);
         ProcessAutomaticParking(cameraOnly: true);
-        if (SuspendProjection) return;
 
         // Overview renders its own camera + thumbnails, so real windows don't
         // need to track every frame — but clicks pass through the overlay
