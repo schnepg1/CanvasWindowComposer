@@ -89,7 +89,8 @@ public class WindowInteractionNativeTests
             using var list = new ListBox { Dock = DockStyle.Fill };
             for (int i = 0; i < 200; i++) list.Items.Add("Row " + i);
             app.Controls.Add(list); app.Show(); list.Focus(); Application.DoEvents();
-            var bridge = new OverviewWindowInteraction(new Win32WindowInteractionApi());
+            // Foreground activation is covered separately; this test exercises real wheel delivery.
+            var bridge = new OverviewWindowInteraction(new WheelDeliveryApi());
             try
             {
                 Assert.True(bridge.Begin(app.Handle));
@@ -108,6 +109,23 @@ public class WindowInteractionNativeTests
         var api = new Win32WindowInteractionApi();
         Assert.False(api.Post((IntPtr)123, 0x200, 0, new(40000, 0)));
         Assert.False(api.Post((IntPtr)123, 0x200, 0, new(0, -40000)));
+    }
+
+    // Windows may deny foreground activation when another process owns focus. Keep
+    // this test independent of that policy while using the real native API for
+    // window validation, hit testing, coordinate conversion, and message delivery.
+    private sealed class WheelDeliveryApi : IWindowInteractionApi
+    {
+        private readonly Win32WindowInteractionApi _native = new();
+        public bool IsAvailable(IntPtr window) => _native.IsAvailable(window);
+        public bool Activate(IntPtr window) => true;
+        public bool TryResolveClient(IntPtr window, Point screen, out IntPtr child, out Point client)
+            => _native.TryResolveClient(window, screen, out child, out client);
+        public bool TryToClient(IntPtr window, Point screen, out Point client)
+            => _native.TryToClient(window, screen, out client);
+        public bool IsChildOf(IntPtr window, IntPtr child) => _native.IsChildOf(window, child);
+        public bool Post(IntPtr window, uint message, uint flags, Point point)
+            => _native.Post(window, message, flags, point);
     }
 
     private static void PumpUntil(Func<bool> condition)
