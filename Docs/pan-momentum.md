@@ -44,7 +44,9 @@ Task branch: `agent/pan-momentum`. Pull request: #28.
   the optimization also skipped visibility updates for non-overview projection
   suspension. The gate is now limited to active overview viewports, preserving
   transactional visibility semantics. No test was weakened.
-- Final Windows CI and review results: pending. Update before merge.
+- Final CI runs, automated-review disposition, merge SHA and post-merge checks
+  are recorded in [PR #28](https://github.com/schnepg1/CanvasWindowComposer/pull/28).
+  That live record is authoritative for delivery status.
 
 ## Measurement limits
 
