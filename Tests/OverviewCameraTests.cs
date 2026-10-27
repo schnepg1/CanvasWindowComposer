@@ -6,6 +6,24 @@ namespace CanvasDesktop.Tests;
 
 public class OverviewCameraTests
 {
+    [Theory]
+    [InlineData(1, .15, .85)]
+    [InlineData(.5, .30, .35)]
+    [InlineData(1, .80, .20)]
+    [InlineData(.03, .80, .02)]
+    [InlineData(.02, .15, .02)]
+    [InlineData(1, 0, 1)]
+    public void ShortcutZoomOutPreservesScreenCenterAndRespectsZoomLimits(double zoom, double amount, double expected)
+    {
+        var cam = MakeCamera(); cam.SetTo(700.25, -300.5, zoom);
+        var before = cam.WorldFromVirtual(960, 540);
+        cam.ZoomOutForShortcut(amount);
+        Assert.Equal(expected, cam.Zoom, 10);
+        var after = cam.WorldFromVirtual(960, 540);
+        Assert.Equal(before.x, after.x, 8);
+        Assert.Equal(before.y, after.y, 8);
+    }
+
     private static OverviewCamera MakeCamera()
     {
         var screens = new FakeScreens();

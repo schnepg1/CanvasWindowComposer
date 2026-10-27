@@ -79,6 +79,8 @@ A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first 
 | `DisableGreedyDraw` | `true` | Skip `SetWindowRgn` clipping of off-screen windows. Keeps Alt-Tab / taskbar thumbnails live at the cost of render work for windows panned out of view |
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
+| `EnableShortcutZoomOut` | `true` | Zoom out immediately when Alt+Q opens canvas view; toggle in the zoom settings popup |
+| `ShortcutZoomOutAmount` | `0.15` | Fraction to reduce the current zoom by (0–0.80); adjust with the zoom popup slider. 0.15 changes 100% zoom to 85% |
 | `LowQualityMode` | `false` | Simple grid without nebula/decorations; cached previews or title cards during pan/zoom/window dragging. Change through Settings → Rendering for immediate application |
 | `ShowTaskbarInCanvas` | `true` | Keep the real Windows taskbar visible and clickable while panning and zooming. Toggle in Settings > Rendering; applies immediately. Disable Windows taskbar auto-hide for permanent visibility |
 | `AnimateWindowNavigation` | `true` | Animate app selection from Alt+Tab or the taskbar within Canvas view. Disable in Settings > Interaction for an immediate jump. Applies immediately; Windows animation preferences are respected |

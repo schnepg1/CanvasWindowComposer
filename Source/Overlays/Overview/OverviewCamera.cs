@@ -63,6 +63,15 @@ internal sealed class OverviewCamera
         return true;
     }
 
+    /// <summary>Reduce zoom immediately while preserving the main screen's center.</summary>
+    public bool ZoomOutForShortcut(double amount)
+    {
+        if (!double.IsFinite(amount) || amount <= 0) return false;
+        var primary = _screens.PrimaryBounds;
+        return ZoomToCursor(primary.X + primary.Width / 2, primary.Y + primary.Height / 2,
+            -Math.Clamp(amount, 0, 0.80) / ZoomStep);
+    }
+
     /// <summary>Center on a world rect (does not change zoom).</summary>
     public void CenterOnWorld(double worldX, double worldY, double worldW, double worldH)
     {

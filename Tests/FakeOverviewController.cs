@@ -54,8 +54,10 @@ internal sealed class FakeOverviewController : IOverviewController
 
     public IReadOnlyList<IntPtr> MonitorHandles { get { return Monitors; } }
 
-    public void TransitionTo(OverviewMode target, bool syncCameraOnClose = true)
+    public bool LastZoomOutOnOpen;
+    public void TransitionTo(OverviewMode target, bool syncCameraOnClose = true, bool zoomOutOnOpen = false)
     {
+        LastZoomOutOnOpen = zoomOutOnOpen;
         Transitions.Add(target);
         if (target == CurrentMode) return;
         var from = CurrentMode;

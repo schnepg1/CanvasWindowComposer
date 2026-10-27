@@ -16,6 +16,8 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool ShowScreenFixedWindowsDuringPan { get; set; } = true;
     public bool DisableMouseCurve { get; set; }
     public bool DisableZoomHotkey { get; set; }
+    public bool EnableShortcutZoomOut { get; set; } = true;
+    public double ShortcutZoomOutAmount { get; set; } = OverviewZoomDefaults.ShortcutZoomOutAmount;
     public bool EnableLivePreviewsTier { get; set; } = true;
     public bool EnableDetailedCardsTier { get; set; } = true;
     public bool EnableSimpleCardsTier { get; set; } = true;

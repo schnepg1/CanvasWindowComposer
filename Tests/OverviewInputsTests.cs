@@ -193,6 +193,7 @@ public class OverviewInputsTests
         var h = new Harness();
         h.Input.RaiseOverviewHotkey();
         Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
+        Assert.True(h.Overview.LastZoomOutOnOpen);
     }
 
     [Fact]
@@ -202,6 +203,21 @@ public class OverviewInputsTests
         h.Overview.TransitionTo(OverviewMode.Zooming);
         h.Input.RaiseOverviewHotkey();
         Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode);
+        Assert.False(h.Overview.LastZoomOutOnOpen);
+    }
+
+    [Fact]
+    public void OnlyTheShortcutRequestsAutomaticZoomOut()
+    {
+        var h = new Harness();
+        h.Input.RaiseDragStarted();
+        Assert.False(h.Overview.LastZoomOutOnOpen);
+        h.Input.RaiseOverviewHotkey();
+        Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
+        Assert.True(h.Overview.LastZoomOutOnOpen);
+        h.Overview.TransitionTo(OverviewMode.Hidden);
+        h.Input.PendingZoom = true; h.Input.RaiseInputAvailable();
+        Assert.False(h.Overview.LastZoomOutOnOpen);
     }
 
     // ==================== CAMERA SYNC ====================

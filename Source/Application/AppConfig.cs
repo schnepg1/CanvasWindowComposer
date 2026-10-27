@@ -31,6 +31,8 @@ internal interface IAppConfig
     /// middle-click drag pan flow.
     /// </summary>
     bool DisableZoomHotkey { get; }
+    bool EnableShortcutZoomOut => true;
+    double ShortcutZoomOutAmount => OverviewZoomDefaults.ShortcutZoomOutAmount;
 
     /// <summary>
     /// When false (default), raw mouse deltas are passed through Windows'
@@ -85,6 +87,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
     public bool DisableMouseCurve { get; private set; }
     public bool DisableZoomHotkey { get; private set; }
+    public bool EnableShortcutZoomOut { get; private set; } = true;
+    public double ShortcutZoomOutAmount { get; private set; } = OverviewZoomDefaults.ShortcutZoomOutAmount;
     public bool CheckForUpdates { get; private set; } = true;
     public string UpdateChannel { get; private set; } = "stable";
     public bool HasUpdateChannel { get; private set; }
@@ -131,6 +135,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
             DisableMouseCurve = GetBool(values, "DisableMouseCurve", defaultValue: false);
             DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
+            EnableShortcutZoomOut = GetBool(values, "EnableShortcutZoomOut", defaultValue: true);
+            ShortcutZoomOutAmount = GetDouble(values, "ShortcutZoomOutAmount", OverviewZoomDefaults.ShortcutZoomOutAmount, min: 0, max: 0.80);
             CheckForUpdates = GetBool(values, "CheckForUpdates", defaultValue: true);
             UpdateChannel = values.TryGetValue("UpdateChannel", out var channel) && channel == "preview" ? "preview" : "stable";
             HasUpdateChannel = channel is "stable" or "preview";
@@ -184,7 +190,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
-                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum);
+                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount);
         }
     }
 
@@ -198,6 +204,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["DisableSearch"] = (!preferences.Search).ToString().ToLowerInvariant(),
                 ["DisableAltPan"] = (!preferences.AltPan).ToString().ToLowerInvariant(),
                 ["DisableZoomHotkey"] = (!preferences.ZoomHotkey).ToString().ToLowerInvariant(),
+                ["EnableShortcutZoomOut"] = preferences.ShortcutZoomOut.ToString().ToLowerInvariant(),
+                ["ShortcutZoomOutAmount"] = preferences.ShortcutZoomOutAmount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["DisableMouseCurve"] = (!preferences.MouseCurve).ToString().ToLowerInvariant(),
                 ["ShowScreenFixedWindowsDuringPan"] = preferences.ScreenFixedWindows.ToString().ToLowerInvariant(),
                 ["DisableGreedyDraw"] = (!preferences.ClipOffscreen).ToString().ToLowerInvariant(),
@@ -342,6 +350,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; (frees Alt+Q for other apps; the overview is still reachable via pan)
 ;DisableZoomHotkey=false
 
+; Zoom out immediately when Alt+Q opens canvas view (amount: 0.00..0.80)
+;EnableShortcutZoomOut=true
+;ShortcutZoomOutAmount=0.15
+
 ; Overview tiers (optionally disable any tier)
 ;EnableLivePreviewsTier=true
 ;EnableDetailedCardsTier=true
@@ -453,4 +465,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     double CardEnterZoom = OverviewZoomDefaults.CardEnter, double CardExitZoom = OverviewZoomDefaults.CardExit,
     double SimpleCardEnterZoom = OverviewZoomDefaults.SimpleCardEnter, double SimpleCardExitZoom = OverviewZoomDefaults.SimpleCardExit,
     bool ShowTaskbarInCanvas = true, bool AnimateWindowNavigation = true,
-    bool DesktopPanMomentum = true, bool CanvasPanMomentum = true);
+    bool DesktopPanMomentum = true, bool CanvasPanMomentum = true,
+    bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount);

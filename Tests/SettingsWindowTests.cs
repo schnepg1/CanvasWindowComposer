@@ -13,6 +13,38 @@ public class SettingsWindowTests
     [Theory]
     [InlineData(true, "Save settings")]
     [InlineData(false, "Save settings")]
+    [InlineData(false, "Cancel")]
+    public void ShortcutZoomOutToggleKeepsItsAmountAndOnlySavesOnRequest(bool enabled, string action)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "canvas-shortcut-zoom-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var config = new AppConfig(directory: directory); config.Load();
+                var original = config.Preferences;
+                var window = new SettingsWindow(config, () => { }, zoomOnly: true);
+                var amount = WorkspaceViewTests.Descendants(window).OfType<Slider>().First();
+                var toggle = WorkspaceViewTests.Descendants(window).OfType<CheckBox>()
+                    .Single(b => Equals(b.Content, "Zoom out on Alt+Q"));
+                amount.Value = 37;
+                toggle.IsChecked = false; Assert.False(amount.IsEnabled); Assert.Equal(37, amount.Value);
+                toggle.IsChecked = true; Assert.True(amount.IsEnabled); Assert.Equal(37, amount.Value);
+                toggle.IsChecked = enabled;
+                Assert.Equal(original, config.Preferences);
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, action))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expected = action == "Save settings"
+                    ? original with { ShortcutZoomOut = enabled, ShortcutZoomOutAmount = .37 } : original;
+                using var reopened = new AppConfig(directory: directory); reopened.Load();
+                Assert.Equal(expected, reopened.Preferences);
+                Assert.False(reopened.DisableZoomHotkey);
+            }
+            finally { Directory.Delete(directory, true); }
+        });
+
+    [Theory]
+    [InlineData(true, "Save settings")]
+    [InlineData(false, "Save settings")]
     [InlineData(true, "Cancel")]
     [InlineData(false, "Cancel")]
     [InlineData(true, "Escape")]
@@ -32,7 +64,7 @@ public class SettingsWindowTests
                 overview.TransitionTo(OverviewMode.Zooming);
                 overview.ShowSettings(zoomOnly);
                 var popup = overview.SettingsPopup!;
-                var sliders = WorkspaceViewTests.Descendants(popup).OfType<Slider>().ToArray();
+                var sliders = WorkspaceViewTests.Descendants(popup).OfType<Slider>().Skip(1).ToArray();
                 sliders[0].Value = 35; sliders[1].Value = 43;
                 sliders[2].Value = 8; sliders[3].Value = 12;
                 int closings = 0;
@@ -76,7 +108,7 @@ public class SettingsWindowTests
                 WorkspaceViewTests.Render(window, "zoom-settings-popup-preview.png");
                 window.Width = 360; window.Height = 420;
                 WorkspaceViewTests.Render(window, "zoom-settings-popup-small-150-preview.png", 1.5);
-                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().ToArray();
+                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).ToArray();
                 Assert.Equal(4, sliders.Length);
                 sliders[0].Value = 55; sliders[1].Value = 65;
                 sliders[2].Value = 15; sliders[3].Value = 22;
@@ -110,7 +142,7 @@ public class SettingsWindowTests
                 var before = File.ReadAllText(Path.Combine(directory, "config.ini"));
                 int applied = 0;
                 var window = new SettingsWindow(config, () => applied++, zoomOnly: true);
-                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().ToArray();
+                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).ToArray();
                 sliders[0].Value = 80;
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -119,6 +151,7 @@ public class SettingsWindowTests
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Reset zoom defaults"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(new double[] { 40, 45, 10, 13 }, sliders.Select(s => s.Value));
+                Assert.Equal(15, WorkspaceViewTests.Descendants(window).OfType<Slider>().First().Value);
                 window.Close();
                 Assert.Equal(before, File.ReadAllText(Path.Combine(directory, "config.ini")));
             }
@@ -230,7 +263,7 @@ public class SettingsWindowTests
                 foreach (var name in new[] { "settings-shell-preview.png", "settings-shell-small-150-preview.png" })
                     File.Copy(Path.Combine(AppContext.BaseDirectory, name), Path.Combine(renders, name), true);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(18, boxes.Length);
+                Assert.Equal(19, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Animate navigation to apps selected with Alt+Tab or the taskbar").IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Show Windows taskbar in canvas view").IsChecked = false;

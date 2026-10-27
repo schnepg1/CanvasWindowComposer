@@ -5,6 +5,40 @@ namespace CanvasDesktop.Tests;
 public class CanvasPreferencesTests : IDisposable
 {
     [Fact]
+    public void ShortcutZoomOutDefaultsOnAndDisabledAmountSurvivesReload()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "DisableSearch=true\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.EnableShortcutZoomOut);
+        Assert.Equal(.15, config.ShortcutZoomOutAmount);
+        foreach (bool enabled in new[] { false, true })
+        {
+            var wanted = config.Preferences with { ShortcutZoomOut = enabled, ShortcutZoomOutAmount = .37 };
+            config.SavePreferences(wanted);
+            using var reopened = new AppConfig(directory: _directory); reopened.Load();
+            Assert.Equal(wanted, reopened.Preferences);
+            Assert.Equal(enabled, reopened.EnableShortcutZoomOut);
+            Assert.Equal(.37, reopened.ShortcutZoomOutAmount);
+            Assert.False(reopened.DisableZoomHotkey);
+        }
+    }
+
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-0.01")]
+    [InlineData("0.81")]
+    [InlineData("invalid")]
+    public void InvalidShortcutZoomOutAmountFallsBackToDefault(string amount)
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "ShortcutZoomOutAmount=" + amount);
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.Equal(.15, config.ShortcutZoomOutAmount);
+    }
+
+    [Fact]
     public void AppNavigationAnimationDefaultsOnAndCanBeDisabledWithoutChangingStartupMotion()
     {
         Directory.CreateDirectory(_directory);

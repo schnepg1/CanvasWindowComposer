@@ -102,7 +102,7 @@ internal sealed class OverviewInputs : IDisposable
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
         else
-            _overview.TransitionTo(OverviewMode.Zooming);
+            _overview.TransitionTo(OverviewMode.Zooming, zoomOutOnOpen: true);
     }
 
     private void OnCanvasInput()

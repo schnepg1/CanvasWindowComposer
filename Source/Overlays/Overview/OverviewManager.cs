@@ -298,7 +298,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     }
 
     /// <summary>Single entry point for every mode change.</summary>
-    public void TransitionTo(OverviewMode target, bool syncCameraOnClose = true)
+    public void TransitionTo(OverviewMode target, bool syncCameraOnClose = true, bool zoomOutOnOpen = false)
     {
         if (IsStartupIntroActive && !_openingStartupIntro)
             FinishStartupIntro(refresh: false);
@@ -321,15 +321,24 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _startupIntroLanded = false;
         }
         else if (from == OverviewMode.Hidden)
-            ShowInternal();
+            ShowInternal(zoomOutOnOpen);
         else
+        {
+            if (zoomOutOnOpen) ApplyShortcutZoomOut();
             ApplyConfig();
+        }
 
         AfterModeChanged?.Invoke(from, target);
         TutorialSurfaceChanged(from,target);
     }
 
-    private void ShowInternal()
+    private void ApplyShortcutZoomOut()
+    {
+        if (!_appConfig.EnableShortcutZoomOut) return;
+        _camera.ZoomOutForShortcut(_appConfig.ShortcutZoomOutAmount);
+    }
+
+    private void ShowInternal(bool zoomOutOnOpen = false)
     {
         _wm.RefreshPreviewState();
         EnsurePasses();
@@ -342,6 +351,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         _wm.SuspendReconcile = true;
 
+        if (zoomOutOnOpen) ApplyShortcutZoomOut();
         _thumbnails.Show();
 
         ApplyConfig();
