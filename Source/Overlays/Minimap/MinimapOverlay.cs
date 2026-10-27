@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -24,13 +24,23 @@ internal sealed class MinimapOverlay : Form
     private const double OpacityQuantum = 0.02;
 
     private const int WS_EX_LAYERED = 0x80000;
-    private const int WS_EX_TRANSPARENT = 0x20;
+
     private const int WS_EX_TOOLWINDOW = 0x80;
     private const int WS_EX_TOPMOST = 0x8;
     private const int WS_EX_NOACTIVATE = 0x08000000;
 
     private readonly Canvas _canvas;
     private readonly IScreens _screens;
+    private readonly OverviewManager? _overview;
+    private MinimapProjection _projection;
+    private MinimapProjection? _dragProjection;
+    private CanvasCamera? _lastOverviewCamera;
+    private bool _hovered, _pinned, _desktopGesture;
+    private readonly ContextMenuStrip _mapMenu = new();
+    private readonly ToolStripMenuItem _pinItem = new("Keep minimap visible");
+
+    public bool Pinned => _pinned;
+    public event Action? PinnedChanged;
     private readonly IInputRouter _input;
     private readonly DesktopStateCache _desktops;
     private volatile bool _closing;
@@ -51,7 +61,7 @@ internal sealed class MinimapOverlay : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW
+            cp.ExStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW
                         | WS_EX_TOPMOST | WS_EX_NOACTIVATE;
             return cp;
         }
@@ -63,9 +73,10 @@ internal sealed class MinimapOverlay : Form
     }
 
     public MinimapOverlay(Canvas canvas, IInputRouter input, DesktopStateCache desktops, IScreens? screens = null,
-        bool preferFlip = false)
+        bool preferFlip = false, OverviewManager? overview = null)
     {
         _canvas = canvas;
+        _overview = overview;
         _screens = screens ?? WinFormsScreens.Instance;
         _input = input; _desktops = desktops;
         _renderer = new MinimapRenderer(preferFlip);
@@ -81,6 +92,16 @@ internal sealed class MinimapOverlay : Form
         Opacity = MinimapOpacity;
 
         PositionOnScreen();
+        Cursor = Cursors.Cross;
+        _pinItem.Click += (_, _) => SetPinned(!_pinned);
+        _mapMenu.Items.Add(_pinItem);
+        ContextMenuStrip = _mapMenu;
+        _mapMenu.Closed += (_, _) => { _hovered = ClientRectangle.Contains(PointToClient(Cursor.Position)); RestartFade(); };
+        if (_overview != null)
+        {
+            _overview.ViewCameraChanged += OnViewCameraChanged;
+            _overview.AfterModeChanged += OnModeChanged;
+        }
 
         canvas.CameraChanged       += NotifyCanvasChanged;
         canvas.CollapseChanged     += OnWindowChanged;
@@ -132,10 +153,12 @@ internal sealed class MinimapOverlay : Form
         _orderedWindows.Sort(ZOrderDescending);
 
         var primary = _screens.PrimaryBounds;
-        _renderer.UpdateSnapshot(
-            _orderedWindows,
-            _canvas.GetWorldExtents(),
-            _canvas.GetViewport(primary.Width, primary.Height));
+        var viewport = _overview?.CurrentMode == OverviewMode.Zooming
+            ? OverviewViewport(_overview.ViewCamera, primary)
+            : _canvas.GetViewport(primary.Width, primary.Height);
+        var extents = _canvas.GetWorldExtents();
+        _projection = _dragProjection ?? MinimapProjection.Create(extents, viewport, MapWidth, MapHeight);
+        _renderer.UpdateSnapshot(_orderedWindows, extents, viewport, fixedProjection: _projection);
     }
 
     private void EnsureRendererInitialized()
@@ -156,6 +179,7 @@ internal sealed class MinimapOverlay : Form
         if (_closing || IsDisposed) return;
         _fadeTimer.Interval = 16;
 
+        if (_pinned || _hovered || _dragProjection.HasValue || _mapMenu.Visible) { _fadeTimer.Stop(); return; }
         long elapsed = Environment.TickCount64 - _touchTicks;
         double fadeProgress = Math.Clamp((elapsed - HoldMs) / (double)FadeMs, 0.0, 1.0);
         double target = MinimapOpacity * (1.0 - fadeProgress);
@@ -184,6 +208,108 @@ internal sealed class MinimapOverlay : Form
         );
     }
 
+    internal static (double x, double y, double w, double h) OverviewViewport(CanvasCamera camera, ScreenRect primary)
+        => (camera.X + primary.X / camera.Zoom, camera.Y + primary.Y / camera.Zoom,
+            primary.Width / camera.Zoom, primary.Height / camera.Zoom);
+
+    public void SetPinned(bool pinned)
+    {
+        if (_pinned == pinned) return;
+        _pinned = pinned;
+        _pinItem.Checked = pinned;
+        PinnedChanged?.Invoke();
+        NotifyCanvasChanged();
+    }
+
+    private void RestartFade()
+    {
+        if (_closing || IsDisposed || !Visible || _pinned || _hovered || _dragProjection.HasValue || _mapMenu.Visible) return;
+        _touchTicks = Environment.TickCount64;
+        _fadeTimer.Stop(); _fadeTimer.Interval = (int)HoldMs; _fadeTimer.Start();
+    }
+
+    private void OnViewCameraChanged()
+    {
+        if (_overview?.CurrentMode != OverviewMode.Zooming) return;
+        var camera = _overview.ViewCamera;
+        if (_lastOverviewCamera == camera) return;
+        _lastOverviewCamera = camera;
+        NotifyCanvasChanged();
+    }
+
+    private void OnModeChanged(OverviewMode from, OverviewMode to)
+    {
+        _lastOverviewCamera = to == OverviewMode.Zooming ? _overview?.ViewCamera : null;
+        FinishDrag();
+        if (Capture) Capture = false;
+        NotifyCanvasChanged();
+        BringToFront();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x21) { m.Result = (IntPtr)3; return; } // MA_NOACTIVATE
+        base.WndProc(ref m);
+    }
+
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        base.OnMouseEnter(e); _hovered = true; _fadeTimer.Stop();
+        Opacity = MinimapOpacity; _lastAppliedOpacity = MinimapOpacity;
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e); _hovered = false; RestartFade();
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (!_input.Enabled || _overview?.CanvasInputSuspended == true || e.Button != MouseButtons.Left || !new Rectangle(InnerPadding, InnerPadding, MapWidth, MapHeight).Contains(e.Location)
+            || !_projection.IsValid) return;
+        _dragProjection = _projection; _desktopGesture = _overview?.CurrentMode != OverviewMode.Zooming;
+        Capture = true; _fadeTimer.Stop();
+        Navigate(e.Location);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_dragProjection.HasValue && Capture) Navigate(e.Location);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (e.Button != MouseButtons.Left || !_dragProjection.HasValue) return;
+        Navigate(e.Location); FinishDrag(); Capture = false;
+    }
+
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        base.OnMouseCaptureChanged(e);
+        if (!Capture && _dragProjection.HasValue) FinishDrag();
+    }
+
+    private void FinishDrag()
+    {
+        if (!_dragProjection.HasValue) return;
+        _dragProjection = null;
+        if (_desktopGesture) _canvas.Commit();
+        _desktopGesture = false;
+        if (!_closing && !IsDisposed) { RebuildSnapshot(); RestartFade(); }
+    }
+
+    private void Navigate(Point point)
+    {
+        if (!_input.Enabled || _overview?.CanvasInputSuspended == true || _dragProjection is not { } projection) return;
+        var local = new PointF(Math.Clamp(point.X - InnerPadding, 0, MapWidth), Math.Clamp(point.Y - InnerPadding, 0, MapHeight));
+        var (x, y) = projection.WorldFromMap(local);
+        if (_overview?.CurrentMode == OverviewMode.Zooming) _overview.CenterViewOnMinimap(x, y);
+        else { var screen = _screens.PrimaryBounds; _canvas.CenterOn(x, y, 0, 0, screen.Width, screen.Height); }
+    }
+
     private void OnWindowChanged(IntPtr _) => NotifyCanvasChanged();
     private void OnFrontChanged(IntPtr _) => RefreshSnapshotIfVisible();
 
@@ -204,6 +330,8 @@ internal sealed class MinimapOverlay : Form
         if (disposing && !_closing)
         {
             _closing = true;
+            if (_overview != null) { _overview.ViewCameraChanged -= OnViewCameraChanged; _overview.AfterModeChanged -= OnModeChanged; }
+            _mapMenu.Dispose();
             _canvas.CameraChanged -= NotifyCanvasChanged;
             _canvas.CollapseChanged -= OnWindowChanged;
             _canvas.MaximizeChanged -= OnWindowChanged;

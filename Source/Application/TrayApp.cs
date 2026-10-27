@@ -82,7 +82,7 @@ internal sealed class TrayApp : ApplicationContext
             _overview.AttachTutorial();
 
             // Constructed last so they can self-subscribe to canvas/input/desktops events.
-            _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering), ShutdownPhase.ReleaseUi, "Minimap");
+            _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering, _overview), ShutdownPhase.ReleaseUi, "Minimap");
             _search = _lifecycle.Own(new SearchOverlay(_canvas, _wm, winApi, _input, _screens), ShutdownPhase.ReleaseUi, "Search overlay");
             _ = _dispatcher.Handle;
 
@@ -128,6 +128,10 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(toggleItem);
             menu.Items.Add(showScreenFixedItem);
+            var minimapItem = new ToolStripMenuItem("Keep minimap visible") { Checked = _minimap.Pinned };
+            minimapItem.Click += (_, _) => _minimap.SetPinned(!_minimap.Pinned);
+            _minimap.PinnedChanged += () => minimapItem.Checked = _minimap.Pinned;
+            menu.Items.Add(minimapItem);
             menu.Items.Add(refreshItem);
             menu.Items.Add(new ToolStripMenuItem("Export performance diagnostics...", null, (_, _) =>
             {
