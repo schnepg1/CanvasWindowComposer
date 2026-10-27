@@ -48,9 +48,9 @@ internal sealed class ZoneNavigation : IDisposable
         {
             bool areaMatches = Contains(group.Area.Name, query);
             var members = group.MemberIds.Where(places.ContainsKey).Select(id => places[id])
-                .Where(i => areaMatches || Contains(i.Title, query) || Contains(i.Target, query) || Contains(i.ExecutablePath, query))
+                .Where(i => areaMatches || Contains(i.Title, query) || Contains(i.DisplayTarget, query) || Contains(i.ExecutablePath, query) || Contains(i.BrowserDetails, query))
                 .Select(i => new ZoneNavigationMember(i.Id, i.Title, i.State, i.Bounds.PinnedToScreen,
-                    i.Target.Length > 0 ? i.Target : i.ExecutablePath))
+                    i.DisplayTarget.Length > 0 ? i.DisplayTarget : i.ExecutablePath))
                 .OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Id).ToArray();
             if (areaMatches || members.Length > 0) entries.Add(new(group.Area, members));
         }

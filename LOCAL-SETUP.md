@@ -130,6 +130,11 @@ association or `runas` verb. Applications requiring elevation must be started
 manually. A chosen `.exe` still controls how it interprets its file argument; this
 is not a sandbox. Treat saved executable/target data as trusted user configuration.
 
+For websites, use **Add web resource…** or a browser placeholder's **Web resource
+settings…**, rather than a file target. This separate feature accepts HTTP/HTTPS
+URLs and an optional local Chrome, Edge or Firefox profile. See
+[web resources](Docs/web-resources.md) for profile selection and window linking.
+
 The optional NSIS installer now installs per-user without an elevated task.
 It remains framework-dependent and requires .NET 10 Desktop Runtime. Uninstall
 uses graceful exit and leaves saved workspace data intact. Remove a previous

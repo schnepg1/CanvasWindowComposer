@@ -144,6 +144,7 @@ internal static class PlaceholderPreview
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) { }
         public bool SetChromeProfile(Guid id, string profileDirectory) => false;
+        public bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null) => false;
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Array.Empty<WorkspaceLinkCandidate>();
         public bool LinkWindow(Guid id, Guid token) => false;
     }

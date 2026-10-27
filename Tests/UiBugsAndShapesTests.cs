@@ -158,6 +158,7 @@ public class UiBugsAndShapesTests
         public void SetTarget(Guid id, string target, bool isFolder) { }
         public void SetName(Guid id, string name) { }
         public bool SetChromeProfile(Guid id, string profilePath) => true;
+        public bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null) => true;
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Array.Empty<WorkspaceLinkCandidate>();
         public bool LinkWindow(Guid id, Guid candidateToken) => true;
     }

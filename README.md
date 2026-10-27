@@ -109,6 +109,9 @@ release preparation, signing, migration and support logs.
 This working copy includes automatic workspace saves, clickable placeholders for
 closed apps, Explorer folder targets, a saved-workspace manager, and opt-in startup
 restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitations.
+Web resource placeholders save a URL, browser (Chrome, Edge or Firefox), and an
+optional profile. Use **Add web resource…** from canvas tools, the tray, or Saved
+Workspace; see [web resources](Docs/web-resources.md) for setup and recovery.
 Run `Start-Canvas.cmd`; exit any older running instance first. This development
 launcher rebuilds current sources on each run, so a successful `git pull` is used.
 Use `Start-Canvas.cmd --diagnose` for dependency checks and copyable startup logs.

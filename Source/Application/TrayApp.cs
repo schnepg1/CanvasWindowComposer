@@ -159,6 +159,7 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(updateItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(workspaceItem);
+            menu.Items.Add(new ToolStripMenuItem("Add web resource…", null, (_, _) => WorkspaceInteractionDialogs.WebResourceSettings(IntPtr.Zero, _workspace)));
             menu.Items.Add(new ToolStripMenuItem("Project Areas…", null, (_, _) => _zoneUi.Show()));
             menu.Items.Add(new ToolStripMenuItem("Project Navigator…", null, (_, _) => _zoneUi.ShowNavigator()));
             menu.Items.Add(saveItem);

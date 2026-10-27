@@ -40,6 +40,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     public event Action<AnnotationTextEmphasis>? EmphasisRequested;
     public event Action<AnnotationCardFill>? CardFillRequested;
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
+    public event Action? WebResourceRequested;
     internal CanvasDockSurface PropertiesSurface => _properties;
 
     public AnnotationToolbar()
@@ -73,6 +74,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _more.DropDownItems.Add(nearby);
         _more.DropDownItems.Add(new ToolStripSeparator());
         _more.DropDownItems.Add(MenuItem("AI Compose", () => ComposerRequested?.Invoke(), DockGlyph.Compose));
+        _more.DropDownItems.Add(MenuItem("Add web resource…", () => WebResourceRequested?.Invoke()));
         _status.Click += (_, _) => { if (_state?.Status != null) RetrySaveRequested?.Invoke(); };
         Strip.Items.AddRange([_selectButton, _shapesButton, _textButton, new ToolStripSeparator(), _undo, _redo, _more, _status]);
 

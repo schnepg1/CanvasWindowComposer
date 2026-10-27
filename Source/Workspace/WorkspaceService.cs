@@ -327,7 +327,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                     if (WorkspaceGeometry.ValidBounds(world)) old.Bounds = world;
                     old.Title = title;
                     old.ExecutablePath = exe;
-                    if (chromeProfile != null && old.CaptureChromeProfile) old.ChromeProfilePath = chromeProfile;
+                    if (chromeProfile != null && old.CaptureChromeProfile && old.WebResource == null) old.ChromeProfilePath = chromeProfile;
                     // Explorer navigation updates this slot's saved folder.
                     CaptureTarget(old, exe, target, explorer);
                     if (old.DesktopId != _desktop) Zones.ForgetItem(old.Id);
@@ -370,7 +370,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                     IsFolder = explorer && input.Target.Length > 0, Bounds = world };
                 Document.Items.Add(item);
             }
-            if (input.ChromeProfilePath != null && item.CaptureChromeProfile) item.ChromeProfilePath = input.ChromeProfilePath;
+            if (input.ChromeProfilePath != null && item.CaptureChromeProfile && item.WebResource == null) item.ChromeProfilePath = input.ChromeProfilePath;
             if (_bindings.Bind(live, item.Id))
             {
                 item.ExecutablePath = input.ExecutablePath;
@@ -383,6 +383,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     private static void CaptureTarget(WorkspaceItem item, string exe, string target, bool explorer)
     {
+        if (item.WebResource != null) return;
         if (target.Length == 0) return;
         if (WorkspaceTargetIdentity.IsVsCode(exe))
         {
@@ -547,13 +548,13 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
         item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath,
-        _launchMessages.GetValueOrDefault(item.Id));
+        _launchMessages.GetValueOrDefault(item.Id), item.WebResource);
 
     private string? ReadChromeProfile(IntPtr handle, string exe, string? additionalProfile = null)
     {
         if (!ChromeProfiles.Supports(exe)) return null;
         var candidates = ChromeProfiles.Get(exe).Select(p => p.Path).Concat(Document.Items
-            .Where(i => string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)).Select(i => i.ChromeProfilePath))
+            .Where(i => string.Equals(i.ExecutablePath, exe, StringComparison.OrdinalIgnoreCase)).Select(i => i.WebResource?.ProfilePath ?? i.ChromeProfilePath))
             .Append(additionalProfile ?? "");
         return ChromeProfiles.Resolve(exe, _identity.ReadWindowAppId(handle),
             candidates.Where(p => p.Length > 0 && File.Exists(Path.Combine(p, "Preferences"))));
@@ -663,8 +664,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             && _desktops.IsOnCurrentDesktop(live.Identity.Handle) && StillCurrent(live)
             && InspectWindow(live.Identity.Handle) is { } observed
             && WorkspaceAppIdentity.Same(observed.Exe, item.ExecutablePath)
-            && (item.ChromeProfilePath.Length == 0 || ReadChromeProfile(live.Identity.Handle, observed.Exe) is not { } profile
-                || string.Equals(item.ChromeProfilePath, profile, StringComparison.OrdinalIgnoreCase));
+            && ((item.WebResource?.ProfilePath ?? item.ChromeProfilePath).Length == 0 || ReadChromeProfile(live.Identity.Handle, observed.Exe) is not { } profile
+                || string.Equals(item.WebResource?.ProfilePath ?? item.ChromeProfilePath, profile, StringComparison.OrdinalIgnoreCase));
 
     public bool LinkWindow(Guid id, Guid candidateToken)
     {
@@ -693,7 +694,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     public bool SetChromeProfile(Guid id, string profilePath)
     {
-        if (Find(id) is not { } item || !ChromeProfiles.Supports(item.ExecutablePath) || item.IsFolder
+        if (Find(id) is not { } item || item.WebResource != null || !ChromeProfiles.Supports(item.ExecutablePath) || item.IsFolder
             || !ChromeProfiles.ValidPath(profilePath) || _launching.ContainsKey(id) || _queued.Contains(id)) return false;
         if (profilePath.Length > 0) profilePath = Path.GetFullPath(profilePath);
         if (string.Equals(item.ChromeProfilePath, profilePath, StringComparison.OrdinalIgnoreCase) && !item.CaptureChromeProfile) return Save();
@@ -722,7 +723,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     public void SetTarget(Guid id, string selected, bool folder)
     {
-        if (Find(id) is not { } item || string.IsNullOrWhiteSpace(selected)) return;
+        if (Find(id) is not { } item || item.WebResource != null || string.IsNullOrWhiteSpace(selected)) return;
         item.Target = selected;
         item.AutoDetectedTarget = false;
         // A project folder for an editor is an argument to that editor; a folder

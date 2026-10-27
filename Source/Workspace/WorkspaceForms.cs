@@ -11,6 +11,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly PlaceholderArtwork _title;
     private readonly Label _pathHeader, _details, _launchState;
     private readonly WorkspaceContextMenu _menu;
+    private readonly ToolTip _resourceTip = new();
     private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
     private Size _overviewSize;
     private int _overviewDpi;
@@ -105,6 +106,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         var launch = PlaceholderLaunchPresentation.For(item);
         bool launchChanged = _launchState.Text != launch.Text;
         bool appearanceChanged = !_itemApplied || _item.Title != item.Title || _item.Target != item.Target
+            || _item.WebResource != item.WebResource
             || _item.ExecutablePath != item.ExecutablePath || _item.IsFolder != item.IsFolder || launchChanged;
         _item = item;
         _menu.UpdateItem(item);
@@ -116,7 +118,11 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
         _title.Parent?.Invalidate(true);
-        _details.Text = _item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath);
+        _pathHeader.Text = item.WebResource == null ? "Path:" : "Website:";
+        _details.Text = item.WebResource == null ? (_item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath))
+            : new Uri(item.WebResource.Url).Host + "\n" + item.BrowserDetails;
+        _resourceTip.SetToolTip(_details, item.WebResource == null ? "" : item.WebResource.Url + "\n" + item.BrowserDetails);
+        _details.AccessibleDescription = item.WebResource?.Url;
         _launchState.Text = launch.Text;
         _launchState.Visible = launch.Text.Length > 0;
         _launchState.ForeColor = launch.Busy ? Color.LightSkyBlue : Color.Khaki;
@@ -227,7 +233,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); }
+        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); _resourceTip.Dispose(); }
         base.Dispose(disposing);
     }
 

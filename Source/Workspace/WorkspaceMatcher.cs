@@ -33,6 +33,30 @@ internal static class WorkspaceMatcher
     public static WorkspaceMatch Evaluate(IReadOnlyCollection<WorkspaceItem> items, Guid desktop,
         string exe, string title, string target, IEnumerable<Guid> bound, Guid? requested = null, string? chromeProfilePath = null)
     {
+        var used = bound.ToArray();
+        var resources = items.Where(i => i.WebResource != null && i.DesktopId == desktop
+            && WorkspaceAppIdentity.Same(i.ExecutablePath, exe) && !used.Contains(i.Id)
+            && (i.WebResource!.ProfilePath.Length == 0 || chromeProfilePath == null
+                || string.Equals(i.WebResource.ProfilePath, chromeProfilePath, StringComparison.OrdinalIgnoreCase))).ToArray();
+        if (resources.SingleOrDefault(i => i.Id == requested) is { } chosen)
+        {
+            // A new window from an explicit serialized launch is launch evidence,
+            // not a claim that a caption identifies a URL. Preserve Chrome's
+            // stronger profile check where its window exposes that identity.
+            if (ChromeProfiles.Supports(exe) && chosen.WebResource!.ProfilePath.Length > 0 && chromeProfilePath == null)
+                return WorkspaceMatch.Ambiguous(new[] { chosen });
+            return WorkspaceMatch.Found(chosen, WorkspaceMatchStrength.Launch);
+        }
+        var legacy = EvaluateApplication(items.Where(i => i.WebResource == null).ToArray(), desktop, exe, title, target, used, requested, chromeProfilePath);
+        if (resources.Length == 0 || legacy.Item != null && legacy.Strength >= WorkspaceMatchStrength.Title) return legacy;
+        // Without a browser bridge we cannot establish which URL an existing
+        // window contains, even when there is just one saved resource/profile.
+        return new WorkspaceMatch(null, resources.Select(i => i.Id).Concat(legacy.AmbiguousIds).Distinct().ToArray());
+    }
+
+    private static WorkspaceMatch EvaluateApplication(IReadOnlyCollection<WorkspaceItem> items, Guid desktop,
+        string exe, string title, string target, IEnumerable<Guid> bound, Guid? requested, string? chromeProfilePath)
+    {
         var used = new HashSet<Guid>(bound);
         var appItems = items.Where(i => i.DesktopId == desktop
             && WorkspaceAppIdentity.Same(i.ExecutablePath, exe)).ToArray();

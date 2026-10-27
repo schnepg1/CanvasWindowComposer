@@ -92,6 +92,8 @@ internal sealed class WorkspaceIdentity : IWorkspaceIdentity
 
     public static ProcessStartInfo LaunchInfo(WorkspaceItem item)
     {
+        if (item.WebResource != null && (item.IsFolder || item.Target.Length > 0 || item.ChromeProfilePath.Length > 0))
+            throw new IOException("A web resource cannot also have application file/folder or legacy profile settings.");
         if (item.IsFolder)
         {
             bool shellFolder = item.Target.StartsWith("::", StringComparison.Ordinal)
@@ -108,6 +110,13 @@ internal sealed class WorkspaceIdentity : IWorkspaceIdentity
         if (!Path.IsPathFullyQualified(item.ExecutablePath) || !File.Exists(item.ExecutablePath)
             || !string.Equals(Path.GetExtension(item.ExecutablePath), ".exe", StringComparison.OrdinalIgnoreCase))
             throw new IOException("The saved application is unavailable: " + item.ExecutablePath);
+        if (item.WebResource is { } resource)
+        {
+            var browser = new ProcessStartInfo(item.ExecutablePath)
+                { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(item.ExecutablePath)! };
+            BrowserSupport.AddLaunchArguments(browser, resource);
+            return browser;
+        }
         if (!string.IsNullOrEmpty(item.Target) && (!Path.IsPathFullyQualified(item.Target)
             || (!File.Exists(item.Target) && !Directory.Exists(item.Target))))
             throw new IOException("Choose an existing file or folder, not command-line options or a URL, as the launch target.");

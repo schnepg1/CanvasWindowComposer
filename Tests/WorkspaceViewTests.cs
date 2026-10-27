@@ -490,6 +490,7 @@ public class WorkspaceViewTests
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) => Renamed = (id, name);
         public bool SetChromeProfile(Guid id, string profilePath) { Profile = (id, profilePath); return true; }
+        public bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null) => false;
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Candidates;
         public bool LinkWindow(Guid id, Guid candidateToken) { Linked = (id, candidateToken); return LinkSucceeds; }
     }

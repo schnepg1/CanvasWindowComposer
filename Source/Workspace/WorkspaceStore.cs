@@ -70,6 +70,8 @@ internal sealed class WorkspaceStore : IWorkspaceStore
                 || i.Name == null || i.Name.Length > 200
                 || i.ExecutablePath == null || i.Target == null || !WorkspaceGeometry.ValidBounds(i.Bounds)
                 || !ChromeProfiles.ValidPath(i.ChromeProfilePath)
+                || !BrowserSupport.ValidResource(i.ExecutablePath, i.WebResource)
+                || (i.WebResource != null && (i.IsFolder || i.Target.Length > 0 || i.ChromeProfilePath.Length > 0 || i.CaptureChromeProfile))
                 || (i.ChromeProfilePath.Length > 0 && (i.IsFolder || !ChromeProfiles.Supports(i.ExecutablePath))))
                 throw new InvalidDataException("Invalid workspace item.");
         }

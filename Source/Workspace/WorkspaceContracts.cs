@@ -6,7 +6,12 @@ namespace CanvasDesktop;
 // A detached snapshot: forms cannot mutate the persisted model by editing a row.
 internal sealed record WorkspaceItemView(Guid Id, string Title, string ExecutablePath,
     string Target, bool OpenOnStartup, WorldRect Bounds, string State, string Name = "", bool IsFolder = false,
-    string ChromeProfilePath = "", string? LaunchMessage = null);
+    string ChromeProfilePath = "", string? LaunchMessage = null, WebResource? WebResource = null)
+{
+    public string DisplayTarget => WebResource?.Url ?? Target;
+    public string BrowserDetails => WebResource == null ? "" : BrowserSupport.Name(ExecutablePath)
+        + (WebResource.ProfilePath.Length > 0 ? " · " + System.IO.Path.GetFileName(WebResource.ProfilePath) : " · Default profile");
+}
 
 internal sealed record WorkspaceLinkCandidate(Guid Token, string Description);
 
@@ -27,6 +32,7 @@ internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
     void SetTarget(Guid id, string selected, bool folder);
     void SetName(Guid id, string name);
     bool SetChromeProfile(Guid id, string profilePath);
+    bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null);
     IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id);
     bool LinkWindow(Guid id, Guid candidateToken);
 }

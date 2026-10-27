@@ -6,7 +6,7 @@ using System.Windows.Interop;
 
 namespace CanvasDesktop;
 
-internal static class WorkspaceInteractionDialogs
+internal static partial class WorkspaceInteractionDialogs
 {
     private static Window Create(IntPtr owner, string title, double width, double height)
     {

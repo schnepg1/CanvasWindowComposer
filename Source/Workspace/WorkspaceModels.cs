@@ -15,6 +15,7 @@ internal sealed class WorkspaceItem
     public bool AutoDetectedTarget { get; set; } // Manual choices (including older saved targets) take precedence.
     public string ChromeProfilePath { get; set; } = "";
     public bool CaptureChromeProfile { get; set; } = true;
+    public WebResource? WebResource { get; set; }
     public bool IsFolder { get; set; }
     public bool OpenOnStartup { get; set; }
     public WorldRect Bounds { get; set; }

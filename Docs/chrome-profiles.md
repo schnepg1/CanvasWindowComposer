@@ -1,5 +1,9 @@
 # Chrome profiles in saved windows
 
+To save a URL together with a profile, use **Web resource settings…** instead.
+The browser-neutral [web resource feature](web-resources.md) supports Chrome,
+Edge and Firefox and can create placeholders without first opening a browser.
+
 Right-click a Chrome card or saved live preview and choose **Chrome profile…**.
 Select a profile by its display name and directory (for example, Work / Profile 1).
 The same action is available in Saved workspace. For a custom user-data location,

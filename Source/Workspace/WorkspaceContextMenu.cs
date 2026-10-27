@@ -7,7 +7,7 @@ namespace CanvasDesktop;
 /// <summary>One menu for native previews, detailed cards and distant title rectangles.</summary>
 internal sealed class WorkspaceContextMenu : ContextMenuStrip
 {
-    private readonly ToolStripMenuItem _auto, _profile;
+    private readonly ToolStripMenuItem _auto, _profile, _web, _file, _folder;
 
     public WorkspaceContextMenu(IWorkspaceCommands workspace, Guid id)
     {
@@ -17,10 +17,12 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
         Items.Add("Rename…", null, (_, _) => WorkspaceDialogs.NamePlace(Owner(), workspace, id));
         _profile = new ToolStripMenuItem("Chrome profile…", null, (_, _) => WorkspaceInteractionDialogs.ChooseChromeProfile(Owner().Handle, workspace, id));
         Items.Add(_profile);
+        _web = new ToolStripMenuItem("Web resource settings…", null, (_, _) => WorkspaceInteractionDialogs.WebResourceSettings(Owner().Handle, workspace, id));
+        Items.Add(_web);
         _auto = new ToolStripMenuItem("Open automatically when Canvas starts") { CheckOnClick = true };
         _auto.Click += (_, _) => workspace.SetAutoOpen(id, _auto.Checked); Items.Add(_auto);
-        Items.Add("Choose file to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, false));
-        Items.Add("Choose folder to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, true));
+        _file = new ToolStripMenuItem("Choose file to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, false)); Items.Add(_file);
+        _folder = new ToolStripMenuItem("Choose folder to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, true)); Items.Add(_folder);
         Items.Add(new ToolStripSeparator());
         Items.Add("Forget this saved place", null, (_, _) => workspace.Forget(id));
         Opening += (_, e) =>
@@ -34,7 +36,10 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
     public void UpdateItem(WorkspaceItemView item)
     {
         _auto.Checked = item.OpenOnStartup;
-        _profile.Visible = ChromeProfiles.Supports(item.ExecutablePath) && !item.IsFolder;
+        _profile.Visible = ChromeProfiles.Supports(item.ExecutablePath) && !item.IsFolder && item.WebResource == null;
         _profile.Enabled = item.State is not "Opening…" and not "Queued";
+        _web.Visible = BrowserSupport.Supports(item.ExecutablePath) && !item.IsFolder;
+        _web.Enabled = item.State is not "Opening…" and not "Queued";
+        _file.Visible = _folder.Visible = item.WebResource == null;
     }
 }

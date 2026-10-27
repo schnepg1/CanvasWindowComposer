@@ -18,7 +18,7 @@ internal sealed class WorkspaceWindow : Window
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock _selection = new() { TextWrapping = TextWrapping.Wrap, FontSize = 18, FontWeight = FontWeights.SemiBold };
     private readonly StackPanel _actions = new();
-    private readonly Button _chromeProfile;
+    private readonly Button _chromeProfile, _webResource, _fileTarget, _folderTarget;
     private bool _closed, _refreshQueued;
 
     public WorkspaceWindow(IWorkspaceCommands workspace)
@@ -35,6 +35,7 @@ internal sealed class WorkspaceWindow : Window
         header.Children.Add(new TextBlock { Text = "Search by name, application or path", FontSize = 12,
             Margin = new Thickness(0, 0, 0, 6), Foreground = ZoneTheme.Brush("#A7B3C9") });
         header.Children.Add(_filter); DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
+        header.Children.Add(ZoneTheme.Button("Add web resource…", () => WorkspaceInteractionDialogs.WebResourceSettings(OwnerHandle().Handle, workspace)));
         System.Windows.Automation.AutomationProperties.SetName(_filter, "Search saved workspace");
         System.Windows.Automation.AutomationProperties.SetName(_items, "Saved windows");
         _status.Margin = new Thickness(0, 16, 0, 0); _status.Foreground = ZoneTheme.Brush("#A7B3C9");
@@ -64,9 +65,9 @@ internal sealed class WorkspaceWindow : Window
                   <TextBlock Foreground="#A7B3C9" FontSize="12" TextTrimming="CharacterEllipsis">
                     <TextBlock.Style>
                       <Style TargetType="TextBlock">
-                        <Setter Property="Text" Value="{Binding Target}"/>
+                        <Setter Property="Text" Value="{Binding DisplayTarget}"/>
                         <Style.Triggers>
-                          <DataTrigger Binding="{Binding Target}" Value="">
+                          <DataTrigger Binding="{Binding DisplayTarget}" Value="">
                             <Setter Property="Text" Value="{Binding ExecutablePath}"/>
                           </DataTrigger>
                         </Style.Triggers>
@@ -90,9 +91,15 @@ internal sealed class WorkspaceWindow : Window
                 WorkspaceInteractionDialogs.ChooseChromeProfile(OwnerHandle().Handle, workspace, item.Id);
         });
         _actions.Children.Add(_chromeProfile);
+        _webResource = ZoneTheme.Button("Web resource settings…", () =>
+        {
+            if (_items.SelectedItem is WorkspaceItemView item)
+                WorkspaceInteractionDialogs.WebResourceSettings(OwnerHandle().Handle, workspace, item.Id);
+        });
+        _actions.Children.Add(_webResource);
         AddAction("Close to placeholder", workspace.CloseToPlaceholder);
-        AddAction("Choose file…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, false));
-        AddAction("Choose folder…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, true));
+        _fileTarget = AddAction("Choose file…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, false));
+        _folderTarget = AddAction("Choose folder…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, true));
         AddAction("Forget saved place", workspace.Forget);
         _items.SelectionChanged += (_, _) => UpdateSelection();
         _items.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler((_, e) =>
@@ -118,9 +125,11 @@ internal sealed class WorkspaceWindow : Window
 
     private System.Windows.Forms.IWin32Window OwnerHandle() => new NativeDialogOwner(new WindowInteropHelper(this).Handle);
 
-    private void AddAction(string text, Action<Guid> command)
-        => _actions.Children.Add(ZoneTheme.Button(text, () =>
-        { if (_items.SelectedItem is WorkspaceItemView item) command(item.Id); }));
+    private Button AddAction(string text, Action<Guid> command)
+    {
+        var button = ZoneTheme.Button(text, () => { if (_items.SelectedItem is WorkspaceItemView item) command(item.Id); });
+        _actions.Children.Add(button); return button;
+    }
 
     private void OnChanged()
     {
@@ -135,7 +144,8 @@ internal sealed class WorkspaceWindow : Window
         string query = _filter.Text.Trim();
         var items = _workspace.Items.Where(item => query.Length == 0 ||
             item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            item.Target.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            item.DisplayTarget.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            item.BrowserDetails.Contains(query, StringComparison.OrdinalIgnoreCase) ||
             item.ExecutablePath.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase).ToArray();
         _items.ItemsSource = items;
@@ -149,11 +159,14 @@ internal sealed class WorkspaceWindow : Window
     {
         var selected = _items.SelectedItem as WorkspaceItemView;
         _actions.IsEnabled = selected != null;
-        _chromeProfile.Visibility = selected != null && ChromeProfiles.Supports(selected.ExecutablePath) && !selected.IsFolder
+        _chromeProfile.Visibility = selected != null && selected.WebResource == null && ChromeProfiles.Supports(selected.ExecutablePath) && !selected.IsFolder
             ? Visibility.Visible : Visibility.Collapsed;
         _chromeProfile.IsEnabled = selected?.State is not "Opening…" and not "Queued";
+        _webResource.Visibility = selected != null && BrowserSupport.Supports(selected.ExecutablePath) && !selected.IsFolder ? Visibility.Visible : Visibility.Collapsed;
+        _webResource.IsEnabled = selected?.State is not "Opening…" and not "Queued";
+        _fileTarget.Visibility = _folderTarget.Visibility = selected?.WebResource == null ? Visibility.Visible : Visibility.Collapsed;
         _selection.Text = selected == null ? "Select a saved place" :
-            $"{selected.Title}\n\n{selected.Bounds.X:0}, {selected.Bounds.Y:0}";
+            $"{selected.Title}\n\n{selected.Bounds.X:0}, {selected.Bounds.Y:0}" + (selected.WebResource == null ? "" : "\n\n" + selected.DisplayTarget + "\n" + selected.BrowserDetails);
         _selection.Margin = new Thickness(0, 0, 0, 12);
     }
 }

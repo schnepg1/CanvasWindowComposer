@@ -8,6 +8,8 @@ internal readonly record struct PlaceholderPathDisplay(string Leaf, string Paren
 {
     public static PlaceholderPathDisplay For(WorkspaceItemView item)
     {
+        if (item.WebResource is { } resource && Uri.TryCreate(resource.Url, UriKind.Absolute, out var uri))
+            return new(uri.Host, item.BrowserDetails, "WEBSITE", resource.Url);
         string full = item.Target.Length > 0 ? item.Target : item.ExecutablePath;
         string trimmed = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string leaf = Path.GetFileName(trimmed);
