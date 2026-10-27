@@ -287,7 +287,7 @@ public class OverviewWindowInteractionIntegrationTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void InteractControlWheelRemainsCanvasZoomWithoutActivatingApp()
+    public void InteractControlWheelPansCanvasWithoutActivatingApp()
         => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>
         {
             overview.SetInteractMode(true);
@@ -295,7 +295,7 @@ public class OverviewWindowInteractionIntegrationTests
             pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, false, true, false);
             Assert.False(overview.WindowInteractionActive);
             Assert.DoesNotContain(api.Messages, m => m.Id is 0x20A or 0x20E);
-            Assert.True(overview.ViewCamera.Zoom < before);
+            Assert.Equal(before, overview.ViewCamera.Zoom);
         }));
 
     private static void WithOverview(Action<OverviewManager, OverviewOverlay, Form, FakeInputRouter,

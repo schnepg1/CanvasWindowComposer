@@ -80,7 +80,7 @@ public class TutorialTourTests
         input.RaiseDragStarted();overview.CanvasInputSuspended=true;
         input.PendingDragEnded=true;input.RaiseInputAvailable();
         overview.GuidedTutorialActive=false;overview.CanvasInputSuspended=false;
-        input.PendingZoom=true;input.RaiseInputAvailable();Assert.Equal(OverviewMode.Hidden,overview.CurrentMode);
+        overview.TransitionTo(OverviewMode.Hidden);input.PendingZoom=true;input.RaiseInputAvailable();Assert.Equal(OverviewMode.Zooming,overview.CurrentMode);
     }
 
     [Fact]

@@ -288,7 +288,7 @@ internal sealed class RawMouseInput : IDisposable
         if ((btn & (PInvoke.RI_MOUSE_LEFT_BUTTON_DOWN | PInvoke.RI_MOUSE_RIGHT_BUTTON_DOWN)) != 0)
             Events.TryEnqueue(new MouseEvent(MouseEventType.ButtonDown, timestamp: ts));
         if ((btn & PInvoke.RI_MOUSE_WHEEL) != 0)
-            OnWheel(ts);
+            OnWheel(ts, unchecked((short)mouse.Anonymous.Anonymous.usButtonData));
 
         if (_dragging && (mouse.lLastX != 0 || mouse.lLastY != 0))
         {
@@ -346,10 +346,9 @@ internal sealed class RawMouseInput : IDisposable
         Events.TryEnqueue(new MouseEvent(MouseEventType.DragEnded, timestamp: ts));
     }
 
-    private void OnWheel(long ts)
+    private void OnWheel(long ts, short delta)
     {
-        bool alt = IsAltDown() && !IsCtrlDown() && !IsShiftDown();
-        if (alt && IsDesktopOrTaskbarAt(GetCursor()))
+        if (delta < 0 && !IsCtrlDown() && !IsShiftDown() && IsDesktopOrTaskbarAt(GetCursor(), includeTaskbar: false))
             Events.TryEnqueue(new MouseEvent(MouseEventType.Zoom, timestamp: ts));
     }
 
@@ -376,7 +375,7 @@ internal sealed class RawMouseInput : IDisposable
         return (PInvoke.GetAsyncKeyState((int)VIRTUAL_KEY.VK_SHIFT) & KeyStateDownBit) != 0;
     }
 
-    private unsafe bool IsDesktopOrTaskbarAt(Point pt)
+    private unsafe bool IsDesktopOrTaskbarAt(Point pt, bool includeTaskbar = true)
     {
         var pp = new System.Drawing.Point(pt.X, pt.Y);
         HWND hwnd = PInvoke.WindowFromPoint(pp);
@@ -404,7 +403,7 @@ internal sealed class RawMouseInput : IDisposable
         if (classLen == 0)
             return false;
         string cls = new string(classBuf[..classLen]);
-        return cls is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+        return cls is "Progman" or "WorkerW" || (includeTaskbar && cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd");
     }
 
     // ==================== HID DEVICE INFO ====================

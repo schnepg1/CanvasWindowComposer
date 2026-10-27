@@ -146,10 +146,8 @@ internal sealed class OverviewInputs : IDisposable
 
         if (_input.TryDrainZoom())
         {
-            if (_overview.CurrentMode == OverviewMode.Zooming)
-                _overview.TransitionTo(OverviewMode.Hidden);
-            else
-                _overview.TransitionTo(OverviewMode.Zooming);
+            if (_overview.CurrentMode != OverviewMode.Zooming)
+                _overview.TransitionTo(OverviewMode.Zooming, zoomOutOnOpen: true);
         }
     }
 

@@ -62,13 +62,13 @@ internal sealed class TutorialTourPanel : Form
         string[] names=["Look around","Zoom in and out","Move a window","Write your first note","Return to your desktop","Your desktop is still yours","Open canvas again"];
         _progress.Text=$"CANVAS TOUR  ·  {(desktop?"DESKTOP":"CANVAS")}  ·  STEP {tour.Progress.Step+1} OF {TutorialTour.StepCount}";
         _title.Text=names[tour.Progress.Step];
-        string reopen=overviewHotkey?"Press Alt+Q, or hold Alt and scroll out over an empty area of your desktop.":"Hold Alt and scroll out over an empty area of your desktop. The Alt+Q shortcut is turned off in Settings.";
+        string reopen=overviewHotkey?"Press Alt+Q, or scroll down over an empty area of your desktop.":"Scroll down over an empty area of your desktop. The Alt+Q shortcut is turned off in Settings.";
         _status.Text=error??(tour.Travelling?"Moving to the next note. Any navigation input stops the movement."
             :tour.Practised && !(desktop && tour.Step==TutorialStep.ReopenCanvas)?tour.Step==TutorialStep.ReopenCanvas?"You're back in canvas. Your windows and notes are here, ready whenever you need more room. Choose Finish to explore.":"✓ You've got it. Choose Next when you're ready."
             :tour.Step switch
             {
-                TutorialStep.Pan => "Hold Space and drag with the left mouse button to look around. On a touchpad, scroll with two fingers. You can also choose Next without practising.",
-                TutorialStep.Zoom => "Hold Ctrl and scroll to make things bigger or smaller. You can also press + / −. Choose Next whenever you're ready.",
+                TutorialStep.Pan => "Hold Space and drag with the left mouse button to look around. Hold Ctrl and scroll to pan vertically. You can also choose Next without practising.",
+                TutorialStep.Zoom => "Scroll to make things bigger or smaller. You can also press + / −. Choose Next whenever you're ready.",
                 TutorialStep.Windows => "Drag a window or app card to a new spot. Your canvas gives you room to arrange things. Next continues without moving anything.",
                 TutorialStep.Notes => "Choose Text in the tool belt below, then click empty space and type. Press Ctrl+Enter to save. Next continues without making a note.",
                 TutorialStep.Projects => "Your windows and notes share one canvas. Choose Return to desktop to close this view. The next two steps stay with you on the desktop.",

@@ -171,10 +171,11 @@ public class OverviewInputsTests
         h.Input.RaiseInputAvailable();
 
         Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
+        Assert.True(h.Overview.LastZoomOutOnOpen);
     }
 
     [Fact]
-    public void InputAvailable_Zoom_WhileZooming_HidesOverview()
+    public void InputAvailable_Zoom_WhileZooming_StaysOpen()
     {
         var h = new Harness();
         h.Overview.TransitionTo(OverviewMode.Zooming);
@@ -182,7 +183,7 @@ public class OverviewInputsTests
         h.Input.PendingZoom = true;
         h.Input.RaiseInputAvailable();
 
-        Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode);
+        Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
     }
 
     // ==================== HOTKEYS ====================

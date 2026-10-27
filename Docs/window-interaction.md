@@ -9,8 +9,8 @@ keyboard shortcuts use the normal Windows input path.
 **Esc** returns to canvas navigation without closing the overview. Middle-clicking
 or clicking outside the chosen thumbnail also ends interaction; that exit click
 is consumed. The next click or drag navigates the canvas normally. While
-interacting, ordinary wheel input scrolls the app; **Ctrl+wheel** and **Alt+wheel**
-still zoom the canvas. Canvas-wide hotkeys such as Alt+Q and Alt+S remain reserved.
+interacting, ordinary wheel input scrolls the app; **Ctrl+wheel** pans the canvas
+and **Alt+wheel** zooms it. Canvas-wide hotkeys such as Alt+Q and Alt+S remain reserved.
 Use **Open window at desktop size** from the thumbnail menu for the native app view.
 
 Interaction is available only for live app thumbnails. Closed-app placeholders,
@@ -31,7 +31,7 @@ app clicks. Right-click that strip for the canvas context menu; right-click
 inside content for the application's context menu.
 
 Ctrl-click continues to select canvas elements. Middle-drag and Space-drag
-remain canvas navigation, and Ctrl/Alt-wheel remains canvas zoom. Ordinary wheel
+remain canvas navigation; Ctrl-wheel pans and Alt-wheel zooms. Ordinary wheel
 input scrolls live content under the pointer, without a preceding click, and
 switches the interaction target when you scroll over another live thumbnail.
 Both vertical and horizontal wheel input are forwarded. The drag header,

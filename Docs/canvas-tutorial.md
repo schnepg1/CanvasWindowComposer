@@ -15,7 +15,7 @@ available independently of the guided tour.
 
 ## Guided stops
 
-1. Look around: hold Space and left-drag, or use two-finger scrolling on a touchpad.
+1. Look around: hold Space and left-drag, or hold Ctrl and scroll vertically.
 2. Zoom in and out: hold Ctrl and scroll, or press +/−.
 3. Move a window: drag a window or app card in Arrange. Double-clicking opens the app at desktop size and pauses the tour.
 4. Write your first note: choose Text in the bottom toolbar, click empty space, type, and save with Ctrl+Enter.

@@ -38,17 +38,17 @@ Choose **Arrange** to move items or **Interact** to use a live app on the canvas
 | Middle-click drag on desktop | Pan all windows |
 | Alt + middle-click drag anywhere | Pan (works over windows) |
 | Alt + Q | Toggle overview (map-view) |
-| Alt + scroll on desktop | Open overview |
+| Scroll down on empty desktop | Open overview and zoom out |
 | Space + left-drag or middle-drag in overview | Look around the canvas |
 | Left-drag empty canvas / Ctrl+click an item | Select a group / add or remove an item from the selection |
 | Ctrl + 0–9 in canvas mode | Save or replace a camera bookmark (position and zoom) |
 | 0–9 in canvas mode | Jump to a saved camera bookmark |
-| Two-finger scroll in overview | Pan vertically or horizontally |
+| Two-finger scroll in overview | Zoom vertically or pan horizontally |
 | Shift + scroll in overview | Pan horizontally |
 | Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
 | Right-click a live thumbnail > Interact with window | Use the app at the current zoom, with mouse and real keyboard focus |
 | Esc while interacting | Return to canvas navigation, keeping the overview open |
-| Ctrl + scroll, Alt + scroll, or + / - in overview | Zoom without a pinch gesture |
+| Scroll, Alt + scroll, or + / - in overview | Zoom around the pointer |
 | Alt + S | Fuzzy window search |
 | Drag an area corner in overview | Resize its boundary without moving members |
 | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) in overview | Undo / redo an area move or resize |
@@ -65,7 +65,7 @@ Choose **Arrange** to move items or **Interact** to use a live app on the canvas
 
 **The overview is a fake desktop made of live DWM thumbnails.** When you pan or press Alt+Q, a borderless form per monitor comes up with a D3D11 swap chain. Instead of rendering window contents ourselves, we call `DwmRegisterThumbnail` for the desktop wallpaper (Progman/WorkerW), every canvas-managed window, and the taskbar(s) — DWM then composites live thumbnails onto the form. We only push destination rects when the camera moves; the thumbnails stay in sync at the source window's own frame rate, with no pixel copy. The real windows stay parked wherever `SetWindowRgn` clipped them — the overview is a view on top of that state, not a replacement for it.
 
-**Pan and zoom share one camera, the overview adds a second on top.** In *panning* mode the overlay is click-through (`WS_EX_TRANSPARENT`), so middle-click drag keeps driving the real canvas camera and all the thumbnails reflow in real time — including windows that would otherwise be clipped off-screen. In *zooming* mode (Alt+Q / Alt+scroll) click-through goes off and an HLSL shader draws an adaptive grid, scale marks, and a nebula parallax; a second *overview camera* decouples from the canvas camera so you can zoom out further than the real screen would allow for a map-level view. Scrolling pans the overview; pinching or Ctrl+scroll zooms it. Clicking a thumbnail (or arrow-keys + Enter) recenters the canvas on that window and closes the overlay.
+**Pan and zoom share one camera, the overview adds a second on top.** In *panning* mode the overlay is click-through (`WS_EX_TRANSPARENT`), so middle-click drag keeps driving the real canvas camera and all the thumbnails reflow in real time — including windows that would otherwise be clipped off-screen. In *zooming* mode (Alt+Q / scroll down on empty desktop) click-through goes off and an HLSL shader draws an adaptive grid, scale marks, and a nebula parallax; a second *overview camera* decouples from the canvas camera so you can zoom out further than the real screen would allow for a map-level view. Scrolling zooms the overview; Ctrl+scroll pans vertically. Clicking a thumbnail (or arrow-keys + Enter) recenters the canvas on that window and closes the overlay.
 
 ## Config
 

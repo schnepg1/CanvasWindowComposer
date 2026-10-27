@@ -61,8 +61,8 @@ public sealed record TutorialLayout(CanvasAnnotation[] Items, CanvasRect Welcome
 
     private static readonly string[] Instructions =
     [
-        "1  •  Welcome to your canvas\n\nYour apps and notes share one large workspace.\n\nHold Space and drag with the left mouse button to look around. On a touchpad, scroll with two fingers.\n\nNeed help? Controls is in the top-right corner.",
-        "2  •  Zoom in and out\n\nHold Ctrl and scroll to zoom around your pointer.\n\nTry zooming out to see more of your workspace, then back in to read the details.\n\nYou can also press + / −.",
+        "1  •  Welcome to your canvas\n\nYour apps and notes share one large workspace.\n\nHold Space and drag with the left mouse button to look around. Hold Ctrl and scroll to pan vertically.\n\nNeed help? Controls is in the top-right corner.",
+        "2  •  Zoom in and out\n\nScroll to zoom around your pointer.\n\nTry zooming out to see more of your workspace, then back in to read the details.\n\nYou can also press + / −.",
         "3  •  Move a window\n\nChoose Arrange at the top right. Drag a window or app card to a new spot.\n\nDouble-click it to open the app at desktop size.\n\nAfter the tour, zoom in and choose Interact to use apps on the canvas.",
         "4  •  Write your first note\n\nChoose Text in the bottom toolbar. Click empty canvas and type a thought.\n\nPress Ctrl+Enter to save it.\n\nWant to change it? Double-click the note to edit it."
     ];

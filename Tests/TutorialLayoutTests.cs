@@ -37,7 +37,7 @@ public class TutorialLayoutTests
         var layout=TutorialLayout.Create(Desktop,View,[],[]);
         Assert.DoesNotContain(layout.Items,a=>a.Text.Contains("Alt+Q") || a.Text.Contains("Alt+middle"));
         Assert.Contains(layout.Items,a=>a.Text.Contains("Hold Ctrl and scroll"));
-        Assert.Contains(layout.Items,a=>a.Text.Contains("two fingers"));
+        Assert.Contains(layout.Items,a=>a.Text.Contains("Scroll to zoom"));
         Assert.Contains(layout.Items,a=>a.Text.Contains("Controls is in the top-right corner"));
     }
 
