@@ -9,7 +9,8 @@ internal sealed class WindowNavigationFlight(CanvasCamera from, CanvasCamera to)
     {
         double t = double.IsFinite(seconds) ? Math.Clamp(seconds / Duration, 0, 1) : 0;
         double eased = t * t * t * (t * (t * 6 - 15) + 10);
-        return new(from.X + (to.X - from.X) * eased, from.Y + (to.Y - from.Y) * eased, from.Zoom);
+        return new(from.X + (to.X - from.X) * eased, from.Y + (to.Y - from.Y) * eased,
+            from.Zoom + (to.Zoom - from.Zoom) * eased);
     }
 
     internal static CanvasCamera Target(WorldRect world, double zoom, ScreenRect viewport)

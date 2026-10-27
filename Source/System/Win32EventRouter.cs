@@ -46,12 +46,12 @@ internal sealed class Win32EventRouter : IDisposable
         _hookForeground = PInvoke.SetWinEventHook(
             PInvoke.EVENT_SYSTEM_FOREGROUND,
             PInvoke.EVENT_SYSTEM_FOREGROUND,
-            null, _winEventProc, 0, 0, flags);
+            null, _winEventProc, 0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
 
         _hookSwitch = PInvoke.SetWinEventHook(
             PInvoke.EVENT_SYSTEM_SWITCHSTART,
             PInvoke.EVENT_SYSTEM_SWITCHEND,
-            null, _winEventProc, 0, 0, flags);
+            null, _winEventProc, 0, 0, PInvoke.WINEVENT_OUTOFCONTEXT);
 
         _hookObjectLifetime = PInvoke.SetWinEventHook(
             PInvoke.EVENT_OBJECT_DESTROY, // 0x8001
@@ -109,6 +109,12 @@ internal sealed class Win32EventRouter : IDisposable
 
             case PInvoke.EVENT_SYSTEM_FOREGROUND:
                 WindowFocused?.Invoke(hwnd);
+                if (_canSelectWindow?.Invoke(hwnd) == true
+                    && _altTab?.TryCompleteReleased(out bool selected) == true)
+                {
+                    AltTabEnded?.Invoke();
+                    if (selected) WindowSelected?.Invoke(hwnd);
+                }
                 if (_taskbar?.Enabled == true && _canSelectWindow?.Invoke(hwnd) != false
                     && !ShellSelectionInputHook.IsTaskbarWindow(hwnd)
                     && _taskbar?.TrySelect(hwnd, dwmsEventTime) == true)

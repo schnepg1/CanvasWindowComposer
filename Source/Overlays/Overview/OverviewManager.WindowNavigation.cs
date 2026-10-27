@@ -40,7 +40,7 @@ internal sealed partial class OverviewManager
         _navigationDisplayTarget = window;
         RefreshOverviewWindows();
         _windowFlightPid = _win32.GetWindowProcessId(window);
-        var target = WindowNavigationFlight.Target(world, _camera.Zoom, _screens.PrimaryWorkingArea);
+        var target = WindowNavigationFlight.Target(world, 1, _screens.PrimaryWorkingArea);
         _windowFlight = new(ViewCamera, target);
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
@@ -73,7 +73,8 @@ internal sealed partial class OverviewManager
         else ObserveGestureMotion();
         _camera.SetTo(frame.X, frame.Y, frame.Zoom);
         ReconcileVisuals();
-        if (complete) FocusOverview();
+        if (complete && _mainCanvas.Windows.TryGetValue(_windowFlightTarget, out var world))
+            GoToWindow(_windowFlightTarget, world);
     }
 
     private void StopWindowNavigation()

@@ -43,4 +43,16 @@ internal sealed class AltTabSelectionIntent
     }
 
     public void CompleteNative() { lock (_gate) _active = false; }
+
+    public bool TryCompleteReleased(out bool selected)
+    {
+        lock (_gate)
+        {
+            selected = false;
+            if (!_active || !_released) return false;
+            _active = false;
+            selected = !_cancelled;
+            return true;
+        }
+    }
 }

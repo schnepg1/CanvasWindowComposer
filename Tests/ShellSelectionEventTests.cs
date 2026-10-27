@@ -11,6 +11,28 @@ public class ShellSelectionEventTests
 {
     [Fact]
     [Trait("Category", "NativeRendering")]
+    public void ReleasedAltTabSelectsOnForegroundWithoutWaitingForPoll()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            IntPtr app = (IntPtr)42, shell = (IntPtr)43;
+            var keyboard = new AltTabSelectionIntent();
+            using var router = new Win32EventRouter(altTab: keyboard, canSelectWindow: window => window == app);
+            var chosen = new List<IntPtr>();
+            router.WindowSelected += chosen.Add;
+            keyboard.Begin();
+            var dispatch = Callback(router);
+            dispatch(default, PInvoke.EVENT_SYSTEM_FOREGROUND, (HWND)app, 0, 0, 0, 1000);
+            Assert.Empty(chosen);
+            var generation = keyboard.Release()!.Value;
+            dispatch(default, PInvoke.EVENT_SYSTEM_FOREGROUND, (HWND)shell, 0, 0, 0, 1010);
+            Assert.Empty(chosen);
+            dispatch(default, PInvoke.EVENT_SYSTEM_FOREGROUND, (HWND)app, 0, 0, 0, 1020);
+            Assert.Equal(app, Assert.Single(chosen));
+            Assert.False(keyboard.TryComplete(generation, out _));
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
     public void TransientShellFocusDoesNotConsumeThePendingTaskbarClick()
         => WorkspaceViewTests.OnSta(() =>
         {

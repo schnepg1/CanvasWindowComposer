@@ -9,15 +9,25 @@ public class WindowNavigationIntegrationTests
 {
     private static readonly IntPtr App = (IntPtr)42;
 
+    [Fact]
+    public void FlightInterpolatesPositionAndZoom()
+    {
+        var from = new CanvasCamera(10, 20, .25);
+        var to = new CanvasCamera(110, 220, 1);
+        var flight = new WindowNavigationFlight(from, to);
+        Assert.Equal(from, flight.Sample(0));
+        Assert.Equal(new CanvasCamera(60, 120, .625), flight.Sample(WindowNavigationFlight.Duration / 2));
+        Assert.Equal(to, flight.Sample(WindowNavigationFlight.Duration));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "NativeRendering")]
-    public void ShellSelectionKeepsCanvasOpenCenteredAtItsCurrentZoom(bool animated)
+    public void ShellSelectionZoomsToAppAndEntersDesktopView(bool animated)
         => WithOverview(animated, (canvas, overview, api, input, screens) =>
         {
             var before = overview.ViewCamera;
-            var desktop = canvas.Camera;
             var world = canvas.Windows[App];
             input.RaiseWindowSelected(App);
             Assert.Equal(animated, overview.WindowNavigationActive);
@@ -26,13 +36,12 @@ public class WindowNavigationIntegrationTests
                 Assert.Equal(before, overview.ViewCamera);
                 overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration / 2);
                 Assert.NotEqual(before.X, overview.ViewCamera.X);
+                Assert.InRange(overview.ViewCamera.Zoom, before.Zoom, 1);
                 overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
             }
             Assert.False(overview.WindowNavigationActive);
-            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
-            Assert.Equal(before.Zoom, overview.ViewCamera.Zoom);
-            Assert.Equal(WindowNavigationFlight.Target(world, before.Zoom, screens.PrimaryWorkingArea), overview.ViewCamera);
-            Assert.Equal(desktop, canvas.Camera);
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            Assert.Equal((960d, 540d), canvas.WorldToScreen(world.X + world.W / 2, world.Y + world.H / 2));
             Assert.Equal(world, canvas.Windows[App]);
         });
 
@@ -51,7 +60,7 @@ public class WindowNavigationIntegrationTests
             var after = canvas.Windows[App];
             Assert.Equal((world.X, world.Y, world.W, world.H), (after.X, after.Y, after.W, after.H));
             Assert.Equal(WindowState.Normal, after.State);
-            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
         });
 
     [Fact]
@@ -75,15 +84,11 @@ public class WindowNavigationIntegrationTests
             canvas.MaximizeWindow(App);
             var saved = canvas.Windows[App];
             input.RaiseWindowSelected(App);
-            var windows = (OverviewWindowList)typeof(OverviewManager).GetField("_windows",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(overview)!;
-            var entry = Assert.Single(windows.Windows, entry => entry.HWnd == App);
-            Assert.False(entry.ScreenFixed);
-            Assert.Equal(saved, entry.World);
+            Assert.Equal(saved, canvas.Windows[App]);
             Assert.Equal(WindowState.Maximized, canvas.Windows[App].State);
             Assert.NotEqual(0, api.Windows[App].Style & (int)WINDOW_STYLE.WS_MAXIMIZE);
             Assert.Empty(api.NavigationRestores);
-            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
         });
 
     [Fact]
@@ -98,7 +103,10 @@ public class WindowNavigationIntegrationTests
             overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration / 2);
             input.RaiseWindowSelected(second);
             overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
-            Assert.Equal(WindowNavigationFlight.Target(canvas.Windows[second], .25, screens.PrimaryWorkingArea), overview.ViewCamera);
+            var selected = canvas.Windows[second];
+            Assert.Equal((960d, 540d), canvas.WorldToScreen(selected.X + selected.W / 2, selected.Y + selected.H / 2));
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            overview.TransitionTo(OverviewMode.Zooming);
             input.RaiseWindowSelected(App);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
             pass.OnWheel!(pass, 200, 200, 120, false, false, false);
