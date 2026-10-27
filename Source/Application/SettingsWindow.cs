@@ -47,7 +47,7 @@ internal sealed class SettingsWindow : Window
         _curve = Option("Match Windows pointer acceleration when panning", preferences.MouseCurve);
         _desktopMomentum = Option("Desktop pan momentum", preferences.DesktopPanMomentum);
         _canvasMomentum = Option("Canvas pan momentum", preferences.CanvasPanMomentum);
-        Hint("Continue gliding after releasing a pan. Turn either off to stop that view on release. Dragging still follows the pointer. Applies immediately.");
+        Hint("Continue gliding after releasing a pan. Turn either off to stop that view on release. Dragging still follows the pointer. Applies immediately. During desktop panning, click to stop, then click again to interact.");
         _fixed = Option("Show pinned and fullscreen windows while panning", preferences.ScreenFixedWindows);
         _navigation = Option("Animate navigation to apps selected with Alt+Tab or the taskbar", preferences.AnimateWindowNavigation);
         Hint("Stays in Canvas view at the current zoom. Turn off for an immediate jump with less rendering work.");

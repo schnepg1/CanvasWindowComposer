@@ -4,7 +4,9 @@ param(
     [ValidateRange(1, 20)][int]$Repeats = 3,
     [ValidateRange(1, 60)][double]$Seconds = 5,
     [double[]]$Zooms = @(1, 0.5, 0.25),
-    [string]$OutputDirectory = ""
+    [string]$OutputDirectory = "",
+    [switch]$NoDesktopMomentum,
+    [switch]$NoCanvasMomentum
 )
 $ErrorActionPreference = 'Stop'
 $culture = [Globalization.CultureInfo]::InvariantCulture
@@ -49,6 +51,8 @@ for ($repeat = 0; $repeat -lt $Repeats; $repeat++) {
             ('--seconds=' + $Seconds.ToString('R', $culture)), "--overview-zoom=$zoomText", "--output=$reportPath")
         if ($case.Flip) { $arguments += '--flip-rendering' }
         if ($case.LowQuality) { $arguments += '--low-quality' }
+        if ($NoDesktopMomentum) { $arguments += '--no-desktop-momentum' }
+        if ($NoCanvasMomentum) { $arguments += '--no-canvas-momentum' }
         & $exe @arguments
         if ($LASTEXITCODE -ne 0) { throw "Presentation harness exited with code $LASTEXITCODE for $file." }
         $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
@@ -62,6 +66,8 @@ for ($repeat = 0; $repeat -lt $Repeats; $repeat++) {
             $rows.Add([pscustomobject]@{
                 Repeat = $repeat + 1; RequestedBackend = $backend; ActualBackends = ($actual -join ','); BackendMatched = $matched
                 Quality = $quality; RequestedZoom = $case.Zoom; Phase = $phase.Phase; CameraStartZoom = $phase.CameraStart.Zoom
+                DesktopPanMomentum = $report.DesktopPanMomentum; CanvasPanMomentum = $report.CanvasPanMomentum
+                MomentumActiveAtEnd = $phase.MomentumActiveAtEnd; ModeAtEnd = $phase.ModeAtEnd
                 CpuOneCorePercent = $hostSample.CpuOneCorePercent
                 InputPumpP50Ms = $phase.InputPumpMs.P50; InputPumpP95Ms = $phase.InputPumpMs.P95; InputPumpP99Ms = $phase.InputPumpMs.P99
                 GridUploadCalls = $upload.Calls; GridUploadMaxMs = $upload.MaxMs; GridPresentMaxMs = $present.MaxMs

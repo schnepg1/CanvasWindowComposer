@@ -138,4 +138,45 @@ public class PanMomentumIntegrationTests
             var stopped = canvas.Camera; clock.Advance(5000); overview.AdvanceMomentum();
             Assert.False(overview.MomentumActive); Assert.Equal(stopped, canvas.Camera);
         });
+    private sealed class RealPlaceholderFactory(FakeWindowApi api) : IWorkspacePlaceholderFactory
+    {
+        public readonly List<PlaceholderForm> Forms = new();
+        public IWorkspacePlaceholder Create(IWorkspaceCommands workspace, WorkspaceItemView item)
+        {
+            var form = new PlaceholderForm(workspace, item);
+            api.AddWindow(form.Handle, 100, 100, 400, 300, title: item.Title);
+            Forms.Add(form);
+            return form;
+        }
+    }
+
+    [Fact]
+    public void PlaceholderOnlyWorkspaceAlsoDefersNativeProjectionDuringDesktopCoast()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var document = new WorkspaceDocument();
+            for (int i = 0; i < 16; i++) document.Items.Add(new WorkspaceItem
+            {
+                Title = $"Saved place {i}", ExecutablePath = @"C:\Windows\explorer.exe", Target = @"C:\Projects",
+                IsFolder = true, Bounds = new WorldRect { X = 100 + i * 20, Y = 100, W = 400, H = 300 }
+            });
+            var api = new FakeWindowApi(); var factory = new RealPlaceholderFactory(api);
+            var config = new FakeAppConfig { EnableStartupIntro = false };
+            using var rig = new WorkspaceHarness(document, api: api, config: config, placeholders: factory);
+            rig.Workspace.Start(); Assert.Equal(16, factory.Forms.Count);
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, api, rig.Input, config,
+                gestureClock: rig.Clock, dwm: new FakeDwmThumbnailApi());
+            overview.AttachPlaceholderWorkspace(rig.Workspace);
+            rig.Input.RaiseDragStarted(); api.LastBatch.Clear();
+            rig.Clock.Advance(20); rig.Input.QueuePanAndRaise(40, 0);
+            rig.Clock.Advance(20); rig.Input.QueuePanAndRaise(40, 0);
+            rig.Input.PendingDragEnded = true; rig.Input.RaiseInputAvailable();
+            Assert.True(overview.MomentumActive); Assert.Empty(api.LastBatch);
+            rig.Clock.Advance(16); overview.AdvanceMomentum(); Assert.Empty(api.LastBatch);
+            rig.Clock.Advance(5000); overview.AdvanceMomentum();
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            Assert.Equal(16, api.LastBatch.Count);
+            Assert.Equal(16, rig.Workspace.GetPlaceholderTitles().Count);
+        });
+
 }
