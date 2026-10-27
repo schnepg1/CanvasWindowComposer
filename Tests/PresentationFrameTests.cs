@@ -52,11 +52,12 @@ public class PresentationFrameTests
     public void MinimapSnapshotsDoNotBorrowMutableWindowRectangles()
     {
         using var map = new MinimapRenderer();
-        map.UpdateSnapshot([new() { X = 20, Y = 30, W = 100, H = 80 }], null, (0, 0, 800, 600));
+        var projection = MinimapProjection.Create(null, (0, 0, 800, 600), 240, 160);
+        map.UpdateSnapshot([new() { X = 20, Y = 30, W = 100, H = 80 }], null, (0, 0, 800, 600), fixedProjection: projection);
         var rectangles = new float[4];
         var before = map.CaptureSnapshot(rectangles);
         var saved = rectangles.ToArray();
-        map.UpdateSnapshot([], null, (100, 100, 800, 600));
+        map.UpdateSnapshot([], null, (100, 100, 800, 600), fixedProjection: projection);
         Assert.Equal(1, before.WindowCount);
         Assert.Equal(saved, rectangles);
         Assert.Equal(0, map.CaptureSnapshot([]).WindowCount);

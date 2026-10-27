@@ -29,10 +29,25 @@ internal sealed partial class OverviewManager
         _visualFrameTimer.Start();
     }
 
+    internal event Action? ViewCameraChanged;
+
+    internal void CenterViewOnMinimap(double worldX, double worldY)
+    {
+        if (CurrentMode != OverviewMode.Zooming || !double.IsFinite(worldX) || !double.IsFinite(worldY)) return;
+        CancelInertia();
+        StopWindowNavigation();
+        StopTutorialTravel();
+        var primary = _screens.PrimaryBounds;
+        double centerX = _camera.X + (primary.X + primary.Width / 2.0) / _camera.Zoom;
+        double centerY = _camera.Y + (primary.Y + primary.Height / 2.0) / _camera.Zoom;
+        PanOverview((centerX - worldX) * _camera.Zoom, (centerY - worldY) * _camera.Zoom);
+    }
+
     private void UpdateGridCamera(CanvasCamera camera, double dx, double dy)
     {
         foreach (var pass in _passes)
             pass.Grid?.UpdateCamera(camera.X, camera.Y, camera.Zoom, dx, dy);
+        ViewCameraChanged?.Invoke();
     }
 
     private void CancelVisualFrame()

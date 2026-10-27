@@ -15,7 +15,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Zoom** — Pinch, Ctrl+scroll, or use + / - in the overview
 - **Interact at any live-thumbnail zoom** — Right-click a live window and choose **Interact with window** to use its mouse controls, typing, and keyboard shortcuts. **Esc** returns to canvas navigation. Experimental; see [window interaction](Docs/window-interaction.md).
 - **Fuzzy search** — Alt+S to find and jump to any window
-- **Minimap** — Canvas overview, fades after inactivity
+- **Minimap** — Click or drag to navigate; right-click the minimap or use the tray menu to keep it visible
 - **Virtual desktops** — Independent canvas per desktop
 - **Auto-focus** — Camera follows focused windows
 - **App switching** — Alt+Tab and taskbar selections center the selected app while keeping Canvas view and its zoom. Fly-to animation defaults on; disable it in Settings → Interaction for immediate navigation. Outside Canvas view, Alt+Tab jumps to the app at desktop size. Automatic proximity restores never request navigation.

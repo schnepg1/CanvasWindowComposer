@@ -25,6 +25,24 @@ public class PanMomentumIntegrationTests
     [Theory]
     [InlineData(1.0)]
     [InlineData(0.5)]
+    [InlineData(0.1)]
+    public void MinimapCentersOverviewWithoutMovingDesktopOrChangingZoom(double zoom)
+        => Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            pass.OnWheel!(pass, 200, 200, (int)(1200 * (zoom - 1)), false, false, false);
+            var before = overview.ViewCamera;
+            var primary = Screen.PrimaryScreen!.Bounds;
+            overview.CenterViewOnMinimap(3500, -1200);
+            var after = overview.ViewCamera;
+            Assert.Equal(before.Zoom, after.Zoom);
+            Assert.InRange(after.X + (primary.X + primary.Width / 2.0) / after.Zoom, 3499.99, 3500.01);
+            Assert.InRange(after.Y + (primary.Y + primary.Height / 2.0) / after.Zoom, -1200.01, -1199.99);
+            Assert.Equal(0, canvas.CamX); Assert.Equal(0, canvas.CamY);
+        });
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(0.5)]
     public void CanvasReleaseCoastsAtCurrentZoomAndStaysOpen(double zoom)
         => Run((canvas, api, input, clock, config, wm, overview, pass) =>
         {

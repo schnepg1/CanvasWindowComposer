@@ -274,42 +274,20 @@ float4 PSMain(VSOut input) : SV_Target
         (double minX, double minY, double maxX, double maxY)? extents,
         (double x, double y, double w, double h) viewport,
         double extentsPadding = 0.10,
-        int minRectSizePx = 2)
+        int minRectSizePx = 2, MinimapProjection? fixedProjection = null)
     {
         lock (_windowsLock)
         {
-            // Frame = extents ∪ viewport, padded. If there are no windows yet,
-            // viewport alone defines the frame.
-            double minX = viewport.x;
-            double minY = viewport.y;
-            double maxX = viewport.x + viewport.w;
-            double maxY = viewport.y + viewport.h;
-            if (extents is var (eMinX, eMinY, eMaxX, eMaxY))
-            {
-                minX = Math.Min(minX, eMinX);
-                minY = Math.Min(minY, eMinY);
-                maxX = Math.Max(maxX, eMaxX);
-                maxY = Math.Max(maxY, eMaxY);
-            }
-
-            double worldW = maxX - minX;
-            double worldH = maxY - minY;
-            minX -= worldW * extentsPadding; maxX += worldW * extentsPadding;
-            minY -= worldH * extentsPadding; maxY += worldH * extentsPadding;
-            worldW = maxX - minX;
-            worldH = maxY - minY;
-
-            if (worldW < 1 || worldH < 1)
+            var projection = fixedProjection ?? MinimapProjection.Create(extents, viewport, _mapW, _mapH, extentsPadding);
+            if (!projection.IsValid)
             {
                 _windowCount = 0;
                 _vpMinX = _vpMinY = _vpMaxX = _vpMaxY = 0;
                 RequestFrame();
                 return;
             }
-
-            double scale = Math.Min((_mapW - 2) / worldW, (_mapH - 2) / worldH);
-            double offX = (_mapW - worldW * scale) / 2;
-            double offY = (_mapH - worldH * scale) / 2;
+            double minX = projection.MinX, minY = projection.MinY, scale = projection.Scale;
+            double offX = projection.OffsetX, offY = projection.OffsetY;
 
             _vpMinX = (float)(offX + (viewport.x - minX) * scale);
             _vpMinY = (float)(offY + (viewport.y - minY) * scale);
