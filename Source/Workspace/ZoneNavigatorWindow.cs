@@ -103,6 +103,7 @@ internal sealed class ZoneNavigatorWindow : Window
         _refreshing = true;
         _tree.Items.Clear();
         _snapshot = entries; _lastQuery = _search.Text;
+        var rows = new Dictionary<Guid, TreeViewItem>();
         foreach (var entry in entries)
         {
             var area = new TreeViewItem { Tag = new Selection(entry.Area.Id),
@@ -112,7 +113,7 @@ internal sealed class ZoneNavigatorWindow : Window
             System.Windows.Automation.AutomationProperties.SetName(area, $"{entry.Area.Name}, {entry.Area.MemberCount} members");
             area.Expanded += (_, e) => { if (!_refreshing && e.OriginalSource == area) _expanded.Add(entry.Area.Id); };
             area.Collapsed += (_, e) => { if (!_refreshing && e.OriginalSource == area) _expanded.Remove(entry.Area.Id); };
-            _tree.Items.Add(area);
+            rows.Add(entry.Area.Id, area);
             foreach (var member in entry.Members)
             {
                 var row = new TreeViewItem { Tag = new Selection(entry.Area.Id, member.Id), Foreground = Brushes.WhiteSmoke,
@@ -120,9 +121,33 @@ internal sealed class ZoneNavigatorWindow : Window
                     Header = Row(member.Title, member.State + (member.Pinned ? " · Pinned" : ""), "#F1F5F9"), ToolTip = member.Details };
                 System.Windows.Automation.AutomationProperties.SetName(row, member.Title + ", " + member.State);
                 area.Items.Add(row);
-                if (Equals(row.Tag, selected)) { row.IsSelected = true; area.IsExpanded = true; if (restoreFocus) row.Focus(); }
             }
-            if (Equals(area.Tag, selected)) { area.IsSelected = true; if (restoreFocus) area.Focus(); }
+        }
+        foreach (var entry in entries)
+        {
+            if (entry.Area.ParentId is { } parent && rows.TryGetValue(parent, out var parentRow))
+                parentRow.Items.Add(rows[entry.Area.Id]);
+            else _tree.Items.Add(rows[entry.Area.Id]);
+        }
+        if (selected is { } previous)
+        {
+            if (rows.TryGetValue(previous.AreaId, out var area))
+            {
+                var selectedRow = previous.MemberId == null ? area
+                    : area.Items.Cast<TreeViewItem>().FirstOrDefault(row => Equals(row.Tag, previous));
+                if (selectedRow != null)
+                {
+                    if (previous.MemberId != null) area.IsExpanded = true;
+                    selectedRow.IsSelected = true;
+                    if (restoreFocus) selectedRow.Focus();
+                }
+            }
+            var entry = entries.FirstOrDefault(e => e.Area.Id == previous.AreaId);
+            while (entry?.Area.ParentId is { } parent && rows.TryGetValue(parent, out var row))
+            {
+                row.IsExpanded = true;
+                entry = entries.FirstOrDefault(e => e.Area.Id == parent);
+            }
         }
         if (_tree.SelectedItem == null && _tree.Items.Count > 0) ((TreeViewItem)_tree.Items[0]).IsSelected = true;
         _refreshing = false;

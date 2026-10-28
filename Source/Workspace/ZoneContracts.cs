@@ -3,7 +3,11 @@ using System.Collections.Generic;
 
 namespace CanvasDesktop;
 
-internal sealed record ZoneView(Guid Id, string Name, string Color, WorldRect Bounds, int MemberCount = 0);
+internal sealed record ZoneView(Guid Id, string Name, string Color, WorldRect Bounds, int MemberCount = 0)
+{
+    public Guid? ParentId { get; init; }
+    public int Depth { get; init; }
+}
 internal sealed record ZoneMemberView(Guid Id, string Title, bool Assigned, WorldRect Bounds, string Details = "");
 
 internal interface IZoneCommands

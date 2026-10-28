@@ -78,7 +78,19 @@ is explicit: overlapping an area does not assign a place. A saved place can belo
 to several areas; moving one area moves that shared place once, while other areas'
 boundaries stay put. Pinned members remain fixed. Closed-app placeholders move
 with their saved places. Minimized and maximized apps keep their state while their
-saved normal positions move. Nested areas remain a future milestone.
+saved normal positions move.
+
+Place an area fully inside a larger area to make it a sub-project. Nesting can
+continue through multiple levels. Moving a parent carries every nested rectangle
+and their assigned, unpinned places; shared places move only once. Drag a
+sub-project outside its parent to detach it, or into a different area to reparent
+it. Partial overlaps and identical rectangles do not create nesting. When several
+areas contain a rectangle, the smallest containing width (then height) determines
+its parent. Removing a parent keeps its sub-projects and their contents in place.
+Resizing changes only the boundary and updates containment without scaling or
+moving the contents. The manager indents sub-projects, and the navigator shows
+them beneath their parent; search retains the path to matching sub-projects.
+Nesting is derived from saved bounds, so it survives restarts without extra links.
 
 Layout history keeps the latest 50 moves/resizes per virtual desktop for this
 session. Creating/removing areas, membership changes, naming, colors, and ordinary
@@ -104,7 +116,8 @@ History is not saved across restarts; the resulting layout is saved normally.
   their area. Forgetting a place removes it from all areas. A place transferred to
   another desktop is detached from its previous areas.
 - Names have a 120-character limit, and the document allows up to 256 areas.
-  Geometry uses the workspace's existing validation limits.
+  Area rectangles have no maximum width, height, or canvas position; geometry
+  must remain finite and at least one unit per side. Window limits are unchanged.
 - Failed loads keep the existing write protection. Failed saves retain the
   in-memory edit for a later retry and display the persistence error.
 

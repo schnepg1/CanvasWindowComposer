@@ -22,7 +22,7 @@ public class ZoneResizeTests
     {
         Assert.True(ZoneResizeLayout.TryResize(Bounds, ZoneResizeCorner.TopLeft, 5000, 5000, out var b));
         Assert.Equal(64, b.W); Assert.Equal(64, b.H); Assert.Equal(900, b.X + b.W); Assert.Equal(800, b.Y + b.H);
-        Assert.False(ZoneResizeLayout.TryResize(Bounds, ZoneResizeCorner.BottomRight, 40000, 0, out _));
+        Assert.True(ZoneResizeLayout.TryResize(Bounds, ZoneResizeCorner.BottomRight, 40000, 0, out _));
         Assert.False(ZoneResizeLayout.TryResize(Bounds, ZoneResizeCorner.TopLeft, double.PositiveInfinity, 0, out _));
         var small = Bounds; small.W = 12; small.H = 20;
         Assert.True(ZoneResizeLayout.TryResize(small, ZoneResizeCorner.BottomRight, 0, 0, out b));
@@ -45,7 +45,7 @@ public class ZoneResizeTests
         gesture.BeginResize(zone, ZoneResizeCorner.BottomRight, 900, 800);
         gesture.Update(1100, 1000); gesture.Cancel(); Assert.Null(gesture.Complete(1100, 1000, 1));
         gesture.BeginResize(zone, ZoneResizeCorner.BottomRight, 900, 800);
-        Assert.Null(gesture.Complete(50000, 800, 1));
+        Assert.Equal(49900, gesture.Complete(50000, 800, 1)!.Bounds.W);
     }
 
     [Theory]

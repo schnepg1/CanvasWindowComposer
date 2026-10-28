@@ -7,6 +7,41 @@ namespace CanvasDesktop.Tests;
 [Collection("ShellViews")]
 public class SpatialSelectionOverviewTests
 {
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void SelectedParentRefreshesNestedContentsAndMovesLargeAreasWithOneUndoStep()
+        =>WorkspaceViewTests.OnSta(()=>
+        {
+            var folder=Path.Combine(Path.GetTempPath(),"nested-selection-"+Guid.NewGuid().ToString("N"));
+            try
+            {
+                var item=new WorkspaceItem { Title="Nested editor",ExecutablePath=@"C:\Apps\Editor.exe",Bounds=new WorldRect { X=4000,Y=4000,W=600,H=400 } };
+                var parent=new WorkspaceZone { Bounds=new WorldRect { W=100000,H=100000 } };
+                var child=new WorkspaceZone { Bounds=new WorldRect { X=200000,Y=200000,W=1500,H=1000 },ItemIds=[item.Id] };
+                var config=new FakeAppConfig { EnableStartupIntro=false };
+                using var rig=new WorkspaceHarness(new WorkspaceDocument { Items=[item],Zones=[child,parent] },config:config);rig.Workspace.Start();
+                using var overview=new OverviewManager(rig.Canvas,rig.Wm,rig.Api,rig.Input,config);
+                overview.AttachZones(rig.Workspace.Zones);overview.AttachPlaceholderWorkspace(rig.Workspace);
+                overview.AttachAnnotations(rig.Desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
+                var key=new CanvasItemId(CanvasItemKind.Project,parent.Id);
+                overview.Selection.Replace([key]);
+                Assert.True(rig.Workspace.MoveZone(child.Id,-199800,-199800));
+                // The parent was already selected before the child entered it.
+                var view=new CanvasViewTransform(0,0,1,new(0,0,1920,1080));
+                var tool=overview.SelectionTool!;
+                Assert.True(tool.PointerDown(new(0,new(80,76),CanvasPointerButton.Left,CanvasModifiers.None,view)));
+                Assert.Contains(new(CanvasItemKind.Project,child.Id),overview.Selection.Ids);
+                Assert.Contains(new(CanvasItemKind.Window,item.Id),overview.Selection.Ids);
+                tool.PointerUp(new(0,new(380,176),CanvasPointerButton.Left,CanvasModifiers.None,view));
+                Assert.Equal(300,parent.Bounds.X); Assert.Equal(500,child.Bounds.X); Assert.Equal(-195500,item.Bounds.X);
+                Assert.True(overview.Annotations!.Undo(rig.Desktops.CurrentDesktopId));
+                Assert.Equal(0,parent.Bounds.X); Assert.Equal(200,child.Bounds.X); Assert.Equal(-195800,item.Bounds.X);
+                Assert.True(overview.Annotations.Undo(rig.Desktops.CurrentDesktopId,true));
+                Assert.Equal(300,parent.Bounds.X); Assert.Equal(500,child.Bounds.X);
+            }
+            finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
+        });
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

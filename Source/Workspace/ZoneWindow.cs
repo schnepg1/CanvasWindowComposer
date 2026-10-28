@@ -54,7 +54,7 @@ internal sealed class ZoneWindow : Window
         }
         heading.Children.Add(new TextBlock { Text = "Project areas", FontSize = 28, FontWeight = FontWeights.SemiBold });
         header.Children.Add(heading);
-        header.Children.Add(new TextBlock { Text = "Give each project a place on your canvas.",
+        header.Children.Add(new TextBlock { Text = "Place an area fully inside another to create a sub-project. Move it outside to detach it.",
             Foreground = Brush("#A7B3C9"), Margin = new Thickness(0, 6, 0, 16), TextWrapping = TextWrapping.Wrap });
         var drawButton = Button("+  Draw an area", () => { Hide(); _draw(); });
         drawButton.Background = Brush("#2563EB");
@@ -145,7 +145,7 @@ internal sealed class ZoneWindow : Window
         _list.Items.Clear();
         foreach (var zone in _zones.Items)
         {
-            var text = new StackPanel { Margin = new Thickness(8) };
+            var text = new StackPanel { Margin = new Thickness(8 + zone.Depth * 16, 8, 8, 8) };
             text.Children.Add(new TextBlock { Text = zone.Name, FontWeight = FontWeights.SemiBold,
                 Foreground = Brush(zone.Color), TextTrimming = TextTrimming.CharacterEllipsis });
             text.Children.Add(new TextBlock { Text = $"{zone.MemberCount} members · {zone.Bounds.W:N0} × {zone.Bounds.H:N0} units",
