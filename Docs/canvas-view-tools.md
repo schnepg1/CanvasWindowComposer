@@ -106,6 +106,10 @@ IME while annotation painting stays passive. Notes grow vertically to fit their
 content without changing the wrapping width or top-left anchor. The editor and
 saved text use character wrapping, including long words and trailing blank lines;
 notes longer than the visible screen can scroll while editing.
+Unbreakable characters or grapheme clusters wider than the wrapping area also grow
+the note's width. The native editor is bounded to the chosen monitor's visible
+working area, with the full card scrolled inside it. Double-click editing chooses
+the clicked monitor; keyboard editing chooses the largest visible intersection.
 
 A separate owned formatting toolbar stays near the note. It offers text size
 (8 to 4096 canvas units), color, bold/italic (Ctrl+B/I), left/center/right alignment
@@ -115,6 +119,9 @@ Click outside, choose Done or press Ctrl+Enter to commit the text, style and bou
 as one undo step. Escape cancels the draft. Finishing an empty new note discards
 it; clearing an existing note removes it with undo available. Editing ends in
 Select mode so the note can immediately be moved or resized.
+Pending custom font-size input is validated before committing. Rejected saves keep
+the editor and draft open for correction and retry. Native window closing defers
+cancellation until WPF has returned from its closing callback.
 
 Text-note corner handles scale the font and usable text area proportionally around
 the opposite corner, preserving wrapping. Side handles change bounds without scaling

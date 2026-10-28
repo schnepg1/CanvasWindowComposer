@@ -61,9 +61,13 @@ internal static class AnnotationVisual
     {
         if (item.Kind != AnnotationKind.Text) return item;
         var bounds = item.Bounds;
-        double contentHeight = AnnotationTextLayout.Layout(item, bounds.Width - TextInset * 2);
-        double height = Math.Max(minimumHeight ?? bounds.Height, Math.Ceiling(contentHeight + TextInset * 2 + 4));
-        return item with { A = new(bounds.X, bounds.Y), B = new(bounds.X + bounds.Width, bounds.Y + height) };
+        var metrics = AnnotationTextLayout.Measure(item, bounds.Width - TextInset * 2);
+        // A single glyph or grapheme can be wider than a wrapping line at large
+        // font sizes. Grow the width enough to display that unbreakable cluster.
+        double width = Math.Max(bounds.Width, Math.Ceiling(metrics.Width + TextInset * 2 + AnnotationGeometry.TextCaretPadding));
+        if (width > bounds.Width) metrics = AnnotationTextLayout.Measure(item,width-TextInset*2);
+        double height = Math.Max(minimumHeight ?? bounds.Height, Math.Ceiling(metrics.Height + TextInset * 2 + 4));
+        return item with { A = new(bounds.X, bounds.Y), B = new(bounds.X + width, bounds.Y + height) };
     }
 
     internal static void Draw(DrawingContext dc, CanvasAnnotation item, double pixelsPerDip, bool drawText = true)

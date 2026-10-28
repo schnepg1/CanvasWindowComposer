@@ -209,7 +209,7 @@ public class CanvasAnnotationRenderingTests
     [InlineData("A larger title")]
     [InlineData("First line\nSecond line\n")]
     [InlineData("LongWordWithoutSpacesLongWordWithoutSpacesLongWordWithoutSpaces")]
-    [InlineData("???? ??\nUnicode text")]
+    [InlineData("\u0633\u0644\u0627\u0645 \U0001F338\nUnicode text")]
     public void TextAndFontChangesNeverHideTheLastLine(string text)
         => WorkspaceViewTests.OnSta(() =>
         {

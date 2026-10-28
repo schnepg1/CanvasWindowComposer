@@ -221,6 +221,9 @@ keep their wrapping width and grow vertically as you type. A nearby toolbar cont
 text size, color, bold/italic, alignment and background. Click outside or choose
 **Done** to save; **Esc** cancels. Clearing an existing note and finishing removes it,
 with undo available.
+Very large characters can widen the note to remain visible. Oversized or partly
+off-screen notes use a scrollable editor that keeps the caret on-screen. If a save
+is rejected, the draft stays open so you can correct the problem and retry.
 After editing, **Select** is active: drag the note to move it, drag a **corner to
 scale the text and box together**, or drag a side to change its wrapping width.
 Text sizes range from 8 to 4096 canvas units, so category headings can remain readable

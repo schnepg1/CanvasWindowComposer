@@ -70,7 +70,7 @@ internal sealed partial class OverviewManager
     internal void SelectAnnotationMode(AnnotationMode mode)
     {
         if(_annotationTool==null) return;
-        _annotationEditor?.Complete(true, returnFocus: false);
+        if (_annotationEditor is {} activeEditor && !activeEditor.Complete(true, returnFocus: false)) return;
         if (mode == AnnotationMode.Navigate) mode = AnnotationMode.Select;
         StopTutorialTravel();
         CancelInteraction(); _zoneTool.Cancel(); _annotationTool.SetMode(mode); _annotationError=null;
@@ -90,7 +90,7 @@ internal sealed partial class OverviewManager
         AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
         AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: Select mode",
         AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: Select mode",
-        AnnotationMode.Text => "Click and type to add a note  ?  Click outside: finish  ?  Corners: scale text  ?  Esc: cancel  ?  Middle drag: pan",
+        AnnotationMode.Text => "Click and type to add a note  \u00b7  Click outside: finish  \u00b7  Corners: scale text  \u00b7  Esc: cancel  \u00b7  Middle drag: pan",
         AnnotationMode.Navigate => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
         _ => null
     });
@@ -269,17 +269,19 @@ internal sealed partial class OverviewManager
         }
         e.Handled=true; e.SuppressKeyPress=true; return true;
     }
-    private void QueueAnnotationTextEdit(CanvasAnnotation item)
+    private void QueueAnnotationTextEdit(CanvasAnnotation item) => QueueAnnotationTextEdit(item,null);
+
+    private void QueueAnnotationTextEdit(CanvasAnnotation item,Point? screenPoint)
     {
         if(_passes.Count==0) return;
         long generation=++_annotationEditGeneration;
         _passes[0].BeginInvoke((Action)(()=>
         {
             if(_disposed || generation!=_annotationEditGeneration || item.DesktopId!=_annotationDesktop() || CurrentMode!=OverviewMode.Zooming) return;
-            OpenAnnotationTextEdit(item);
+            OpenAnnotationTextEdit(item,screenPoint);
         }));
     }
-    private void OpenAnnotationTextEdit(CanvasAnnotation item)
+    private void OpenAnnotationTextEdit(CanvasAnnotation item,Point? screenPoint)
     {
         CancelAnnotationEdit();
         if (_annotationDocument!.Items.Any(a => a.Id == item.Id)) Selection.Replace([new(CanvasItemKind.Annotation, item.Id)]);
@@ -287,7 +289,14 @@ internal sealed partial class OverviewManager
         _annotationTool?.Select(item.Id);
         var point = new Point((int)Math.Round((item.Bounds.X - _camera.X) * _camera.Zoom),
             (int)Math.Round((item.Bounds.Y - _camera.Y) * _camera.Zoom));
-        var pass = _passes.FirstOrDefault(p => p.Screen.Bounds.Contains(point)) ?? _passes[0];
+        var projected = new System.Windows.Rect(point.X,point.Y,item.Bounds.Width*_camera.Zoom,item.Bounds.Height*_camera.Zoom);
+        var clickedPass = screenPoint is {} click ? _passes.FirstOrDefault(p => p.Screen.Bounds.Contains(click)) : null;
+        var pass = clickedPass ?? _passes.OrderByDescending(p =>
+        {
+            var screen = p.Screen.WorkingArea;
+            var intersection = System.Windows.Rect.Intersect(projected,new System.Windows.Rect(screen.X,screen.Y,screen.Width,screen.Height));
+            return intersection.IsEmpty ? 0 : intersection.Width*intersection.Height;
+        }).First();
         var editor = new AnnotationTextEditor(item);
         _annotationEditor = editor;
         double dpi = pass.DeviceDpi / 96.0;
@@ -313,7 +322,7 @@ internal sealed partial class OverviewManager
                         Selection.Replace([new(CanvasItemKind.Annotation, item.Id)]); _annotationTool?.Select(item.Id);
                     }
                 }
-                catch (ArgumentException ex) { _annotationError = ex.Message; }
+                catch (ArgumentException ex) { _annotationError = ex.Message; editor.RejectCompletion(ex.Message); return; }
             }
             CancelAnnotationEdit(); RefreshToolPreview();
             if (focus) FocusOverview();

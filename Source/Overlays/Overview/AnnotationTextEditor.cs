@@ -28,10 +28,14 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     private readonly ScrollViewer _viewport;
     private readonly WpfComboBox _size, _align, _fill;
     private readonly ToggleButton _bold, _italic;
+    private readonly TextBlock _hint;
     private readonly double _minimumHeight;
     private bool _updating, _finished, _disposed;
     private CanvasViewTransform _view = new(0, 0, 1, new(0, 0, 1920, 1080));
     private System.Drawing.Rectangle _workingArea;
+    private CanvasPoint _projectionOffset;
+    private DpiScale _projectionDpi;
+    private bool _projectionInitialized;
 
     public new double FontSize { get => Editor.FontSize; set => SetFontSize(value); }
     public AnnotationTextAlign TextAlign { get => CurrentItem.TextAlign; set => SetTextAlign(value); }
@@ -88,12 +92,15 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         _size = Combo("Text size", 68, new[] { 12d, 18d, 24d, 32d, 40d, 72d, 120d, 200d, 400d, 800d, 1600d });
         _size.IsEditable = true;
         _size.SelectionChanged += (_, _) => { if (!_updating && _size.SelectedItem is double size) SetFontSize(size); };
-        void ApplySize()
+        _size.LostKeyboardFocus += (_, _) => { if (!_disposed) ApplyPendingFontSize(); };
+        _size.PreviewKeyDown += (_, e) =>
         {
-            if (double.TryParse(_size.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var size)) SetFontSize(size);
-        }
-        _size.LostKeyboardFocus += (_, _) => ApplySize();
-        _size.PreviewKeyDown += (_, e) => { if (e.Key == Key.Enter) { ApplySize(); Editor.Focus(); e.Handled = true; } };
+            if (e.Key == Key.Enter)
+            {
+                if (ApplyPendingFontSize()) FocusEditor();
+                e.Handled = true;
+            }
+        };
         _size.DropDownClosed += (_, _) => FocusEditor();
         row.Children.Add(_size);
         _bold = Toggle("B", "Bold · Ctrl+B", () => { ToggleBold(); FocusEditor(); });
@@ -124,11 +131,12 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         row.Children.Add(ActionButton("×", "Cancel changes · Esc", () => Complete(false)));
         var panel = new StackPanel();
         panel.Children.Add(row);
-        panel.Children.Add(new TextBlock
+        _hint = new TextBlock
         {
             Text = "Click outside to finish · Esc cancels · Corners scale text",
             Foreground = Brushes.LightSlateGray, FontSize = 11, Margin = new Thickness(3, 7, 0, 0)
-        });
+        };
+        panel.Children.Add(_hint);
         _toolbar = new Window
         {
             Title = "Text formatting", WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
@@ -160,11 +168,21 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
             if (IsVisible) Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
             {
                 if (_disposed) return;
-                Editor.BringIntoView(Editor.GetRectFromCharacterIndex(Editor.CaretIndex));
+                BringCaretIntoView();
             }));
         };
         ContentRendered += (_, _) => { Editor.Focus(); Editor.CaretIndex = Editor.Text.Length; };
-        Closing += (_, e) => { if (!_disposed) { e.Cancel = true; Complete(false); } };
+        Closing += (_, e) =>
+        {
+            if (_disposed) return;
+            // The owner's completion handler disposes this window. Defer it until
+            // WPF has returned from Closing, when calling Close again is legal.
+            e.Cancel = true;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+            {
+                if (!_disposed) Complete(false);
+            }));
+        };
         System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(this);
         System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(_toolbar);
         SyncStyle();
@@ -251,17 +269,57 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         var dpi = IsVisible ? VisualTreeHelper.GetDpi(this) : new DpiScale(_view.DpiX, _view.DpiY);
         _card.LayoutTransform = new ScaleTransform(_view.Zoom / dpi.DpiScaleX, _view.Zoom / dpi.DpiScaleY);
         var point = _view.WorldToVirtual(new CanvasPoint(CurrentItem.Bounds.X, CurrentItem.Bounds.Y));
-        double width = CurrentItem.Bounds.Width * _view.Zoom;
-        double height = CurrentItem.Bounds.Height * _view.Zoom;
-        if (!_workingArea.IsEmpty) height = Math.Min(height, Math.Max(40, _workingArea.Bottom - point.Y));
+        double cardWidth = CurrentItem.Bounds.Width * _view.Zoom;
+        double cardHeight = CurrentItem.Bounds.Height * _view.Zoom;
+        var area = _workingArea.IsEmpty
+            ? new Rect(_view.Monitor.X,_view.Monitor.Y,_view.Monitor.Width,_view.Monitor.Height)
+            : new Rect(_workingArea.X,_workingArea.Y,_workingArea.Width,_workingArea.Height);
+        // Keep the native window on-screen and below HWND dimension limits. The
+        // full card lives inside a scrollable viewport, independently of its size.
+        static (double Start,double Length) VisibleAxis(double start,double length,double areaStart,double areaLength)
+        {
+            double end = Math.Min(start+length,areaStart+areaLength);
+            double visibleStart = Math.Max(start,areaStart);
+            double visibleLength = end-visibleStart;
+            if (visibleLength <= 0)
+            {
+                visibleLength = Math.Min(length,areaLength);
+                visibleStart = Math.Clamp(start,areaStart,areaStart+areaLength-visibleLength);
+            }
+            return (visibleStart,Math.Clamp(visibleLength,1,32767));
+        }
+        var horizontal = VisibleAxis(point.X,cardWidth,area.Left,area.Width);
+        var vertical = VisibleAxis(point.Y,cardHeight,area.Top,area.Height);
+        double left = horizontal.Start, top = vertical.Start;
+        double width = horizontal.Length, height = vertical.Length;
+        if (_toolbar.IsVisible && _toolbar.ActualHeight > 0)
+        {
+            double toolbarSpace = _toolbar.ActualHeight*VisualTreeHelper.GetDpi(_toolbar).DpiScaleY+8;
+            if (top-toolbarSpace < area.Top && top+height+toolbarSpace > area.Bottom)
+            {
+                // Keep the owned toolbar outside the scrolling text viewport so
+                // BringIntoView never considers text hidden behind it visible.
+                double newTop = Math.Min(area.Top+toolbarSpace,area.Bottom-1);
+                height = Math.Max(1,top+height-newTop);
+                top = newTop;
+            }
+        }
+        var offset = new CanvasPoint(Math.Max(0,(left-point.X)/dpi.DpiScaleX),Math.Max(0,(top-point.Y)/dpi.DpiScaleY));
+        bool resetOffset = !_projectionInitialized || offset != _projectionOffset || !dpi.Equals(_projectionDpi);
         Width = Math.Max(1, width / dpi.DpiScaleX);
         Height = Math.Max(1, height / dpi.DpiScaleY);
-        Left = point.X / dpi.DpiScaleX; Top = point.Y / dpi.DpiScaleY;
+        Left = left / dpi.DpiScaleX; Top = top / dpi.DpiScaleY;
         if (IsVisible)
         {
             PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1),
-                (int)Math.Round(point.X), (int)Math.Round(point.Y), (int)Math.Ceiling(width), (int)Math.Ceiling(height),
+                (int)Math.Round(left), (int)Math.Round(top), (int)Math.Ceiling(width), (int)Math.Ceiling(height),
                 SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            if (resetOffset)
+            {
+                _viewport.ScrollToHorizontalOffset(offset.X);
+                _viewport.ScrollToVerticalOffset(offset.Y);
+            }
+            _projectionInitialized = true; _projectionOffset = offset; _projectionDpi = dpi;
             PositionToolbar();
         }
     }
@@ -269,12 +327,12 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     {
         if (!_toolbar.IsVisible || _workingArea.IsEmpty) return;
         var dpi = VisualTreeHelper.GetDpi(_toolbar);
-        var point = _view.WorldToVirtual(new CanvasPoint(CurrentItem.Bounds.X, CurrentItem.Bounds.Y));
+        var point = new CanvasPoint(Left*VisualTreeHelper.GetDpi(this).DpiScaleX,Top*VisualTreeHelper.GetDpi(this).DpiScaleY);
         int width = (int)Math.Ceiling(_toolbar.ActualWidth * dpi.DpiScaleX);
         int height = (int)Math.Ceiling(_toolbar.ActualHeight * dpi.DpiScaleY);
         int left = Math.Clamp((int)Math.Round(point.X), _workingArea.Left, Math.Max(_workingArea.Left, _workingArea.Right - width));
         int top = (int)Math.Round(point.Y) - height - 8;
-        if (top < _workingArea.Top) top = (int)Math.Ceiling(point.Y + CurrentItem.Bounds.Height * _view.Zoom) + 8;
+        if (top < _workingArea.Top) top = (int)Math.Ceiling(point.Y + ActualHeight*VisualTreeHelper.GetDpi(this).DpiScaleY) + 8;
         top = Math.Clamp(top, _workingArea.Top, Math.Max(_workingArea.Top, _workingArea.Bottom - height));
         PInvoke.SetWindowPos((HWND)new WindowInteropHelper(_toolbar).Handle, (HWND)new IntPtr(-1), left, top, width, height, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
     }
@@ -294,6 +352,16 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         if (_disposed) return;
         Activate(); Editor.Focus();
     }
+    private void BringCaretIntoView()
+    {
+        var caret = Editor.GetRectFromCharacterIndex(Editor.CaretIndex);
+        double scale = _view.Zoom/VisualTreeHelper.GetDpi(this).DpiScaleY;
+        double visibleHeight = _viewport.ViewportHeight/scale;
+        // A giant title's line can exceed the entire screen. Keep its caret's
+        // top reachable rather than bottom-aligning a line larger than the view.
+        if (visibleHeight > 0 && caret.Height > visibleHeight) caret.Height = visibleHeight;
+        Editor.BringIntoView(caret);
+    }
     private void QueueFinishOnFocusLeave()
     {
         Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
@@ -301,10 +369,31 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
             if (!_disposed && !_finished && !IsActive && !_toolbar.IsActive) Complete(true, returnFocus: false);
         }));
     }
-    internal void Complete(bool save, bool returnFocus = true)
+    private bool ApplyPendingFontSize()
     {
-        if (_finished || _disposed) return;
+        // Display rounding must not change a fractional size obtained by dragging a corner.
+        if (_size.Text == FontSize.ToString("0.##", CultureInfo.CurrentCulture)) return true;
+        if (!double.TryParse(_size.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var size)
+            || !double.IsFinite(size) || size < AnnotationDocument.MinimumFontSize || size > AnnotationDocument.MaximumFontSize)
+        {
+            RejectCompletion($"Text size must be between {AnnotationDocument.MinimumFontSize} and {AnnotationDocument.MaximumFontSize}.");
+            return false;
+        }
+        SetFontSize(size);
+        return true;
+    }
+    internal void RejectCompletion(string message)
+    {
+        _finished = false;
+        _hint.Text = message;
+        _hint.Foreground = Brushes.LightCoral;
+    }
+    internal bool Complete(bool save, bool returnFocus = true)
+    {
+        if (_finished || _disposed) return _finished;
+        if (save && !ApplyPendingFontSize()) return false;
         ReturnFocusOnFinish = returnFocus; _finished = true; Finished?.Invoke(save);
+        return _finished;
     }
     private void HandleKey(object sender, System.Windows.Input.KeyEventArgs e)
     {

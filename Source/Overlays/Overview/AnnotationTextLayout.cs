@@ -10,11 +10,17 @@ namespace CanvasDesktop;
 internal static class AnnotationTextLayout
 {
     internal static double Layout(CanvasAnnotation item, double width, DrawingContext? drawing = null, Point origin = default, Brush? foreground = null)
+        => Format(item,width,drawing,origin,foreground).Height;
+
+    internal static (double Height, double Width) Measure(CanvasAnnotation item,double width)
+        => Format(item,width,null,default,null);
+
+    private static (double Height, double Width) Format(CanvasAnnotation item,double width,DrawingContext? drawing,Point origin,Brush? foreground)
     {
         using var formatter = TextFormatter.Create();
         var source = new NoteText(item.Text, new RunStyle(item, foreground ?? Brushes.White));
         var paragraph = new ParagraphStyle(source.Style, AnnotationVisual.TextAlignmentFor(item.TextAlign));
-        double height = 0;
+        double height = 0, requiredWidth = 0;
         int index = 0;
         // Include the final empty line when the content ends with a newline, just as TextBox does.
         while (index <= item.Text.Length)
@@ -22,10 +28,13 @@ internal static class AnnotationTextLayout
             using var line = formatter.FormatLine(source, index, Math.Max(1, width - AnnotationGeometry.TextCaretPadding), paragraph, null);
             if (drawing != null) line.Draw(drawing, new Point(origin.X, origin.Y + height), InvertAxes.None);
             height += line.Height;
+            // TextLine reports a negative trailing overhang when ink extends
+            // beyond the advance width (notably large italic glyphs).
+            requiredWidth = Math.Max(requiredWidth,Math.Max(line.WidthIncludingTrailingWhitespace,line.Width-line.OverhangTrailing));
             if (line.Length == 0) break;
             index += line.Length;
         }
-        return height;
+        return (height,requiredWidth);
     }
 
     private sealed class NoteText(string text, RunStyle style) : TextSource
