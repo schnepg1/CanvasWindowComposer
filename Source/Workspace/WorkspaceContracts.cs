@@ -6,7 +6,8 @@ namespace CanvasDesktop;
 // A detached snapshot: forms cannot mutate the persisted model by editing a row.
 internal sealed record WorkspaceItemView(Guid Id, string Title, string ExecutablePath,
     string Target, bool OpenOnStartup, WorldRect Bounds, string State, string Name = "", bool IsFolder = false,
-    string ChromeProfilePath = "", string? LaunchMessage = null, WebResource? WebResource = null)
+    string ChromeProfilePath = "", string? LaunchMessage = null, WebResource? WebResource = null,
+    bool ExcludeFromAutomaticMinimization = false)
 {
     public string DisplayTarget => WebResource?.Url ?? Target;
     public string BrowserDetails => WebResource == null ? "" : BrowserSupport.Name(ExecutablePath)
@@ -29,6 +30,7 @@ internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
     void CloseToPlaceholder(Guid id);
     void Forget(Guid id);
     void SetAutoOpen(Guid id, bool value);
+    void SetAutomaticMinimizationExcluded(Guid id, bool value);
     void SetTarget(Guid id, string selected, bool folder);
     void SetName(Guid id, string name);
     bool SetChromeProfile(Guid id, string profilePath);

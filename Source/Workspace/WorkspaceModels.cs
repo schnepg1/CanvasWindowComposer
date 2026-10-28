@@ -18,6 +18,7 @@ internal sealed class WorkspaceItem
     public WebResource? WebResource { get; set; }
     public bool IsFolder { get; set; }
     public bool OpenOnStartup { get; set; }
+    public bool ExcludeFromAutomaticMinimization { get; set; }
     public WorldRect Bounds { get; set; }
 }
 

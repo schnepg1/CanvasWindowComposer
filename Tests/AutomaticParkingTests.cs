@@ -57,6 +57,26 @@ public class AutomaticParkingTests
     }
 
     [Fact]
+    public void ExclusionPreventsParkingAndRestoresAnAlreadyParkedWindow()
+    {
+        using var h = new Harness();
+        bool excluded = true;
+        h.Manager.IsAutomaticMinimizationExcluded = token => token.Identity.Handle == h.Handle && excluded;
+        h.Tick(1500);
+        Assert.Empty(h.Api.MinimizeCalls);
+        Assert.False(h.Manager.Previews.CapturePending);
+        excluded = false;
+        h.Tick(1600); h.FinishCapture(); h.Tick(1601);
+        Assert.True(h.IsMinimized);
+        excluded = true;
+        h.Manager.RefreshAutomaticParking();
+        Assert.False(h.IsMinimized);
+        Assert.Single(h.Api.ParkingRestoreCalls);
+        h.Tick(12000);
+        Assert.Single(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
     public void DistantParkedWindowsDoNotInspectProcessesOrEnumerateOwnedWindowsDuringCameraBursts()
     {
         using var h = new Harness(); h.Park();

@@ -24,6 +24,9 @@ internal sealed partial class WindowManager
     private bool _applyingParking;
     public bool SuspendAutomaticParking { get; set; }
     public event Action? AutomaticParkingChanged;
+    public Func<AutomaticParkingToken, bool>? IsAutomaticMinimizationExcluded { get; set; }
+
+    public void RefreshAutomaticParking() => ProcessAutomaticParking();
 
     private bool IsParkingIdentityCurrent(AutomaticParkingToken key)
     {
@@ -37,6 +40,7 @@ internal sealed partial class WindowManager
     private bool IsParkingCandidate(IntPtr handle)
         => _canvas.Windows.TryGetValue(handle, out var world) && world.State == WindowState.Normal
             && !world.PinnedToScreen && (_vds == null || _vds.IsOnCurrentDesktop(handle))
+            && !(_visibility.GetToken(handle) is { } token && IsAutomaticMinimizationExcluded?.Invoke(token) == true)
             && _win32.CanAutomaticallyMinimize(handle)
             && (!_parkingExcluded.TryGetValue(handle, out var excluded) || _visibility.GetToken(handle) != excluded);
 

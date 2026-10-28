@@ -7,7 +7,7 @@ namespace CanvasDesktop;
 /// <summary>One menu for native previews, detailed cards and distant title rectangles.</summary>
 internal sealed class WorkspaceContextMenu : ContextMenuStrip
 {
-    private readonly ToolStripMenuItem _auto, _profile, _web, _file, _folder;
+    private readonly ToolStripMenuItem _auto, _excludeMinimize, _profile, _web, _file, _folder;
 
     public WorkspaceContextMenu(IWorkspaceCommands workspace, Guid id)
     {
@@ -21,6 +21,8 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
         Items.Add(_web);
         _auto = new ToolStripMenuItem("Open automatically when Canvas starts") { CheckOnClick = true };
         _auto.Click += (_, _) => workspace.SetAutoOpen(id, _auto.Checked); Items.Add(_auto);
+        _excludeMinimize = new ToolStripMenuItem("Exclude from auto-minimize") { CheckOnClick = true };
+        _excludeMinimize.Click += (_, _) => workspace.SetAutomaticMinimizationExcluded(id, _excludeMinimize.Checked); Items.Add(_excludeMinimize);
         _file = new ToolStripMenuItem("Choose file to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, false)); Items.Add(_file);
         _folder = new ToolStripMenuItem("Choose folder to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, true)); Items.Add(_folder);
         Items.Add(new ToolStripSeparator());
@@ -36,6 +38,7 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
     public void UpdateItem(WorkspaceItemView item)
     {
         _auto.Checked = item.OpenOnStartup;
+        _excludeMinimize.Checked = item.ExcludeFromAutomaticMinimization;
         _profile.Visible = ChromeProfiles.Supports(item.ExecutablePath) && !item.IsFolder && item.WebResource == null;
         _profile.Enabled = item.State is not "Opening…" and not "Queued";
         _web.Visible = BrowserSupport.Supports(item.ExecutablePath) && !item.IsFolder;

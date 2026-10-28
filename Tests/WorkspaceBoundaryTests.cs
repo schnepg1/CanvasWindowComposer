@@ -130,6 +130,40 @@ public class WorkspaceBoundaryTests
     }
 
     [Fact]
+    public void AutomaticMinimizationExclusionIsSavedAndExposedInTheView()
+    {
+        var item = Item();
+        using var rig = new WorkspaceHarness(Document(item));
+        rig.Workspace.SetAutomaticMinimizationExcluded(item.Id, true);
+        Assert.True(Assert.Single(rig.Workspace.Items).ExcludeFromAutomaticMinimization);
+        Assert.True(Assert.Single(rig.Store.Document.Items).ExcludeFromAutomaticMinimization);
+        Assert.Equal(1, rig.Store.Saves);
+        var json = System.Text.Json.JsonSerializer.Serialize(rig.Store.Document);
+        Assert.True(System.Text.Json.JsonSerializer.Deserialize<WorkspaceDocument>(json)!.Items[0].ExcludeFromAutomaticMinimization);
+        rig.Workspace.SetAutomaticMinimizationExcluded(item.Id, false);
+        Assert.False(Assert.Single(rig.Workspace.Items).ExcludeFromAutomaticMinimization);
+        Assert.Equal(2, rig.Store.Saves);
+    }
+
+    [Fact]
+    public void ExclusionFollowsTheBoundWindowAndRejectsRecycledIdentity()
+    {
+        var item = Item();
+        using var rig = new WorkspaceHarness(Document(item));
+        var handle = (IntPtr)42;
+        rig.Api.AddWindow(handle, 10, 20, 800, 600, title: item.Title);
+        rig.Workspace.Start();
+        Assert.True(rig.Workspace.IsOpen(item));
+        rig.Workspace.SetAutomaticMinimizationExcluded(item.Id, true);
+        var pid = rig.Api.GetWindowProcessId(handle);
+        var identity = new WorkspaceWindowIdentity(handle, pid, rig.Identity.StartedAt);
+        Assert.True(rig.Wm.IsAutomaticMinimizationExcluded!(new(identity, Guid.NewGuid())));
+        Assert.False(rig.Wm.IsAutomaticMinimizationExcluded!(new(identity with { ProcessStartedAtUtcTicks = rig.Identity.StartedAt + 1 }, Guid.NewGuid())));
+        rig.Workspace.SetAutomaticMinimizationExcluded(item.Id, false);
+        Assert.False(rig.Wm.IsAutomaticMinimizationExcluded!(new(identity, Guid.NewGuid())));
+    }
+
+    [Fact]
     public void StaleUiCommandsCannotLaunchOrResurrectForgottenItems()
     {
         var item = Item();

@@ -89,6 +89,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _placeholderFactory = placeholders; _windowActions = windowActions;
         _persistence = new WorkspacePersistence(store);
         Zones = new ZoneService(Document, () => _desktop, Save);
+        _wm.IsAutomaticMinimizationExcluded = IsAutomaticMinimizationExcluded;
         _wm.WindowRemoving += OnRemoving;
         _wm.WindowStateChanged += OnWindowStateChanged;
         _wm.AutomaticParkingChanged += OnAutomaticParkingChanged;
@@ -548,7 +549,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
         item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath,
-        _launchMessages.GetValueOrDefault(item.Id), item.WebResource);
+        _launchMessages.GetValueOrDefault(item.Id), item.WebResource, item.ExcludeFromAutomaticMinimization);
 
     private string? ReadChromeProfile(IntPtr handle, string exe, string? additionalProfile = null)
     {
@@ -680,6 +681,22 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         return IsOpen(item);
     }
 
+    private bool IsAutomaticMinimizationExcluded(AutomaticParkingToken token)
+    {
+        var live = _bindings.At(token.Identity.Handle);
+        return live?.Identity == token.Identity && live.ItemId is { } id
+            && Document.Items.Any(item => item.Id == id && item.ExcludeFromAutomaticMinimization);
+    }
+
+    public void SetAutomaticMinimizationExcluded(Guid id, bool value)
+    {
+        if (Find(id) is not { } item || item.ExcludeFromAutomaticMinimization == value) return;
+        item.ExcludeFromAutomaticMinimization = value;
+        Save();
+        _wm.RefreshAutomaticParking();
+        Changed?.Invoke();
+    }
+
     public void SetAutoOpen(Guid id, bool value)
     {
         if (Find(id) is not { } item) return;
@@ -755,6 +772,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             catch (Exception ex) { failures.Add(ex); }
         }
         _disposed = true;
+        _wm.IsAutomaticMinimizationExcluded = null;
         _wm.WindowRemoving -= OnRemoving;
         _wm.WindowStateChanged -= OnWindowStateChanged;
         _wm.AutomaticParkingChanged -= OnAutomaticParkingChanged;

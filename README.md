@@ -71,10 +71,13 @@ Choose **Arrange** to move items or **Interact** to use a live app on the canvas
 
 A default `config.ini` is written to `%APPDATA%\CanvasWindowComposer\` on first run. Every flag is commented out at its default — uncomment and change its value to configure a feature. Changes are picked up live; no restart. Open the folder via **Tray menu > Open Config Directory**.
 
+Right-click a saved window or its overview card and choose **Exclude from auto-minimize** to keep that window from being automatically minimized. The choice is saved with the workspace place and can be changed even while the app is closed.
+
 | Flag | Default | Effect when `true` |
 |---|---|---|
 | `DisableSearch` | `false` | Don't register the Alt+S fuzzy-search hotkey |
 | `EnableAutomaticMinimization` | `false` | Experimental: capture eligible off-screen windows, then minimize them after a delay. Restore without activation on approach, using cached overview previews during restoration. Failed captures retain existing placement behavior. Real-application compatibility validation remains pending |
+
 | `DisableAltPan` | `false` | Disable Alt + middle-click drag to pan over windows |
 | `DisableGreedyDraw` | `true` | Skip `SetWindowRgn` clipping of off-screen windows. Keeps Alt-Tab / taskbar thumbnails live at the cost of render work for windows panned out of view |
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |

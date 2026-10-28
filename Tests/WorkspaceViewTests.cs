@@ -483,6 +483,7 @@ public class WorkspaceViewTests
         public event Action? Changed { add => _changed += value; remove => _changed -= value; }
         public void RaiseChanged() => _changed?.Invoke();
         public void Open(Guid id) => Opened = id;
+        public void SetAutomaticMinimizationExcluded(Guid id, bool value) { }
         public void SetAutoOpen(Guid id, bool value) => AutoOpen = (id, value);
         public void FocusItem(Guid id) { }
         public void CloseToPlaceholder(Guid id) { }
