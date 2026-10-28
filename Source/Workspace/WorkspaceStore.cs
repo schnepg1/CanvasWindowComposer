@@ -82,7 +82,7 @@ internal sealed class WorkspaceStore : IWorkspaceStore
         {
             if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
                 || !ZoneService.ValidName(zone.Name) || !ZoneService.ValidColor(zone.Color)
-                || !WorkspaceGeometry.ValidBounds(zone.Bounds) || zone.ItemIds == null || zone.ItemIds.Count > 2000)
+                || !ZoneGeometry.ValidBounds(zone.Bounds) || zone.ItemIds == null || zone.ItemIds.Count > 2000)
                 throw new InvalidDataException("Invalid workspace zone.");
             var memberIds = new HashSet<Guid>();
             foreach (var id in zone.ItemIds)

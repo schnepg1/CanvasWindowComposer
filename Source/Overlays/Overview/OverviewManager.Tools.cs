@@ -49,15 +49,9 @@ internal sealed partial class OverviewManager
         return new(_passes.IndexOf(pass), new(e.X, e.Y), button, flags, view);
     }
 
-    private IReadOnlyList<WorldRect> ZoneMoveMembers(Guid id)
-    {
-        var members = new List<WorldRect>();
-        if (_zones != null)
-            foreach (var member in _zones.Members(id))
-                if (member.Assigned && !member.Bounds.PinnedToScreen) members.Add(member.Bounds);
-        return members;
-    }
-
+    private IReadOnlyList<WorldRect> ZoneMoveMembers(Guid id)
+        => _zones?.MoveMembers(id) ?? Array.Empty<WorldRect>();
+
     private void OnZoneToolCompleted(ZoneGestureResult result)
     {
         ApplyPointerCapture();

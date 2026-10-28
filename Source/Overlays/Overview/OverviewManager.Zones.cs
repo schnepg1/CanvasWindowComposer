@@ -220,8 +220,17 @@ internal sealed partial class OverviewManager
         var zones = !zooming || _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
         if (_zoneTool.Gesture.MovingId is { } movingId && _zoneTool.Gesture.Preview is { } moved)
         {
+            var movingIds = new HashSet<Guid> { movingId };
             for (int i = 0; i < zones.Count; i++)
+            {
+                if (_zoneTool.Gesture.Kind == ZoneGestureKind.Move && zones[i].ParentId is { } parent && movingIds.Contains(parent))
+                {
+                    movingIds.Add(zones[i].Id);
+                    if (ZoneLayoutPlanner.TryTranslate(zones[i].Bounds, _zoneTool.Gesture.Dx, _zoneTool.Gesture.Dy, out var child, area:true))
+                        zones[i] = zones[i] with { Bounds = child };
+                }
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
+            }
         }
         OverviewAnnotationSnapshot? frame = null;
         OverviewOverlay? firstPass = null;

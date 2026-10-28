@@ -43,8 +43,9 @@ internal sealed class ZoneNavigation : IDisposable
         if (_disposed) return Array.Empty<ZoneNavigationEntry>();
         query = query.Trim();
         var places = _workspace.Items.ToDictionary(i => i.Id);
+        var groups = _source.NavigationAreas;
         var entries = new List<ZoneNavigationEntry>();
-        foreach (var group in _source.NavigationAreas)
+        foreach (var group in groups)
         {
             bool areaMatches = Contains(group.Area.Name, query);
             var members = group.MemberIds.Where(places.ContainsKey).Select(id => places[id])
@@ -53,6 +54,18 @@ internal sealed class ZoneNavigation : IDisposable
                     i.DisplayTarget.Length > 0 ? i.DisplayTarget : i.ExecutablePath))
                 .OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Id).ToArray();
             if (areaMatches || members.Length > 0) entries.Add(new(group.Area, members));
+        }
+        // Keep the path to a matching sub-project visible while filtering.
+        var included = entries.Select(e => e.Area.Id).ToHashSet();
+        var byId = groups.ToDictionary(g => g.Area.Id);
+        foreach (var entry in entries.ToArray())
+        {
+            var parent = entry.Area.ParentId;
+            while (parent is { } id && byId.TryGetValue(id, out var group) && included.Add(id))
+            {
+                entries.Add(new(group.Area, Array.Empty<ZoneNavigationMember>()));
+                parent = group.Area.ParentId;
+            }
         }
         return entries.OrderBy(i => i.Area.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Area.Id).ToArray();
     }

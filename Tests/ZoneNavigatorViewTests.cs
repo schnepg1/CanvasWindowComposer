@@ -7,6 +7,35 @@ namespace CanvasDesktop.Tests;
 
 public class ZoneNavigatorViewTests
 {
+    [Fact]
+    public void NestedProjectsAppearUnderParentAndSearchRetainsAncestors()
+    {
+        OnSta(() =>
+        {
+            var document = Document(); var parent = document.Zones[0]; var child = document.Zones[1];
+            child.Bounds = new WorldRect { X = 100, Y = 100, W = 1200, H = 900 };
+            using var rig = new WorkspaceHarness(document); rig.Workspace.Start();
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
+            var window = new ZoneNavigatorWindow(navigation, _ => { });
+            try
+            {
+                var tree = Descendants(window).OfType<TreeView>().Single();
+                var root = Assert.Single(tree.Items.Cast<TreeViewItem>());
+                Assert.Equal(2, root.Items.Count); // One saved member and one sub-project.
+                var filter = Descendants(window).OfType<TextBox>().Single();
+                filter.Text = child.Name;
+                root = Assert.Single(tree.Items.Cast<TreeViewItem>());
+                Assert.True(root.IsExpanded);
+                var nested = Assert.Single(root.Items.Cast<TreeViewItem>());
+                Assert.Contains(Descendants(nested).OfType<TextBlock>(), t => t.Text == child.Name);
+                var result = navigation.Read(child.Name);
+                Assert.Equal(parent.Id, result.Single(e => e.Area.Id == child.Id).Area.ParentId);
+                Assert.Equal(2, result.Count);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     private static WorkspaceDocument Document()
     {
         var item = new WorkspaceItem { Title = "Reference", ExecutablePath = @"C:\Apps\Editor.exe",
@@ -14,7 +43,7 @@ public class ZoneNavigatorViewTests
         return new WorkspaceDocument { Items = new() { item }, Zones = new()
         {
             new WorkspaceZone { Name = "Website", Bounds = new WorldRect { W = 1800, H = 1200 }, ItemIds = new() { item.Id } },
-            new WorkspaceZone { Name = "Empty research", Bounds = new WorldRect { W = 1200, H = 900 } }
+            new WorkspaceZone { Name = "Empty research", Bounds = new WorldRect { X = 3000, W = 1200, H = 900 } }
         } };
     }
 

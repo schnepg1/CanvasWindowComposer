@@ -13,10 +13,19 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     private readonly Func<bool> _save;
     public event Action? Changed;
     public Guid DesktopId => _desktop();
-    public IReadOnlyList<ZoneView> Items => _document.Zones.Where(z => z.DesktopId == _desktop())
-        .Select(z => new ZoneView(z.Id, z.Name, z.Color, z.Bounds, z.ItemIds.Count)).ToArray();
-    public IReadOnlyList<ZoneNavigationArea> NavigationAreas => _document.Zones.Where(z => z.DesktopId == _desktop())
-        .Select(z => new ZoneNavigationArea(new(z.Id, z.Name, z.Color, z.Bounds, z.ItemIds.Count), z.ItemIds.ToArray())).ToArray();
+    private ZoneHierarchy Hierarchy => new(_document.Zones.Where(z => z.DesktopId == _desktop()).ToArray());
+    public IReadOnlyList<ZoneView> Items => Hierarchy.Views();
+    public IReadOnlyList<ZoneNavigationArea> NavigationAreas => Items
+        .Select(z => new ZoneNavigationArea(z, Find(z.Id)!.ItemIds.ToArray())).ToArray();
+
+    internal IReadOnlyList<WorkspaceZone> Subtree(Guid id) => Hierarchy.Subtree(id);
+    internal IReadOnlyList<WorldRect> MoveMembers(Guid id)
+    {
+        var tree = Subtree(id);
+        var ids = tree.SelectMany(z => z.ItemIds).ToHashSet();
+        return _document.Items.Where(i => ids.Contains(i.Id) && i.DesktopId == _desktop() && !i.Bounds.PinnedToScreen)
+            .Select(i => i.Bounds).ToArray();
+    }
 
     public ZoneService(WorkspaceDocument document, Func<Guid> desktop, Func<bool> save)
     { _document = document; _desktop = desktop; _save = save; }
@@ -28,7 +37,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     public bool Add(WorldRect bounds, out Guid id)
     {
         id = Guid.Empty;
-        if (!WorkspaceGeometry.ValidBounds(bounds) || _document.Zones.Count >= MaximumZones) return false;
+        if (!ZoneGeometry.ValidBounds(bounds) || _document.Zones.Count >= MaximumZones) return false;
         var zone = new WorkspaceZone { DesktopId = _desktop(), Bounds = bounds,
             Name = "Project area " + (Items.Count + 1) };
         _document.Zones.Add(zone);
@@ -74,11 +83,15 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     }
 
     internal bool TryPlanMove(Guid id, double dx, double dy, out ZoneLayoutPlan? plan)
-        => ZoneLayoutPlanner.TryMove(Find(id), _document.Items, dx, dy, out plan);
+        => ZoneLayoutPlanner.TryMove(Find(id), _document.Items, dx, dy, out plan, Subtree(id));
 
     internal ZoneLayoutPlan Snapshot(ZoneLayoutPlan plan)
         => new(plan.ZoneId, Find(plan.ZoneId)!.Bounds, plan.Items.Select(p =>
-            new ZoneItemPlacement(p.Id, _document.Items.First(i => i.Id == p.Id).Bounds)).ToArray());
+            new ZoneItemPlacement(p.Id, _document.Items.First(i => i.Id == p.Id).Bounds)).ToArray())
+        {
+            Areas = plan.Areas.Select(p => new ZoneItemPlacement(p.Id, Find(p.Id)!.Bounds)).ToArray(),
+            AreaMembership = plan.AreaMembership
+        };
 
     internal Guid[] Membership(Guid id) => Find(id)!.ItemIds.OrderBy(i => i).ToArray();
 
@@ -86,7 +99,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     {
         plan = null;
         var zone = Find(id);
-        if (zone == null || !WorkspaceGeometry.ValidBounds(bounds)) return false;
+        if (zone == null || !ZoneGeometry.ValidBounds(bounds)) return false;
         var resized = zone.Bounds;
         resized.X = bounds.X; resized.Y = bounds.Y; resized.W = bounds.W; resized.H = bounds.H;
         plan = new(id, resized, Array.Empty<ZoneItemPlacement>());
@@ -94,13 +107,14 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     }
 
     internal bool TryReplay(ZoneLayoutEdit edit, bool redo, out ZoneLayoutPlan? plan)
-        => ZoneLayoutPlanner.TryReplay(Find(edit.Before.ZoneId), _document.Items, edit, redo, out plan);
+        => ZoneLayoutPlanner.TryReplay(Find(edit.Before.ZoneId), _document.Items, edit, redo, out plan, _document.Zones);
 
     // The coordinator applies runtime canvas geometry before publishing this change.
     internal bool ApplyLayout(ZoneLayoutPlan plan)
     {
         var zone = Find(plan.ZoneId)!;
         zone.Bounds = plan.Bounds;
+        foreach (var placement in plan.Areas) Find(placement.Id)!.Bounds = placement.Bounds;
         var items = _document.Items.ToDictionary(i => i.Id);
         foreach (var placement in plan.Items) items[placement.Id].Bounds = placement.Bounds;
         return Persist();
@@ -119,6 +133,12 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
 
 internal static class ZoneGeometry
 {
+    // Areas have no HWND dimensions or arbitrary size/position cap. Reject only
+    // invalid rectangles and arithmetic overflow before projection or persistence.
+    public static bool ValidBounds(WorldRect b) => double.IsFinite(b.X) && double.IsFinite(b.Y)
+        && double.IsFinite(b.W) && double.IsFinite(b.H) && b.W >= 1 && b.H >= 1
+        && double.IsFinite(b.X + b.W) && double.IsFinite(b.Y + b.H);
+
     public static WorldRect FromPoints(double x1, double y1, double x2, double y2)
         => new() { X = Math.Min(x1, x2), Y = Math.Min(y1, y2), W = Math.Abs(x2 - x1), H = Math.Abs(y2 - y1) };
 

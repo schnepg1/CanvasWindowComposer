@@ -75,8 +75,12 @@ internal sealed partial class OverviewManager
             result.Add(new(new(CanvasItemKind.Window,identity.Id),Rect(w.World),_win32.GetWindowTitle(w.HWnd)));
         }
         if (_zones != null)
-            result.AddRange(_zones.Items.Select(z => new CanvasSelectionItem(new(CanvasItemKind.Project,z.Id),Rect(z.Bounds),z.Name,
-                _zones.Members(z.Id).Where(m => m.Assigned).Select(m => new CanvasItemId(CanvasItemKind.Window,m.Id)).ToArray())));
+        {
+            var zones = _zones.Items;
+            result.AddRange(zones.Select(z => new CanvasSelectionItem(new(CanvasItemKind.Project,z.Id),Rect(z.Bounds),z.Name,
+                _zones.Members(z.Id).Where(m => m.Assigned).Select(m => new CanvasItemId(CanvasItemKind.Window,m.Id))
+                    .Concat(zones.Where(child => child.ParentId == z.Id).Select(child => new CanvasItemId(CanvasItemKind.Project,child.Id))).ToArray())));
+        }
         return result;
     }
 
@@ -139,14 +143,14 @@ internal sealed partial class OverviewManager
             if (before != null)
             {
                 if (before.Items.Count != savedWindowIds.Length || before.Areas.Count != areaIds.Length) throw new InvalidOperationException("A selected item is unavailable.");
-                ZoneItemPlacement Translate(ZoneItemPlacement p)
+                ZoneItemPlacement Translate(ZoneItemPlacement p, bool area = false)
                 {
-                    if (!ZoneLayoutPlanner.TryTranslate(p.Bounds,move.Dx,move.Dy,out var b)) throw new ArgumentException("The destination is outside the canvas limits.");
+                    if (!ZoneLayoutPlanner.TryTranslate(p.Bounds,move.Dx,move.Dy,out var b,area)) throw new ArgumentException("The destination is outside the canvas limits.");
                     return p with { Bounds=b };
                 }
                 if (before.Items.Concat(before.Areas).Any(p => !move.Before.Any(i => i.Key.Id==p.Id && i.Bounds==new CanvasRect(p.Bounds.X,p.Bounds.Y,p.Bounds.W,p.Bounds.H))))
                     throw new InvalidOperationException("The group changed during the drag. Select it again.");
-                after = before with { Items=before.Items.Select(Translate).ToArray(),Areas=before.Areas.Select(Translate).ToArray() };
+                after = before with { Items=before.Items.Select(p => Translate(p)).ToArray(),Areas=before.Areas.Select(p => Translate(p,area:true)).ToArray() };
             }
             else if (areaIds.Length > 0) throw new InvalidOperationException("Attach the workspace before moving project areas.");
             var session = new List<(IntPtr Handle, Guid Id, uint Pid, WorldRect Before, WorldRect After)>();

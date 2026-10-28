@@ -48,6 +48,6 @@ internal static class ZoneResizeLayout
         bounds.H = Math.Max(minH, original.H + (top ? -dy : dy));
         if (left) bounds.X = original.X + original.W - bounds.W;
         if (top) bounds.Y = original.Y + original.H - bounds.H;
-        return WorkspaceGeometry.ValidBounds(bounds);
+        return ZoneGeometry.ValidBounds(bounds);
     }
 }

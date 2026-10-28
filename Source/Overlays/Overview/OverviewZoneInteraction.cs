@@ -51,7 +51,7 @@ internal sealed class OverviewZoneInteraction
         if (Kind == ZoneGestureKind.Draw) Preview = ZoneGeometry.FromPoints(_startX, _startY, x, y);
         else if (Kind == ZoneGestureKind.Resize)
             Preview = ZoneResizeLayout.TryResize(_zone!.Bounds, _corner, Dx, Dy, out var resized) ? resized : null;
-        else Preview = ZoneLayoutPlanner.TryTranslate(_zone!.Bounds, Dx, Dy, out var bounds) ? bounds : null;
+        else Preview = ZoneLayoutPlanner.TryTranslate(_zone!.Bounds, Dx, Dy, out var bounds, area: true) ? bounds : null;
         var ghosts = new List<WorldRect>(_members.Count);
         foreach (var member in _members)
         {

@@ -92,6 +92,9 @@ public sealed class CanvasSelectionTool(CanvasSelection selection, Func<IReadOnl
         if (key is {} id)
         {
             if (ctrl || !selection.Ids.Contains(id)) selection.Pick(id, all, ctrl);
+            // Containment can change while a project stays selected. Refresh its
+            // descendants before a second drag so the whole current group moves.
+            if (!ctrl) selection.Replace(CanvasSelection.Expand(selection.Ids, all));
             var selected=selection.Ids;
             _snapshot = all.Where(i => selected.Contains(i.Key)).ToArray();
             // A Ctrl-click toggles only; it must never start moving the remaining group.

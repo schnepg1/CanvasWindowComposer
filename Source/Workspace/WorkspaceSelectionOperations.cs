@@ -29,17 +29,17 @@ internal sealed partial class WorkspaceService
         if (_disposed || !_started || _switching || expected.Desktop != _desktop || target.Desktop != _desktop) return false;
         Capture();
         bool Valid(IReadOnlyList<ZoneItemPlacement> before, IReadOnlyList<ZoneItemPlacement> after,
-            IReadOnlyDictionary<Guid, WorldRect> current)
+            IReadOnlyDictionary<Guid, WorldRect> current, bool area = false)
         {
             if (before.Count != after.Count || before.Select(i => i.Id).Distinct().Count() != before.Count
                 || after.Select(i => i.Id).Distinct().Count() != after.Count) return false;
             return before.All(p => current.TryGetValue(p.Id, out var bounds) && !bounds.PinnedToScreen
                 && ZoneLayoutPlanner.SamePlacement(bounds, p.Bounds)
-                && after.Any(a => a.Id == p.Id && WorkspaceGeometry.ValidBounds(a.Bounds) && !a.Bounds.PinnedToScreen));
+                && after.Any(a => a.Id == p.Id && (area ? ZoneGeometry.ValidBounds(a.Bounds) : WorkspaceGeometry.ValidBounds(a.Bounds)) && !a.Bounds.PinnedToScreen));
         }
         if (expected.Membership.Any(p=>!Document.Zones.Any(z=>z.Id==p.Key && z.DesktopId==_desktop && z.ItemIds.OrderBy(id=>id).SequenceEqual(p.Value)))
             || !Valid(expected.Items, target.Items, Document.Items.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds))
-            || !Valid(expected.Areas, target.Areas, Document.Zones.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds)))
+            || !Valid(expected.Areas, target.Areas, Document.Zones.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds), area:true))
         { _status = "Selection changed. Select the group again before moving or undoing it."; return false; }
 
         var targets = new List<(IntPtr Handle, WorldRect Bounds, bool Live)>();
