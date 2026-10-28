@@ -152,7 +152,7 @@ internal sealed partial class WorkspaceService
     private bool HasDeliberatePlace(WorkspaceLiveWindow live)
         => live.ItemId is { } id && Find(id)?.Placement == WorkspacePlacement.Deliberate;
 
-    private void StageTemporary(WorkspaceLiveWindow live, string exe, string title, string target, bool explorer)
+    private void StageTemporary(WorkspaceLiveWindow live, string exe, string title, string target, bool explorer, string? chromeProfile = null)
     {
         if (_migrationWindows.Contains(live.Identity) || live.ItemId.HasValue || Document.Items.Count >= 2000 || !StillCurrent(live)) return;
         // Registration can precede restoration of the saved camera. Use the native
@@ -170,7 +170,7 @@ internal sealed partial class WorkspaceService
         var item = new WorkspaceItem { DesktopId = _desktop, Title = title, ExecutablePath = exe, Target = target,
             AutoDetectedTarget = WorkspaceTargetIdentity.IsVsCode(exe) && target.Length > 0,
             IsFolder = explorer && target.Length > 0, Placement = WorkspacePlacement.Temporary,
-            Bounds = placed };
+            Bounds = placed, ChromeProfilePath = chromeProfile ?? "" };
         Document.Items.Add(item);
         if (!_bindings.Bind(live, item.Id)) { Document.Items.Remove(item); return; }
         TemporaryZone!.ItemIds.Add(item.Id);

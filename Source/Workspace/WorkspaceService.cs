@@ -314,7 +314,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 {
                     live.WaitingForProjectSince ??= _clock.TickCount64;
                     if (_clock.TickCount64 - live.WaitingForProjectSince.Value < 8000)
-                    { StageTemporary(live, exe, title, target, explorer); continue; }
+                    { StageTemporary(live, exe, title, target, explorer, chromeProfile); continue; }
                 }
                 target = detected ?? "";
                 if (detected != null) live.WaitingForProjectSince = null;
@@ -324,7 +324,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             {
                 live.WaitingForFolderSince ??= _clock.TickCount64;
                 if (_clock.TickCount64 - live.WaitingForFolderSince.Value < 8000)
-                { StageTemporary(live, exe, title, target, explorer); continue; }
+                { StageTemporary(live, exe, title, target, explorer, chromeProfile); continue; }
             }
             if (live.ItemId is { } id)
             {
@@ -365,7 +365,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             {
                 _ambiguous.UnionWith(match.AmbiguousIds);
                 live.NeedsInitialMatch = false;
-                StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer);
+                StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer, input.ChromeProfilePath);
                 continue; // Keep saved places intact; no guessed identity.
             }
             if (!StillCurrent(live)) continue;
@@ -376,7 +376,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (item == null && !_migrationWindows.Contains(live.Identity))
             {
                 live.NeedsInitialMatch = false;
-                StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer);
+                StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer, input.ChromeProfilePath);
                 continue;
             }
             bool restore = item != null;

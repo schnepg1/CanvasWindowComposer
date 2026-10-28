@@ -755,24 +755,25 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         {
             var (rightWx, rightWy) = _camera.WorldFromVirtual(vx, vy);
             int rightHit = HitOverviewWindow(pass, e.X, e.Y, rightWx, rightWy);
-            if (rightHit >= 0 && Control.FromHandle(_windows.Windows[rightHit].HWnd) is PlaceholderForm card)
+            var rightWindow = rightHit >= 0 ? _windows.Windows[rightHit].HWnd : IntPtr.Zero;
+            if (rightHit >= 0 && Control.FromHandle(rightWindow) is PlaceholderForm card)
             {
                 PInvoke.SetForegroundWindow((HWND)pass.Handle); _activeCardMenu = card.ContextMenuStrip; card.ShowContextMenu(pass, new Point(e.X, e.Y));
                 return;
             }
             else if (rightHit >= 0 && _placeholderWorkspace != null
-                && _overviewItemIds.TryGetValue(_windows.Windows[rightHit].HWnd, out var id))
+                && _placeholderWorkspace.GetWindowContextItem(rightWindow) is { } id)
             {
                 _windowContextMenu?.Dispose();
                 _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
-                AddWindowInteractionCommand(_windowContextMenu, pass, _windows.Windows[rightHit].HWnd);
+                AddWindowInteractionCommand(_windowContextMenu, pass, rightWindow);
                 PInvoke.SetForegroundWindow((HWND)pass.Handle);
                 _windowContextMenu.Show(pass, new Point(e.X, e.Y));
                 return;
             }
             else if (rightHit >= 0)
             {
-                ShowWindowInteractionMenu(pass, _windows.Windows[rightHit].HWnd, new(e.X, e.Y));
+                ShowWindowInteractionMenu(pass, rightWindow, new(e.X, e.Y));
                 return;
             }
 

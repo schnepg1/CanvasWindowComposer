@@ -13,6 +13,15 @@ automatic caption. Custom names update both card representations immediately and
 survive tab/document caption changes and restarts. Chrome entries also offer
 **Chrome profile…**; see [Chrome profiles](chrome-profiles.md).
 
+New live windows, including Chrome windows created by dragging out a tab, can
+use the window menu before the next workspace capture. Right-clicking an
+unresolved window gives it a session-only temporary entry at its current
+position, without moving it or assigning it to an uncertain saved place.
+**Keep this place** saves it as a separate place. Alternatively, use
+**Link open window…** on an existing saved place to attach the window there.
+Detected Chrome profiles are included immediately. **Web resource settings…**
+can save a starting URL with that profile; live tab URLs are not read automatically.
+
 Explorer folder places have a vector folder watermark. Other cards request a
 256-pixel icon from the saved application's executable, with its associated icon
 and a generic application symbol as fallbacks. Icons are loaded when the symbol
