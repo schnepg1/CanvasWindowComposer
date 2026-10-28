@@ -77,7 +77,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     // All DWM thumbnail state (desktop + taskbars + per-window). Owned here
     // so it can reference _passes; OverviewManager only drives lifecycle.
-    private readonly OverviewThumbnails _thumbnails;
+    private readonly OverviewThumbnails _thumbnails;
+    private readonly OverviewTaskbarPreviews _taskbarPreviews;
     private readonly OverviewInputs _inputs;
     private volatile bool _disposed;
 
@@ -150,6 +151,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Func<bool>? prefersReducedStartupMotion = null, IClock? gestureClock = null, IDwmThumbnailApi? dwm = null,
         IWindowInteractionApi? interactionApi = null)
     {
+        _taskbarPreviews = new(previews =>
+        {
+            foreach (var pass in _passes) pass.SetTaskbarPreviews(previews);
+        });
         _mainCanvas = mainCanvas;
         _wm = wm;
         _win32 = win32;
@@ -374,6 +379,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        _taskbarPreviews.SetEnabled(false);
         ClearDesktopStoppingClick();
         RestoreDesktopPanResources();
         CloseSettingsPopup(canvasOnly: true);
@@ -423,6 +429,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void ApplyConfig()
     {
+        _taskbarPreviews.SetEnabled(_appConfig.ShowTaskbarInCanvas);
         UpdateDesktopPanResources();
         _wm.SuspendProjection = true;
         RefreshOverviewWindows();
@@ -1049,6 +1056,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(_taskbarPreviews.Dispose);
         Attempt(CancelVisualFrame);
         Attempt(() => _windowFlightTimer?.Dispose());
         Attempt(() => CloseSettingsPopup());

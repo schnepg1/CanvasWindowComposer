@@ -20,12 +20,19 @@ internal sealed class OverviewOverlay : Form
     private OverviewAnnotationWindow? _annotations;
     private bool _showTaskbar;
     private readonly OverviewTaskbarRegion _taskbarRegion = new();
+    private Rectangle[] _taskbarPreviews = Array.Empty<Rectangle>();
+
+    public void SetTaskbarPreviews(Rectangle[] previews)
+    {
+        _taskbarPreviews = previews;
+        SetTaskbarVisible(_showTaskbar);
+    }
 
     public void SetTaskbarVisible(bool visible)
     {
         _showTaskbar = visible;
-        _taskbarRegion.Apply(Handle, Bounds, Screen.WorkingArea, visible);
-        _annotations?.SetTaskbarVisible(Screen.WorkingArea, visible);
+        _taskbarRegion.Apply(Handle, Bounds, Screen.WorkingArea, visible, _taskbarPreviews);
+        _annotations?.SetTaskbarVisible(Screen.WorkingArea, visible, _taskbarPreviews);
     }
     private CanvasZoomControls? _zoomControls;
     internal CanvasZoomControls? ZoomControls => _zoomControls;
@@ -51,7 +58,7 @@ internal sealed class OverviewOverlay : Form
         {
             _annotations = new OverviewAnnotationWindow(Handle);
             _annotations.SetDrawingLayers(_drawingLayers);
-            _annotations.SetTaskbarVisible(Screen.WorkingArea, _showTaskbar);
+            _annotations.SetTaskbarVisible(Screen.WorkingArea, _showTaskbar, _taskbarPreviews);
         }
         _annotations.StageUpdate(frame);
         if (frame.ShowHints && frame.Intro == null)

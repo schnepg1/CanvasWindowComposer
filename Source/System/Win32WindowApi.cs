@@ -32,6 +32,7 @@ internal sealed class Win32WindowApi : IWindowApi
         "WorkerW",
         "Shell_TrayWnd",
         "Shell_SecondaryTrayWnd",
+        "TaskListThumbnailWnd",
         "NotifyIconOverflowWindow",
         "Windows.UI.Core.CoreWindow"
     };

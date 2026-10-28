@@ -23,12 +23,15 @@ internal sealed class OverviewAnnotationWindow : Window
     private System.Drawing.Rectangle _workingArea;
     private bool _showTaskbar;
     private readonly OverviewTaskbarRegion _taskbarRegion = new();
+    private System.Drawing.Rectangle[] _taskbarPreviews = Array.Empty<System.Drawing.Rectangle>();
 
-    public void SetTaskbarVisible(System.Drawing.Rectangle workingArea, bool visible)
+    public void SetTaskbarVisible(System.Drawing.Rectangle workingArea, bool visible,
+        System.Drawing.Rectangle[] previews)
     {
         _workingArea = workingArea;
         _showTaskbar = visible;
-        if (!_bounds.IsEmpty) _taskbarRegion.Apply(_handle, _bounds, workingArea, visible);
+        _taskbarPreviews = previews;
+        if (!_bounds.IsEmpty) _taskbarRegion.Apply(_handle, _bounds, workingArea, visible, previews);
     }
     private IReadOnlyList<IOverviewAnnotationLayer> _layers = Array.Empty<IOverviewAnnotationLayer>();
     public void SetDrawingLayers(IReadOnlyList<IOverviewAnnotationLayer> layers)
@@ -78,7 +81,7 @@ internal sealed class OverviewAnnotationWindow : Window
     {
         var screen = new System.Drawing.Rectangle(frame.Screen.X, frame.Screen.Y, frame.Screen.Width, frame.Screen.Height);
         bool opening = !IsVisible;
-        _taskbarRegion.Apply(_handle, screen, _workingArea, _showTaskbar);
+        _taskbarRegion.Apply(_handle, screen, _workingArea, _showTaskbar, _taskbarPreviews);
         if (opening) Show();
         if (opening || _bounds != screen)
         {
