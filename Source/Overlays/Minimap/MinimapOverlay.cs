@@ -1,7 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CanvasDesktop;
 
@@ -108,7 +111,7 @@ internal sealed class MinimapOverlay : Form
         canvas.MaximizeChanged     += OnWindowChanged;
         canvas.PinnedChanged       += OnWindowChanged;
         canvas.FrontChanged        += OnFrontChanged;
-        input.DragStarted          += BringToFront;
+        input.DragStarted          += RaiseWithoutActivation;
         desktops.AfterStateLoaded  += NotifyCanvasChanged;
     }
 
@@ -243,7 +246,14 @@ internal sealed class MinimapOverlay : Form
         FinishDrag();
         if (Capture) Capture = false;
         NotifyCanvasChanged();
-        BringToFront();
+        RaiseWithoutActivation();
+    }
+
+    private void RaiseWithoutActivation()
+    {
+        if (_closing || IsDisposed || !IsHandleCreated) return;
+        PInvoke.SetWindowPos((HWND)Handle, HWND.Null, 0, 0, 0, 0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
     }
 
     protected override void WndProc(ref Message m)
@@ -337,7 +347,7 @@ internal sealed class MinimapOverlay : Form
             _canvas.MaximizeChanged -= OnWindowChanged;
             _canvas.PinnedChanged -= OnWindowChanged;
             _canvas.FrontChanged -= OnFrontChanged;
-            _input.DragStarted -= BringToFront;
+            _input.DragStarted -= RaiseWithoutActivation;
             _desktops.AfterStateLoaded -= NotifyCanvasChanged;
             _renderer.OnFrameTick = null;
             _fadeTimer.Dispose();

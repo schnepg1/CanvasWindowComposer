@@ -78,6 +78,25 @@ public sealed class CameraBookmarkOverviewTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
+    public void SavedViewsCanBeRecalledBackToBackWhileFeedbackIsVisible()
+        => WithOverview((overview, canvas, desktops, folder) =>
+        {
+            var first = overview.ViewCamera;
+            Press(overview, Keys.Control | Keys.D1);
+            canvas.SetCamera(2500, -1800); overview.SyncCamera();
+            var second = overview.ViewCamera;
+            Press(overview, Keys.Control | Keys.D2);
+            for (int i = 0; i < 5; i++)
+            {
+                Assert.True(Press(overview, Keys.D1).Handled);
+                Assert.Equal(first, overview.ViewCamera);
+                Assert.True(Press(overview, Keys.D2).Handled);
+                Assert.Equal(second, overview.ViewCamera);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
     public void NoteEditingAndHiddenCanvasLeaveNumberKeysAlone()
         => WithOverview((overview, canvas, desktops, folder) =>
         {

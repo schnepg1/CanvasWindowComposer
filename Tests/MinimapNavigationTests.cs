@@ -63,6 +63,24 @@ public class MinimapNavigationTests
             Assert.Equal(1, commits);
         });
 
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void RaisingMinimapDoesNotTakeKeyboardFocus()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+            using var wm = new WindowManager(canvas, api, new FakeAppConfig(), input);
+            using var cache = new DesktopStateCache(canvas, wm, new FakeOverviewController(), new FakeVirtualDesktops());
+            using var map = new MinimapOverlay(canvas, input, cache, new FakeScreens());
+            using var focused = new Form();
+            focused.Show(); focused.Activate(); Application.DoEvents();
+            map.NotifyCanvasChanged();
+            focused.Activate(); Application.DoEvents();
+            Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+            input.RaiseDragStarted(); Application.DoEvents();
+            Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+        });
+
     private static void Mouse(Control control, string method, MouseEventArgs args)
         => typeof(Control).GetMethod(method, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(control, [args]);
