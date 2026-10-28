@@ -22,10 +22,17 @@ internal sealed partial class OverviewManager
         {
             _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
             _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
+            _placeholderWorkspace.TemporaryWindowsArrived -= OnTemporaryWindowsArrived;
+            _placeholderWorkspace.AdditionalPlacementObstacles = null;
         }
         _placeholderWorkspace = workspace;
         workspace.Changed += RefreshPlaceholderTitles;
         workspace.ZoneLayoutRecorded += OnZoneLayoutRecorded;
+        workspace.TemporaryWindowsArrived += OnTemporaryWindowsArrived;
+        workspace.AdditionalPlacementObstacles = () => (_annotationDocument?.Items
+            .Where(a => a.DesktopId == _annotationDesktop()) ?? Enumerable.Empty<CanvasAnnotation>())
+            .Concat(CurrentTutorial is { Visible: true } notes ? notes.Layout.Items : Array.Empty<CanvasAnnotation>())
+            .Select(a => new WorldRect { X = a.Bounds.X, Y = a.Bounds.Y, W = a.Bounds.Width, H = a.Bounds.Height }).ToArray();
         RefreshPlaceholderTitles();
     }
 
@@ -33,6 +40,7 @@ internal sealed partial class OverviewManager
     {
         if (_disposed) return;
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
+        _temporaryNotice?.UpdateCount(_placeholderWorkspace?.TemporaryArea?.Count ?? 0);
         if (CurrentMode != OverviewMode.Hidden)
         {
             RefreshOverviewWindows();
@@ -218,6 +226,8 @@ internal sealed partial class OverviewManager
             _selectionRenderItems=_selectionRenderItems.Select(i=>i.Key.Kind==CanvasItemKind.Annotation && i.Key.Id==annotationPreview.Id
                 ?i with { Bounds=annotationPreview.Bounds }:i).ToArray();
         var zones = !zooming || _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
+        if (zooming && _placeholderWorkspace?.TemporaryArea is { } temporary)
+            zones.Add(new(Guid.Empty, "Temporary area · not saved", "#94A3B8", temporary.Bounds, temporary.Count));
         if (_zoneTool.Gesture.MovingId is { } movingId && _zoneTool.Gesture.Preview is { } moved)
         {
             for (int i = 0; i < zones.Count; i++)

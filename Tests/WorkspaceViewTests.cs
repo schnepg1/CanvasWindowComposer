@@ -488,6 +488,7 @@ public class WorkspaceViewTests
         public void FocusItem(Guid id) { }
         public void CloseToPlaceholder(Guid id) { }
         public void Forget(Guid id) { }
+        public void KeepPlace(Guid id) { }
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) => Renamed = (id, name);
         public bool SetChromeProfile(Guid id, string profilePath) { Profile = (id, profilePath); return true; }

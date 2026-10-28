@@ -47,6 +47,7 @@ internal interface IInputRouter
     event Action<IntPtr>? WindowRestored;
     event Action<IntPtr>? WindowFocused;
     event Action<IntPtr>? WindowMoved;
+    event Action<IntPtr>? WindowMoveEnded;
     event Action? AltTabStarted;
     event Action? AltTabEnded;
     // Intentional shell selection, distinct from focus/minimize/restore side effects.

@@ -131,7 +131,8 @@ public class ZoneMembershipTests
         rig.Api.Windows[handle].X = 4000;
         Assert.True(rig.Workspace.MoveZone(zone.Id, 250, 0));
         Assert.Equal(350, item.Bounds.X);
-        Assert.Equal(4000, rig.Canvas.Windows[handle].X);
+        Assert.True(rig.Workspace.Items.Single(i => i.Title == "Different project").Temporary);
+        Assert.NotEqual(item.Bounds.X, rig.Canvas.Windows[handle].X);
     }
 
     [Theory]

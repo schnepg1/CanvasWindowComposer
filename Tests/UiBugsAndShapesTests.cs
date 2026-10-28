@@ -154,6 +154,7 @@ public class UiBugsAndShapesTests
         public void FocusItem(Guid id) { }
         public void CloseToPlaceholder(Guid id) { }
         public void Forget(Guid id) { }
+        public void KeepPlace(Guid id) { }
         public void SetAutomaticMinimizationExcluded(Guid id, bool value) { }
         public void SetAutoOpen(Guid id, bool enabled) { }
         public void SetTarget(Guid id, string target, bool isFolder) { }

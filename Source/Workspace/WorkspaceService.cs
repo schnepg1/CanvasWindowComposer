@@ -93,6 +93,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _wm.WindowRemoving += OnRemoving;
         _wm.WindowStateChanged += OnWindowStateChanged;
         _wm.AutomaticParkingChanged += OnAutomaticParkingChanged;
+        _wm.WindowPlacementChanged += CommitWindowPlacement;
+        _canvas.PinnedChanged += OnWindowPinned;
         _cache.BeforeStateSaved += BeforeSwitch;
         _cache.AfterStateLoaded += AfterSwitch;
     }
@@ -101,6 +103,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (_started || _disposed) return;
         _started = true;
+        InitializePlacementPolicy();
         RestoreCamera();
         _wm.DiscoverNewWindows();
         Capture();
@@ -198,6 +201,10 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 zone.DesktopId = _desktops.CurrentDesktopId;
             if (Document.Cameras.Remove(Guid.Empty, out var camera))
                 Document.Cameras[_desktops.CurrentDesktopId] = camera;
+            if (Document.TemporaryAreas.Remove(Guid.Empty, out var area))
+                Document.TemporaryAreas[_desktops.CurrentDesktopId] = area;
+            if (_temporaryBounds.Remove(Guid.Empty, out var bounds))
+                _temporaryBounds[_desktops.CurrentDesktopId] = bounds;
         }
         _desktop = _desktops.CurrentDesktopId;
         Zones.NotifyDesktopChanged();
@@ -304,19 +311,21 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (WorkspaceTargetIdentity.IsVsCode(exe) && target.Length == 0)
             {
                 string? detected = _identity.ReadVsCodeTarget(live.Identity, exe, title);
-                if (detected == null && !live.ItemId.HasValue)
+                if (detected == null && !HasDeliberatePlace(live))
                 {
                     live.WaitingForProjectSince ??= _clock.TickCount64;
-                    if (_clock.TickCount64 - live.WaitingForProjectSince.Value < 8000) continue;
+                    if (_clock.TickCount64 - live.WaitingForProjectSince.Value < 8000)
+                    { StageTemporary(live, exe, title, target, explorer); continue; }
                 }
                 target = detected ?? "";
                 if (detected != null) live.WaitingForProjectSince = null;
             }
             if (target.Length > 0) live.WaitingForProjectSince = null;
-            if (explorer && target.Length == 0 && !live.ItemId.HasValue)
+            if (explorer && target.Length == 0 && !HasDeliberatePlace(live))
             {
                 live.WaitingForFolderSince ??= _clock.TickCount64;
-                if (_clock.TickCount64 - live.WaitingForFolderSince.Value < 8000) continue;
+                if (_clock.TickCount64 - live.WaitingForFolderSince.Value < 8000)
+                { StageTemporary(live, exe, title, target, explorer); continue; }
             }
             if (live.ItemId is { } id)
             {
@@ -333,9 +342,9 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                     CaptureTarget(old, exe, target, explorer);
                     if (old.DesktopId != _desktop) Zones.ForgetItem(old.Id);
                     old.DesktopId = _desktop;
-                    continue;
+                    if (old.Placement == WorkspacePlacement.Deliberate) continue;
                 }
-                _bindings.Unbind(live);
+                else _bindings.Unbind(live);
             }
             Guid? requested = _launching.Keys.FirstOrDefault(key => Document.Items.Any(i => i.Id == key
                 && i.DesktopId == _desktop && WorkspaceAppIdentity.Same(i.ExecutablePath, exe))
@@ -348,21 +357,29 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             };
             pending.Add((live, input, world, explorer));
         }
-        var plan = WorkspaceMatcher.Plan(Document.Items, _desktop, pending.Select(p => p.Input).ToArray(), _bindings.BoundIds);
+        var plan = WorkspaceMatcher.Plan(Document.Items.Where(i => i.Placement == WorkspacePlacement.Deliberate).ToArray(),
+            _desktop, pending.Select(p => p.Input).ToArray(), _bindings.BoundIds);
         foreach (var (live, input, world, explorer) in pending)
         {
             var match = plan[live.Token];
             if (match.IsAmbiguous)
             {
                 _ambiguous.UnionWith(match.AmbiguousIds);
-                continue; // No movement, no extra saved entry, no guessed identity.
+                StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer);
+                continue; // Keep saved places intact; no guessed identity.
             }
             if (!StillCurrent(live)) continue;
             var handle = live.Identity.Handle;
             var item = match.Item;
             if (item != null && (_launching.ContainsKey(item.Id) || _launchMessages.ContainsKey(item.Id))
                 && !CanFinishLaunch(item, live, input)) continue;
+            if (item == null && !_migrationWindows.Contains(live.Identity))
+            {
+                StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer);
+                continue;
+            }
             bool restore = item != null;
+            if (restore) DetachTemporary(live);
             if (item == null)
             {
                 if (!WorkspaceGeometry.ValidBounds(world) || Document.Items.Count >= 2000) continue;
@@ -379,6 +396,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 if (restore) RestoreBinding(live, item);
             }
         }
+        FinishTemporaryCapture();
         Document.Cameras[_desktop] = new WorkspaceCamera { X = _canvas.CamX, Y = _canvas.CamY, Zoom = _canvas.Zoom };
     }
 
@@ -468,6 +486,12 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         if (live?.ItemId is { } id)
         {
             var item = Document.Items.FirstOrDefault(i => i.Id == id);
+            if (item?.Placement == WorkspacePlacement.Temporary)
+            {
+                Document.Items.Remove(item);
+                _nextCapture = 0;
+                return;
+            }
             // A destroyed window may no longer be queryable. Cached canvas geometry
             // is safe only if the handle has not already been reused by another process.
             var current = InspectWindow(handle);
@@ -482,6 +506,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private void EnsureCards()
     {
         InvalidateOverviewSnapshot();
+        foreach (var id in _cards.Keys.Where(id => !Document.Items.Any(i => i.Id == id)).ToArray()) RemoveCard(id);
         foreach (var item in Document.Items.Where(i => i.DesktopId == _desktop).ToArray())
         {
             var live = BoundWindow(item.Id);
@@ -549,7 +574,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
 
     private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
         item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath,
-        _launchMessages.GetValueOrDefault(item.Id), item.WebResource, item.ExcludeFromAutomaticMinimization);
+        _launchMessages.GetValueOrDefault(item.Id), item.WebResource, item.ExcludeFromAutomaticMinimization,
+        item.Placement == WorkspacePlacement.Temporary);
 
     private string? ReadChromeProfile(IntPtr handle, string exe, string? additionalProfile = null)
     {
@@ -661,7 +687,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     }
 
     private bool CanLink(WorkspaceLiveWindow live, WorkspaceItem item)
-        => !live.Forgotten && !live.ItemId.HasValue && _api.IsWindowVisible(live.Identity.Handle)
+        => !live.Forgotten && (!live.ItemId.HasValue || Find(live.ItemId.Value)?.Placement == WorkspacePlacement.Temporary)
+            && _api.IsWindowVisible(live.Identity.Handle)
             && _desktops.IsOnCurrentDesktop(live.Identity.Handle) && StillCurrent(live)
             && InspectWindow(live.Identity.Handle) is { } observed
             && WorkspaceAppIdentity.Same(observed.Exe, item.ExecutablePath)
@@ -672,8 +699,9 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item)
             || _bindings.ForToken(candidateToken) is not { } live || !CanLink(live, item)
-            || InspectWindow(live.Identity.Handle) is not { } observed || observed.Identity != live.Identity
-            || !_bindings.Bind(live, id)) return false;
+            || InspectWindow(live.Identity.Handle) is not { } observed || observed.Identity != live.Identity) return false;
+        DetachTemporary(live);
+        if (!_bindings.Bind(live, id)) return false;
         item.ExecutablePath = observed.Exe;
         if (item.CaptureChromeProfile && ReadChromeProfile(live.Identity.Handle, item.ExecutablePath) is { } profile) item.ChromeProfilePath = profile;
         RestoreBinding(live, item);
@@ -700,6 +728,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     public void SetAutoOpen(Guid id, bool value)
     {
         if (Find(id) is not { } item) return;
+        if (value) item.Placement = WorkspacePlacement.Deliberate;
         item.OpenOnStartup = value; Save(); Changed?.Invoke();
     }
 
@@ -776,6 +805,9 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _wm.WindowRemoving -= OnRemoving;
         _wm.WindowStateChanged -= OnWindowStateChanged;
         _wm.AutomaticParkingChanged -= OnAutomaticParkingChanged;
+        _wm.WindowPlacementChanged -= CommitWindowPlacement;
+        _canvas.PinnedChanged -= OnWindowPinned;
+        AdditionalPlacementObstacles = null;
         _cache.BeforeStateSaved -= BeforeSwitch;
         _cache.AfterStateLoaded -= AfterSwitch;
         foreach (var id in _cards.Keys.ToArray())

@@ -16,6 +16,7 @@ internal sealed class BenchmarkInput : IInputRouter
     public event Action<IntPtr>? WindowRestored { add { } remove { } }
     public event Action<IntPtr>? WindowFocused { add { } remove { } }
     public event Action<IntPtr>? WindowMoved { add { } remove { } }
+    public event Action<IntPtr>? WindowMoveEnded { add { } remove { } }
     public event Action? AltTabStarted { add { } remove { } }
     public event Action? AltTabEnded { add { } remove { } }
     public event Action<IntPtr>? WindowSelected { add { } remove { } }

@@ -58,6 +58,7 @@ internal sealed partial class WorkspaceService
             item.Bounds = bounds;
         }
         foreach (var p in target.Areas) Document.Zones.First(z => z.Id == p.Id).Bounds = p.Bounds;
+        foreach (var (handle, _, _) in targets) CommitWindowPlacement(handle);
         _status = null;
         Save(); // Persistence failure retains the logical edit and its undo, like existing zone operations.
         bool nativeAccepted = true;

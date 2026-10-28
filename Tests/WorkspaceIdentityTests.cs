@@ -193,7 +193,8 @@ public class WorkspaceIdentityTests
         rig.Api.Windows[Handle].X = 222;
         rig.Workspace.SaveNow();
         var second = Assert.Single(rig.Workspace.Items);
-        Assert.Equal("Second", second.Title); Assert.Equal(222, second.Bounds.X);
+        Assert.Equal("Second", second.Title); Assert.True(second.Temporary);
+        Assert.NotEqual(222, second.Bounds.X); // A new identity is a new temporary arrival.
     }
 
     [Theory]
@@ -267,8 +268,10 @@ public class WorkspaceIdentityTests
         rig.Api.AddWindow(Handle, 10, 20, 800, 600, title: "Welcome");
         rig.Api.AddWindow((IntPtr)43, 30, 40, 800, 600, title: "Welcome");
         rig.Workspace.SaveNow();
-        Assert.False(rig.Workspace.IsOpen(item)); Assert.Empty(rig.Api.NativeStateCalls);
-        Assert.Single(rig.Workspace.Items);
+        Assert.False(rig.Workspace.IsOpen(item));
+        Assert.Equal(2, rig.Workspace.Items.Count(i => i.Temporary));
+        Assert.Single(rig.Store.Document.Items); // Neither ambiguous arrival claimed the saved place.
+        Assert.All(rig.Api.NativeStateCalls, call => Assert.NotEqual(item.Bounds.X, call.rect.X));
     }
 
     [Fact]

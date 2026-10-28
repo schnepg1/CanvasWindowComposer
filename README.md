@@ -112,6 +112,9 @@ release preparation, signing, migration and support logs.
 This working copy includes automatic workspace saves, clickable placeholders for
 closed apps, Explorer folder targets, a saved-workspace manager, and opt-in startup
 restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitations.
+New, unplaced windows collect in a [temporary area](Docs/temporary-area.md)
+without leaving saved placeholders. Existing layouts are adopted on upgrade;
+move a temporary window out of the area or choose **Keep this place** to save it.
 Web resource placeholders save a URL, browser (Chrome, Edge or Firefox), and an
 optional profile. Use **Add web resource…** from canvas tools, the tray, or Saved
 Workspace; see [web resources](Docs/web-resources.md) for setup and recovery.

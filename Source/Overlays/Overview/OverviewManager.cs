@@ -912,6 +912,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (ended == CanvasInteractionKind.Pan && !GuidedTutorialActive) ReleaseInertia();
         if (ended == CanvasInteractionKind.Window)
         {
+            if (_dragIndex >= 0 && _dragIndex < _windows.Count)
+                _placeholderWorkspace?.CommitWindowPlacement(_windows.Windows[_dragIndex].HWnd);
             _wm.Reproject(true);
             _dragIndex = -1;
         }
@@ -1052,11 +1054,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_placeholderWorkspace != null)
         {
             _placeholderWorkspace.Changed -= RefreshPlaceholderTitles;
-            _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
+            _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
+            _placeholderWorkspace.TemporaryWindowsArrived -= OnTemporaryWindowsArrived;
+            _placeholderWorkspace.AdditionalPlacementObstacles = null;
         }
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(_taskbarPreviews.Dispose);
+        Attempt(() => _temporaryNotice?.Dispose());
         Attempt(CancelVisualFrame);
         Attempt(() => _windowFlightTimer?.Dispose());
         Attempt(() => CloseSettingsPopup());

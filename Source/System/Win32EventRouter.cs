@@ -14,6 +14,7 @@ internal sealed class Win32EventRouter : IDisposable
     public event Action<IntPtr>? WindowRestored;   // minimize end
     public event Action<IntPtr>? WindowFocused;    // foreground
     public event Action<IntPtr>? WindowMoved;      // location change (top-level only)
+    public event Action<IntPtr>? WindowMoveEnded;  // explicit native move/resize completed
     public event Action? AltTabStarted;
     public event Action? AltTabEnded;
     public event Action<IntPtr>? WindowSelected;
@@ -26,6 +27,7 @@ internal sealed class Win32EventRouter : IDisposable
     private readonly UnhookWinEventSafeHandle _hookSwitch;
     private readonly UnhookWinEventSafeHandle _hookObjectLifetime; // DESTROY + SHOW
     private readonly UnhookWinEventSafeHandle _hookLocationChange;
+    private readonly UnhookWinEventSafeHandle _hookMoveEnd;
     private readonly WINEVENTPROC _winEventProc;
 
     public Win32EventRouter(TaskbarSelectionIntent? taskbar = null, AltTabSelectionIntent? altTab = null,
@@ -62,6 +64,8 @@ internal sealed class Win32EventRouter : IDisposable
             PInvoke.EVENT_OBJECT_LOCATIONCHANGE,
             PInvoke.EVENT_OBJECT_LOCATIONCHANGE,
             null, _winEventProc, 0, 0, flags);
+        _hookMoveEnd = PInvoke.SetWinEventHook(PInvoke.EVENT_SYSTEM_MOVESIZEEND,
+            PInvoke.EVENT_SYSTEM_MOVESIZEEND, null, _winEventProc, 0, 0, flags);
     }
 
     private void OnWinEvent(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hwnd,
@@ -69,6 +73,9 @@ internal sealed class Win32EventRouter : IDisposable
     {
         switch (eventType)
         {
+            case PInvoke.EVENT_SYSTEM_MOVESIZEEND:
+                WindowMoveEnded?.Invoke(hwnd);
+                break;
             case PInvoke.EVENT_SYSTEM_MINIMIZESTART:
                 WindowMinimized?.Invoke(hwnd);
                 if (_canSelectWindow?.Invoke(hwnd) != false
@@ -142,5 +149,6 @@ internal sealed class Win32EventRouter : IDisposable
         _hookSwitch.Dispose();
         _hookObjectLifetime.Dispose();
         _hookLocationChange.Dispose();
+        _hookMoveEnd.Dispose();
     }
 }

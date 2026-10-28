@@ -142,7 +142,7 @@ internal sealed class WorkspaceWindow : Window
     {
         Guid? selected = (_items.SelectedItem as WorkspaceItemView)?.Id;
         string query = _filter.Text.Trim();
-        var items = _workspace.Items.Where(item => query.Length == 0 ||
+        var items = _workspace.Items.Where(item => !item.Temporary).Where(item => query.Length == 0 ||
             item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
             item.DisplayTarget.Contains(query, StringComparison.OrdinalIgnoreCase) ||
             item.BrowserDetails.Contains(query, StringComparison.OrdinalIgnoreCase) ||

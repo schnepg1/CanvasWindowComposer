@@ -174,6 +174,7 @@ internal sealed partial class WindowManager : IDisposable
 
     public event Action<IntPtr>? WindowRemoving;
     public event Action<IntPtr>? WindowStateChanged;
+    public event Action<IntPtr>? WindowPlacementChanged;
 
     // Our own placeholder forms are explicitly enrolled, never discovered as apps.
     public void RestorePlacement(IntPtr hWnd, WorldRect world)
@@ -286,6 +287,7 @@ internal sealed partial class WindowManager : IDisposable
         input.WindowDestroyed += OnWindowDestroyedEvent;
         input.WindowShown += OnWindowShownEvent;
         input.WindowMoved += OnWindowMovedEvent;
+        input.WindowMoveEnded += OnWindowMoveEndedEvent;
         input.WindowFocused += OnWindowFocusedEvent;
     }
 
@@ -323,6 +325,7 @@ internal sealed partial class WindowManager : IDisposable
         _input.WindowDestroyed -= OnWindowDestroyedEvent;
         _input.WindowShown -= OnWindowShownEvent;
         _input.WindowMoved -= OnWindowMovedEvent;
+        _input.WindowMoveEnded -= OnWindowMoveEndedEvent;
         _input.WindowFocused -= OnWindowFocusedEvent;
         _projection?.Dispose();
         _visibility.Clear();
@@ -465,6 +468,13 @@ internal sealed partial class WindowManager : IDisposable
     {
         if (_canvas.HasWindow(hWnd))
             ReconcileWindow(hWnd);
+    }
+
+    private void OnWindowMoveEndedEvent(IntPtr hWnd)
+    {
+        if (!_canvas.HasWindow(hWnd)) return;
+        ReconcileWindow(hWnd);
+        WindowPlacementChanged?.Invoke(hWnd);
     }
 
     private void OnWindowFocusedEvent(IntPtr hWnd)

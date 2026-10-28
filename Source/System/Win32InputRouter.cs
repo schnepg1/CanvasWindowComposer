@@ -79,6 +79,7 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
     public event Action<IntPtr>? WindowRestored;
     public event Action<IntPtr>? WindowFocused;
     public event Action<IntPtr>? WindowMoved;
+    public event Action<IntPtr>? WindowMoveEnded;
     public event Action? AltTabStarted;
     public event Action? AltTabEnded;
     public event Action<IntPtr>? WindowSelected;
@@ -111,6 +112,7 @@ internal sealed class Win32InputRouter : IInputRouter, IDisposable
             _winEvents.WindowRestored += h => WindowRestored?.Invoke(h);
             _winEvents.WindowFocused += h => WindowFocused?.Invoke(h);
             _winEvents.WindowMoved += h => WindowMoved?.Invoke(h);
+            _winEvents.WindowMoveEnded += h => WindowMoveEnded?.Invoke(h);
             _winEvents.AltTabStarted += () => AltTabStarted?.Invoke();
             _winEvents.AltTabEnded += () => AltTabEnded?.Invoke();
             _winEvents.WindowSelected += h => WindowSelected?.Invoke(h);

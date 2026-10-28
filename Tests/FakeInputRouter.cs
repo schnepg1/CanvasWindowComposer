@@ -38,6 +38,8 @@ internal sealed class FakeInputRouter : IInputRouter
     public event Action<IntPtr>? WindowRestored;
     public event Action<IntPtr>? WindowFocused;
     public event Action<IntPtr>? WindowMoved;
+    public event Action<IntPtr>? WindowMoveEnded;
+    public void RaiseWindowMoveEnded(IntPtr handle) => WindowMoveEnded?.Invoke(handle);
     public event Action? AltTabStarted;
     public event Action? AltTabEnded;
     public event Action<IntPtr>? WindowSelected;

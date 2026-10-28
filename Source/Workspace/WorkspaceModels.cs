@@ -3,9 +3,12 @@ using System.Collections.Generic;
 
 namespace CanvasDesktop;
 
+internal enum WorkspacePlacement { Deliberate, Temporary }
+
 // Persisted data only: no HWNDs, UI objects, or matching/storage behaviour.
 internal sealed class WorkspaceItem
 {
+    public WorkspacePlacement Placement { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid DesktopId { get; set; }
     public string Title { get; set; } = "";
@@ -32,9 +35,18 @@ internal sealed class WorkspaceCamera
 internal sealed class WorkspaceDocument
 {
     public int Version { get; set; } = 1;
+    public bool PlacementPolicyInitialized { get; set; }
+    public Dictionary<Guid, WorkspaceTemporaryArea> TemporaryAreas { get; set; } = new();
     public List<WorkspaceItem> Items { get; set; } = new();
     public Dictionary<Guid, WorkspaceCamera> Cameras { get; set; } = new();
     public List<WorkspaceZone> Zones { get; set; } = new();
+}
+
+// Only the area's anchor survives a session. Temporary window identities and slots never do.
+internal sealed class WorkspaceTemporaryArea
+{
+    public double X { get; set; }
+    public double Y { get; set; }
 }
 
 internal static class WorkspaceGeometry

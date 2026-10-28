@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Linq;
 
 namespace CanvasDesktop;
 
@@ -43,10 +44,11 @@ internal sealed class WorkspacePersistence
         if (!_canSave) return false;
         try
         {
-            string current = JsonSerializer.Serialize(Document, FingerprintOptions);
+            var saved = SavedState(Document);
+            string current = JsonSerializer.Serialize(saved, FingerprintOptions);
             if (current != _lastSaved)
             {
-                _store.Save(Document);
+                _store.Save(saved);
                 _lastSaved = current; // Advance only after a successful atomic save.
             }
             LastError = null;
@@ -57,5 +59,18 @@ internal sealed class WorkspacePersistence
             LastError = "Workspace could not be saved: " + ex.Message;
             return false;
         }
+    }
+
+    internal static WorkspaceDocument SavedState(WorkspaceDocument document)
+    {
+        var items = document.Items.Where(i => i.Placement != WorkspacePlacement.Temporary).ToList();
+        var ids = items.Select(i => i.Id).ToHashSet();
+        return new WorkspaceDocument
+        {
+            Version = document.Version, PlacementPolicyInitialized = document.PlacementPolicyInitialized,
+            TemporaryAreas = new(document.TemporaryAreas), Cameras = new(document.Cameras), Items = items,
+            Zones = document.Zones.Select(z => new WorkspaceZone { Id = z.Id, DesktopId = z.DesktopId,
+                Name = z.Name, Color = z.Color, Bounds = z.Bounds, ItemIds = z.ItemIds.Where(ids.Contains).ToList() }).ToList()
+        };
     }
 }

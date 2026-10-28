@@ -149,6 +149,7 @@ public class WorkspaceTests : IDisposable
                 workspace.Start();
                 var item = Assert.Single(workspace.Document.Items);
                 Assert.True(workspace.IsOpen(item));
+                workspace.KeepPlace(item.Id);
                 canvas.SetWindow(old, -2400, 1500, 920, 680);
                 api.Windows[old].Visible = false;
                 wm.RemoveWindow(old);

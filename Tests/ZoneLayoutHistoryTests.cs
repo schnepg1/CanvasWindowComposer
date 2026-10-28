@@ -189,6 +189,8 @@ public class ZoneLayoutHistoryTests
         rig.Identity.Executables[99] = @"C:\Other\Other.exe";
         rig.Api.Windows[handle].Title = "Other app"; rig.Api.Windows[handle].X = 4000;
         Assert.True(rig.Workspace.UndoZoneLayout());
-        Assert.Equal(100, item.Bounds.X); Assert.Equal(4000, rig.Canvas.Windows[handle].X);
+        Assert.Equal(100, item.Bounds.X);
+        Assert.True(rig.Workspace.Items.Single(i => i.Title == "Other app").Temporary);
+        Assert.NotEqual(item.Bounds.X, rig.Canvas.Windows[handle].X);
     }
 }

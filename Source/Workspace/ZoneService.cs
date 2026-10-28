@@ -69,6 +69,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
         var ids = itemIds.ToHashSet();
         var eligible = _document.Items.Where(i => i.DesktopId == _desktop()).Select(i => i.Id).ToHashSet();
         if (ids.Count != itemIds.Count || !ids.IsSubsetOf(eligible)) return false;
+        foreach (var item in _document.Items.Where(i => ids.Contains(i.Id))) item.Placement = WorkspacePlacement.Deliberate;
         zone.ItemIds = ids.OrderBy(i => i).ToList();
         return Persist();
     }

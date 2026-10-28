@@ -44,7 +44,7 @@ public class WorkspaceBoundaryTests
             case "state": bounds.State = WindowState.Maximized; break;
             case "pinned": bounds.PinnedToScreen = true; break;
             case "zorder": bounds.ZOrder = 9; break;
-            case "camera": store.Document.Cameras[Guid.Empty] = new() { X = 300 }; break;
+            case "camera": persistence.Document.Cameras[Guid.Empty] = new() { X = 300 }; break;
         }
         store.Document.Items[0].Bounds = bounds;
         Assert.True(persistence.Save());

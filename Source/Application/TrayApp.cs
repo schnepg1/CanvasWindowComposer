@@ -167,6 +167,7 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(new ToolStripMenuItem("Project Areas…", null, (_, _) => _zoneUi.Show()));
             menu.Items.Add(new ToolStripMenuItem("Project Navigator…", null, (_, _) => _zoneUi.ShowNavigator()));
             menu.Items.Add(saveItem);
+            menu.Items.Add(new ToolStripMenuItem("Go to temporary area", null, (_, _) => _overview.ShowTemporaryArea()));
             menu.Items.Add(startupItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);

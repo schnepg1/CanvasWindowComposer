@@ -7,7 +7,7 @@ namespace CanvasDesktop;
 internal sealed record WorkspaceItemView(Guid Id, string Title, string ExecutablePath,
     string Target, bool OpenOnStartup, WorldRect Bounds, string State, string Name = "", bool IsFolder = false,
     string ChromeProfilePath = "", string? LaunchMessage = null, WebResource? WebResource = null,
-    bool ExcludeFromAutomaticMinimization = false)
+    bool ExcludeFromAutomaticMinimization = false, bool Temporary = false)
 {
     public string DisplayTarget => WebResource?.Url ?? Target;
     public string BrowserDetails => WebResource == null ? "" : BrowserSupport.Name(ExecutablePath)
@@ -26,6 +26,7 @@ internal interface IWorkspaceNavigationCommands
 
 internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
 {
+    void KeepPlace(Guid id);
     void FocusItem(Guid id);
     void CloseToPlaceholder(Guid id);
     void Forget(Guid id);

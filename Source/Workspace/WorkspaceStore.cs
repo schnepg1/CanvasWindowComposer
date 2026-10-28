@@ -15,7 +15,7 @@ internal sealed class WorkspaceStore : IWorkspaceStore
     public WorkspaceDocument Load(out string? warning)
     {
         warning = null;
-        if (!File.Exists(FilePath) && !File.Exists(FilePath + ".bak")) return new();
+        if (!File.Exists(FilePath) && !File.Exists(FilePath + ".bak")) return new() { PlacementPolicyInitialized = true };
         Exception? failure = null;
         foreach (var path in new[] { FilePath, FilePath + ".bak" })
         {
@@ -43,6 +43,7 @@ internal sealed class WorkspaceStore : IWorkspaceStore
     public void Save(WorkspaceDocument document)
     {
         Validate(document);
+        document = WorkspacePersistence.SavedState(document);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(FilePath))!);
         var temp = FilePath + ".tmp";
         try
@@ -61,12 +62,12 @@ internal sealed class WorkspaceStore : IWorkspaceStore
     private static void Validate(WorkspaceDocument doc)
     {
         if (doc.Version != 1 || doc.Items == null || doc.Cameras == null || doc.Items.Count > 2000
-            || doc.Zones == null || doc.Zones.Count > ZoneService.MaximumZones)
+            || doc.Zones == null || doc.Zones.Count > ZoneService.MaximumZones || doc.TemporaryAreas == null)
             throw new InvalidDataException("Unsupported or invalid workspace format.");
         var ids = new HashSet<Guid>();
         foreach (var i in doc.Items)
         {
-            if (i == null || i.Id == Guid.Empty || !ids.Add(i.Id) || i.Title == null
+            if (i == null || !Enum.IsDefined(i.Placement) || i.Id == Guid.Empty || !ids.Add(i.Id) || i.Title == null
                 || i.Name == null || i.Name.Length > 200
                 || i.ExecutablePath == null || i.Target == null || !WorkspaceGeometry.ValidBounds(i.Bounds)
                 || !ChromeProfiles.ValidPath(i.ChromeProfilePath)
@@ -93,6 +94,10 @@ internal sealed class WorkspaceStore : IWorkspaceStore
             if (c == null || !double.IsFinite(c.X) || !double.IsFinite(c.Y)
                 || !double.IsFinite(c.Zoom) || c.Zoom < 0.01 || c.Zoom > 10)
                 throw new InvalidDataException("Invalid workspace camera.");
+        foreach (var area in doc.TemporaryAreas.Values)
+            if (area == null || !double.IsFinite(area.X) || !double.IsFinite(area.Y)
+                || Math.Abs(area.X) >= 10000000 || Math.Abs(area.Y) >= 10000000)
+                throw new InvalidDataException("Invalid temporary area anchor.");
     }
 
 }
