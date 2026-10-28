@@ -4,7 +4,8 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-// Runtime identities never enter workspace.json. PID alone is also recyclable.
+// Live bindings are session-only. The upgrade's outstanding adoption records
+// persist this identity separately and never authorize native actions by themselves.
 internal readonly record struct WorkspaceProcessIdentity(uint ProcessId, long StartedAtUtcTicks, string ExecutablePath);
 internal readonly record struct WorkspaceWindowIdentity(IntPtr Handle, uint ProcessId, long ProcessStartedAtUtcTicks);
 
@@ -17,6 +18,7 @@ internal sealed class WorkspaceLiveWindow
     public long? WaitingForFolderSince { get; set; }
     public long? WaitingForProjectSince { get; set; }
     public bool NeedsNativeGeometry { get; set; }
+    public bool NeedsInitialMatch { get; set; } = true;
     public WorkspaceLiveWindow(WorkspaceWindowIdentity identity) { Identity = identity; }
 }
 

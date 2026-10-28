@@ -13,7 +13,7 @@ remaining-work section below.
 
 | Component | Responsibility |
 | --- | --- |
-| `WorkspaceModels` / `WorkspaceGeometry` | Version-1 persisted data and geometry constraints; no runtime window handles |
+| `WorkspaceModels` / `WorkspaceGeometry` | Version-1 persisted data and geometry constraints; live bindings remain session-only, with a separate checkpoint for outstanding upgrade adoption |
 | `WorkspaceMatcher` | Pure matching policy: desktop, executable, target, title, already-bound slots and explicit launches |
 | `WorkspaceStore` / `IWorkspaceStore` | JSON format validation, atomic file replacement, backup recovery and preservation of damaged input |
 | `WorkspacePersistence` | Load-failure write protection, save-on-change fingerprinting and retryable save errors |

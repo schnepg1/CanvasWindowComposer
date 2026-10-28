@@ -5,6 +5,34 @@ namespace CanvasDesktop.Tests;
 
 public sealed class WebResourceTests : IDisposable
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SavingTemporaryBrowserAsResourceDetachesItOnlyAfterASuccessfulSave(bool failFirstSave)
+    {
+        string browser = Exe("chrome.exe");
+        using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true });
+        rig.Identity.Exe = browser;
+        rig.Api.AddWindow((IntPtr)42, 10, 20, 800, 600, title: "Temporary browser"); rig.Workspace.Start();
+        var temporary = Assert.Single(rig.Workspace.Items); var area = rig.Workspace.TemporaryArea!;
+        var zone = rig.Workspace.Document.Zones.Single(z => z.Id == area.Id);
+        if (failFirstSave)
+        {
+            rig.Store.SaveError = new IOException("Disk full");
+            Assert.False(rig.Workspace.SaveWebResource(temporary.Id, browser, "Reference", new("https://example.com/")));
+            Assert.True(Assert.Single(rig.Workspace.Items).Temporary); Assert.Contains(temporary.Id, zone.ItemIds);
+            rig.Store.SaveError = null;
+        }
+        Assert.True(rig.Workspace.SaveWebResource(temporary.Id, browser, "Reference", new("https://example.com/")));
+        Assert.DoesNotContain(temporary.Id, zone.ItemIds);
+        var resource = rig.Workspace.Document.Items.Single(); var bounds = resource.Bounds;
+        Assert.Equal(WorkspacePlacement.Deliberate, resource.Placement);
+        Assert.True(rig.Workspace.MoveZone(area.Id, -2000, 1000));
+        Assert.Equal(bounds, resource.Bounds);
+        Assert.Equal(resource.Id, Assert.Single(rig.Store.Document.Items).Id);
+        Assert.Empty(rig.Store.Document.Zones.Single(z => z.Id == area.Id).ItemIds);
+    }
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "canvas-web-tests-" + Guid.NewGuid().ToString("N"));
     public WebResourceTests() => Directory.CreateDirectory(_root);
     private string Exe(string name)

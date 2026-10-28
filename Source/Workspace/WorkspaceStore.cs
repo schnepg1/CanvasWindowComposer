@@ -64,9 +64,15 @@ internal sealed class WorkspaceStore : IWorkspaceStore
     {
         if (doc.Version != 1 || doc.Items == null || doc.Cameras == null || doc.Items.Count > 2000
             || doc.Zones == null || doc.Zones.Count(z => z == null || !z.IsTemporaryArea) > ZoneService.MaximumZones
-            || doc.Zones.Count > ZoneService.MaximumZones * 2 || doc.TemporaryAreas == null)
+            || doc.Zones.Count > ZoneService.MaximumZones * 2 || doc.TemporaryAreas == null
+            || doc.PendingPlacementAdoptions == null || doc.PendingPlacementAdoptions.Count > 20000)
             throw new InvalidDataException("Unsupported or invalid workspace format.");
         var ids = new HashSet<Guid>();
+        var adoptions = new HashSet<WorkspacePlacementAdoption>();
+        foreach (var adoption in doc.PendingPlacementAdoptions)
+            if (adoption == null || adoption.Handle == 0 || adoption.ProcessId == 0
+                || adoption.ProcessStartedAtUtcTicks <= 0 || !adoptions.Add(adoption))
+                throw new InvalidDataException("Invalid outstanding workspace adoption.");
         foreach (var i in doc.Items)
         {
             if (i == null || !Enum.IsDefined(i.Placement) || i.Id == Guid.Empty || !ids.Add(i.Id) || i.Title == null

@@ -310,7 +310,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (WorkspaceTargetIdentity.IsVsCode(exe) && target.Length == 0)
             {
                 string? detected = _identity.ReadVsCodeTarget(live.Identity, exe, title);
-                if (detected == null && !HasDeliberatePlace(live))
+                if (detected == null && live.NeedsInitialMatch && !HasDeliberatePlace(live))
                 {
                     live.WaitingForProjectSince ??= _clock.TickCount64;
                     if (_clock.TickCount64 - live.WaitingForProjectSince.Value < 8000)
@@ -320,7 +320,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 if (detected != null) live.WaitingForProjectSince = null;
             }
             if (target.Length > 0) live.WaitingForProjectSince = null;
-            if (explorer && target.Length == 0 && !HasDeliberatePlace(live))
+            if (explorer && target.Length == 0 && live.NeedsInitialMatch && !HasDeliberatePlace(live))
             {
                 live.WaitingForFolderSince ??= _clock.TickCount64;
                 if (_clock.TickCount64 - live.WaitingForFolderSince.Value < 8000)
@@ -341,7 +341,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                     CaptureTarget(old, exe, target, explorer);
                     if (old.DesktopId != _desktop) Zones.ForgetItem(old.Id);
                     old.DesktopId = _desktop;
-                    if (old.Placement == WorkspacePlacement.Deliberate) continue;
+                    if (old.Placement == WorkspacePlacement.Deliberate || !live.NeedsInitialMatch) continue;
                 }
                 else _bindings.Unbind(live);
             }
@@ -364,6 +364,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (match.IsAmbiguous)
             {
                 _ambiguous.UnionWith(match.AmbiguousIds);
+                live.NeedsInitialMatch = false;
                 StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer);
                 continue; // Keep saved places intact; no guessed identity.
             }
@@ -374,6 +375,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 && !CanFinishLaunch(item, live, input)) continue;
             if (item == null && !_migrationWindows.Contains(live.Identity))
             {
+                live.NeedsInitialMatch = false;
                 StageTemporary(live, input.ExecutablePath, input.Title, input.Target, explorer);
                 continue;
             }

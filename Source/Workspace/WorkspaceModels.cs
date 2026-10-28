@@ -36,10 +36,18 @@ internal sealed class WorkspaceDocument
 {
     public int Version { get; set; } = 1;
     public bool PlacementPolicyInitialized { get; set; }
+    public List<WorkspacePlacementAdoption> PendingPlacementAdoptions { get; set; } = new();
     public Dictionary<Guid, WorkspaceTemporaryArea> TemporaryAreas { get; set; } = new();
     public List<WorkspaceItem> Items { get; set; } = new();
     public Dictionary<Guid, WorkspaceCamera> Cameras { get; set; } = new();
     public List<WorkspaceZone> Zones { get; set; } = new();
+}
+
+// Short-lived upgrade checkpoint, not a saved place or a native-action capability.
+// Revalidate PID and process start time before using an outstanding boundary identity.
+internal sealed record WorkspacePlacementAdoption(long Handle, uint ProcessId, long ProcessStartedAtUtcTicks)
+{
+    public WorkspaceWindowIdentity ToIdentity() => new(new IntPtr(Handle), ProcessId, ProcessStartedAtUtcTicks);
 }
 
 // Compatibility with the original anchor-only format; migrated to a saved zone.

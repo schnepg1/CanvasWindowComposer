@@ -41,6 +41,10 @@ arrival unless it matches an intentional saved place.
 Folder/project lookups may take time. New candidates can wait in the temporary
 area while matching completes, then return to a matching saved place. Ambiguous
 matches keep saved geometry intact and remain manually linkable.
+Once that initial matching decision is complete, temporary windows do not
+automatically claim saved places that become available later. Explicit linking
+still works. Saving a temporary browser window as a web resource detaches the
+saved resource from the temporary area after persistence succeeds.
 
 ## Upgrade adoption
 
@@ -50,6 +54,12 @@ one-time identity snapshot of already-open windows and adopts those positions
 as deliberate as they are captured. Delayed project/folder discovery uses that
 same snapshot. Windows introduced afterward are temporary. Brand-new workspace
 files start with the policy enabled, so first use gets the collection behavior.
+Outstanding snapshot entries are checkpointed with window handle, PID and process
+start time until adopted, forgotten, closed or replaced. This preserves the same
+upgrade boundary across Canvas restarts while other desktops or project lookups
+are still pending. These records classify adoption only: native actions continue
+to require fresh identity validation. Ordinary temporary windows are not included
+in this checkpoint, and no live workspace bindings are persisted.
 Anchor-only temporary areas from the initial implementation are converted to
 editable areas at the same location.
 

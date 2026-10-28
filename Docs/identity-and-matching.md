@@ -100,8 +100,11 @@ and should be an explicit choice, not a default.
 
 The v1 document gains an optional `Name` string (default empty, maximum 200
 characters). Old v1 documents load unchanged. Bounds, slot IDs, camera data and
-launch opt-ins keep their existing format. Runtime PIDs, start times, HWNDs and
-selection tokens are never serialized. Older binaries ignore and may drop names
+launch opt-ins keep their existing format. Live bindings and selection tokens
+are never serialized. The temporary-area upgrade separately checkpoints pending
+adoption identities (HWND, PID, process start time) until those original windows
+are captured or retire; these records do not authorize native actions. Older
+binaries ignore and may drop names
 when saving; use the retained workspace copy when rolling back.
 
 `AutoDetectedTarget` (default false) records whether Canvas owns updates to a Code

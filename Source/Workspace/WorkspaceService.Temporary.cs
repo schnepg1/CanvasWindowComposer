@@ -45,16 +45,38 @@ internal sealed partial class WorkspaceService
 
     private void InitializePlacementPolicy()
     {
+        _migrationWindows.UnionWith(Document.PendingPlacementAdoptions.Select(a => a.ToIdentity()));
         if (Document.PlacementPolicyInitialized) return;
         // Adopt only windows present at the upgrade boundary, including windows on
         // other desktops and identities whose folder/project lookup completes later.
         _api.EnumWindows(handle =>
         {
             if (_api.GetWindowProcessId(handle) != (uint)Environment.ProcessId
-                && InspectWindow(handle) is { } observed) _migrationWindows.Add(observed.Identity);
+                && InspectWindow(handle) is { } observed && _migrationWindows.Add(observed.Identity))
+                Document.PendingPlacementAdoptions.Add(new(handle.ToInt64(), observed.Identity.ProcessId,
+                    observed.Identity.ProcessStartedAtUtcTicks));
             return true;
         });
         Document.PlacementPolicyInitialized = true;
+    }
+
+    private void CompletePlacementAdoptions()
+    {
+        foreach (var adoption in Document.PendingPlacementAdoptions.ToArray())
+        {
+            var identity = adoption.ToIdentity();
+            uint pid = _api.GetWindowProcessId(identity.Handle);
+            var observed = pid == identity.ProcessId ? InspectWindow(identity.Handle) : null;
+            // An inspection outage is not evidence of closure. Retain its checkpoint
+            // until the window is captured, explicitly forgotten, closed or replaced.
+            var live = _bindings.At(identity.Handle);
+            bool captured = observed?.Identity == identity && live?.Identity == identity
+                && (live.Forgotten || live.ItemId is { } id && Find(id)?.Placement == WorkspacePlacement.Deliberate
+                    && ValidBinding(identity.Handle) != null);
+            if (!captured && pid == identity.ProcessId && (observed == null || observed.Value.Identity == identity)) continue;
+            Document.PendingPlacementAdoptions.Remove(adoption);
+            _migrationWindows.Remove(identity);
+        }
     }
 
     private IReadOnlyList<WorldRect> PlacementObstacles(IntPtr except)
@@ -100,6 +122,7 @@ internal sealed partial class WorkspaceService
 
     private void FinishTemporaryCapture()
     {
+        CompletePlacementAdoptions();
         foreach (var item in Document.Items.Where(i => i.Placement == WorkspacePlacement.Temporary).ToArray())
             if (BoundWindow(item.Id) == null)
             {
@@ -118,6 +141,12 @@ internal sealed partial class WorkspaceService
         if (!_temporaryAreaChanged) return;
         _temporaryAreaChanged = false;
         Zones.NotifyDesktopChanged();
+    }
+
+    private void RemoveTemporaryMembership(Guid id)
+    {
+        foreach (var zone in Document.Zones.Where(z => z.IsTemporaryArea))
+            if (zone.ItemIds.Remove(id)) _temporaryAreaChanged = true;
     }
 
     private bool HasDeliberatePlace(WorkspaceLiveWindow live)

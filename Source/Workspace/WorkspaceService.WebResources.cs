@@ -30,12 +30,13 @@ internal sealed partial class WorkspaceService
             if (old == null) Document.Items.Remove(item); else Document.Items[index] = old;
             Changed?.Invoke(); return false;
         }
+        RemoveTemporaryMembership(item.Id);
         // The new launch settings apply on the next open. Never navigate or close
         // the user's current window as a side effect of saving a URL/browser.
         if (old != null && (!WorkspaceAppIdentity.Same(old.ExecutablePath, item.ExecutablePath) || old.WebResource != resource)
             && BoundWindow(item.Id) is { } live)
         { live.Forgotten = true; _bindings.Unbind(live); }
         _ambiguous.Remove(item.Id); _launchMessages.Remove(item.Id); _status = null;
-        EnsureCards(); Changed?.Invoke(); return true;
+        EnsureCards(); PublishTemporaryAreaChange(); Changed?.Invoke(); return true;
     }
 }
