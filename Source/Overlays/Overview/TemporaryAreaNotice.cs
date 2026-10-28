@@ -24,7 +24,8 @@ internal sealed class TemporaryAreaNotice : Form
         BackColor = Color.FromArgb(28, 34, 46); ForeColor = Color.White;
         Font = new Font("Segoe UI", 10);
         AccessibleName = "Temporary windows notification";
-        _message = new Label { Location = new Point(16, 14), Size = new Size(272, 24), Text = "New windows in Temporary area" };
+        _message = new Label { Location = new Point(16, 14), Size = new Size(272, 24), AutoEllipsis = true, UseMnemonic = false,
+            Text = "New windows in Temporary area" };
         Controls.Add(_message);
         Controls.Add(new Label { Location = new Point(16, 40), Size = new Size(290, 20), Text = "These windows won't leave saved places.",
             ForeColor = Color.LightSteelBlue, Font = new Font("Segoe UI", 9) });
@@ -40,9 +41,9 @@ internal sealed class TemporaryAreaNotice : Form
         _expiry.Tick += (_, _) => { Hide(); _expiry.Stop(); };
     }
 
-    public void ShowArrivals(int count, ScreenRect workingArea)
+    public void ShowArrivals(int count, ScreenRect workingArea, string name = "Temporary area")
     {
-        UpdateCount(count);
+        UpdateCount(count, name);
         int inset = (int)Math.Round(16 * DeviceDpi / 96.0);
         Location = new Point(workingArea.X + workingArea.Width - Width - inset,
             workingArea.Y + (int)Math.Round(150 * DeviceDpi / 96.0));
@@ -50,9 +51,9 @@ internal sealed class TemporaryAreaNotice : Form
         _expiry.Stop(); _expiry.Start();
     }
 
-    public void UpdateCount(int count)
+    public void UpdateCount(int count, string name = "Temporary area")
     {
-        _message.Text = count == 1 ? "1 window in Temporary area" : $"{count} windows in Temporary area";
+        _message.Text = count == 1 ? $"1 window in {name}" : $"{count} windows in {name}";
         if (count == 0) { Hide(); _expiry.Stop(); }
     }
 

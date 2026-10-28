@@ -12,6 +12,39 @@ namespace CanvasDesktop.Tests;
 public class TemporaryAreaViewTests
 {
     [Fact]
+    public void TemporaryAreaUsesTheAreaEditorToSaveItsOwnNameAndColor()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true });
+            rig.Workspace.Start();
+            var area = rig.Workspace.EnsureTemporaryArea()!;
+            var editor = new ZoneWindow(rig.Workspace.Zones, () => { }, _ => { }, () => null);
+            try
+            {
+                editor.Select(area.Id);
+                var controls = Descendants(editor).ToArray();
+                controls.OfType<System.Windows.Controls.TextBox>().Single(t => t.Name == "AreaName").Text = "Occasional apps";
+                controls.OfType<System.Windows.Controls.TextBox>().Single(t => t.Name == "AreaColor").Text = "#34D399";
+                controls.OfType<System.Windows.Controls.Button>().Single(b => Equals(b.Content, "Save changes"))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                var saved = Assert.Single(rig.Store.Document.Zones);
+                Assert.Equal("Occasional apps", saved.Name); Assert.Equal("#34D399", saved.Color);
+                Assert.True(saved.IsTemporaryArea); Assert.Empty(saved.ItemIds); Assert.Empty(rig.Store.Document.Items);
+                Assert.False(controls.OfType<System.Windows.Controls.Button>().Single(b => Equals(b.Content, "Choose members…")).IsEnabled);
+            }
+            finally { editor.Close(); }
+        });
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+        {
+            yield return child;
+            foreach (var descendant in Descendants(child)) yield return descendant;
+        }
+    }
+
+    [Fact]
     public void TemporaryWindowMenuOffersAnExplicitKeepAction()
         => WorkspaceViewTests.OnSta(() =>
         {
@@ -61,7 +94,7 @@ public class TemporaryAreaViewTests
             var fit = ZoneGeometry.Fit(area.Bounds, new(0, 0, 1200, 720));
             var surface = new OverviewAnnotationSurface();
             surface.Update(OverviewAnnotationSnapshot.Create(
-                [new(Guid.Empty, "Temporary area · not saved", "#94A3B8", area.Bounds, area.Count)],
+                rig.Workspace.Zones.Items,
                 fit.X, fit.Y, fit.Zoom, new(0, 0, 1200, 720), null, false,
                 placeholders: rig.Workspace.Items.Select(i => new PlaceholderAnnotation((IntPtr)1, i.Title, i.Bounds, ImageOpacity: 0)).ToArray(),
                 showHints: false));

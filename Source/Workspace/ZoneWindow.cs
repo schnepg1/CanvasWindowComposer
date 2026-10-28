@@ -20,6 +20,7 @@ internal sealed class ZoneWindow : Window
     private readonly IZoneLayoutCommands? _history;
     private readonly Button _undo;
     private readonly Button _redo;
+    private readonly Button _membersButton, _removeButton;
     private bool _refreshing;
     private static SolidColorBrush Brush(string hex) => ZoneTheme.Brush(hex);
 
@@ -112,8 +113,10 @@ internal sealed class ZoneWindow : Window
         ((FrameworkElement)actions.Children[0]).Margin = new Thickness(0, 4, 4, 0);
         ((FrameworkElement)actions.Children[1]).Margin = new Thickness(4, 4, 0, 0);
         _editor.Children.Add(actions);
-        _editor.Children.Add(Button("Choose members…", ChooseMembers));
-        _editor.Children.Add(Button("Remove area", Remove));
+        _membersButton = Button("Choose members…", ChooseMembers);
+        _removeButton = Button("Remove area", Remove);
+        _editor.Children.Add(_membersButton);
+        _editor.Children.Add(_removeButton);
         footer.Children.Add(_message);
         _message.FontSize = 12; _message.Foreground = Brush("#A7B3C9"); _message.Margin = new Thickness(0, 12, 0, 0);
         _zones.Changed += Refresh;
@@ -165,6 +168,9 @@ internal sealed class ZoneWindow : Window
         if (_refreshing) return;
         _editor.IsEnabled = Selected != null;
         _name.Text = Selected?.Name ?? ""; _color.Text = Selected?.Color ?? "#60A5FA";
+        _membersButton.IsEnabled = _removeButton.IsEnabled = Selected?.IsTemporaryArea != true;
+        _membersButton.ToolTip = Selected?.IsTemporaryArea == true ? "Temporary windows join and leave this area automatically." : null;
+        _removeButton.ToolTip = Selected?.IsTemporaryArea == true ? "Keep this area for incoming temporary windows. You can move, resize or rename it." : null;
     }
 
     private void Save()

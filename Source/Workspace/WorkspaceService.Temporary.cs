@@ -4,13 +4,13 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal sealed record TemporaryAreaView(WorldRect Bounds, int Count);
+internal sealed record TemporaryAreaView(WorldRect Bounds, int Count, Guid Id, string Name, string Color);
 
 internal sealed partial class WorkspaceService
 {
     private readonly HashSet<WorkspaceWindowIdentity> _migrationWindows = new();
-    private readonly Dictionary<Guid, WorldRect> _temporaryBounds = new();
     private int _arrivals;
+    private bool _temporaryAreaChanged;
     internal Func<IReadOnlyList<WorldRect>>? AdditionalPlacementObstacles { get; set; }
     public event Action<TemporaryAreaView>? TemporaryWindowsArrived;
 
@@ -19,8 +19,28 @@ internal sealed partial class WorkspaceService
         get
         {
             int count = Document.Items.Count(i => i.DesktopId == _desktop && i.Placement == WorkspacePlacement.Temporary);
-            return count > 0 && _temporaryBounds.TryGetValue(_desktop, out var bounds) ? new(bounds, count) : null;
+            var zone = TemporaryZone;
+            return zone != null ? new(zone.Bounds, count, zone.Id, zone.Name, zone.Color) : null;
         }
+    }
+
+    private WorkspaceZone? TemporaryZone => Document.Zones.FirstOrDefault(z => z.DesktopId == _desktop && z.IsTemporaryArea);
+
+    public TemporaryAreaView? EnsureTemporaryArea()
+    {
+        if (_disposed || !_started || _switching) return null;
+        GetOrCreateTemporaryZone(PlacementObstacles(IntPtr.Zero));
+        Save(); PublishTemporaryAreaChange(); Changed?.Invoke();
+        return TemporaryArea;
+    }
+
+    private void MigrateTemporaryAreas()
+    {
+        foreach (var (desktop, anchor) in Document.TemporaryAreas)
+            if (!Document.Zones.Any(z => z.DesktopId == desktop && z.IsTemporaryArea))
+                Document.Zones.Add(new() { DesktopId = desktop, IsTemporaryArea = true, Name = "Temporary area", Color = "#94A3B8",
+                    Bounds = new() { X = anchor.X, Y = anchor.Y, W = TemporaryAreaLayout.Width, H = 1200 } });
+        Document.TemporaryAreas.Clear();
     }
 
     private void InitializePlacementPolicy()
@@ -39,34 +59,43 @@ internal sealed partial class WorkspaceService
 
     private IReadOnlyList<WorldRect> PlacementObstacles(IntPtr except)
         => Document.Items.Where(i => i.DesktopId == _desktop && !i.Bounds.PinnedToScreen).Select(i => i.Bounds)
-            .Concat(Document.Zones.Where(z => z.DesktopId == _desktop).Select(z => z.Bounds))
+            .Concat(Document.Zones.Where(z => z.DesktopId == _desktop && !z.IsTemporaryArea).Select(z => z.Bounds))
             .Concat(_canvas.Windows.Where(p => p.Key != except && !p.Value.PinnedToScreen).Select(p => p.Value))
             .Concat(AdditionalPlacementObstacles?.Invoke() ?? Array.Empty<WorldRect>())
-            .Where(WorkspaceGeometry.ValidBounds).ToArray();
+            .Where(ZoneGeometry.ValidBounds).ToArray();
 
     private WorldRect PlaceTemporary(WorkspaceLiveWindow live, WorldRect world)
     {
         var occupied = PlacementObstacles(live.Identity.Handle);
-        if (!Document.TemporaryAreas.TryGetValue(_desktop, out var anchor))
-        {
-            var viewport = _windowActions.Viewport;
-            anchor = new WorkspaceTemporaryArea
-            {
-                X = Math.Max(_canvas.CamX + (viewport.X + viewport.Width) / _canvas.Zoom,
-                    occupied.Select(b => b.X + b.W).DefaultIfEmpty(_canvas.CamX).Max()) + 320,
-                Y = _canvas.CamY + viewport.Y / _canvas.Zoom
-            };
-            Document.TemporaryAreas[_desktop] = anchor;
-        }
-        var placed = TemporaryAreaLayout.Place(anchor, world, occupied);
+        var zone = GetOrCreateTemporaryZone(occupied);
+        var placed = TemporaryAreaLayout.Place(zone.Bounds, world, occupied);
         // Maximized arrivals get a normal canvas footprint. Minimized arrivals stay asleep.
         if (placed.State == WindowState.Maximized) placed.State = WindowState.Normal;
-        var area = _temporaryBounds.GetValueOrDefault(_desktop,
-            new WorldRect { X = anchor.X, Y = anchor.Y, W = TemporaryAreaLayout.Width, H = 1200 });
+        var area = zone.Bounds;
         area.W = Math.Max(area.W, placed.X + placed.W + TemporaryAreaLayout.Gap - area.X);
         area.H = Math.Max(area.H, placed.Y + placed.H + TemporaryAreaLayout.Gap - area.Y);
-        _temporaryBounds[_desktop] = area;
+        zone.Bounds = area;
+        _temporaryAreaChanged = true;
         return placed;
+    }
+
+    private WorkspaceZone GetOrCreateTemporaryZone(IReadOnlyList<WorldRect> occupied)
+    {
+        var zone = TemporaryZone;
+        if (zone == null)
+        {
+            var viewport = _windowActions.Viewport;
+            zone = new WorkspaceZone
+            {
+                DesktopId = _desktop, IsTemporaryArea = true, Name = "Temporary area", Color = "#94A3B8",
+                Bounds = new() { X = Math.Max(_canvas.CamX + (viewport.X + viewport.Width) / _canvas.Zoom,
+                    occupied.Select(b => b.X + b.W).DefaultIfEmpty(_canvas.CamX).Max()) + 320,
+                    Y = _canvas.CamY + viewport.Y / _canvas.Zoom, W = TemporaryAreaLayout.Width, H = 1200 }
+            };
+            Document.Zones.Add(zone);
+            _temporaryAreaChanged = true;
+        }
+        return zone;
     }
 
     private void FinishTemporaryCapture()
@@ -75,10 +104,20 @@ internal sealed partial class WorkspaceService
             if (BoundWindow(item.Id) == null)
             {
                 Document.Items.Remove(item);
+                foreach (var zone in Document.Zones.Where(z => z.IsTemporaryArea)) zone.ItemIds.Remove(item.Id);
+                _temporaryAreaChanged = true;
                 RemoveCard(item.Id);
             }
+        PublishTemporaryAreaChange();
         if (_arrivals > 0 && TemporaryArea is { } area) TemporaryWindowsArrived?.Invoke(area);
         _arrivals = 0;
+    }
+
+    private void PublishTemporaryAreaChange()
+    {
+        if (!_temporaryAreaChanged) return;
+        _temporaryAreaChanged = false;
+        Zones.NotifyDesktopChanged();
     }
 
     private bool HasDeliberatePlace(WorkspaceLiveWindow live)
@@ -92,12 +131,20 @@ internal sealed partial class WorkspaceService
         EnrollNativeGeometry(live.Identity.Handle);
         var world = _canvas.Windows[live.Identity.Handle];
         if (!WorkspaceGeometry.ValidBounds(world)) return;
+        WorldRect placed;
+        try { placed = PlaceTemporary(live, world); }
+        catch (InvalidOperationException)
+        {
+            _status = "New windows could not be placed in the temporary area. Move the area closer to the workspace.";
+            return;
+        }
         var item = new WorkspaceItem { DesktopId = _desktop, Title = title, ExecutablePath = exe, Target = target,
             AutoDetectedTarget = WorkspaceTargetIdentity.IsVsCode(exe) && target.Length > 0,
             IsFolder = explorer && target.Length > 0, Placement = WorkspacePlacement.Temporary,
-            Bounds = PlaceTemporary(live, world) };
+            Bounds = placed };
         Document.Items.Add(item);
         if (!_bindings.Bind(live, item.Id)) { Document.Items.Remove(item); return; }
+        TemporaryZone!.ItemIds.Add(item.Id);
         RestoreBinding(live, item);
         if (IsOpen(item)) _arrivals++;
     }
@@ -107,6 +154,8 @@ internal sealed partial class WorkspaceService
         if (live.ItemId is not { } id || Find(id) is not { Placement: WorkspacePlacement.Temporary } item) return;
         _bindings.Unbind(live);
         Document.Items.Remove(item);
+        foreach (var zone in Document.Zones.Where(z => z.IsTemporaryArea)) zone.ItemIds.Remove(id);
+        _temporaryAreaChanged = true;
         RemoveCard(id);
     }
 
@@ -116,7 +165,9 @@ internal sealed partial class WorkspaceService
         if (_cards.TryGetValue(id, out var card)) SyncCardGeometry(item, card);
         else if (BoundWindow(id) is { } live && _canvas.Windows.TryGetValue(live.Identity.Handle, out var world)) item.Bounds = world;
         item.Placement = WorkspacePlacement.Deliberate;
-        Save(); Changed?.Invoke();
+        foreach (var zone in Document.Zones.Where(z => z.IsTemporaryArea)) zone.ItemIds.Remove(id);
+        _temporaryAreaChanged = true;
+        Save(); PublishTemporaryAreaChange(); Changed?.Invoke();
     }
 
     private void OnWindowPinned(IntPtr handle)
@@ -130,7 +181,7 @@ internal sealed partial class WorkspaceService
         var live = ValidBinding(handle);
         var id = live?.ItemId ?? CardItem(handle);
         if (id is not { } itemId || Find(itemId) is not { Placement: WorkspacePlacement.Temporary } item
-            || !_canvas.Windows.TryGetValue(handle, out var world) || !_temporaryBounds.TryGetValue(_desktop, out var area)) return;
-        if (!TemporaryAreaLayout.ContainsCenter(area, world)) KeepPlace(item.Id);
+            || !_canvas.Windows.TryGetValue(handle, out var world) || TemporaryZone is not { } area) return;
+        if (!TemporaryAreaLayout.ContainsCenter(area.Bounds, world)) KeepPlace(item.Id);
     }
 }

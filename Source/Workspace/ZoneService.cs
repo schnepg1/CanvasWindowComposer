@@ -37,7 +37,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     public bool Add(WorldRect bounds, out Guid id)
     {
         id = Guid.Empty;
-        if (!ZoneGeometry.ValidBounds(bounds) || _document.Zones.Count >= MaximumZones) return false;
+        if (!ZoneGeometry.ValidBounds(bounds) || _document.Zones.Count(z => !z.IsTemporaryArea) >= MaximumZones) return false;
         var zone = new WorkspaceZone { DesktopId = _desktop(), Bounds = bounds,
             Name = "Project area " + (Items.Count + 1) };
         _document.Zones.Add(zone);
@@ -56,7 +56,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     public bool Remove(Guid id)
     {
         var zone = Find(id);
-        if (zone == null) return false;
+        if (zone == null || zone.IsTemporaryArea) return false;
         _document.Zones.Remove(zone);
         return Persist();
     }
@@ -66,7 +66,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
         var zone = Find(id);
         if (zone == null) return Array.Empty<ZoneMemberView>();
         var assigned = zone.ItemIds.ToHashSet();
-        return _document.Items.Where(i => i.DesktopId == _desktop()).Select(i => new ZoneMemberView(i.Id,
+        return _document.Items.Where(i => i.DesktopId == _desktop() && (!zone.IsTemporaryArea || i.Placement == WorkspacePlacement.Temporary)).Select(i => new ZoneMemberView(i.Id,
             i.Name.Length > 0 ? i.Name : i.Title, assigned.Contains(i.Id), i.Bounds,
             i.Target.Length > 0 ? i.Target : i.ExecutablePath)).ToArray();
     }
@@ -74,11 +74,12 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     public bool SetMembership(Guid id, IReadOnlyCollection<Guid> itemIds)
     {
         var zone = Find(id);
-        if (zone == null || itemIds == null || itemIds.Count > 2000) return false;
+        if (zone == null || zone.IsTemporaryArea || itemIds == null || itemIds.Count > 2000) return false;
         var ids = itemIds.ToHashSet();
         var eligible = _document.Items.Where(i => i.DesktopId == _desktop()).Select(i => i.Id).ToHashSet();
         if (ids.Count != itemIds.Count || !ids.IsSubsetOf(eligible)) return false;
         foreach (var item in _document.Items.Where(i => ids.Contains(i.Id))) item.Placement = WorkspacePlacement.Deliberate;
+        foreach (var temporary in _document.Zones.Where(z => z.IsTemporaryArea)) temporary.ItemIds.RemoveAll(ids.Contains);
         zone.ItemIds = ids.OrderBy(i => i).ToList();
         return Persist();
     }

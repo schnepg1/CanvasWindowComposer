@@ -19,10 +19,10 @@ internal static class TemporaryAreaLayout
         => window.X + window.W / 2 >= area.X && window.X + window.W / 2 <= area.X + area.W
             && window.Y + window.H / 2 >= area.Y && window.Y + window.H / 2 <= area.Y + area.H;
 
-    public static WorldRect Place(WorkspaceTemporaryArea anchor, WorldRect window, IReadOnlyList<WorldRect> occupied)
+    public static WorldRect Place(WorldRect area, WorldRect window, IReadOnlyList<WorldRect> occupied)
     {
-        double left = anchor.X + Gap, top = anchor.Y + Header;
-        double right = left + Math.Max(Width - Gap * 2, window.W);
+        double left = area.X + Gap, top = area.Y + Header;
+        double right = left + Math.Max(area.W - Gap * 2, window.W);
         var xs = occupied.Select(b => b.X + b.W + Gap).Append(left)
             .Where(x => x >= left && x + window.W <= right).Distinct().OrderBy(x => x).ToArray();
         var ys = occupied.Select(b => b.Y + b.H + Gap).Append(top)

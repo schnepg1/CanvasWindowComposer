@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace CanvasDesktop;
@@ -62,7 +63,8 @@ internal sealed class WorkspaceStore : IWorkspaceStore
     private static void Validate(WorkspaceDocument doc)
     {
         if (doc.Version != 1 || doc.Items == null || doc.Cameras == null || doc.Items.Count > 2000
-            || doc.Zones == null || doc.Zones.Count > ZoneService.MaximumZones || doc.TemporaryAreas == null)
+            || doc.Zones == null || doc.Zones.Count(z => z == null || !z.IsTemporaryArea) > ZoneService.MaximumZones
+            || doc.Zones.Count > ZoneService.MaximumZones * 2 || doc.TemporaryAreas == null)
             throw new InvalidDataException("Unsupported or invalid workspace format.");
         var ids = new HashSet<Guid>();
         foreach (var i in doc.Items)
@@ -77,11 +79,13 @@ internal sealed class WorkspaceStore : IWorkspaceStore
                 throw new InvalidDataException("Invalid workspace item.");
         }
         var zoneIds = new HashSet<Guid>();
+        var temporaryDesktops = new HashSet<Guid>();
         var itemsById = new Dictionary<Guid, WorkspaceItem>();
         foreach (var item in doc.Items) itemsById.Add(item.Id, item);
         foreach (var zone in doc.Zones)
         {
             if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
+                || zone.IsTemporaryArea && !temporaryDesktops.Add(zone.DesktopId)
                 || !ZoneService.ValidName(zone.Name) || !ZoneService.ValidColor(zone.Color)
                 || !ZoneGeometry.ValidBounds(zone.Bounds) || zone.ItemIds == null || zone.ItemIds.Count > 2000)
                 throw new InvalidDataException("Invalid workspace zone.");

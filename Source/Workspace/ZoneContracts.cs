@@ -7,6 +7,7 @@ internal sealed record ZoneView(Guid Id, string Name, string Color, WorldRect Bo
 {
     public Guid? ParentId { get; init; }
     public int Depth { get; init; }
+    public bool IsTemporaryArea { get; init; }
 }
 internal sealed record ZoneMemberView(Guid Id, string Title, bool Assigned, WorldRect Bounds, string Details = "");
 

@@ -62,14 +62,14 @@ public class TemporaryAreaTests
         rig.Workspace.Start();
         var first = Arrival(rig, 42);
         var firstBounds = first.Bounds;
-        var anchor = rig.Workspace.Document.TemporaryAreas[Guid.Empty];
+        var anchor = rig.Workspace.Document.Zones.Single(z => z.IsTemporaryArea);
         var note = new WorldRect { X = firstBounds.X + firstBounds.W + 64, Y = firstBounds.Y, W = 900, H = 700 };
         rig.Workspace.AdditionalPlacementObstacles = () => [note];
         var zone = new WorkspaceZone { Bounds = new() { X = firstBounds.X, Y = firstBounds.Y + 800, W = 3500, H = 2000 } };
         rig.Workspace.Document.Zones.Add(zone);
         var second = Arrival(rig, 43);
         Assert.Equal(firstBounds, first.Bounds);
-        Assert.Same(anchor, rig.Workspace.Document.TemporaryAreas[Guid.Empty]);
+        Assert.Same(anchor, rig.Workspace.Document.Zones.Single(z => z.IsTemporaryArea));
         Assert.False(TemporaryAreaLayout.Overlaps(note, second.Bounds));
         Assert.False(TemporaryAreaLayout.Overlaps(zone.Bounds, second.Bounds));
         Assert.False(TemporaryAreaLayout.Overlaps(firstBounds, second.Bounds));
@@ -93,7 +93,7 @@ public class TemporaryAreaTests
         Assert.Empty(rig.Store.Document.Items);
         Assert.Equal(1, rig.Workspace.TemporaryArea!.Count);
         rig.Api.Windows.Remove((IntPtr)43); rig.Wm.RemoveWindow((IntPtr)43); rig.Workspace.SaveNow();
-        Assert.Null(rig.Workspace.TemporaryArea);
+        Assert.Equal(0, rig.Workspace.TemporaryArea!.Count);
         Assert.All(rig.Cards.Created, c => Assert.True(c.Disposed));
     }
 
@@ -130,7 +130,7 @@ public class TemporaryAreaTests
         Assert.True(rig.Workspace.Zones.SetMembership(zone, [second.Id]));
         Assert.Equal(WorkspacePlacement.Deliberate, second.Placement);
         Assert.Equal(2, rig.Store.Document.Items.Count);
-        Assert.Null(rig.Workspace.TemporaryArea);
+        Assert.Equal(0, rig.Workspace.TemporaryArea!.Count);
     }
 
     [Fact]
@@ -144,11 +144,11 @@ public class TemporaryAreaTests
             saved = rig.Store.Document;
             Assert.Empty(saved.Items);
         }
-        double x = saved.TemporaryAreas[Guid.Empty].X;
+        double x = saved.Zones.Single(z => z.IsTemporaryArea).Bounds.X;
         using var restarted = new WorkspaceHarness(saved);
         restarted.Workspace.Start();
         Assert.Empty(restarted.Cards.Created);
-        Assert.Null(restarted.Workspace.TemporaryArea);
+        Assert.Equal(0, restarted.Workspace.TemporaryArea!.Count);
         var next = Arrival(restarted, 45);
         Assert.Equal(x + TemporaryAreaLayout.Gap, next.Bounds.X);
         Assert.Equal(WorkspacePlacement.Temporary, next.Placement);
@@ -193,7 +193,7 @@ public class TemporaryAreaTests
         Assert.True(rig.Workspace.IsOpen(saved));
         Assert.Equal(saved.Id, Assert.Single(rig.Workspace.Document.Items).Id);
         Assert.Equal(saved.Bounds, rig.Canvas.Windows[(IntPtr)42]);
-        Assert.Null(rig.Workspace.TemporaryArea);
+        Assert.Equal(0, rig.Workspace.TemporaryArea!.Count);
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public class TemporaryAreaTests
         Assert.True(rig.Workspace.LinkWindow(a.Id, candidate.Token));
         Assert.True(rig.Workspace.IsOpen(a));
         Assert.Equal(2, rig.Workspace.Document.Items.Count);
-        Assert.Null(rig.Workspace.TemporaryArea);
+        Assert.Equal(0, rig.Workspace.TemporaryArea!.Count);
     }
 
     [Fact]

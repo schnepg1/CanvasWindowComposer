@@ -103,6 +103,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (_started || _disposed) return;
         _started = true;
+        MigrateTemporaryAreas();
         InitializePlacementPolicy();
         RestoreCamera();
         _wm.DiscoverNewWindows();
@@ -203,8 +204,6 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
                 Document.Cameras[_desktops.CurrentDesktopId] = camera;
             if (Document.TemporaryAreas.Remove(Guid.Empty, out var area))
                 Document.TemporaryAreas[_desktops.CurrentDesktopId] = area;
-            if (_temporaryBounds.Remove(Guid.Empty, out var bounds))
-                _temporaryBounds[_desktops.CurrentDesktopId] = bounds;
         }
         _desktop = _desktops.CurrentDesktopId;
         Zones.NotifyDesktopChanged();
@@ -489,6 +488,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             if (item?.Placement == WorkspacePlacement.Temporary)
             {
                 Document.Items.Remove(item);
+                foreach (var zone in Document.Zones.Where(z => z.IsTemporaryArea)) zone.ItemIds.Remove(id);
+                _temporaryAreaChanged = true;
                 _nextCapture = 0;
                 return;
             }
@@ -705,7 +706,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         item.ExecutablePath = observed.Exe;
         if (item.CaptureChromeProfile && ReadChromeProfile(live.Identity.Handle, item.ExecutablePath) is { } profile) item.ChromeProfilePath = profile;
         RestoreBinding(live, item);
-        EnsureCards(); Save(); Changed?.Invoke();
+        EnsureCards(); Save(); PublishTemporaryAreaChange(); Changed?.Invoke();
         return IsOpen(item);
     }
 
@@ -729,6 +730,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         if (Find(id) is not { } item) return;
         if (value) item.Placement = WorkspacePlacement.Deliberate;
+        if (value) foreach (var zone in Document.Zones.Where(z => z.IsTemporaryArea)) zone.ItemIds.Remove(id);
         item.OpenOnStartup = value; Save(); Changed?.Invoke();
     }
 

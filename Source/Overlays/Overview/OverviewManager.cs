@@ -84,7 +84,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     // Pan/drag state (virtual-screen coords)
     private int _panStartVx, _panStartVy;
-    private int _dragIndex = -1;
+    private int _dragIndex = -1;
+    private bool _windowDragMoved;
     private int _dragStartVx, _dragStartVy;
     private bool _reconcilingVisuals;
     private CanvasCamera? _sceneCamera;
@@ -803,7 +804,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
                 BringWindowToFront(hit);
                 _tools.TryBeginNavigation(CanvasInteractionKind.Window, pointer);
                 ApplyPointerCapture();
-                _dragIndex = 0;
+                _dragIndex = 0;
+                _windowDragMoved = false;
                 _dragStartVx = vx;
                 _dragStartVy = vy;
                 return;
@@ -870,7 +872,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
 
             _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
-            if (dx != 0 || dy != 0) ObserveGestureMotion();
+            if (dx != 0 || dy != 0) { _windowDragMoved = true; ObserveGestureMotion(); }
             if(dx!=0 || dy!=0)ObserveTourWindow();
             _visualFrames.Request();
         }
@@ -912,7 +914,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (ended == CanvasInteractionKind.Pan && !GuidedTutorialActive) ReleaseInertia();
         if (ended == CanvasInteractionKind.Window)
         {
-            if (_dragIndex >= 0 && _dragIndex < _windows.Count)
+            if (_windowDragMoved && _dragIndex >= 0 && _dragIndex < _windows.Count)
                 _placeholderWorkspace?.CommitWindowPlacement(_windows.Windows[_dragIndex].HWnd);
             _wm.Reproject(true);
             _dragIndex = -1;

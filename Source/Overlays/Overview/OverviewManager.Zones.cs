@@ -40,7 +40,8 @@ internal sealed partial class OverviewManager
     {
         if (_disposed) return;
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
-        _temporaryNotice?.UpdateCount(_placeholderWorkspace?.TemporaryArea?.Count ?? 0);
+        _temporaryNotice?.UpdateCount(_placeholderWorkspace?.TemporaryArea?.Count ?? 0,
+            _placeholderWorkspace?.TemporaryArea?.Name ?? "Temporary area");
         if (CurrentMode != OverviewMode.Hidden)
         {
             RefreshOverviewWindows();
@@ -226,8 +227,6 @@ internal sealed partial class OverviewManager
             _selectionRenderItems=_selectionRenderItems.Select(i=>i.Key.Kind==CanvasItemKind.Annotation && i.Key.Id==annotationPreview.Id
                 ?i with { Bounds=annotationPreview.Bounds }:i).ToArray();
         var zones = !zooming || _zones == null ? new List<ZoneView>() : new List<ZoneView>(_zones.Items);
-        if (zooming && _placeholderWorkspace?.TemporaryArea is { } temporary)
-            zones.Add(new(Guid.Empty, "Temporary area · not saved", "#94A3B8", temporary.Bounds, temporary.Count));
         if (_zoneTool.Gesture.MovingId is { } movingId && _zoneTool.Gesture.Preview is { } moved)
         {
             var movingIds = new HashSet<Guid> { movingId };

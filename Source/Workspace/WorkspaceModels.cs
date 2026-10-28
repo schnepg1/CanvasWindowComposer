@@ -42,7 +42,7 @@ internal sealed class WorkspaceDocument
     public List<WorkspaceZone> Zones { get; set; } = new();
 }
 
-// Only the area's anchor survives a session. Temporary window identities and slots never do.
+// Compatibility with the original anchor-only format; migrated to a saved zone.
 internal sealed class WorkspaceTemporaryArea
 {
     public double X { get; set; }
@@ -58,6 +58,7 @@ internal static class WorkspaceGeometry
 
 internal sealed class WorkspaceZone
 {
+    public bool IsTemporaryArea { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid DesktopId { get; set; }
     public string Name { get; set; } = "Project area";

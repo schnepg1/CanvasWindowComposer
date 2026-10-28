@@ -14,7 +14,7 @@ internal sealed class ZoneHierarchy
     {
         _zones = zones;
         _parents = zones.ToDictionary(z => z.Id, z => zones
-            .Where(p => p.DesktopId == z.DesktopId && Contains(p.Bounds, z.Bounds))
+            .Where(p => !p.IsTemporaryArea && !z.IsTemporaryArea && p.DesktopId == z.DesktopId && Contains(p.Bounds, z.Bounds))
             // A containing rectangle always has a larger width or height. Avoid
             // multiplying dimensions, which can overflow for very large areas.
             .OrderBy(p => p.Bounds.W).ThenBy(p => p.Bounds.H).ThenBy(p => p.Id)
@@ -41,7 +41,7 @@ internal sealed class ZoneHierarchy
         void Visit(WorkspaceZone zone, int depth)
         {
             result.Add(new(zone.Id, zone.Name, zone.Color, zone.Bounds, zone.ItemIds.Count)
-                { ParentId = Parent(zone.Id), Depth = depth });
+                { ParentId = Parent(zone.Id), Depth = depth, IsTemporaryArea = zone.IsTemporaryArea });
             foreach (var child in Children(zone.Id)) Visit(child, depth + 1);
         }
         foreach (var root in _zones.Where(z => Parent(z.Id) == null)) Visit(root, 0);
