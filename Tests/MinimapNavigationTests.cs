@@ -1,9 +1,13 @@
 ﻿using System.Drawing;
 using System.Windows.Forms;
 using CanvasDesktop;
+using CanvasDesktop.CanvasView;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace CanvasDesktop.Tests;
 
+[Collection("ShellViews")]
 public class MinimapNavigationTests
 {
     [Fact]
@@ -79,6 +83,44 @@ public class MinimapNavigationTests
             Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
             input.RaiseDragStarted(); Application.DoEvents();
             Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void OverviewMinimapNavigationReturnsFocusForSavedCameraKeys()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "minimap-bookmark-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Assert.True(GridRenderer.CompileShaders());
+                var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+                var screens = new FakeScreens(); var desktops = new FakeVirtualDesktops();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input);
+                using var overview = new OverviewManager(canvas, wm, api, input, config, screens);
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                using var cache = new DesktopStateCache(canvas, wm, overview, desktops);
+                using var map = new MinimapOverlay(canvas, input, cache, screens, overview: overview);
+                canvas.SetWindow((IntPtr)1, -2000, -1000, 5000, 3000);
+                overview.TransitionTo(OverviewMode.Zooming);
+                var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+                var saved = overview.ViewCamera;
+                pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.D1));
+                map.SetPinned(true);
+                using var other = new Form();
+                other.Show(); PInvoke.SetForegroundWindow((HWND)other.Handle); other.Activate(); Application.DoEvents();
+                Assert.Equal(other.Handle, (IntPtr)PInvoke.GetForegroundWindow());
+                Mouse(map, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1, 200, 120, 0));
+                Mouse(map, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, 200, 120, 0));
+                Application.DoEvents();
+                Assert.Equal(pass.Handle, (IntPtr)PInvoke.GetForegroundWindow());
+                Assert.NotEqual(saved, overview.ViewCamera);
+                PInvoke.SendMessage((HWND)pass.Handle, 0x0100, (WPARAM)(nuint)Keys.D1, 0);
+                PInvoke.SendMessage((HWND)pass.Handle, 0x0101, (WPARAM)(nuint)Keys.D1, 0);
+                Assert.Equal(saved, overview.ViewCamera);
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
         });
 
     private static void Mouse(Control control, string method, MouseEventArgs args)

@@ -31,6 +31,12 @@ internal sealed partial class OverviewManager
 
     internal event Action? ViewCameraChanged;
 
+    internal void FocusAfterMinimapNavigation()
+    {
+        if (!_disposed && CurrentMode == OverviewMode.Zooming && !CanvasInputSuspended)
+            FocusOverview();
+    }
+
     internal void CenterViewOnMinimap(double worldX, double worldY)
     {
         if (CurrentMode != OverviewMode.Zooming || !double.IsFinite(worldX) || !double.IsFinite(worldY)) return;

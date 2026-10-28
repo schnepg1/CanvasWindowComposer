@@ -279,6 +279,7 @@ internal sealed class MinimapOverlay : Form
         if (!_input.Enabled || _overview?.CanvasInputSuspended == true || e.Button != MouseButtons.Left || !new Rectangle(InnerPadding, InnerPadding, MapWidth, MapHeight).Contains(e.Location)
             || !_projection.IsValid) return;
         _dragProjection = _projection; _desktopGesture = _overview?.CurrentMode != OverviewMode.Zooming;
+        if (!_desktopGesture) _overview?.FocusAfterMinimapNavigation();
         Capture = true; _fadeTimer.Stop();
         Navigate(e.Location);
     }
