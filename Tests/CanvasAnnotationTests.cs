@@ -136,7 +136,62 @@ public class CanvasAnnotationTests
         var doc=new AnnotationDocument();var tool=new AnnotationCanvasTool(doc,()=>Desktop);tool.SetMode(AnnotationMode.Text);
         CanvasAnnotation? requested=null;tool.EditTextRequested+=item=>requested=item;
         tool.PointerDown(Pointer(50,60));tool.PointerUp(Pointer(50,60));Assert.Empty(doc.Items);Assert.False(tool.HasPendingInteraction);
-        Assert.NotNull(requested);Assert.Equal(new CanvasRect(50,60,240,120),requested.Bounds);
+        Assert.NotNull(requested);Assert.Equal(new CanvasRect(50,60,240,48),requested.Bounds);
+        Assert.Equal(AnnotationMode.Select,tool.Mode);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void TextCornersScaleTypeAndWrappingAroundTheOppositeCorner(int handle)
+    {
+        var title = Item(AnnotationKind.Text) with { Text="CATEGORY", FontSize=32 };
+        var handles = AnnotationGeometry.Handles(title);
+        var fixedCorner = handles[(handle+2)%4];
+        var grip = handles[handle];
+        var scaled = AnnotationGeometry.Resize(title,handle,new(grip.X-fixedCorner.X,grip.Y-fixedCorner.Y),false);
+        Assert.Equal(64,scaled.FontSize);
+        Assert.Equal(fixedCorner,AnnotationGeometry.Handles(scaled)[(handle+2)%4]);
+        Assert.Equal((title.Bounds.Width-18)*2,scaled.Bounds.Width-18,6);
+        Assert.Equal((title.Bounds.Height-16)*2,scaled.Bounds.Height-16,6);
+        Assert.Equal(title.Text,scaled.Text);
+    }
+
+    [Fact]
+    public void TitleScalingPreviewsLiveAndCommitsAsOneUndoStepAtAnyZoom()
+    {
+        var title = Item(AnnotationKind.Text) with { Text="PROJECTS", FontSize=200 };
+        var document = new AnnotationDocument([title]);
+        var tool = new AnnotationCanvasTool(document,()=>Desktop);
+        tool.SetMode(AnnotationMode.Select); tool.Select(title.Id);
+        var view = new CanvasViewTransform(-50,-50,.25,new(0,0,1920,1080),1.5,1.5);
+        CanvasPointer At(CanvasPoint world) => new(0,view.WorldToLocal(world),CanvasPointerButton.Left,CanvasModifiers.None,view);
+        tool.PointerDown(At(new(title.Bounds.X+title.Bounds.Width,title.Bounds.Y+title.Bounds.Height)));
+        tool.PointerMove(At(new(title.Bounds.X+title.Bounds.Width*4,title.Bounds.Y+title.Bounds.Height*4)));
+        Assert.Equal(800,tool.Preview!.FontSize,6);
+        Assert.Equal(title,Assert.Single(document.Items));
+        tool.PointerUp(At(new(title.Bounds.X+title.Bounds.Width*4,title.Bounds.Y+title.Bounds.Height*4)));
+        var saved = Assert.Single(document.Items);
+        Assert.Equal(800,saved.FontSize,6);
+        Assert.True(document.Undo(Desktop)); Assert.Equal(title,Assert.Single(document.Items));
+        Assert.False(document.Undo(Desktop));
+        Assert.True(document.Undo(Desktop,true)); Assert.Equal(saved,Assert.Single(document.Items));
+    }
+
+    [Fact]
+    public void TextSideHandlesReflowWithoutScalingAndCornersRespectFontLimits()
+    {
+        var title = Item(AnnotationKind.Text) with { Text="Heading", FontSize=24 };
+        var wider = AnnotationGeometry.Resize(title,5,new(200,0),false);
+        Assert.Equal(title.FontSize,wider.FontSize);
+        Assert.Equal(title.Bounds.Width+200,wider.Bounds.Width);
+        var huge = AnnotationGeometry.Resize(title,2,new(1000000,1000000),false);
+        Assert.Equal(AnnotationDocument.MaximumFontSize,huge.FontSize);
+        var tiny = AnnotationGeometry.Resize(title,2,new(-1000000,-1000000),false);
+        Assert.Equal(AnnotationDocument.MinimumFontSize,tiny.FontSize);
+        AnnotationDocument.Validate([huge,tiny with { Id=Guid.NewGuid() }]);
     }
     [Fact]
     public void DraggingInTextModeKeepsTheDraggedCardSizeAndStyle()
@@ -150,13 +205,13 @@ public class CanvasAnnotationTests
         Assert.Equal(AnnotationTextAlign.Right,requested.TextAlign);
         Assert.Equal(AnnotationTextEmphasis.BoldItalic,requested.Emphasis);
         Assert.Equal(AnnotationCardFill.None,requested.CardFill);
-        requested=null;
+        requested=null; tool.SetMode(AnnotationMode.Text);
         tool.PointerDown(Pointer(500,400));tool.PointerUp(Pointer(510,410));
         Assert.NotNull(requested);
         // A drag below the minimum still produces a usable card.
         Assert.Equal(new CanvasRect(500,400,
             AnnotationCanvasTool.MinimumTextCardWidth,AnnotationCanvasTool.MinimumTextCardHeight),requested.Bounds);
-        requested=null;
+        requested=null; tool.SetMode(AnnotationMode.Text);
         tool.PointerDown(Pointer(700,500));tool.PointerUp(Pointer(600,430));
         Assert.NotNull(requested);Assert.Equal(new CanvasRect(600,430,100,70),requested.Bounds);
     }
@@ -198,7 +253,12 @@ public class CanvasAnnotationTests
             tool.PointerDown(down);
             tool.PointerUp(down with { Position=new(down.Position.X+60*zoom,down.Position.Y+40*zoom) });
             var resized=Assert.Single(doc.Items);
-            Assert.Equal(new CanvasPoint(1660,1140),resized.B);
+            if (kind == AnnotationKind.Text)
+            {
+                Assert.Equal(1658.2,resized.B.X,6); Assert.Equal(1138.4,resized.B.Y,6);
+                Assert.Equal(item.FontSize*1.1,resized.FontSize,6);
+            }
+            else Assert.Equal(new CanvasPoint(1660,1140),resized.B);
             Assert.Equal(item.A,resized.A);
             Assert.True(doc.Undo(Desktop));Assert.Equal(item,Assert.Single(doc.Items));
         }
@@ -235,7 +295,10 @@ public class CanvasAnnotationTests
         tool.PointerDown(Pointer(10,20));tool.PointerMove(Pointer(140,150));tool.Cancel();
         Assert.Equal(item,Assert.Single(doc.Items));Assert.False(doc.Undo(Desktop));
         tool.PointerDown(Pointer(10,20));tool.PointerUp(Pointer(140,150));
-        Assert.Equal(new CanvasRect(110,120,30,30),Assert.Single(doc.Items).Bounds);
+        var shrunk = Assert.Single(doc.Items);
+        Assert.Equal(AnnotationDocument.MinimumFontSize,shrunk.FontSize);
+        Assert.Equal(new CanvasPoint(110,120),shrunk.B);
+        Assert.True(shrunk.Bounds.Width > 0);
         Assert.True(doc.Undo(Desktop));Assert.Equal(item,Assert.Single(doc.Items));
     }
 

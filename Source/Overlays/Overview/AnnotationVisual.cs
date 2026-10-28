@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 internal static class AnnotationVisual
 {
     internal const double FontSize = AnnotationDocument.DefaultFontSize;
-    internal const double TextInset = 8;
+    internal const double TextInset = AnnotationGeometry.TextInset;
     private static readonly FontFamily Family = new("Segoe UI");
     internal static readonly Typeface Typeface = new(Family,FontStyles.Normal,FontWeights.Normal,FontStretches.Normal);
     private static readonly Typeface BoldTypeface = new(Family,FontStyles.Normal,FontWeights.Bold,FontStretches.Normal);
@@ -56,6 +56,16 @@ internal static class AnnotationVisual
         return new(r.X+TextInset,r.Y+TextInset,Math.Max(1,r.Width-TextInset*2),Math.Max(1,r.Height-TextInset*2));
     }
 
+    /// <summary>Keep wrapping width and the top-left anchor; grow vertically to show every line.</summary>
+    internal static CanvasAnnotation FitText(CanvasAnnotation item, double? minimumHeight = null)
+    {
+        if (item.Kind != AnnotationKind.Text) return item;
+        var bounds = item.Bounds;
+        double contentHeight = AnnotationTextLayout.Layout(item, bounds.Width - TextInset * 2);
+        double height = Math.Max(minimumHeight ?? bounds.Height, Math.Ceiling(contentHeight + TextInset * 2 + 4));
+        return item with { A = new(bounds.X, bounds.Y), B = new(bounds.X + bounds.Width, bounds.Y + height) };
+    }
+
     internal static void Draw(DrawingContext dc, CanvasAnnotation item, double pixelsPerDip, bool drawText = true)
     {
         var bounds = item.Bounds;
@@ -87,6 +97,13 @@ internal static class AnnotationVisual
         }
         if (!drawText || string.IsNullOrEmpty(item.Text) || rect.Width <= TextInset*2 || rect.Height <= TextInset*2) return;
         var textRect = TextBounds(item);
+        if (item.Kind == AnnotationKind.Text)
+        {
+            dc.PushClip(new RectangleGeometry(textRect));
+            AnnotationTextLayout.Layout(item, textRect.Width, dc, textRect.TopLeft, brush);
+            dc.Pop();
+            return;
+        }
         var text = new FormattedText(item.Text,CultureInfo.CurrentUICulture,FlowDirection.LeftToRight,TypefaceFor(item.Emphasis),item.FontSize,brush,pixelsPerDip)
         {
             MaxTextWidth=textRect.Width, MaxTextHeight=textRect.Height, Trimming=TextTrimming.CharacterEllipsis,

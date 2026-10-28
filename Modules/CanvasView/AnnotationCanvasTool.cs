@@ -1,9 +1,9 @@
 namespace CanvasDesktop.CanvasView;
 
-public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid> desktop) : ICanvasTool
+public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid> desktop, Func<CanvasAnnotation, CanvasAnnotation>? fitText = null) : ICanvasTool
 {
     public const double DefaultTextCardWidth = 240;
-    public const double DefaultTextCardHeight = 120;
+    public const double DefaultTextCardHeight = 48;
     public const double MinimumTextCardWidth = 80;
     public const double MinimumTextCardHeight = 48;
     public AnnotationMode Mode { get; private set; }
@@ -36,7 +36,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (!double.IsFinite(fontSize) || fontSize<AnnotationDocument.MinimumFontSize || fontSize>AnnotationDocument.MaximumFontSize)
             throw new ArgumentException("Invalid text size.");
         Cancel(); FontSize=fontSize;
-        if (Selected is { Kind: not AnnotationKind.Arrow } item) document.Put(item with { FontSize=fontSize });
+        if (Selected is { Kind: not AnnotationKind.Arrow } item) document.Put(FitText(item with { FontSize=fontSize }));
     }
     public void SetTextStyle(AnnotationTextAlign? align=null, AnnotationTextEmphasis? emphasis=null, AnnotationCardFill? fill=null)
     {
@@ -53,7 +53,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
             if (align is {} selectedAlign) updated=updated with { TextAlign=selectedAlign };
             if (emphasis is {} selectedEmphasis) updated=updated with { Emphasis=selectedEmphasis };
             if (fill is {} selectedFill) updated=updated with { CardFill=selectedFill };
-            document.Put(updated);
+            document.Put(FitText(updated));
         }
     }
     public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop() && AnnotationGeometry.Hit(a,pointer.World,pointer.View));
@@ -87,7 +87,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         }
         if (_original is not {} original) return;
         if (_handle<0) { Preview=original.Translate(end.X-_start.X,end.Y-_start.Y); return; }
-        Preview=AnnotationGeometry.Resize(original,_handle,new(end.X-_start.X,end.Y-_start.Y),p.Modifiers.HasFlag(CanvasModifiers.Shift));
+        Preview=FitText(AnnotationGeometry.Resize(original,_handle,new(end.X-_start.X,end.Y-_start.Y),p.Modifiers.HasFlag(CanvasModifiers.Shift)));
     }
     public void PointerUp(CanvasPointer p)
     {
@@ -98,7 +98,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (result is null) return;
         if (creating && result.Kind==AnnotationKind.Text)
         {
-            EditTextRequested?.Invoke(SizeTextCard(result,p.View.Zoom)); return;
+            Mode=AnnotationMode.Select; EditTextRequested?.Invoke(SizeTextCard(result,p.View.Zoom)); return;
         }
         // Reject accidental clicks or invalid/out-of-range previews without changing history.
         if (creating && AnnotationGeometry.Distance(result.A,result.B)*p.View.Zoom < 4) return;
@@ -106,6 +106,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (creating && document.Items.Count >= AnnotationDocument.MaximumItems) return;
         document.Put(result); SelectedId=result.Id;
     }
+    private CanvasAnnotation FitText(CanvasAnnotation item) => fitText?.Invoke(item) ?? item;
     private static CanvasAnnotation SizeTextCard(CanvasAnnotation item,double zoom)
     {
         double dx=item.B.X-item.A.X, dy=item.B.Y-item.A.Y;

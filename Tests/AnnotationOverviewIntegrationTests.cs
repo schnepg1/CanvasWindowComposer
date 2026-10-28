@@ -9,6 +9,70 @@ public class AnnotationOverviewIntegrationTests
 {
     [Fact]
     [Trait("Category","NativeRendering")]
+    public void InlineTextCommitsOnOutsideClickScalesAsATitleAndReopensWithoutLosingGeometry()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(),"canvas-inline-text-"+Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro=false };
+                using var wm = new WindowManager(canvas,api,config,input,new FakeClock());
+                using var overview = new OverviewManager(canvas,wm,api,input,config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops,Path.Combine(folder,"annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming); overview.SelectAnnotationMode(AnnotationMode.Text);
+                var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+                void Click(int x,int y)
+                {
+                    pass.OnMouseButtonDown!(pass,new(MouseButtons.Left,1,x,y,0));
+                    pass.OnMouseButtonUp!(pass,new(MouseButtons.Left,1,x,y,0));
+                    Application.DoEvents();
+                }
+                Click(300,300);
+                var editor = overview.AnnotationEditor!;
+                editor.Editor.Text = "PROJECTS";
+                editor.FormattingToolbar.Activate(); Application.DoEvents();
+                Assert.Same(editor,overview.AnnotationEditor); // Formatting belongs to the same editing session.
+                Click(800,600);
+                Assert.Null(overview.AnnotationEditor);
+                var title = Assert.Single(overview.Annotations!.Items);
+                Assert.Equal("PROJECTS",title.Text);
+                Assert.Equal(AnnotationMode.Select,overview.AnnotationTool!.Mode);
+                Assert.True(overview.Annotations.Undo(desktops.CurrentDesktopId));
+                Assert.Empty(overview.Annotations.Items);
+                Assert.False(overview.Annotations.Undo(desktops.CurrentDesktopId));
+                Assert.True(overview.Annotations.Undo(desktops.CurrentDesktopId,true));
+
+                overview.AnnotationTool.Select(title.Id);
+                var view = new CanvasViewTransform(0,0,1,new(0,0,1920,1080));
+                CanvasPointer At(double x,double y) => new(0,new(x,y),CanvasPointerButton.Left,CanvasModifiers.None,view);
+                overview.AnnotationTool.PointerDown(At(title.Bounds.X+title.Bounds.Width,title.Bounds.Y+title.Bounds.Height));
+                overview.AnnotationTool.PointerUp(At(title.Bounds.X+title.Bounds.Width*30,title.Bounds.Y+title.Bounds.Height*30));
+                var large = Assert.Single(overview.Annotations.Items);
+                Assert.True(large.FontSize>400);
+                var restored = Assert.Single(new AnnotationPersistence(Path.Combine(folder,"annotations.json")).Document.Items);
+                Assert.Equal(large,restored);
+                overview.AnnotationTool.Select(large.Id);
+                pass.OnKey!(pass,new(Keys.Enter)); Application.DoEvents();
+                Assert.Equal(large.Bounds,overview.AnnotationEditor!.CurrentItem.Bounds);
+                overview.AnnotationEditor.Editor.Text = "Changed draft";
+                overview.HandleEscape();
+                Assert.Equal(large,Assert.Single(overview.Annotations.Items));
+
+                overview.AnnotationTool.Select(large.Id);
+                pass.OnKey!(pass,new(Keys.Enter)); Application.DoEvents();
+                overview.AnnotationEditor!.Editor.Text = "";
+                overview.AnnotationEditor.Complete(true);
+                Assert.Empty(overview.Annotations.Items);
+                Assert.True(overview.Annotations.Undo(desktops.CurrentDesktopId));
+                Assert.Equal(large,Assert.Single(overview.Annotations.Items));
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder,true); }
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
     public void AnnotationsConsumeWindowGesturesCancelOnEscapeAndPersistOnlyCompletedEdits()
         =>WorkspaceViewTests.OnSta(()=>
         {
@@ -50,6 +114,7 @@ public class AnnotationOverviewIntegrationTests
                 var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
                 void Place()
                 {
+                    overview.SelectAnnotationMode(AnnotationMode.Text);
                     pass.OnMouseButtonDown!(pass,new(MouseButtons.Left,1,300,300,0));
                     pass.OnMouseButtonUp!(pass,new(MouseButtons.Left,1,300,300,0));Application.DoEvents();
                 }
@@ -64,8 +129,8 @@ public class AnnotationOverviewIntegrationTests
                 editor.SetTextAlign(AnnotationTextAlign.Center);
                 editor.SetEmphasis(AnnotationTextEmphasis.BoldItalic);
                 editor.SetCardFill(AnnotationCardFill.None);
-                // The actual Save button uses the same callback as Ctrl+Enter.
-                var save=editor.Controls.OfType<Button>().Single();save.PerformClick();
+                // The contextual Done button uses the same callback as Ctrl+Enter.
+                editor.Complete(true);
                 var saved=Assert.Single(overview.Annotations.Items);
                 Assert.Equal("Saved note",saved.Text);Assert.Equal(28,saved.FontSize);
                 Assert.Equal(AnnotationTextAlign.Center,saved.TextAlign);

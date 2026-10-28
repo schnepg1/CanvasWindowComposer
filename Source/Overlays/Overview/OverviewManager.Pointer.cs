@@ -26,7 +26,8 @@ internal sealed partial class OverviewManager
             return;
         }
 
-        if (_annotationEditor != null || _shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
+        _annotationEditor?.Complete(true, returnFocus: false);
+        if (_shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
         if (RouteCanvasWindowPointer(pass, e, down: true)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
