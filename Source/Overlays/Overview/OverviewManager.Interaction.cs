@@ -71,22 +71,7 @@ internal sealed partial class OverviewManager
         return RouteWindowPointer(pass, e, down, up);
     }
 
-    internal void AddWindowInteractionCommand(ContextMenuStrip menu, OverviewOverlay pass, IntPtr window)
-    {
-        // Saved live windows also use WorkspaceContextMenu. Do not let that
-        // branch hide the interaction action; placeholders/cached cards cannot forward input.
-        if (!CanInteract(pass, window)) return;
-        var interact = new ToolStripMenuItem("Interact with window (mouse and keyboard)");
-        interact.Click += (_, _) => pass.BeginInvoke(() =>
-        {
-            if (!_disposed && CurrentMode == OverviewMode.Zooming) BeginWindowInteraction(pass, window);
-        });
-        menu.Items.Insert(0, interact);
-        menu.Items.Insert(1, new ToolStripSeparator());
-    }
-
     private OverviewOverlay? _interactionCapture;
-    private ContextMenuStrip? _interactionMenu;
     private WindowInteractionMouseHook? _interactionMouseHook;
     private readonly Queue<InteractionMouseEvent> _interactionEvents = new();
     private readonly object _interactionEventGate = new();
@@ -187,25 +172,6 @@ internal sealed partial class OverviewManager
     {
         if (_windowInteraction.Active && window != _windowInteraction.Window)
             EndWindowInteraction();
-    }
-
-    private void ShowWindowInteractionMenu(OverviewOverlay pass, IntPtr window, Point location)
-    {
-        _interactionMenu?.Dispose();
-        var menu = _interactionMenu = new ContextMenuStrip();
-        var interact = menu.Items.Add("Interact with window (mouse and keyboard)");
-        interact.Enabled = CanInteract(pass, window);
-        interact.Click += (_, _) => pass.BeginInvoke(() =>
-        {
-            if (!_disposed && CurrentMode == OverviewMode.Zooming) BeginWindowInteraction(pass, window);
-        });
-        menu.Items.Add("Open window at desktop size", null, (_, _) =>
-        {
-            foreach (var entry in _windows.Windows)
-                if (entry.HWnd == window) { GoToWindow(window, entry.World); break; }
-        });
-        PInvoke.SetForegroundWindow((HWND)pass.Handle);
-        menu.Show(pass, location);
     }
 
     private Keys InteractionKeys => _dispatchInteractionKeys ?? WindowInteractionMouseHook.ReadModifiers();

@@ -19,6 +19,13 @@ internal sealed record WorkspaceOverviewSnapshot(
 
 internal sealed partial class WorkspaceService
 {
+    public IReadOnlyDictionary<IntPtr, IntPtr> GetRepresentedWindows()
+        => GetOverviewSnapshot().RepresentedWindows;
+
+    public IReadOnlyDictionary<IntPtr, Guid> GetOverviewItemIds()
+        => GetOverviewSnapshot().ItemIds;
+
+
     private WorkspaceOverviewSnapshot? _overviewSnapshot;
     private long _overviewSnapshotRevision;
     private long _overviewGeneration;

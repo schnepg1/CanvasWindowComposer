@@ -52,7 +52,7 @@ internal sealed partial class WorkspaceService
         _api.EnumWindows(handle =>
         {
             if (_api.GetWindowProcessId(handle) != (uint)Environment.ProcessId
-                && InspectWindow(handle) is { } observed && _migrationWindows.Add(observed.Identity))
+                && _windowInspector.Inspect(handle) is { } observed && _migrationWindows.Add(observed.Identity))
                 Document.PendingPlacementAdoptions.Add(new(handle.ToInt64(), observed.Identity.ProcessId,
                     observed.Identity.ProcessStartedAtUtcTicks));
             return true;
@@ -66,7 +66,7 @@ internal sealed partial class WorkspaceService
         {
             var identity = adoption.ToIdentity();
             uint pid = _api.GetWindowProcessId(identity.Handle);
-            var observed = pid == identity.ProcessId ? InspectWindow(identity.Handle) : null;
+            var observed = pid == identity.ProcessId ? _windowInspector.Inspect(identity.Handle) : null;
             // An inspection outage is not evidence of closure. Retain its checkpoint
             // until the window is captured, explicitly forgotten, closed or replaced.
             var live = _bindings.At(identity.Handle);
@@ -152,7 +152,7 @@ internal sealed partial class WorkspaceService
     private bool HasDeliberatePlace(WorkspaceLiveWindow live)
         => live.ItemId is { } id && Find(id)?.Placement == WorkspacePlacement.Deliberate;
 
-    private void StageTemporary(WorkspaceLiveWindow live, string exe, string title, string target, bool explorer, string? chromeProfile = null)
+    private void StageTemporary(WorkspaceLiveWindow live, WorkspaceWindowMetadata metadata)
     {
         if (_migrationWindows.Contains(live.Identity) || live.ItemId.HasValue || Document.Items.Count >= 2000 || !StillCurrent(live)) return;
         // Registration can precede restoration of the saved camera. Use the native
@@ -167,10 +167,7 @@ internal sealed partial class WorkspaceService
             _status = "New windows could not be placed in the temporary area. Move the area closer to the workspace.";
             return;
         }
-        var item = new WorkspaceItem { DesktopId = _desktop, Title = title, ExecutablePath = exe, Target = target,
-            AutoDetectedTarget = WorkspaceTargetIdentity.IsVsCode(exe) && target.Length > 0,
-            IsFolder = explorer && target.Length > 0, Placement = WorkspacePlacement.Temporary,
-            Bounds = placed, ChromeProfilePath = chromeProfile ?? "" };
+        var item = metadata.CreateItem(_desktop, placed, WorkspacePlacement.Temporary);
         Document.Items.Add(item);
         if (!_bindings.Bind(live, item.Id)) { Document.Items.Remove(item); return; }
         TemporaryZone!.ItemIds.Add(item.Id);

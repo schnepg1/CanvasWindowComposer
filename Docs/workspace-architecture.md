@@ -18,6 +18,8 @@ remaining-work section below.
 | `WorkspaceStore` / `IWorkspaceStore` | JSON format validation, atomic file replacement, backup recovery and preservation of damaged input |
 | `WorkspacePersistence` | Load-failure write protection, save-on-change fingerprinting and retryable save errors |
 | `WorkspaceService` | Workspace lifecycle: capture, bindings, launch queue, desktop changes and save-before-desktop-recovery ordering |
+| `WorkspaceWindowInspector` | Read-only process identity checks, Chrome profile evidence and window metadata discovery |
+| `WorkspaceWindowMetadata` | Shared entry-creation and target/profile capture rules for background discovery and context-menu recovery |
 | `IWorkspaceCommands` / `WorkspaceItemView` | UI commands addressed by stable IDs; detached, immutable presentation snapshots |
 | `WorkspaceForms` / `WorkspaceDialogs` | WinForms controls, menus, file/folder dialogs and UI subscription cleanup |
 | Placeholder, identity, launcher and native-action interfaces | Replaceable boundaries for forms, Explorer/process lookup, process startup and focus/close operations |
@@ -32,6 +34,40 @@ Coordinator capture and launch timeouts now use the existing injectable monotoni
 `IClock`, so tests advance time without sleeps or system-clock changes. Explorer's
 single-flight background COM polling remains in its Windows identity adapter.
 
+## Maintaining capture and window menus
+
+The 28 October 2026 refactor keeps `WorkspaceService.cs` focused on lifecycle,
+desktop changes and persistence ordering. Its partial files group the remaining
+responsibilities: `Capture` observes and matches windows, `LiveWindows` validates
+bindings and applies native placement, `Cards` owns placeholders and view data,
+`Launch` owns launch tracking, `Commands` handles explicit user actions, and
+`Settings` edits saved preferences. `Temporary`, `Overview`, `ContextMenu` and
+`WebResources` retain their existing focused entry points.
+
+Capture runs in an explicit order: synchronize cards, validate observed runtime
+identities, enroll missing native windows, collect observations, resolve the whole
+match batch, then finish temporary arrivals and camera state. Keep the batch
+boundary: assigning slots while enumerating windows would reintroduce
+enumeration-order-dependent matching.
+
+`WorkspaceWindowInspector` reads Windows evidence without changing bindings,
+placement or saved data. `WorkspaceWindowMetadata` is the shared description used
+to create deliberate and temporary entries, including entries recovered by
+right-click. Change target/profile capture policy there rather than duplicating
+it in menu recovery or temporary placement. Explicit web-resource URLs and manual
+editor targets continue to take precedence over observed captions/navigation.
+
+The overview's `Keyboard` and `Pointer` partials route input, while `WindowMenus`
+owns window-menu selection and the interaction/fallback menu builders. Preserve
+the clicked HWND before resolving a workspace entry: publishing a new entry can
+refresh and reorder the overview. Placeholder menus are borrowed from their
+cards; the overview owns its live-window and fallback menu instances.
+
+Regression coverage includes detached-tab menus before periodic capture,
+same-profile ambiguity, recycled handles, explicit linking, temporary placement,
+saved URLs, and native overview menu/input behavior. Use `Tools/Run-Tests.ps1` to
+serialize native checks across worktrees.
+
 ## Preserved behaviour
 
 The workspace file schema, backup filenames and saved coordinates have not
@@ -45,7 +81,7 @@ Workspace disposal saves canvas coordinates and removes placeholder HWNDs before
 the window manager restores real windows to physical monitor work areas. Physical
 desktop recovery must not be persisted as a new canvas layout.
 
-## Validation
+## Historical validation (11 October 2026)
 
 - All 220 tests pass in Release, including the original regressions and 28 new
   cases covering persistence, matching, headless orchestration and UI contracts.
