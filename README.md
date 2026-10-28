@@ -79,7 +79,7 @@ Right-click a saved window or its overview card and choose **Exclude from auto-m
 | `EnableAutomaticMinimization` | `false` | Experimental: capture eligible off-screen windows, then minimize them after a delay. Restore without activation on approach, using cached overview previews during restoration. Failed captures retain existing placement behavior. Real-application compatibility validation remains pending |
 
 | `DisableAltPan` | `false` | Disable Alt + middle-click drag to pan over windows |
-| `DisableGreedyDraw` | `true` | Skip `SetWindowRgn` clipping of off-screen windows. Keeps Alt-Tab / taskbar thumbnails live at the cost of render work for windows panned out of view |
+| `DisableGreedyDraw` | `true` | Skip `SetWindowRgn` clipping of off-screen windows. Keeps Alt-Tab / taskbar thumbnails live at the cost of render work for windows panned out of view. When clipping is enabled, off-screen thumbnails may be blank or incomplete |
 | `DisableMouseCurve` | `false` | Send raw HID deltas to the canvas (1 count = 1 pixel) instead of applying Windows' pointer-acceleration curve. Use if you've turned off "Enhance pointer precision" and want linear pan |
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
 | `EnableShortcutZoomOut` | `true` | Zoom out immediately when Alt+Q opens canvas view; toggle in the zoom settings popup |

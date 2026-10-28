@@ -86,28 +86,6 @@ public class WindowManagerEventTests
         Assert.Equal(250, world.Y);
     }
 
-    // ==================== ALT-TAB ====================
-
-    [Fact]
-    public void AltTabStarted_SuspendsGreedyDraw()
-    {
-        var h = new Harness();
-        Assert.False(h.Wm.SuspendGreedyDraw);
-
-        h.Input.RaiseAltTabStarted();
-
-        Assert.True(h.Wm.SuspendGreedyDraw);
-    }
-
-    [Fact]
-    public void AltTabEnded_RestoresGreedyDraw()
-    {
-        var h = new Harness();
-        h.Input.RaiseAltTabStarted();
-        h.Input.RaiseAltTabEnded();
-        Assert.False(h.Wm.SuspendGreedyDraw);
-    }
-
     // ==================== CANVAS COMMIT + REPROJECT THROTTLE ====================
 
     [Fact]

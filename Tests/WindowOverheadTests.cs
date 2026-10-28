@@ -70,18 +70,38 @@ public class WindowOverheadTests
     }
 
     [Fact]
-    public void AltTabAndOverviewShareRegionOwnershipWithoutClosingEachOthersPreviews()
+    public void AltTabKeepsClippingAndDoesNotDisturbOverviewPreviews()
     {
         var api = new FakeWindowApi(); var canvas = new Canvas(); var input = new FakeInputRouter();
         using var manager = new WindowManager(canvas, api, new FakeAppConfig(), input);
         for (int i = 1; i <= 2; i++)
         { api.AddWindow((IntPtr)i, 0, 0, 400, 300); canvas.SetWindow((IntPtr)i, 5000 + i * 500, 100, 400, 300); }
         manager.ReprojectSync(); manager.SetLivePreviewWindows([(IntPtr)1]);
-        input.RaiseAltTabStarted(); Assert.Empty(api.ClippedWindows);
+        int unclipCount = api.UnclipCalls.Count;
+        input.RaiseAltTabStarted();
+        Assert.Contains((IntPtr)2, api.ClippedWindows);
         input.RaiseAltTabEnded();
+        Assert.Equal(unclipCount, api.UnclipCalls.Count);
         Assert.DoesNotContain((IntPtr)1, api.ClippedWindows);
         Assert.Contains((IntPtr)2, api.ClippedWindows);
         manager.SetLivePreviewWindows([]); Assert.Equal(2, api.ClippedWindows.Count);
+    }
+
+    [Fact]
+    public void SelectingClippedWindowStillCentersAndUnclipsIt()
+    {
+        var api = new FakeWindowApi(); var canvas = new Canvas(); var input = new FakeInputRouter();
+        using var manager = new WindowManager(canvas, api, new FakeAppConfig(), input);
+        using var foreground = new ForegroundCoordinator(canvas, new FakeOverviewController(), input, new FakeClock(10000), new FakeScreens());
+        api.AddWindow((IntPtr)1, 0, 0, 400, 300);
+        canvas.SetWindow((IntPtr)1, 5000, 5000, 400, 300);
+        manager.ReprojectSync();
+        Assert.Contains((IntPtr)1, api.ClippedWindows);
+        input.RaiseAltTabStarted();
+        input.RaiseAltTabEnded();
+        input.RaiseWindowSelected((IntPtr)1);
+        Assert.DoesNotContain((IntPtr)1, api.ClippedWindows);
+        Assert.Equal((960d, 520d), canvas.WorldToScreen(5200, 5150));
     }
 
     [Fact]

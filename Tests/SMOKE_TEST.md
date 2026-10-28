@@ -43,8 +43,8 @@ Run through before each release. Test on the installed version, not debug.
 - [ ] Clipped windows restore when panned back on-screen
 
 ## Alt-Tab Integration
-- [ ] Alt-Tab shows correct thumbnails for clipped windows
-- [ ] Releasing Alt-Tab re-clips off-screen windows
+- [ ] Alt-Tab selection promptly navigates to a clipped off-screen window
+- [ ] Check Alt-Tab thumbnail appearance for clipped windows
 
 ## Virtual Desktops
 - [ ] Switch to another desktop — canvas state resets

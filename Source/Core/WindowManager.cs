@@ -287,8 +287,6 @@ internal sealed partial class WindowManager : IDisposable
         input.WindowShown += OnWindowShownEvent;
         input.WindowMoved += OnWindowMovedEvent;
         input.WindowFocused += OnWindowFocusedEvent;
-        input.AltTabStarted += OnAltTabStarted;
-        input.AltTabEnded += OnAltTabEnded;
     }
 
     /// <summary>Background tick for window discovery + stale removal.</summary>
@@ -326,8 +324,6 @@ internal sealed partial class WindowManager : IDisposable
         _input.WindowShown -= OnWindowShownEvent;
         _input.WindowMoved -= OnWindowMovedEvent;
         _input.WindowFocused -= OnWindowFocusedEvent;
-        _input.AltTabStarted -= OnAltTabStarted;
-        _input.AltTabEnded -= OnAltTabEnded;
         _projection?.Dispose();
         _visibility.Clear();
         Previews.Dispose();
@@ -479,18 +475,6 @@ internal sealed partial class WindowManager : IDisposable
         if (_parkingExcluded.TryGetValue(hWnd, out var excluded) && _visibility.GetToken(hWnd) == excluded)
             CenterManuallyRestoredWindow(hWnd);
         _canvas.BringToForeground(hWnd);
-    }
-
-    private void OnAltTabStarted()
-    {
-        SuspendGreedyDraw = true;
-        UnclipAll();
-    }
-
-    private void OnAltTabEnded()
-    {
-        SuspendGreedyDraw = false;
-        ReclipAll();
     }
 
     /// <summary>
