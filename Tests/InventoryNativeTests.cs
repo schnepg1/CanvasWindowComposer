@@ -1,5 +1,6 @@
 using CanvasDesktop;
 using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using System.Windows.Forms;
 using Windows.Win32;
 
@@ -59,7 +60,8 @@ public class InventoryNativeTests
             backpack.Present(true, true, new(work.X, work.Y, work.Width, work.Height));
             Assert.Equal(foreground, PInvoke.GetForegroundWindow());
             var screen = backpack.ScreenBounds;
-            Assert.InRange(screen.Right, work.Right - 100, work.Right);
+            Assert.Equal(work.Top, screen.Top);
+            Assert.InRange(Math.Abs(screen.Left + screen.Width / 2.0 - (work.Left + work.Width / 2.0)), 0, 1);
             Assert.True(backpack.ContainsScreenPoint(screen.X + screen.Width / 2, screen.Y + screen.Height / 2));
             Assert.False(backpack.ContainsScreenPoint(screen.X - 20, screen.Y - 20));
             using var flight = new InventoryFlightWindow();
@@ -94,7 +96,15 @@ public class InventoryNativeTests
             var position = bag.ScreenBounds;
             overview.CenterViewOnMinimap(-8000, -4000);
             Assert.Equal(position, bag.ScreenBounds);
-            Assert.True(rig.Workspace.DropFromInventory(item.Id)); Assert.False(item.Bounds.InInventory);
+            bag.Activate(); Application.DoEvents(); bag.Panel.UpdateLayout();
+            SendMessageW(new WindowInteropHelper(bag).Handle, 0x0200, IntPtr.Zero, new IntPtr(100 | (100 << 16)));
+            var drop = bag.Panel.PointFromScreen(new System.Windows.Point(350, 350));
+            var camera = overview.ViewCamera;
+            bag.Panel.Drag.Begin(item.Id, new System.Windows.Point(100, 100));
+            Assert.True(bag.Panel.Drag.IsHeld);
+            bag.Panel.Drag.Move(drop, true); bag.Panel.Drag.Release(drop);
+            Assert.False(item.Bounds.InInventory);
+            Assert.Equal(camera, overview.ViewCamera);
         });
 
     // A named helper avoids any dependency on keyboard injection into the desktop.
@@ -107,5 +117,6 @@ public class InventoryNativeTests
     }
     [DllImport("gdi32.dll", ExactSpelling = true)] private static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
     [DllImport("user32.dll", ExactSpelling = true)] private static extern int GetWindowRgn(IntPtr window, IntPtr region);
+    [DllImport("user32.dll", ExactSpelling = true)] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("gdi32.dll", ExactSpelling = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(IntPtr region);
 }

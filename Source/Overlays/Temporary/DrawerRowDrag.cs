@@ -12,6 +12,7 @@ internal sealed class DrawerRowDrag
     private Point _origin;
     private bool _moved;
     public bool IsHeld => _pressed.HasValue;
+    public bool IsDragging => _moved;
     public event Action<bool>? HeldChanged;
     public event Action<Guid, Point>? Dropped;
 

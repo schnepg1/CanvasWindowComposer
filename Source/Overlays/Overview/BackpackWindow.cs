@@ -7,7 +7,7 @@ using FormsTimer = System.Windows.Forms.Timer;
 namespace CanvasDesktop;
 
 /// <summary>A tool window in physical screen space: it travels with the camera, never with canvas geometry.</summary>
-internal sealed class BackpackWindow : Window, IDisposable
+internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
 {
     public BackpackPanel Panel { get; } = new();
     private ScreenRect _work;
@@ -18,9 +18,7 @@ internal sealed class BackpackWindow : Window, IDisposable
     public BackpackWindow(ScreenRect work)
     {
         _work = work;
-        Title = "Canvas Backpack"; WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = true; Background = Brushes.Transparent; ShowInTaskbar = false;
-        Topmost = true; ShowActivated = false;
+        Title = "Canvas Backpack";
         Content = Panel; Panel.Margin = new Thickness(3);
         Closing += (_, e) =>
         {
@@ -47,7 +45,7 @@ internal sealed class BackpackWindow : Window, IDisposable
             var handle = new WindowInteropHelper(this).Handle;
             if (handle != IntPtr.Zero && PInvoke.GetWindowRect((HWND)handle, out var rect))
                 return new(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-            return new(_work.Right - (int)Width - 20, _work.Top + 110, (int)Width, (int)Height);
+            return new(_work.Left + (_work.Width - (int)Width) / 2, _work.Top, (int)Width, (int)Height);
         }
     }
 
@@ -95,11 +93,10 @@ internal sealed class BackpackWindow : Window, IDisposable
         if (handle == IntPtr.Zero) return;
         var dpi = VisualTreeHelper.GetDpi(this);
         int width = (int)Math.Ceiling(Width * dpi.DpiScaleX), height = (int)Math.Ceiling(Height * dpi.DpiScaleY);
-        int inset = (int)Math.Round(18 * dpi.DpiScaleX);
-        int top = Math.Min(_work.Top + (int)(105 * dpi.DpiScaleY), Math.Max(_work.Top + inset, _work.Bottom - height - inset));
-        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), _work.Right - width - inset, top, width, height,
+        int left = _work.Left + (_work.Width - width) / 2;
+        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), left, _work.Top, width, height,
             SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
     }
 
-    public void Dispose() { if (_disposing) return; _disposing = true; _timer.Dispose(); Close(); }
+    public void Dispose() { if (_disposing) return; _disposing = true; Panel.Drag.Cancel(); _timer.Dispose(); Close(); }
 }

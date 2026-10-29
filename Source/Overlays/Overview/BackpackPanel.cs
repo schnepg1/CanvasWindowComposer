@@ -22,12 +22,11 @@ internal sealed class BackpackPanel : UserControl
     private readonly TextBlock _count = new(), _foldedCount = new(), _hint = new(), _empty = new();
     private readonly ScrollViewer _scroll;
     private IReadOnlyList<WorkspaceItemView> _items = Array.Empty<WorkspaceItemView>();
-    private Guid? _pressed, _selected;
-    private Point _pressPoint;
-    private bool _dragging;
+    private Guid? _selected;
+    public DrawerRowDrag Drag { get; }
     private readonly Dictionary<Guid, Border> _tileBorders = new();
     public bool IsOpen { get; private set; }
-    public bool Dragging => _dragging;
+    public bool Dragging => Drag.IsDragging;
     public event Action<bool>? OpenRequested;
     public event Action<Guid>? PlaceRequested, KeepRequested, OpenItemRequested, ForgetRequested;
     public event Action<Guid, Point>? DropRequested;
@@ -91,12 +90,20 @@ internal sealed class BackpackPanel : UserControl
         footerStack.Children.Add(new TextBlock { Text = "KEPT items survive restarts. SESSION items stay temporary.", FontSize = 10,
             Foreground = Ink("#7E95AA"), Margin = new Thickness(0, 6, 0, 0), TextWrapping = TextWrapping.Wrap });
         _expanded.Children.Add(footer);
-        PreviewMouseMove += OnPointerMove; PreviewMouseLeftButtonUp += OnPointerUp;
-        LostMouseCapture += (_, _) => CancelDrag();
+        Drag = new(this);
+        Drag.Dropped += (id, screen) => DropRequested?.Invoke(id, screen);
+        Drag.HeldChanged += held => { if (!held) RebuildTiles(); };
+        PreviewMouseMove += (_, _) =>
+        {
+            if (!Drag.IsDragging) return;
+            SetHint("Release over clear canvas to unpack this window.");
+            if (_selected is { } id && _tileBorders.TryGetValue(id, out var tile)) tile.Opacity = .5;
+        };
         PreviewKeyDown += (_, e) =>
         {
+            if (e.Handled) return;
             if (e.Key == Key.Escape || e.Key == Key.I && Keyboard.FocusedElement is not TextBox && Keyboard.Modifiers == ModifierKeys.None)
-            { if (_dragging) CancelDrag(); else OpenRequested?.Invoke(false); e.Handled = true; }
+            { if (Drag.IsHeld) Drag.Cancel(); else OpenRequested?.Invoke(false); e.Handled = true; }
         };
         SetOpen(false);
         RebuildTiles();
@@ -104,6 +111,7 @@ internal sealed class BackpackPanel : UserControl
 
     public void SetOpen(bool open)
     {
+        if (!open) Drag.Cancel();
         IsOpen = open; _expanded.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         _folded.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -120,7 +128,7 @@ internal sealed class BackpackPanel : UserControl
         _items = items;
         _foldedCount.Text = items.Count == 1 ? "1 window ready to travel" : $"{items.Count} windows ready to travel";
         _count.Text = $"{items.Count} ITEMS  /  {items.Count(i => !i.Temporary)} KEPT";
-        if (changed && !_dragging) RebuildTiles();
+        if (changed && !Drag.IsHeld) RebuildTiles();
     }
 
     public void Highlight(Guid? id)
@@ -132,7 +140,7 @@ internal sealed class BackpackPanel : UserControl
 
     private void RebuildTiles()
     {
-        if (_dragging) return;
+        if (Drag.IsHeld) return;
         _tiles.Children.Clear(); _tileBorders.Clear();
         string query = _search.Text.Trim();
         var filtered = _items.Where(i => query.Length == 0 || i.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
@@ -160,8 +168,8 @@ internal sealed class BackpackPanel : UserControl
             tile.MouseLeftButtonDown += (_, e) =>
             {
                 Highlight(item.Id);
-                if (e.ClickCount == 2) { PlaceRequested?.Invoke(item.Id); e.Handled = true; return; }
-                _pressed = item.Id; _pressPoint = e.GetPosition(this); CaptureMouse(); e.Handled = true;
+                if (e.ClickCount == 2) { Drag.Cancel(); PlaceRequested?.Invoke(item.Id); e.Handled = true; return; }
+                Drag.Begin(item.Id, e.GetPosition(this)); e.Handled = true;
             };
             var menu = new ContextMenu();
             void Entry(string title, Action action) { var m = new MenuItem { Header = title }; m.Click += (_, _) => action(); menu.Items.Add(m); }
@@ -172,34 +180,6 @@ internal sealed class BackpackPanel : UserControl
             tile.ContextMenu = menu;
             _tiles.Children.Add(tile); _tileBorders[item.Id] = tile;
         }
-    }
-
-    private void OnPointerMove(object sender, MouseEventArgs e)
-    {
-        if (_pressed == null || e.LeftButton != MouseButtonState.Pressed) return;
-        var delta = e.GetPosition(this) - _pressPoint;
-        if (!_dragging && (Math.Abs(delta.X) > 5 || Math.Abs(delta.Y) > 5))
-        {
-            _dragging = true; Cursor = Cursors.SizeAll; SetHint("Release over clear canvas to unpack this window.");
-            if (_tileBorders.TryGetValue(_pressed.Value, out var tile)) tile.Opacity = .5;
-        }
-    }
-
-    private void OnPointerUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_pressed is not { } id) return;
-        var point = e.GetPosition(this); bool drop = _dragging && (point.X < 0 || point.Y < 0 || point.X > ActualWidth || point.Y > ActualHeight);
-        var screen = drop ? PointToScreen(point) : default;
-        CancelDrag();
-        if (drop) DropRequested?.Invoke(id, screen);
-        e.Handled = true;
-    }
-
-    private void CancelDrag()
-    {
-        _pressed = null; _dragging = false; Cursor = Cursors.Arrow;
-        foreach (var border in _tileBorders.Values) border.Opacity = 1;
-        if (IsMouseCaptured) ReleaseMouseCapture();
     }
 
     internal static Button ActionButton(string label, Action action)

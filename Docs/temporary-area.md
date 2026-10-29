@@ -30,7 +30,9 @@ the backpack have their own existing behavior.
 
 **Show temporary area** in the drawer and **Go to temporary area** in the tray
 also create an empty area before the first arrival, so you can choose its
-location in advance. The backpack moves beside the drawer while it is open.
+location in advance. The backpack stays centered at the top border while the
+drawer opens or folds. Both panels are Canvas tool windows with no Alt-Tab or
+taskbar entries; focusing the canvas keeps their controls accessible.
 
 The area has a dashed canvas boundary. Drag its label to move it together with
 its current temporary windows; drag a corner to resize the boundary. These

@@ -124,8 +124,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_windowInteraction.Active && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
         RefreshZoneAnnotations();
-        _backpack?.RaiseWithoutActivation();
-        _temporaryDrawer?.RaiseWithoutActivation();
+        RaiseCanvasPanels();
         // Publish the GPU background camera after DWM properties and the staged
         // annotation scene. This avoids waking it with a partially submitted view.
         if (!_disposed && CurrentMode != OverviewMode.Hidden) UpdateGridCamera(camera, panX, panY);
@@ -270,6 +269,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             };
             pass.OnSettingsRequested = (owner, zoomOnly) => ShowSettings(zoomOnly, owner);
             pass.Deactivate += (_, _) => CloseActiveMenus();
+            pass.Activated += (_, _) => RaiseCanvasPanels();
             pass.OnKey = HandleKeyDown;
             pass.OnKeyReleased = HandleKeyUp;
             pass.OnMouseButtonDown = HandleMouseDown;
@@ -350,6 +350,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         _wm.RefreshPreviewState();
         EnsurePasses();
+        UpdateCanvasPanelOwners();
         WarmupPasses();
 
         if (_mmcssHandle == IntPtr.Zero)
@@ -382,6 +383,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void HideInternal(bool syncCamera)
     {
+        // Panels also serve desktop mode; detach before hiding or rebuilding their owner.
+        UpdateCanvasPanelOwners();
         _taskbarPreviews.SetEnabled(false);
         ClearDesktopStoppingClick();
         RestoreDesktopPanResources();
@@ -504,6 +507,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             if (p.IsHandleCreated)
                 PInvoke.SetWindowPos((HWND)p.Handle, topMost, 0, 0, 0, 0, flags);
         }
+        RaiseCanvasPanels();
     }
 
     private void RaiseMyDockFinderWindowsAboveOverview()

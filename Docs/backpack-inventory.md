@@ -9,8 +9,10 @@ the temporary area. Startup discovery retains the existing temporary-area policy
 Press **I** while Canvas has keyboard focus, click the backpack badge, or choose
 **Backpack inventory** in the tray. I remains normal text input in application
 interaction and in the backpack's search box. Escape closes an open backpack
-before leaving Canvas. The panel is fixed to screen space while the camera pans;
-closing the panel keeps its contents available for the next opening.
+before leaving Canvas. The badge and expanded panel sit at the top border,
+horizontally centered on the primary working area, and stay fixed while the
+camera pans or the temporary drawer opens. Closing the panel keeps its badge
+clickable and its contents available for the next opening.
 
 Drag a canvas window onto the open backpack or its folded badge. A selection of
 windows can also be collected together. **Put in backpack** is available in each
@@ -43,7 +45,9 @@ membership determines where a matching window returns on the next launch.
 Window search and shell navigation reveal the backpack for carried windows
 instead of moving the camera to an invisible source.
 
-The UI is a dedicated Canvas tool window. Explorer folders hold launch shortcuts,
+The UI is a dedicated Canvas tool window, owned by the visible canvas so focusing
+the canvas cannot cover its controls. Like the temporary drawer, it has no
+Alt-Tab or taskbar entry. Explorer folders hold launch shortcuts,
 not live HWND ownership or canvas drop coordinates, so an ordinary folder cannot
 provide this behavior. No application windows are reparented into the UI.
 

@@ -20,8 +20,8 @@ internal sealed partial class OverviewManager
             _temporaryDrawer.Panel.ShowAreaRequested += ShowTemporaryArea;
             _temporaryDrawer.Panel.PlaceRequested += id => PlaceTemporaryDrawerItem(id, null);
             _temporaryDrawer.Panel.Drag.Dropped += (id, point) => PlaceTemporaryDrawerItem(id, point);
-            _temporaryDrawer.BoundsChanged += PositionInventoryBesideDrawer;
         }
+        _temporaryDrawer.SetCanvasOwner(CanvasPanelOwner);
         _temporaryDrawer.Refresh(_screens.PrimaryWorkingArea, _placeholderWorkspace.TemporaryArea,
             _placeholderWorkspace.TemporaryAreaItems,
             _appConfig.ReduceStartupMotion || !System.Windows.SystemParameters.ClientAreaAnimation);

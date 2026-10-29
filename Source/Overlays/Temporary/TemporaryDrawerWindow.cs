@@ -10,7 +10,7 @@ using FormsTimer = System.Windows.Forms.Timer;
 namespace CanvasDesktop;
 
 /// <summary>Screen-edge host. Only the visible drawer has an HWND hit area; the canvas stays clickable beside it.</summary>
-internal sealed class TemporaryDrawerWindow : Window, IDisposable
+internal sealed class TemporaryDrawerWindow : CanvasPanelWindow, IDisposable
 {
     private readonly FormsTimer _timer = new() { Interval = 20 };
     internal TemporaryDrawerState State { get; } = new();
@@ -20,14 +20,11 @@ internal sealed class TemporaryDrawerWindow : Window, IDisposable
     private double _progress, _from, _target;
     private long _animationStarted;
     private ScreenRect _bounds;
-    public event Action? BoundsChanged;
 
     public TemporaryDrawerWindow(ScreenRect work)
     {
         _work = work;
-        Title = "Canvas temporary windows"; WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = true; Background = Brushes.Transparent; ShowInTaskbar = false;
-        ShowActivated = false; Topmost = true; Width = TemporaryDrawerPanel.RailWidth; Height = 570;
+        Title = "Canvas temporary windows"; Width = TemporaryDrawerPanel.RailWidth; Height = 570;
         Content = new Grid { ClipToBounds = true, Children = { Panel } };
         Panel.ToggleRequested += () => { if (State.IsOpen) State.Close(); else State.Open(Environment.TickCount64); Animate(); };
         Panel.Drag.HeldChanged += held => { State.SetDragging(held, Environment.TickCount64); Animate(); };
@@ -81,7 +78,6 @@ internal sealed class TemporaryDrawerWindow : Window, IDisposable
         _bounds = bounds;
         PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), bounds.X, bounds.Y, width, height,
             SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
-        BoundsChanged?.Invoke();
     }
 
     public void RaiseWithoutActivation()
