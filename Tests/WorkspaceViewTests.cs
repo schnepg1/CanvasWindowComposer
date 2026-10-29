@@ -348,6 +348,25 @@ public class WorkspaceViewTests
     }
 
     [Fact]
+    public void LinkDialogExplainsExistingBindingsAndRefreshesItsCandidateList()
+        => OnSta(() =>
+        {
+            var commands = new TestCommands { CandidateHint = "1 matching open window already belongs to another saved place." };
+            var window = WorkspaceInteractionDialogs.CreateLinkWindow(IntPtr.Zero, commands, commands.Items[0].Id);
+            try
+            {
+                Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), t => t.Text == commands.CandidateHint);
+                commands.Candidates = [new(Guid.NewGuid(), "New browser window")];
+                Descendants(window).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Refresh windows"))
+                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                Assert.Single(Descendants(window).OfType<Wpf.ListBox>().Single().Items);
+                Assert.DoesNotContain(Descendants(window).OfType<Wpf.TextBlock>(), t => t.Text == commands.CandidateHint);
+                Assert.Null(commands.Linked);
+            }
+            finally { window.Close(); }
+        });
+
+    [Fact]
     public void WorkspaceSearchRetainsSelectionByIdAndShowsAnEmptyState()
     {
         OnSta(() =>
@@ -473,6 +492,7 @@ public class WorkspaceViewTests
         public (Guid Id, string Name)? Renamed;
         public (Guid Id, string Path)? Profile;
         public bool LinkSucceeds = true;
+        public string? CandidateHint;
         public IReadOnlyList<WorkspaceLinkCandidate> Candidates = Array.Empty<WorkspaceLinkCandidate>();
         public IReadOnlyList<WorkspaceItemView> Items { get; } = new[]
         {
@@ -495,6 +515,7 @@ public class WorkspaceViewTests
         public bool SetChromeProfile(Guid id, string profilePath) { Profile = (id, profilePath); return true; }
         public bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null) => false;
         public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id) => Candidates;
+        public string? LinkCandidateHint(Guid id) => CandidateHint;
         public bool LinkWindow(Guid id, Guid candidateToken) { Linked = (id, candidateToken); return LinkSucceeds; }
     }
 }

@@ -20,6 +20,11 @@ namespace CanvasDesktop;
 /// </summary>
 internal sealed class Win32InputRouter : IInputRouter, IDisposable
 {
+    internal object Diagnostics => new
+    {
+        Enabled, Windows = _winEvents.Diagnostics, Shell = _shellSelection?.Diagnostics,
+        MiddleButtonBlocked = _middleBlockHandle is { IsInvalid: false, IsClosed: false }
+    };
     private readonly RawMouseInput _mouse;
     private readonly MessageWindow _msgWindow;
     private readonly Win32EventRouter _winEvents;

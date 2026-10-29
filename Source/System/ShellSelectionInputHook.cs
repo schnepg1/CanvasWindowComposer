@@ -21,6 +21,13 @@ internal sealed class ShellSelectionInputHook : IDisposable
     private UnhookWindowsHookExSafeHandle? _keyboardHook;
     private volatile bool _disposed;
 
+    internal object Diagnostics => new
+    {
+        ThreadAlive = _thread.IsAlive,
+        MouseHookAvailable = _hook is { IsInvalid: false, IsClosed: false },
+        KeyboardHookAvailable = _keyboardHook is { IsInvalid: false, IsClosed: false }
+    };
+
     public ShellSelectionInputHook(TaskbarSelectionIntent intent, AltTabSelectionIntent altTab,
         Action beginSwitch, Action<long> endSwitch)
     {

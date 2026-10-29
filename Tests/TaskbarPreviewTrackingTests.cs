@@ -51,6 +51,18 @@ public class TaskbarPreviewTrackingTests
                 Assert.True(SetWindowPos(popup, IntPtr.Zero, -29000, -29000, 450, 250, 0x14));
                 Dispatch(PInvoke.EVENT_OBJECT_LOCATIONCHANGE);
                 Assert.Contains(new Rectangle(-29000, -29000, 450, 250), frames[^1]);
+                // Do not dispatch a shell event: reconciliation must repair a missed move.
+                Assert.True(SetWindowPos(popup, IntPtr.Zero, -28000, -28000, 470, 270, 0x14));
+                tracker.Refresh();
+                Assert.Contains(new Rectangle(-28000, -28000, 470, 270), frames[^1]);
+                Assert.True(tracker.Snapshot().RecoveredUpdates > 0);
+                Assert.Contains(tracker.Snapshot().RecentEvents, e => e.Source == "ScanRecovered");
+                ShowWindow(popup, 0);
+                tracker.Refresh();
+                Assert.Empty(frames[^1]);
+                ShowWindow(popup, 4);
+                tracker.Refresh();
+                Assert.Contains(new Rectangle(-28000, -28000, 470, 270), frames[^1]);
                 Dispatch(PInvoke.EVENT_OBJECT_DESTROY);
                 Assert.Empty(frames[^1]);
                 Dispatch(PInvoke.EVENT_OBJECT_SHOW);
@@ -99,4 +111,5 @@ public class TaskbarPreviewTrackingTests
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after,
         int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
 }

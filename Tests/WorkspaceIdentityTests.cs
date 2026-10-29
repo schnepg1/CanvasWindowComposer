@@ -14,6 +14,23 @@ public class WorkspaceIdentityTests
     private static WorkspaceDocument Document(params WorkspaceItem[] items) => new() { Items = items.ToList() };
 
     [Fact]
+    public void LinkHintExplainsAnAlreadyBoundWindowWithoutChangingEitherSavedPlace()
+    {
+        var open = Item("Open browser window"); var placeholder = Item("Saved browser place");
+        using var rig = new WorkspaceHarness(Document(open, placeholder));
+        rig.Api.AddWindow(Handle, 10, 20, 800, 600, title: open.Title);
+        rig.Workspace.Start();
+        Assert.True(rig.Workspace.IsOpen(open));
+        Assert.Empty(rig.Workspace.LinkCandidates(placeholder.Id));
+        Assert.Contains("already linked to another saved place", rig.Workspace.LinkCandidateHint(placeholder.Id));
+        Assert.True(rig.Workspace.IsOpen(open));
+        Assert.False(rig.Workspace.IsOpen(placeholder));
+        Assert.Equal(2, rig.Workspace.Document.Items.Count);
+        rig.Api.Windows[Handle].Visible = false;
+        Assert.Null(rig.Workspace.LinkCandidateHint(placeholder.Id));
+    }
+
+    [Fact]
     public void RegistryEnforcesOneToOneBindingsAndRejectsRemovedTokens()
     {
         var registry = new WorkspaceBindings();

@@ -29,6 +29,16 @@ internal sealed class Win32EventRouter : IDisposable
     private readonly UnhookWinEventSafeHandle _hookLocationChange;
     private readonly UnhookWinEventSafeHandle _hookMoveEnd;
     private readonly WINEVENTPROC _winEventProc;
+    private long _lastEventTick, _eventCount;
+
+    internal object Diagnostics => new
+    {
+        EventCount = _eventCount,
+        LastEventAgeMilliseconds = _eventCount == 0 ? (long?)null : Environment.TickCount64 - _lastEventTick,
+        LifetimeHookAvailable = !_hookObjectLifetime.IsInvalid && !_hookObjectLifetime.IsClosed,
+        ForegroundHookAvailable = !_hookForeground.IsInvalid && !_hookForeground.IsClosed,
+        LocationHookAvailable = !_hookLocationChange.IsInvalid && !_hookLocationChange.IsClosed
+    };
 
     public Win32EventRouter(TaskbarSelectionIntent? taskbar = null, AltTabSelectionIntent? altTab = null,
         Func<IntPtr, bool>? canSelectWindow = null)
@@ -71,6 +81,7 @@ internal sealed class Win32EventRouter : IDisposable
     private void OnWinEvent(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
+        _lastEventTick = Environment.TickCount64; _eventCount++;
         switch (eventType)
         {
             case PInvoke.EVENT_SYSTEM_MOVESIZEEND:

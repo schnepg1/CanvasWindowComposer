@@ -145,6 +145,23 @@ internal sealed class TrayApp : ApplicationContext
                 }
                 catch (Exception ex) { MessageBox.Show(ex.Message, "Performance diagnostics"); }
             }));
+            var windowDiagnostics = _lifecycle.Own(new WindowDiagnosticsRecorder(
+                () => new { Workspace = _workspace.WindowDiagnostics(),
+                    CanvasMode = _overview.CurrentMode.ToString(), Taskbar = _overview.TaskbarDiagnostics,
+                    Input = _input.Diagnostics, Interaction = _overview.InteractionDiagnostics },
+                path => _trayIcon?.ShowBalloonTip(7000, "Window diagnostics saved", path, ToolTipIcon.Info)),
+                ShutdownPhase.Quiesce, "Window diagnostics recorder");
+            menu.Items.Add(new ToolStripMenuItem("Record window diagnostics (15 seconds)", null, (_, _) =>
+            {
+                try
+                {
+                    string path = windowDiagnostics.Start(Path.Combine(Environment.GetFolderPath(
+                        Environment.SpecialFolder.LocalApplicationData), "CanvasWindowComposer", "Logs"));
+                    _trayIcon?.ShowBalloonTip(7000, "Recording window diagnostics",
+                        "Try opening the grouped taskbar previews now. Report: " + path, ToolTipIcon.Info);
+                }
+                catch (Exception ex) { MessageBox.Show(ex.Message, "Window diagnostics"); }
+            }));
             _overview.SettingsApplied += () =>
             {
                 showScreenFixedItem.Checked = _config.ShowScreenFixedWindowsDuringPan;

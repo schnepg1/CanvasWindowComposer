@@ -63,12 +63,28 @@ internal sealed partial class WorkspaceService
 
     private bool CanLink(WorkspaceLiveWindow live, WorkspaceItem item)
         => !live.Forgotten && (!live.ItemId.HasValue || Find(live.ItemId.Value)?.Placement == WorkspacePlacement.Temporary)
-            && _api.IsWindowVisible(live.Identity.Handle)
+            && MatchesLinkWindow(live, item);
+
+    private bool MatchesLinkWindow(WorkspaceLiveWindow live, WorkspaceItem item)
+        => !live.Forgotten && _api.IsWindowVisible(live.Identity.Handle)
             && _desktops.IsOnCurrentDesktop(live.Identity.Handle) && StillCurrent(live)
             && _windowInspector.Inspect(live.Identity.Handle) is { } observed
             && WorkspaceAppIdentity.Same(observed.Exe, item.ExecutablePath)
             && ((item.WebResource?.ProfilePath ?? item.ChromeProfilePath).Length == 0 || _windowInspector.ReadChromeProfile(live.Identity.Handle, observed.Exe) is not { } profile
                 || string.Equals(item.WebResource?.ProfilePath ?? item.ChromeProfilePath, profile, StringComparison.OrdinalIgnoreCase));
+
+    public string? LinkCandidateHint(Guid id)
+    {
+        if (Find(id) is not { } item || item.DesktopId != _desktop) return null;
+        int bound = _bindings.Windows.Count(live => live.ItemId.HasValue
+            && Find(live.ItemId.Value) is { Placement: not WorkspacePlacement.Temporary } && MatchesLinkWindow(live, item));
+        return bound switch
+        {
+            0 => null,
+            1 => "A matching open window is already linked to another saved place. A window can only be linked to one place at a time.",
+            _ => $"{bound} matching open windows are already linked to other saved places. A window can only be linked to one place at a time."
+        };
+    }
 
     public bool LinkWindow(Guid id, Guid candidateToken)
     {

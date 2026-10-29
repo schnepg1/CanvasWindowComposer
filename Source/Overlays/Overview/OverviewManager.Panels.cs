@@ -4,6 +4,13 @@ namespace CanvasDesktop;
 
 internal sealed partial class OverviewManager
 {
+    internal TaskbarPreviewSnapshot TaskbarDiagnostics => _taskbarPreviews.Snapshot();
+    internal object InteractionDiagnostics => new
+    {
+        Armed = _interactMode, Active = _windowInteraction.Active, Captured = _windowInteraction.Captured,
+        MouseHook = _interactionMouseHook?.Diagnostics
+    };
+
     private IntPtr CanvasPanelOwner => CurrentMode == OverviewMode.Hidden ? IntPtr.Zero
         : (_passes.Find(p => p.Screen.Primary) ?? _passes.Find(p => p.IsHandleCreated))?.Handle ?? IntPtr.Zero;
 

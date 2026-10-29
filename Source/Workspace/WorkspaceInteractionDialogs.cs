@@ -103,18 +103,18 @@ internal static partial class WorkspaceInteractionDialogs
     {
         var dialog = Create(owner, "Link an open window", 700, 420);
         var root = new DockPanel { Margin = new Thickness(24) }; dialog.Content = root;
-        var hint = new TextBlock { Text = "Select the window to move to this saved place. Only unbound windows of the same application on this desktop are listed.",
+        var hint = new TextBlock { Text = "Select the window to move to this saved place. Only unbound or temporary windows of the same application and compatible browser profile on this desktop are listed. Windows already linked to another saved place cannot be linked twice.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) };
         DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint);
         var footer = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
         DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
         var candidates = workspace.LinkCandidates(id);
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap,
-            Text = candidates.Count == 0 ? "No eligible windows. Open the application, then try again." : "" };
+            Text = candidates.Count == 0 ? workspace.LinkCandidateHint(id) ?? "No eligible windows. Open the application, then refresh." : "" };
         footer.Children.Add(status);
         var list = new ListBox { ItemsSource = candidates, DisplayMemberPath = nameof(WorkspaceLinkCandidate.Description) };
         System.Windows.Automation.AutomationProperties.SetName(list, "Eligible open windows");
-        var actions = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
+        var actions = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3 };
         var link = ZoneTheme.Button("Link selected window", () =>
         {
             if (list.SelectedItem is not WorkspaceLinkCandidate candidate) return;
@@ -129,8 +129,14 @@ internal static partial class WorkspaceInteractionDialogs
         link.IsDefault = true; link.IsEnabled = false;
         list.SelectionChanged += (_, _) => link.IsEnabled = list.SelectedItem != null;
         var cancel = ZoneTheme.Button("Cancel", () => dialog.DialogResult = false); cancel.IsCancel = true;
+        var refresh = ZoneTheme.Button("Refresh windows", () =>
+        {
+            var updated = workspace.LinkCandidates(id);
+            list.ItemsSource = updated; list.SelectedIndex = -1;
+            status.Text = updated.Count == 0 ? workspace.LinkCandidateHint(id) ?? "No eligible windows. Open the application, then refresh." : "";
+        });
         link.Margin = new Thickness(0, 4, 6, 0); cancel.Margin = new Thickness(6, 4, 0, 0);
-        actions.Children.Add(link); actions.Children.Add(cancel); footer.Children.Add(actions);
+        actions.Children.Add(link); actions.Children.Add(refresh); actions.Children.Add(cancel); footer.Children.Add(actions);
         root.Children.Add(list);
         return dialog;
     }

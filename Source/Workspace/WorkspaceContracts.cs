@@ -38,6 +38,7 @@ internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
     bool SetChromeProfile(Guid id, string profilePath);
     bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null);
     IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id);
+    string? LinkCandidateHint(Guid id) => null;
     bool LinkWindow(Guid id, Guid candidateToken);
 }
 

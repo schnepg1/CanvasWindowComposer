@@ -127,6 +127,8 @@ Workspace; see [web resources](Docs/web-resources.md) for setup and recovery.
 Run `Start-Canvas.cmd`; exit any older running instance first. This development
 launcher rebuilds current sources on each run, so a successful `git pull` is used.
 Use `Start-Canvas.cmd --diagnose` for dependency checks and copyable startup logs.
+For missing taskbar previews or linking candidates, see
+[window diagnostics](Docs/window-diagnostics.md) to capture the failure before restarting.
 
 On a normal exit, the canvas layout is saved before real windows are brought
 back into physical monitor working areas. Starting Canvas again reapplies the

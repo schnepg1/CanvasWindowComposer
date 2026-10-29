@@ -30,6 +30,12 @@ internal sealed class WindowInteractionMouseHook : IDisposable
     private long _lastClickTick;
     private bool _updatingCursor;
 
+    internal object Diagnostics => new
+    {
+        ThreadAlive = _thread.IsAlive, HeldButtons = _held.ToString(),
+        HookAvailable = _hook is { IsInvalid: false, IsClosed: false }
+    };
+
     public WindowInteractionMouseHook(Func<Point, bool> isSurface, Action<InteractionMouseEvent> enqueue, Action outside)
     {
         _isSurface = isSurface; _enqueue = enqueue; _outside = outside;
