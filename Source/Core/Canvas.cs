@@ -11,6 +11,7 @@ internal struct WorldRect
     public WindowState State;
     public long ZOrder;
     public bool PinnedToScreen;
+    public bool InInventory;
 }
 
 /// <summary>Screen-space projection of a <see cref="WorldRect"/>.</summary>
@@ -184,7 +185,7 @@ internal sealed class Canvas
 
         foreach (var (hWnd, r) in _windows)
         {
-            if (r.State != WindowState.Normal || r.PinnedToScreen) continue;
+            if (r.State != WindowState.Normal || r.PinnedToScreen || r.InInventory) continue;
             any = true;
             if (r.X < minX) minX = r.X;
             if (r.Y < minY) minY = r.Y;

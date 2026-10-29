@@ -25,6 +25,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private Guid _desktop;
     private long _nextCapture;
     private bool _switching, _disposed, _started;
+    private bool _capturingStartup;
     private string? _status;
     public WorkspaceDocument Document => _persistence.Document;
     public ZoneService Zones { get; }
@@ -51,6 +52,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _wm.WindowStateChanged += OnWindowStateChanged;
         _wm.AutomaticParkingChanged += OnAutomaticParkingChanged;
         _wm.WindowPlacementChanged += CommitWindowPlacement;
+        _wm.InventoryWindowFocused += OnInventoryWindowFocused;
         _canvas.PinnedChanged += OnWindowPinned;
         _cache.BeforeStateSaved += BeforeSwitch;
         _cache.AfterStateLoaded += AfterSwitch;
@@ -64,7 +66,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         InitializePlacementPolicy();
         RestoreCamera();
         _wm.DiscoverNewWindows();
-        Capture();
+        _capturingStartup = true;
+        try { Capture(); } finally { _capturingStartup = false; }
         EnsureCards();
         OpenStartupItems();
         Save();
@@ -166,7 +169,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         Zones.NotifyDesktopChanged();
         _switching = false;
         RestoreCamera();
-        Capture();
+        _capturingStartup = true;
+        try { Capture(); } finally { _capturingStartup = false; }
         EnsureCards();
         OpenStartupItems();
     }
@@ -201,6 +205,8 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         _wm.WindowStateChanged -= OnWindowStateChanged;
         _wm.AutomaticParkingChanged -= OnAutomaticParkingChanged;
         _wm.WindowPlacementChanged -= CommitWindowPlacement;
+        _wm.InventoryWindowFocused -= OnInventoryWindowFocused;
+        ArrivalViewportProvider = null;
         _canvas.PinnedChanged -= OnWindowPinned;
         AdditionalPlacementObstacles = null;
         _cache.BeforeStateSaved -= BeforeSwitch;

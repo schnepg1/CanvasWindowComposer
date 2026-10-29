@@ -61,7 +61,7 @@ internal sealed partial class OverviewManager
             result.AddRange(_annotationDocument.Items.Where(a => a.DesktopId == _annotationDesktop())
                 .Select(a => new CanvasSelectionItem(new(CanvasItemKind.Annotation,a.Id),a.Bounds,a.Text,Annotation:a)));
         if (_placeholderWorkspace != null)
-            result.AddRange(_placeholderWorkspace.Document.Items.Where(i => i.DesktopId == _annotationDesktop() && !i.Bounds.PinnedToScreen)
+            result.AddRange(_placeholderWorkspace.Document.Items.Where(i => i.DesktopId == _annotationDesktop() && !i.Bounds.PinnedToScreen && !i.Bounds.InInventory)
                 .Select(i => new CanvasSelectionItem(new(CanvasItemKind.Window,i.Id),Rect(i.Bounds),i.Name.Length>0?i.Name:i.Title)));
         var mapped = _overviewItemIds;
         var visible = _windows.Windows.Where(w => !w.ScreenFixed).ToArray();

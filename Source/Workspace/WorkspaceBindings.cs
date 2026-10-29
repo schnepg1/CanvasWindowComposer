@@ -19,6 +19,7 @@ internal sealed class WorkspaceLiveWindow
     public long? WaitingForProjectSince { get; set; }
     public bool NeedsNativeGeometry { get; set; }
     public bool NeedsInitialMatch { get; set; } = true;
+    public bool StartupArrival { get; set; }
     public WorkspaceLiveWindow(WorkspaceWindowIdentity identity) { Identity = identity; }
 }
 

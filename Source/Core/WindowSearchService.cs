@@ -47,7 +47,7 @@ internal sealed class WindowSearchService
             if (score > 0)
             {
                 _canvas.Windows.TryGetValue(hWnd, out var world); // default WorldRect if not tracked
-                scored.Add(new SearchResult(hWnd, $"{title} — {procName}", world, score));
+                scored.Add(new SearchResult(hWnd, $"{title} — {procName}" + (world.InInventory ? " · Backpack" : ""), world, score));
             }
             return true;
         });
@@ -71,6 +71,7 @@ internal sealed class WindowSearchService
             var (procName, _) = LookupProcess(hWnd);
             string display = $"{title} — {procName}";
             var world = _canvas.Windows[hWnd];
+            if (world.InInventory) display += " · Backpack";
             results.Add(new SearchResult(hWnd, display, world, 0));
             return true;
         });

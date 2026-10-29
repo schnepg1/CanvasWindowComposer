@@ -30,6 +30,7 @@ internal sealed partial class WorkspaceService
 
     private void Open(WorkspaceItem item, bool focusPlaceholder = false)
     {
+        if (item.Bounds.InInventory && IsOpen(item)) { InventoryRequested?.Invoke(item.Id); return; }
         if (BoundWindow(item.Id) is { } live)
         {
             RemoveCard(item.Id);

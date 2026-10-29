@@ -68,6 +68,7 @@ internal sealed class WorkspacePersistence
         return new WorkspaceDocument
         {
             Version = document.Version, PlacementPolicyInitialized = document.PlacementPolicyInitialized,
+            InventoryOpen = document.InventoryOpen,
             PendingPlacementAdoptions = new(document.PendingPlacementAdoptions),
             TemporaryAreas = new(document.TemporaryAreas), Cameras = new(document.Cameras), Items = items,
             Zones = document.Zones.Select(z => new WorkspaceZone { Id = z.Id, DesktopId = z.DesktopId,

@@ -66,7 +66,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
         var zone = Find(id);
         if (zone == null) return Array.Empty<ZoneMemberView>();
         var assigned = zone.ItemIds.ToHashSet();
-        return _document.Items.Where(i => i.DesktopId == _desktop() && (!zone.IsTemporaryArea || i.Placement == WorkspacePlacement.Temporary)).Select(i => new ZoneMemberView(i.Id,
+        return _document.Items.Where(i => i.DesktopId == _desktop() && !i.Bounds.InInventory && (!zone.IsTemporaryArea || i.Placement == WorkspacePlacement.Temporary)).Select(i => new ZoneMemberView(i.Id,
             i.Name.Length > 0 ? i.Name : i.Title, assigned.Contains(i.Id), i.Bounds,
             i.Target.Length > 0 ? i.Target : i.ExecutablePath)).ToArray();
     }
@@ -76,7 +76,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
         var zone = Find(id);
         if (zone == null || zone.IsTemporaryArea || itemIds == null || itemIds.Count > 2000) return false;
         var ids = itemIds.ToHashSet();
-        var eligible = _document.Items.Where(i => i.DesktopId == _desktop()).Select(i => i.Id).ToHashSet();
+        var eligible = _document.Items.Where(i => i.DesktopId == _desktop() && !i.Bounds.InInventory).Select(i => i.Id).ToHashSet();
         if (ids.Count != itemIds.Count || !ids.IsSubsetOf(eligible)) return false;
         foreach (var item in _document.Items.Where(i => ids.Contains(i.Id))) item.Placement = WorkspacePlacement.Deliberate;
         foreach (var temporary in _document.Zones.Where(z => z.IsTemporaryArea)) temporary.ItemIds.RemoveAll(ids.Contains);

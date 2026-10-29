@@ -11,7 +11,7 @@ internal sealed partial class WorkspaceService
     {
         var live = _bindings.At(token.Identity.Handle);
         return live?.Identity == token.Identity && live.ItemId is { } id
-            && Document.Items.Any(item => item.Id == id && item.ExcludeFromAutomaticMinimization);
+            && Document.Items.Any(item => item.Id == id && (item.ExcludeFromAutomaticMinimization || item.Bounds.InInventory));
     }
 
     public void SetAutomaticMinimizationExcluded(Guid id, bool value)

@@ -89,6 +89,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
+        UpdateInventoryDropHover(pass, e);
         if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
         if (RouteCanvasWindowPointer(pass, e)) return;
 
@@ -150,6 +151,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (TryCollectInventoryDrop(pass, e)) return;
         if (CompleteDesktopStoppingClick(pass, e)) return;
         _visualFrames.Flush();
         if (e.Button == MouseButtons.Right && ((_windowContextMenu != null && _windowContextMenu.Visible)
@@ -277,6 +279,7 @@ internal sealed partial class OverviewManager
 
     private void GoToWindow(IntPtr hWnd, WorldRect world)
     {
+        if (world.InInventory) { SetInventoryVisible(true); return; }
         ObserveTourWindow();
         if (_placeholderWorkspace?.CardItem(hWnd) is { } itemId)
         {

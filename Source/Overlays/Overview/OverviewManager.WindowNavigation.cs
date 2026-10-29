@@ -16,6 +16,7 @@ internal sealed partial class OverviewManager
 
     public bool NavigateToWindow(IntPtr window)
     {
+        if (!_disposed && _wm.NavigateInventoryWindow(window)) return true;
         if (_disposed || CurrentMode == OverviewMode.Hidden
             || !_mainCanvas.Windows.TryGetValue(window, out var world) || world.PinnedToScreen
             || !_win32.IsWindowVisible(window) || _win32.GetWindowProcessId(window) == 0) return false;

@@ -39,6 +39,13 @@ internal sealed partial class WorkspaceService
         if (!StillCurrent(live)) { _bindings.Unbind(live); return; }
         var handle = live.Identity.Handle;
         var placed = item.Bounds;
+        if (placed.InInventory)
+        {
+            if (!_wm.TryCarryWindow(handle, placed)) { _bindings.Unbind(live); return; }
+            RemoveCard(item.Id); _launching.Remove(item.Id); _launchBaselines.Remove(item.Id);
+            _launchMessages.Remove(item.Id); _ambiguous.Remove(item.Id);
+            return;
+        }
         if ((_api.GetWindowStyle(handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0 && !_wm.UsesCachedPreview(handle))
         {
             // Matching a saved slot must not wake an app the user minimized

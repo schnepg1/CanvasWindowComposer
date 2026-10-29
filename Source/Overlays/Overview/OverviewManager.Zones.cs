@@ -22,11 +22,15 @@ internal sealed partial class OverviewManager
             _placeholderWorkspace.ZoneLayoutRecorded -= OnZoneLayoutRecorded;
             _placeholderWorkspace.TemporaryWindowsArrived -= OnTemporaryWindowsArrived;
             _placeholderWorkspace.AdditionalPlacementObstacles = null;
+            _placeholderWorkspace.InventoryCollected -= OnInventoryCollected;
+            _placeholderWorkspace.InventoryRequested -= OnInventoryRequested;
+            _placeholderWorkspace.ArrivalViewportProvider = null;
         }
         _placeholderWorkspace = workspace;
         workspace.Changed += RefreshPlaceholderTitles;
         workspace.ZoneLayoutRecorded += OnZoneLayoutRecorded;
         workspace.TemporaryWindowsArrived += OnTemporaryWindowsArrived;
+        AttachInventory(workspace);
         workspace.AdditionalPlacementObstacles = () => (_annotationDocument?.Items
             .Where(a => a.DesktopId == _annotationDesktop()) ?? Enumerable.Empty<CanvasAnnotation>())
             .Concat(CurrentTutorial is { Visible: true } notes ? notes.Layout.Items : Array.Empty<CanvasAnnotation>())
@@ -37,6 +41,7 @@ internal sealed partial class OverviewManager
     private void RefreshPlaceholderTitles()
     {
         if (_disposed) return;
+        RefreshInventory();
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
         _temporaryNotice?.UpdateCount(_placeholderWorkspace?.TemporaryArea?.Count ?? 0,
             _placeholderWorkspace?.TemporaryArea?.Name ?? "Temporary area");

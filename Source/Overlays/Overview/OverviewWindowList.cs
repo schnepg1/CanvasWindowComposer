@@ -65,6 +65,7 @@ internal sealed class OverviewWindowList
 
     private void AddCanvasWindow(IntPtr hWnd, WorldRect world, bool includeScreenFixedWindows, bool navigationTarget)
     {
+        if (world.InInventory) return;
         if (world.State == WindowState.Minimized)
             return;
 

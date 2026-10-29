@@ -91,6 +91,7 @@ internal sealed partial class WorkspaceService
             var observation = _windowInspector.Inspect(handle);
             if (observation == null) continue;
             var live = _bindings.Observe(observation.Value.Identity, out _);
+            if (_capturingStartup) live.StartupArrival = true;
             if (live.NeedsNativeGeometry)
             {
                 EnrollNativeGeometry(handle);

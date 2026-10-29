@@ -50,6 +50,7 @@ internal sealed partial class WorkspaceService
         foreach (var id in _cards.Keys.Where(id => !Document.Items.Any(i => i.Id == id)).ToArray()) RemoveCard(id);
         foreach (var item in Document.Items.Where(i => i.DesktopId == _desktop).ToArray())
         {
+            if (item.Bounds.InInventory) { RemoveCard(item.Id); continue; }
             var live = BoundWindow(item.Id);
             bool minimized = live != null && (_api.GetWindowStyle(live.Identity.Handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0;
             bool preview = live != null && _overviewCardMode && !item.Bounds.PinnedToScreen

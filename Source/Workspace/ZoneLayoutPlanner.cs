@@ -86,5 +86,6 @@ internal static class ZoneLayoutPlanner
 
     internal static bool SamePlacement(WorldRect a, WorldRect b)
         => Math.Abs(a.X - b.X) < 0.01 && Math.Abs(a.Y - b.Y) < 0.01
-            && Math.Abs(a.W - b.W) < 0.01 && Math.Abs(a.H - b.H) < 0.01 && a.PinnedToScreen == b.PinnedToScreen;
+            && Math.Abs(a.W - b.W) < 0.01 && Math.Abs(a.H - b.H) < 0.01 && a.PinnedToScreen == b.PinnedToScreen
+            && a.InInventory == b.InInventory;
 }

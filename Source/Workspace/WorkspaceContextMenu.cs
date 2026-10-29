@@ -13,6 +13,7 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
     {
         IWin32Window Owner() => (IWin32Window?)SourceControl?.FindForm() ?? (IWin32Window?)SourceControl ?? new NativeDialogOwner(IntPtr.Zero);
         Items.Add("Open", null, (_, _) => workspace.Open(id));
+        Items.Add("Put in backpack", null, (_, _) => workspace.CollectInInventory(id));
         _keep = new ToolStripMenuItem("Keep this place", null, (_, _) => workspace.KeepPlace(id)); Items.Add(_keep);
         Items.Add("Link open window…", null, (_, _) => WorkspaceDialogs.LinkWindow(Owner(), workspace, id));
         Items.Add("Rename…", null, (_, _) => WorkspaceDialogs.NamePlace(Owner(), workspace, id));

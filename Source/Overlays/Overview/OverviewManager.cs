@@ -123,7 +123,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _thumbnails.Reconcile(camera);
         if (_windowInteraction.Active && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
-        RefreshZoneAnnotations();
+        RefreshZoneAnnotations();
+        _backpack?.RaiseWithoutActivation();
         // Publish the GPU background camera after DWM properties and the staged
         // annotation scene. This avoids waking it with a partially submitted view.
         if (!_disposed && CurrentMode != OverviewMode.Hidden) UpdateGridCamera(camera, panX, panY);
@@ -625,6 +626,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
         Attempt(_taskbarPreviews.Dispose);
         Attempt(() => _temporaryNotice?.Dispose());
+        Attempt(DisposeInventory);
         Attempt(CancelVisualFrame);
         Attempt(() => _windowFlightTimer?.Dispose());
         Attempt(() => CloseSettingsPopup());

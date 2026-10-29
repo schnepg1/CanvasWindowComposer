@@ -18,8 +18,8 @@ internal sealed partial class WorkspaceService
     {
         get
         {
-            int count = Document.Items.Count(i => i.DesktopId == _desktop && i.Placement == WorkspacePlacement.Temporary);
             var zone = TemporaryZone;
+            int count = zone == null ? 0 : Document.Items.Count(i => zone.ItemIds.Contains(i.Id) && i.Placement == WorkspacePlacement.Temporary);
             return zone != null ? new(zone.Bounds, count, zone.Id, zone.Name, zone.Color) : null;
         }
     }
@@ -80,9 +80,9 @@ internal sealed partial class WorkspaceService
     }
 
     private IReadOnlyList<WorldRect> PlacementObstacles(IntPtr except)
-        => Document.Items.Where(i => i.DesktopId == _desktop && !i.Bounds.PinnedToScreen).Select(i => i.Bounds)
+        => Document.Items.Where(i => i.DesktopId == _desktop && !i.Bounds.PinnedToScreen && !i.Bounds.InInventory).Select(i => i.Bounds)
             .Concat(Document.Zones.Where(z => z.DesktopId == _desktop && !z.IsTemporaryArea).Select(z => z.Bounds))
-            .Concat(_canvas.Windows.Where(p => p.Key != except && !p.Value.PinnedToScreen).Select(p => p.Value))
+            .Concat(_canvas.Windows.Where(p => p.Key != except && !p.Value.PinnedToScreen && !p.Value.InInventory).Select(p => p.Value))
             .Concat(AdditionalPlacementObstacles?.Invoke() ?? Array.Empty<WorldRect>())
             .Where(ZoneGeometry.ValidBounds).ToArray();
 
@@ -161,7 +161,13 @@ internal sealed partial class WorkspaceService
         var world = _canvas.Windows[live.Identity.Handle];
         if (!WorkspaceGeometry.ValidBounds(world)) return;
         WorldRect placed;
-        try { placed = PlaceTemporary(live, world); }
+        bool liveArrival = !live.StartupArrival && ArrivalViewportProvider != null;
+        try
+        {
+            if (!liveArrival) placed = PlaceTemporary(live, world);
+            else if (!NearbyWindowPlacement.TryPlace(world, ArrivalViewportProvider!(), InventoryPlacementObstacles(Guid.Empty, live.Identity.Handle), out placed))
+            { placed = world; placed.InInventory = true; placed.PinnedToScreen = false; }
+        }
         catch (InvalidOperationException)
         {
             _status = "New windows could not be placed in the temporary area. Move the area closer to the workspace.";
@@ -170,9 +176,13 @@ internal sealed partial class WorkspaceService
         var item = metadata.CreateItem(_desktop, placed, WorkspacePlacement.Temporary);
         Document.Items.Add(item);
         if (!_bindings.Bind(live, item.Id)) { Document.Items.Remove(item); return; }
-        TemporaryZone!.ItemIds.Add(item.Id);
+        if (!liveArrival) TemporaryZone!.ItemIds.Add(item.Id);
         RestoreBinding(live, item);
-        if (IsOpen(item)) _arrivals++;
+        if (IsOpen(item))
+        {
+            if (!liveArrival) _arrivals++;
+            else if (item.Bounds.InInventory) InventoryCollected?.Invoke(new(item.Id, DisplayTitle(item), world, true));
+        }
     }
 
     private void DetachTemporary(WorkspaceLiveWindow live)
@@ -207,7 +217,7 @@ internal sealed partial class WorkspaceService
         var live = ValidBinding(handle);
         var id = live?.ItemId ?? CardItem(handle);
         if (id is not { } itemId || Find(itemId) is not { Placement: WorkspacePlacement.Temporary } item
-            || !_canvas.Windows.TryGetValue(handle, out var world) || TemporaryZone is not { } area) return;
-        if (!TemporaryAreaLayout.ContainsCenter(area.Bounds, world)) KeepPlace(item.Id);
+            || !_canvas.Windows.TryGetValue(handle, out var world) || world.InInventory) return;
+        if (TemporaryZone is not { } area || !TemporaryAreaLayout.ContainsCenter(area.Bounds, world)) KeepPlace(item.Id);
     }
 }

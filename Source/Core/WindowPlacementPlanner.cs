@@ -46,6 +46,8 @@ internal static class WindowPlacementPlanner
         bool wasClipped, PlacementIntent intent = PlacementIntent.Project, bool repositionClipped = false)
     {
         var projected = camera.Project(world);
+        if (world.InInventory)
+            return new(projected, projected, false, false, wasClipped ? WindowRegionChange.None : WindowRegionChange.Clip);
         bool visible = IntersectsAnyScreen(projected, screens);
         if (world.State != WindowState.Normal || (world.PinnedToScreen && intent == PlacementIntent.Project))
             return new(projected, projected, visible, false, WindowRegionChange.None);

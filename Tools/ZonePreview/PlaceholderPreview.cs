@@ -141,6 +141,7 @@ internal static class PlaceholderPreview
         public void CloseToPlaceholder(Guid id) { }
         public void Forget(Guid id) { }
         public void KeepPlace(Guid id) { }
+        public bool CollectInInventory(Guid id) => false;
         public void SetAutoOpen(Guid id, bool value) { }
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) { }

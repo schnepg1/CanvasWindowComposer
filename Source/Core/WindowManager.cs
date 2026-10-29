@@ -177,7 +177,7 @@ internal sealed partial class WindowManager : IDisposable
     public event Action<IntPtr>? WindowPlacementChanged;
 
     // Our own placeholder forms are explicitly enrolled, never discovered as apps.
-    public void RestorePlacement(IntPtr hWnd, WorldRect world)
+    public bool RestorePlacement(IntPtr hWnd, WorldRect world)
     {
         // A queued camera projection may still contain the window's pre-match
         // desktop geometry. Finish/cancel it before applying the saved slot so
@@ -188,19 +188,20 @@ internal sealed partial class WindowManager : IDisposable
         _canvas.RestoreWindow(hWnd, world);
         if (_parking.TryGetValue(hWnd, out var parked))
         {
-            if (world.State == WindowState.Normal && !RestoreAutomaticWindow(hWnd, parked)) return;
+            if (world.State == WindowState.Normal && !RestoreAutomaticWindow(hWnd, parked)) return false;
             ForgetParking(hWnd);
         }
         ObserveRuntimeWindow(hWnd);
         var plan = WindowPlacementPlanner.Plan(world, _canvas.Camera, _win32.GetScreenWorkingAreas(),
             ClipOffScreen, _clippedWindows.Contains(hWnd), PlacementIntent.RestoreLayout, repositionClipped: true);
-        if (!ApplyRegionChange(hWnd, plan.RegionChange)) return;
-        if (!plan.ShouldMove) return;
+        if (!ApplyRegionChange(hWnd, plan.RegionChange)) return false;
+        if (!plan.ShouldMove) return true;
         var rect = plan.TargetRect;
         var move = TrackMove(hWnd, rect, posOnly: false);
         var result = _win32.SetWindowPosition(hWnd, rect.X, rect.Y, rect.W, rect.H,
             (uint)(SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
         ApplyMoveResult(move, result);
+        return result.Accepted;
     }
 
     // Temporarily suspends greedy draw (SetWindowRgn clipping)
@@ -479,6 +480,12 @@ internal sealed partial class WindowManager : IDisposable
 
     private void OnWindowFocusedEvent(IntPtr hWnd)
     {
+        if (IsCarried(hWnd))
+        {
+            _win32.ClipWindow(hWnd);
+            InventoryWindowFocused?.Invoke(hWnd);
+            return;
+        }
         if (_parking.TryGetValue(hWnd, out var parked) && parked.Phase == ParkingPhase.Parked
             && (_win32.GetWindowStyle(hWnd) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0)
             HandleManualParkingRestore(hWnd);
@@ -606,6 +613,7 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Update a single window's world position from its actual screen position.</summary>
     public void ReconcileWindow(IntPtr hWnd)
     {
+        if (IsCarried(hWnd)) return;
         if (_parking.ContainsKey(hWnd)) return;
         DrainProjectionResults();
         if (_suspendReconcile)
@@ -734,11 +742,11 @@ internal sealed partial class WindowManager : IDisposable
         _previewUnclipped.RemoveWhere(handle =>
         {
             if (!_clippedWindows.Contains(handle)) return true;
-            if (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) return false;
+            if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle))) return false;
             return _win32.ClipWindow(handle).Accepted;
         });
         foreach (var handle in _clippedWindows)
-            if ((_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
+            if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
                 && _win32.UnclipWindow(handle).Accepted)
                 _previewUnclipped.Add(handle);
     }
@@ -755,7 +763,7 @@ internal sealed partial class WindowManager : IDisposable
         _previewUnclipped.Clear();
         _win32.EnumWindows(hWnd =>
         {
-            if (_win32.IsWindowVisible(hWnd))
+            if (_win32.IsWindowVisible(hWnd) && !IsCarried(hWnd))
             {
                 _win32.UnclipWindow(hWnd);
                 PInvoke.RedrawWindow((HWND)hWnd, null, (HRGN)IntPtr.Zero,
@@ -782,6 +790,7 @@ internal sealed partial class WindowManager : IDisposable
 
     public bool SetWindowPinnedToScreen(IntPtr hWnd, bool pinned)
     {
+        if (IsCarried(hWnd)) return false;
         if (_parking.TryGetValue(hWnd, out var parked))
         {
             if (!RestoreAutomaticWindow(hWnd, parked)) return _canvas.IsPinnedToScreen(hWnd);
@@ -836,7 +845,7 @@ internal sealed partial class WindowManager : IDisposable
         _projection?.ClearPending();
 
         foreach (var hWnd in _clippedWindows)
-            _win32.UnclipWindow(hWnd);
+            if (!IsCarried(hWnd)) _win32.UnclipWindow(hWnd);
         _clippedWindows.Clear();
 
         _canvas.ResetCamera();
@@ -848,7 +857,7 @@ internal sealed partial class WindowManager : IDisposable
             TrackForDesktopRestore(hWnd);
             if (_parking.ContainsKey(hWnd) || !IsWindowActive(hWnd))
                 continue;
-            if (world.State != WindowState.Normal)
+            if (world.State != WindowState.Normal || world.InInventory)
                 continue;
             if (world.PinnedToScreen)
                 continue;
@@ -917,7 +926,7 @@ internal sealed partial class WindowManager : IDisposable
         IReadOnlyList<(int x, int y, int w, int h)> screens, WorkspaceWindowIdentity? identity, bool? minimized)
     {
         int style = _win32.GetWindowStyle(handle);
-        bool eligible = world.State == WindowState.Normal && !world.PinnedToScreen
+        bool eligible = world.State == WindowState.Normal && !world.PinnedToScreen && !world.InInventory
             && (style & (int)WINDOW_STYLE.WS_MAXIMIZE) == 0
             && _win32.IsManageable(handle, (uint)Environment.ProcessId, allowMinimized: true)
             && (_vds == null || _vds.IsOnCurrentDesktop(handle));
@@ -1070,7 +1079,7 @@ internal sealed partial class WindowManager : IDisposable
     {
         if (change == WindowRegionChange.Clip)
         {
-            if (_allPreviewsVisible || _livePreviewWindows.Contains(hWnd)) _previewUnclipped.Add(hWnd);
+            if (!IsCarried(hWnd) && (_allPreviewsVisible || _livePreviewWindows.Contains(hWnd))) _previewUnclipped.Add(hWnd);
             else if (!_win32.ClipWindow(hWnd).Accepted) return false;
             _clippedWindows.Add(hWnd);
         }

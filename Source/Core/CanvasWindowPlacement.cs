@@ -9,7 +9,7 @@ internal static class CanvasWindowPlacement
 {
     internal static bool ApplySelection(Canvas canvas, IWindowApi api, IReadOnlyList<(IntPtr Handle, WorldRect Bounds)> placements)
     {
-        if (placements.Any(p=>!canvas.Windows.TryGetValue(p.Handle,out var current) || current.PinnedToScreen
+        if (placements.Any(p=>!canvas.Windows.TryGetValue(p.Handle,out var current) || current.PinnedToScreen || current.InInventory
             || !WorkspaceGeometry.ValidBounds(p.Bounds))) throw new ArgumentException("A selected window or destination changed.");
         foreach(var p in placements) canvas.SetWindow(p.Handle,p.Bounds.X,p.Bounds.Y,p.Bounds.W,p.Bounds.H);
         bool accepted=true;

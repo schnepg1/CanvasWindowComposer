@@ -31,6 +31,7 @@ internal sealed partial class OverviewManager
         }
 
         if (_annotationEditor != null || _shapeEditor != null || _composerWindow != null) return;
+        if (HandleInventoryKey(e)) return;
         if (HandleCanvasHistoryKey(e)) return;
         if (e.KeyCode is Keys.Oemplus or Keys.Add or Keys.OemMinus or Keys.Subtract)
         {

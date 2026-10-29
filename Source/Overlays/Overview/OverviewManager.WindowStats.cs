@@ -13,6 +13,7 @@ internal sealed partial class OverviewManager
         // overview list. Saved placeholders must never inflate these totals.
         foreach (var handle in _mainCanvas.Windows.Keys.ToArray())
         {
+            if (_mainCanvas.Windows.TryGetValue(handle, out var carried) && carried.InInventory) continue;
             if (Control.FromHandle(handle) is PlaceholderForm || !_win32.IsWindowVisible(handle)) continue;
             bool isMinimized = (_win32.GetWindowStyle(handle) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0;
             if (isMinimized)

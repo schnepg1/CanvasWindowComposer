@@ -308,6 +308,7 @@ internal sealed class SearchOverlay : Form
         var hWnd = result.HWnd;
         var world = result.World;
         HWND h = (HWND)hWnd;
+        if (_wm.NavigateInventoryWindow(hWnd)) { HideOverlay(); return; }
 
         RestoreOrShowWindow(hWnd);
 

@@ -14,6 +14,7 @@ internal sealed partial class WorkspaceService
 
     private void FocusItem(WorkspaceItem item)
     {
+        if (item.Bounds.InInventory) { InventoryRequested?.Invoke(item.Id); return; }
         if (IsOpen(item)) { Open(item); return; }
         if (_cards.TryGetValue(item.Id, out var card)) Focus(card.Handle, item.Bounds);
     }
@@ -37,6 +38,7 @@ internal sealed partial class WorkspaceService
 
     private void Forget(WorkspaceItem item)
     {
+        if (item.Bounds.InInventory && IsOpen(item) && !DropFromInventory(item.Id)) return;
         if (BoundWindow(item.Id) is { } live) { live.Forgotten = true; _bindings.Unbind(live); }
         _launching.Remove(item.Id);
         _launchBaselines.Remove(item.Id);

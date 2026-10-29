@@ -155,6 +155,7 @@ public class UiBugsAndShapesTests
         public void CloseToPlaceholder(Guid id) { }
         public void Forget(Guid id) { }
         public void KeepPlace(Guid id) { }
+        public bool CollectInInventory(Guid id) => false;
         public void SetAutomaticMinimizationExcluded(Guid id, bool value) { }
         public void SetAutoOpen(Guid id, bool enabled) { }
         public void SetTarget(Guid id, string target, bool isFolder) { }

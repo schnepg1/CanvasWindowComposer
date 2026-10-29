@@ -8,10 +8,11 @@ internal sealed class FakeVirtualDesktops : IVirtualDesktops
     public event Action? DesktopChanged;
 
     public bool DefaultIsOnCurrent = true;
+    public readonly System.Collections.Generic.Dictionary<IntPtr, Guid> WindowDesktops = new();
 
     public bool IsOnCurrentDesktop(IntPtr hWnd)
     {
-        return DefaultIsOnCurrent;
+        return WindowDesktops.TryGetValue(hWnd, out var desktop) ? desktop == CurrentDesktopId : DefaultIsOnCurrent;
     }
 
     /// <summary>Test helper: change <see cref="CurrentDesktopId"/> and raise <see cref="DesktopChanged"/>.</summary>

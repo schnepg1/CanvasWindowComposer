@@ -115,6 +115,10 @@ restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitati
 New, unplaced windows collect in a [temporary area](Docs/temporary-area.md)
 without leaving saved placeholders. Existing layouts are adopted on upgrade;
 move a temporary window out of the area or choose **Keep this place** to save it.
+While Canvas is running, new windows use nearby free space and overflow into a
+[backpack inventory](Docs/backpack-inventory.md). Press **I** in Canvas to collect
+windows, travel elsewhere, and drag them back out; deliberately collected entries
+are kept across restarts while automatic overflow stays temporary.
 Web resource placeholders save a URL, browser (Chrome, Edge or Firefox), and an
 optional profile. Use **Add web resource…** from canvas tools, the tray, or Saved
 Workspace; see [web resources](Docs/web-resources.md) for setup and recovery.
