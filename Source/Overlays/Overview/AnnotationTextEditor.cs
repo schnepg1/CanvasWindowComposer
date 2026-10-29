@@ -171,7 +171,6 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
                 BringCaretIntoView();
             }));
         };
-        ContentRendered += (_, _) => { Editor.Focus(); Editor.CaretIndex = Editor.Text.Length; };
         Closing += (_, e) =>
         {
             if (_disposed) return;
@@ -346,6 +345,10 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         base.Show();
         _toolbar.Owner = this; _toolbar.Show(); _toolbar.UpdateLayout();
         UpdateProjection(); Editor.Focus();
+        // Initialize before returning control to the caller. ContentRendered is
+        // deferred and can otherwise overwrite a click/Home made before the
+        // first frame, scrolling a large title back to its end.
+        Editor.CaretIndex = Editor.Text.Length;
     }
     private void FocusEditor()
     {
