@@ -10,6 +10,71 @@ namespace CanvasDesktop.Tests;
 public class CanvasAnnotationRenderingTests
 {
     [Fact]
+    [Trait("Category","NativeRendering")]
+    public void InlineEditorReceivesNativeTextInputFromTheFormsMessageLoop()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var owner = new System.Windows.Forms.Form();
+            owner.Show();
+            var item = new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,new(200,200),new(440,248));
+            using var editor = new AnnotationTextEditor(item);
+            editor.SetPlacement(new CanvasViewTransform(0,0,1,new(0,0,1920,1080)),new(0,0,1920,1080));
+            editor.Show(owner); editor.Activate(); editor.Editor.Focus();
+            System.Windows.Forms.Application.DoEvents();
+            // Address the editor HWND directly so a foreground change elsewhere on the
+            // shared desktop cannot send this test's keystrokes into another application.
+            var handle = (Windows.Win32.Foundation.HWND)new System.Windows.Interop.WindowInteropHelper(editor).Handle;
+            foreach (char character in "CATEGORY")
+                Windows.Win32.PInvoke.PostMessage(handle,0x0102,(Windows.Win32.Foundation.WPARAM)(uint)character,0);
+            System.Windows.Forms.Application.DoEvents();
+            Assert.Equal("CATEGORY",editor.Editor.Text);
+            bool? saved = null;
+            editor.Finished += value => saved = value;
+            editor.Complete(true);
+            Assert.True(saved);
+        });
+
+    [Fact]
+    public void ScaledTitlePreservesItsLineCountAndStillRendersWhenZoomedOut()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var title = new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,
+                new(50,50),new(290,98),Text:"MY PROJECTS",FontSize:18,CardFill:AnnotationCardFill.None);
+            title = AnnotationVisual.FitText(title);
+            var enlarged = AnnotationGeometry.Resize(title,2,new(title.Bounds.Width*24,title.Bounds.Height*24),false);
+            enlarged = AnnotationVisual.FitText(enlarged);
+            Assert.Equal(AnnotationTextLayout.Layout(title,title.Bounds.Width-16)/title.FontSize,
+                AnnotationTextLayout.Layout(enlarged,enlarged.Bounds.Width-16)/enlarged.FontSize,3);
+            var doc = new AnnotationDocument([enlarged]);
+            var surface = new OverviewAnnotationSurface();
+            surface.SetDrawingLayers([new CanvasAnnotationLayer(doc,new AnnotationCanvasTool(doc,()=>title.DesktopId),()=>title.DesktopId,()=>true)]);
+            surface.Update(OverviewAnnotationSnapshot.Create([],0,0,.08,new(0,0,600,240),null,false,showHints:false));
+            surface.Measure(new Size(600,240)); surface.Arrange(new Rect(0,0,600,240)); surface.UpdateLayout();
+            var bitmap = new RenderTargetBitmap(600,240,96,96,PixelFormats.Pbgra32); bitmap.Render(surface);
+            var pixels = new byte[600*240*4]; bitmap.CopyPixels(pixels,2400,0);
+            Assert.True(Enumerable.Range(0,600*240).Count(i=>pixels[i*4+3]>100)>500);
+        });
+
+    [Fact]
+    public void NotesBeyondTheScreenKeepTheCaretReachableWithoutShrinkingText()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var item = new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,
+                new(200,300),new(440,348),Text:"Start");
+            using var editor = new AnnotationTextEditor(item);
+            editor.SetPlacement(new CanvasViewTransform(0,0,1,new(0,0,1000,600)),new(0,0,1000,600));
+            editor.Show(); System.Windows.Forms.Application.DoEvents();
+            editor.Editor.Text = string.Join("\n",Enumerable.Repeat("Another line",80));
+            editor.Editor.CaretIndex = editor.Editor.Text.Length;
+            System.Windows.Forms.Application.DoEvents();
+            var viewport = Assert.IsType<System.Windows.Controls.ScrollViewer>(editor.Content);
+            viewport.UpdateLayout();
+            Assert.True(viewport.VerticalOffset>0);
+            Assert.True(editor.CurrentItem.Bounds.Height>editor.Height*VisualTreeHelper.GetDpi(editor).DpiScaleY);
+            Assert.Equal(item.FontSize,editor.FontSize);
+        });
+
+    [Fact]
     public void SpatialGroupOutlinesGhostsAndProximityCircleRenderTogether()
         =>WorkspaceViewTests.OnSta(()=>
         {
@@ -109,46 +174,58 @@ public class CanvasAnnotationRenderingTests
         });
 
     [Fact]
-    public void EditorPreviewsTheCardAndKeepsItsWrappingWhenTheDialogResizes()
-        => WorkspaceViewTests.OnSta(()=>
+    public void InlineEditorKeepsCanvasWidthAndZoomWhileTextGrows()
+        => WorkspaceViewTests.OnSta(() =>
         {
-            var item=new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,new(50,60),new(290,180),"#C084FC",3,"A card that wraps\nSecond line");
-            using var editor=new AnnotationTextEditor(item);
-            editor.Show();System.Windows.Forms.Application.DoEvents();
-            var host=editor.Controls.OfType<System.Windows.Forms.Integration.ElementHost>().Single();
-            var root=(FrameworkElement)host.Child;
+            var item = new CanvasAnnotation(Guid.NewGuid(), Guid.NewGuid(), AnnotationKind.Text,
+                new(100,120), new(340,240), Text:"A title");
+            using var editor = new AnnotationTextEditor(item);
+            editor.SetPlacement(new CanvasViewTransform(20,40,.75,new(0,0,1920,1080)), new(0,0,1920,1080));
+            editor.Show(); System.Windows.Forms.Application.DoEvents();
+            var root = (FrameworkElement)editor.Content;
             root.UpdateLayout();
-            Assert.Equal(AnnotationVisual.TextBounds(item).Width,editor.Editor.ActualWidth);
-            double textWidth=editor.Editor.ActualWidth;
-            editor.Width+=160;System.Windows.Forms.Application.DoEvents();root.UpdateLayout();
-            Assert.Equal(textWidth,editor.Editor.ActualWidth);
-            Assert.Equal(item.Text,editor.Editor.Text);
+            Assert.Equal(WindowStyle.None, editor.WindowStyle);
+            Assert.Equal(ResizeMode.NoResize, editor.ResizeMode);
+            Assert.Equal(AnnotationVisual.TextBounds(item).Width, editor.Editor.ActualWidth);
+            double initialHeight = editor.CurrentItem.Bounds.Height;
+            editor.Editor.Text = string.Join("\n", Enumerable.Repeat("Text grows as I type and wraps within this width.", 12));
+            System.Windows.Forms.Application.DoEvents(); root.UpdateLayout();
+            Assert.True(editor.CurrentItem.Bounds.Height > initialHeight);
+            Assert.Equal(item.Bounds.Width, editor.CurrentItem.Bounds.Width);
+            Assert.Equal(item.A, editor.CurrentItem.A);
+            Assert.Equal(item.Bounds.Width * .75, editor.Width * VisualTreeHelper.GetDpi(editor).DpiScaleX, 1);
+            var last = editor.Editor.GetRectFromCharacterIndex(editor.Editor.Text.Length);
+            Assert.True(last.Bottom <= editor.Editor.ActualHeight + 1);
             if (Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") is {} workspace)
             {
                 Directory.CreateDirectory(Path.Combine(workspace,"TestResults"));
-                var bitmap=new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth),(int)Math.Ceiling(root.ActualHeight),96,96,PixelFormats.Pbgra32);
-                bitmap.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
-                using var output=File.Create(Path.Combine(workspace,"TestResults","annotation-editor-preview.png"));encoder.Save(output);
+                var bitmap = new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth),(int)Math.Ceiling(root.ActualHeight),96,96,PixelFormats.Pbgra32);
+                bitmap.Render(root); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var output = File.Create(Path.Combine(workspace,"TestResults","annotation-editor-preview.png")); encoder.Save(output);
             }
         });
 
-    [Fact]
-    public void EditorChangesTextSizeWithinTheSameCardBounds()
-        => WorkspaceViewTests.OnSta(()=>
+    [Theory]
+    [InlineData("A larger title")]
+    [InlineData("First line\nSecond line\n")]
+    [InlineData("LongWordWithoutSpacesLongWordWithoutSpacesLongWordWithoutSpaces")]
+    [InlineData("\u0633\u0644\u0627\u0645 \U0001F338\nUnicode text")]
+    public void TextAndFontChangesNeverHideTheLastLine(string text)
+        => WorkspaceViewTests.OnSta(() =>
         {
-            var item=new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,new(50,60),new(290,180),"#C084FC",3,"Sized note",24);
-            using var editor=new AnnotationTextEditor(item);
-            editor.Show();System.Windows.Forms.Application.DoEvents();
-            Assert.Equal(24,editor.FontSize);
-            Assert.Equal(24,editor.Editor.FontSize);
-            var width=editor.Editor.Width;var height=editor.Editor.Height;
-            editor.FontSize=40;
-            Assert.Equal(40,editor.Editor.FontSize);
-            Assert.Equal(width,editor.Editor.Width);Assert.Equal(height,editor.Editor.Height);
-            editor.SetFontSize(1);
-            Assert.Equal(AnnotationDocument.MinimumFontSize,editor.FontSize);
-            editor.SetFontSize(1000);
-            Assert.Equal(AnnotationDocument.MaximumFontSize,editor.FontSize);
+            var item = new CanvasAnnotation(Guid.NewGuid(),Guid.NewGuid(),AnnotationKind.Text,
+                new(50,60),new(290,108),Text:text,FontSize:24);
+            using var editor = new AnnotationTextEditor(item);
+            editor.Show(); System.Windows.Forms.Application.DoEvents();
+            double height = editor.CurrentItem.Bounds.Height;
+            editor.FontSize = 72;
+            System.Windows.Forms.Application.DoEvents(); ((FrameworkElement)editor.Content).UpdateLayout();
+            Assert.Equal(72,editor.Editor.FontSize);
+            Assert.Equal(item.Bounds.Width,editor.CurrentItem.Bounds.Width);
+            Assert.True(editor.CurrentItem.Bounds.Height >= height);
+            Assert.True(editor.Editor.GetRectFromCharacterIndex(text.Length).Bottom <= editor.Editor.ActualHeight + 1, $"Last line: {editor.Editor.GetRectFromCharacterIndex(text.Length)}, editor height: {editor.Editor.ActualHeight}, lines: {editor.Editor.LineCount}, extent: {editor.Editor.ExtentHeight}, viewport: {editor.Editor.ViewportHeight}");
+            editor.SetFontSize(1); Assert.Equal(AnnotationDocument.MinimumFontSize,editor.FontSize);
+            editor.SetFontSize(AnnotationDocument.MaximumFontSize+1000); Assert.Equal(AnnotationDocument.MaximumFontSize,editor.FontSize);
         });
 
     [Fact]

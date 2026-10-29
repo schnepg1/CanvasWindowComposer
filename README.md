@@ -211,19 +211,28 @@ In canvas overview, use the toolbar to draw arrows, rectangles and ellipses, or
 click **Text** to add a note. Use **Select** to move/resize drawings, double-click
 notes to edit, and choose **Arrange** at the top right to move windows. Shift constrains
 shapes/directions; Delete removes a selection. Ctrl+Z/Y undo/redo annotation edits
-while a drawing/selection tool is active. Notes save with Ctrl+Enter; Escape cancels
-editing. Drawings save automatically per virtual desktop and return after restart.
+while a drawing/selection tool is active. Click outside a note or press Ctrl+Enter
+to finish editing; Escape cancels changes. Drawings save automatically per virtual
+desktop and return after restart.
 The compact dock keeps Select, Shapes, Text, Undo and Redo in reach; use More for
 editing, deletion, saving, nearby selection and AI Compose. The main Shapes button
 reuses your last shape, while its arrow opens the shape chooser. Color, stroke and
 text controls appear above the dock for the current tool or selected annotation.
 The dock sits at the bottom of the screen, or immediately above the Windows taskbar
 when it is shown. Hover feedback respects reduced motion and low quality settings.
-Notes open in a card preview with matching colors, proportions, typography and wrapping.
-The editor changes text size from 8 to 96 with a numeric control, quick presets or
-Ctrl +/- and saves it with the note. Save with Ctrl+Enter or cancel with Esc. Selected
-drawings have larger corner/endpoint grips; notes and shapes also resize from their
-sides. Grip sizes stay readable as you zoom.
+Choose **Text**, click on the canvas and start typing directly in the note. Notes
+keep their wrapping width and grow vertically as you type. A nearby toolbar controls
+text size, color, bold/italic, alignment and background. Click outside or choose
+**Done** to save; **Esc** cancels. Clearing an existing note and finishing removes it,
+with undo available.
+Very large characters can widen the note to remain visible. Oversized or partly
+off-screen notes use a scrollable editor that keeps the caret on-screen. If a save
+is rejected, the draft stays open so you can correct the problem and retry.
+After editing, **Select** is active: drag the note to move it, drag a **corner to
+scale the text and box together**, or drag a side to change its wrapping width.
+Text sizes range from 8 to 4096 canvas units, so category headings can remain readable
+when zoomed out. Double-click a note or press Enter on a selection to edit it again.
+Grip sizes stay readable as you zoom.
 
 See [canvas tools](Docs/canvas-view-tools.md#canvas-annotations-v1) for details.
 

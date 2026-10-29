@@ -91,7 +91,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _widths = DropDown("Stroke", "Stroke width");
         foreach (double width in new[] { 1d, 3d, 6d }) AddValue(_widths, $"{width:0} px", width, () => StrokeRequested?.Invoke(width));
         _sizes = DropDown("Size", "Text size");
-        foreach (double size in new[] { 12d, 18d, 24d, 32d, 40d, 56d, 72d, 96d, 128d, 160d, 200d, 280d, 400d })
+        foreach (double size in new[] { 12d, 18d, 24d, 32d, 40d, 56d, 72d, 96d, 128d, 160d, 200d, 280d, 400d, 800d, 1600d, 3200d })
             AddValue(_sizes, size.ToString("0"), size, () => FontSizeRequested?.Invoke(size));
         _textStyle = DropDown("Style", "Text style and alignment");
         foreach (var (title, value) in new[] { ("Plain", AnnotationTextEmphasis.Normal), ("Bold", AnnotationTextEmphasis.Bold), ("Italic", AnnotationTextEmphasis.Italic), ("Bold italic", AnnotationTextEmphasis.BoldItalic) })

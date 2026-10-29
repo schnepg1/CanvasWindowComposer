@@ -57,7 +57,7 @@ public sealed class AnnotationDocument
     public const int MaximumTextLength = 10000;
     public const double DefaultFontSize = 18;
     public const double MinimumFontSize = 8;
-    public const double MaximumFontSize = 400;
+    public const double MaximumFontSize = 4096;
     private readonly List<CanvasAnnotation> _items = [];
     private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay, long Order);
     private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
@@ -255,6 +255,9 @@ public sealed class AnnotationDocument
 
 public static class AnnotationGeometry
 {
+    public const double TextInset = 8;
+    // TextBox reserves two canvas units beside the content for its caret.
+    public const double TextCaretPadding = 2;
     // DIPs, shared with painting: controls remain usable while the artwork zooms.
     public const double HandleSize = 12;
     public const double HandleHitRadius = 14;
@@ -328,6 +331,22 @@ public static class AnnotationGeometry
         if (handle < 4)
         {
             var opposite = Handles(original)[(handle+2)%4];
+            if (original.Kind == AnnotationKind.Text)
+            {
+                // Corners scale type and its usable text area together, preserving wrapping.
+                // Project the drag onto the diagonal so either axis can enlarge a title.
+                var textBounds = original.Bounds;
+                double dx = grip.X - opposite.X, dy = grip.Y - opposite.Y;
+                double scale = ((end.X - opposite.X) * dx + (end.Y - opposite.Y) * dy) / (dx * dx + dy * dy);
+                scale = Math.Clamp(scale, AnnotationDocument.MinimumFontSize / original.FontSize,
+                    AnnotationDocument.MaximumFontSize / original.FontSize);
+                double horizontalInset = TextInset * 2 + TextCaretPadding;
+                double width = horizontalInset + Math.Max(1, textBounds.Width - horizontalInset) * scale;
+                double height = TextInset * 2 + Math.Max(1, textBounds.Height - TextInset * 2) * scale;
+                double x = opposite.X + Math.Sign(dx) * width, y = opposite.Y + Math.Sign(dy) * height;
+                return original with { A = new(Math.Min(x, opposite.X), Math.Min(y, opposite.Y)),
+                    B = new(Math.Max(x, opposite.X), Math.Max(y, opposite.Y)), FontSize = original.FontSize * scale };
+            }
             if (constrain) end = Constrain(opposite, end, false);
             return original with { A=opposite, B=end };
         }

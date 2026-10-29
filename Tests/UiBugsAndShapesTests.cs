@@ -39,7 +39,7 @@ public class UiBugsAndShapesTests
         Assert.Equal(400, Assert.Single(doc.Items).FontSize);
 
         // Beyond maximum should fail
-        Assert.Throws<ArgumentException>(() => tool.SetFontSize(401));
+        Assert.Throws<ArgumentException>(() => tool.SetFontSize(AnnotationDocument.MaximumFontSize + 1));
     }
 
     [Fact]

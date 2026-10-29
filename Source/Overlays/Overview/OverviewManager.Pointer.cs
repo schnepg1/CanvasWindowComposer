@@ -26,7 +26,8 @@ internal sealed partial class OverviewManager
             return;
         }
 
-        if (_annotationEditor != null || _shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
+        if (_annotationEditor is {} activeEditor && !activeEditor.Complete(true, returnFocus: false)) return;
+        if (_shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
         if (RouteCanvasWindowPointer(pass, e, down: true)) return;
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
@@ -254,7 +255,7 @@ internal sealed partial class OverviewManager
             {
                 CancelInteraction(); annotationTool.Select(note.Id);
                 if (note.Kind == AnnotationKind.Text)
-                    QueueAnnotationTextEdit(note);
+                    QueueAnnotationTextEdit(note,new Point(e.X+pass.OriginX,e.Y+pass.OriginY));
                 else
                     QueueAnnotationShapeEdit(note);
                 return;

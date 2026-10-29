@@ -51,7 +51,7 @@ boundary without solving a current requirement.
 | Feature | Recommended implementation |
 | --- | --- |
 | Arrows, connectors and selection handles | Immutable world-space points/styles in the drawing domain; WPF `StreamGeometry`/`DrawingContext` painting through a drawing layer. Keep handles readable in DIPs. |
-| Text notes | Immutable note ID, desktop ID, world position/bounds, text and style. WPF `FormattedText` for display, a focused `TextBox` editor hosted by the Windows adapter for input/IME. |
+| Text notes | Immutable note ID, desktop ID, world position/bounds, text and style. WPF `TextFormatter` for display, an inline `TextBox` editor hosted by the Windows adapter for input/IME. |
 | Tool state and undo | C# command-based drawing document with one edit per completed gesture. Keep previews transient. Route undo by editing context initially; add a combined chronological history only if product behavior requires it. |
 | Persistence | Versioned `System.Text.Json` drawing data through a host adapter, reusing the existing atomic-save/backup/error approach. Define migration and finite-coordinate/text/point-count limits before enabling saves. |
 | Window-attached connectors | Stable workspace item IDs and a bounds adapter; never persistent HWND identities. Define closed-app/placeholder and desktop-switch behavior. |
@@ -99,16 +99,36 @@ the Text menu applies size, emphasis, alignment and card fill. Delete removes th
 selected item. Double-click a note in Select mode, or press
 Enter with a note selected, to edit it.
 
-Text is plain multiline Unicode. Click in Text mode to place the default card, or
-drag to draw a card at the chosen size; a drag below the minimum still produces a
-usable card. A separate focused native editor handles typing, clipboard and IME,
-while annotation painting stays passive. The editor previews the card and changes
-its text size (8–96 canvas units) with a numeric control, preset links or Ctrl +/-
-along with left/center/right alignment (Ctrl+L/E/R), bold/italic emphasis (Ctrl+B/I)
-and the card fill (solid, tinted or outline). All style changes are saved with the
-note. The annotation toolbar applies text size, emphasis, alignment and fill to the
-selected item and to new notes. Ctrl+Enter or Save commits the complete text edit;
-Escape or closing the editor cancels it. Global canvas input is drained while
+Text is plain multiline Unicode. Click in Text mode to place a compact card, or
+drag to choose its bounds. A transparent WPF editor is projected directly over the
+card at the current canvas zoom and monitor DPI. It handles typing, clipboard and
+IME while annotation painting stays passive. Notes grow vertically to fit their
+content without changing the wrapping width or top-left anchor. The editor and
+saved text use character wrapping, including long words and trailing blank lines;
+notes longer than the visible screen can scroll while editing.
+Unbreakable characters or grapheme clusters wider than the wrapping area also grow
+the note's width. The native editor is bounded to the chosen monitor's visible
+working area, with the full card scrolled inside it. Double-click editing chooses
+the clicked monitor; keyboard editing chooses the largest visible intersection.
+
+A separate owned formatting toolbar stays near the note. It offers text size
+(8 to 4096 canvas units), color, bold/italic (Ctrl+B/I), left/center/right alignment
+(Ctrl+L/E/R), and solid, tinted or outline fill. Ctrl +/- adjusts text size and
+Ctrl+0 restores the default. Formatting keeps the same editing session active.
+Click outside, choose Done or press Ctrl+Enter to commit the text, style and bounds
+as one undo step. Escape cancels the draft. Finishing an empty new note discards
+it; clearing an existing note removes it with undo available. Editing ends in
+Select mode so the note can immediately be moved or resized.
+Pending custom font-size input is validated before committing. Rejected saves keep
+the editor and draft open for correction and retry. Native window closing defers
+cancellation until WPF has returned from its closing callback.
+
+Text-note corner handles scale the font and usable text area proportionally around
+the opposite corner, preserving wrapping. Side handles change bounds without scaling
+the font; narrowing a note grows its height as needed. Font limits clamp corner
+scaling without flipping the note. Shapes keep their existing resize behavior.
+The annotation toolbar also applies text styles to selected items and new notes.
+Global canvas input is drained while
 editing or drawing. A first Escape cancels a gesture or editor; an idle
 drawing mode returns to the unified Select mode on Escape, an active selection is
 cleared on Escape, and pressing Escape with nothing selected closes overview.
