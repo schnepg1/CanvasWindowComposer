@@ -8,6 +8,27 @@ namespace CanvasDesktop.Tests;
 [Collection("ShellViews")]
 public class InventoryNativeTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativePreview")]
+    public void OnlyForegroundOverflowOpensTheBackpack(bool sourceHadFocus)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var source = new Form();
+            var config = new FakeAppConfig { EnableStartupIntro = false, ReduceStartupMotion = true };
+            using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true }, config: config);
+            rig.Workspace.Start();
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config, new FakeScreens());
+            overview.AttachPlaceholderWorkspace(rig.Workspace);
+            rig.Workspace.AdditionalPlacementObstacles = () => [new() { W = 1920, H = 1080 }];
+            rig.Api.AddWindow(source.Handle, 10, 20, 400, 300, title: "Overflow");
+            rig.Api.Foreground = sourceHadFocus ? source.Handle : IntPtr.Zero;
+            rig.Workspace.SaveNow();
+            Assert.True(Assert.Single(rig.Workspace.Items).Bounds.InInventory);
+            Assert.Equal(sourceHadFocus, rig.Workspace.Document.InventoryOpen);
+        });
+
     [Fact]
     [Trait("Category", "NativePlacement")]
     public void NativeInventoryClippingSurvivesPreviewAndCameraChangesUntilUnpacked()

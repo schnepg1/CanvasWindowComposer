@@ -51,7 +51,7 @@ internal sealed partial class OverviewManager
         if (!open && CurrentMode == OverviewMode.Zooming) FocusOverview();
     }
 
-    private void OnInventoryRequested(Guid? id) => SetInventoryVisible(true, id);
+    private void OnInventoryRequested(Guid? id) => SetInventoryVisible(true, id, activate: true);
     private void OnInventoryModeChanged(OverviewMode from, OverviewMode to) => RefreshInventory();
 
     private void RefreshInventory()
@@ -68,6 +68,9 @@ internal sealed partial class OverviewManager
     private void OnInventoryCollected(InventoryCollection collection)
     {
         if (_disposed || _placeholderWorkspace == null) return;
+        bool focusedOverflow = collection.Automatic && collection.SourceHandle != IntPtr.Zero
+            && _win32.GetForegroundWindow() == collection.SourceHandle;
+        if (focusedOverflow) SetInventoryVisible(true, collection.Id, activate: true);
         RefreshInventory();
         var backpack = EnsureBackpack();
         backpack.Panel.UpdateItems(_placeholderWorkspace.InventoryItems);

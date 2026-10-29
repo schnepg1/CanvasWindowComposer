@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace CanvasDesktop;
 
-internal sealed record InventoryCollection(Guid Id, string Title, WorldRect Source, bool Automatic);
+internal sealed record InventoryCollection(Guid Id, string Title, WorldRect Source, bool Automatic, IntPtr SourceHandle = default);
 
 internal sealed partial class WorkspaceService
 {
@@ -34,7 +34,7 @@ internal sealed partial class WorkspaceService
         _inventoryStatus = null;
         RemoveCard(id); Zones.ForgetItem(id); RemoveTemporaryMembership(id);
         InvalidateOverviewSnapshot(); Save(); PublishTemporaryAreaChange();
-        Changed?.Invoke(); InventoryCollected?.Invoke(new(id, DisplayTitle(item), source, false));
+        Changed?.Invoke(); InventoryCollected?.Invoke(new(id, DisplayTitle(item), source, false, live?.Identity.Handle ?? IntPtr.Zero));
         return true;
     }
 

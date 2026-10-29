@@ -181,7 +181,7 @@ internal sealed partial class WorkspaceService
         if (IsOpen(item))
         {
             if (!liveArrival) _arrivals++;
-            else if (item.Bounds.InInventory) InventoryCollected?.Invoke(new(item.Id, DisplayTitle(item), world, true));
+            else if (item.Bounds.InInventory) InventoryCollected?.Invoke(new(item.Id, DisplayTitle(item), world, true, live.Identity.Handle));
         }
     }
 

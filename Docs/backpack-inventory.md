@@ -27,7 +27,9 @@ and are excluded from workspace saves. Explicitly unpacking a session item keeps
 its new place. **Keep in backpack** makes an automatic entry persistent.
 
 Collection shows a short card flight into the brass backpack badge with a pickup
-pulse and sparkle. The animation does not activate the panel or pan the camera.
+pulse and sparkle. Background overflow does not activate the panel or pan the
+camera. If the collected window had foreground focus, focus transfers to the
+backpack so typing cannot be trapped in the hidden source window.
 Reduced-motion preferences replace the flight with a brief destination effect.
 The closed badge appears briefly for background overflow, and remains available
 in Canvas. The panel distinguishes kept entries in brass and session entries in
