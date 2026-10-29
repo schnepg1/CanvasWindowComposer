@@ -43,8 +43,7 @@ internal sealed partial class OverviewManager
         if (_disposed) return;
         RefreshInventory();
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
-        _temporaryNotice?.UpdateCount(_placeholderWorkspace?.TemporaryArea?.Count ?? 0,
-            _placeholderWorkspace?.TemporaryArea?.Name ?? "Temporary area");
+        RefreshTemporaryDrawer();
         if (CurrentMode != OverviewMode.Hidden)
         {
             RefreshOverviewWindows();

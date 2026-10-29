@@ -115,6 +115,8 @@ restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitati
 New, unplaced windows collect in a [temporary area](Docs/temporary-area.md)
 without leaving saved placeholders. Existing layouts are adopted on upgrade;
 move a temporary window out of the area or choose **Keep this place** to save it.
+The right-border **Temporary** drawer lists these windows. New entries peek out
+for five seconds; hover to keep it open, or drag a row onto the canvas to keep its new place.
 While Canvas is running, new windows use nearby free space and overflow into a
 [backpack inventory](Docs/backpack-inventory.md). Press **I** in Canvas to collect
 windows, travel elsewhere, and drag them back out; deliberately collected entries

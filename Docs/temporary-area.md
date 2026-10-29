@@ -12,11 +12,25 @@ boundaries, current canvas windows, annotations and visible tutorial notes, with
 64 canvas units of spacing. A minimized arrival remains minimized and has a
 live-session card; its normal restore size reserves space in the area.
 
-An arrival notice appears near the primary screen's right edge for eight seconds.
-It groups a discovery batch, does not take focus or move the camera, and offers
-**Show temporary area**. **Go to temporary area** remains available in the tray
-after the notice expires. This action also creates an empty area before the
-first arrival, so you can choose its location in advance.
+A **Temporary** tab stays on the primary screen's right border, including when
+the list is empty or Canvas overview is closed. Click it to peek into the
+temporary zone. New arrivals slide the drawer out for five seconds and animate
+into the top of the list, newest first. Notifications do not take focus or move
+the camera. Hovering the drawer or dragging a row holds it open; leaving gives
+another five seconds before it folds back. Click the tab again or press Escape
+to fold it immediately. Reduced-motion settings skip the slide and row motion.
+
+Drag a row onto clear canvas to place that window at the current camera, or
+double-click to find nearby space. Explicit placement keeps its new place;
+minimized windows stay minimized. Placement avoids existing content and visible
+Canvas panels. If there is no room or Windows rejects the move, the entry stays
+in the temporary zone. Closing an app removes its row. The drawer shows only
+temporary-zone members on the current virtual desktop; live nearby arrivals and
+the backpack have their own existing behavior.
+
+**Show temporary area** in the drawer and **Go to temporary area** in the tray
+also create an empty area before the first arrival, so you can choose its
+location in advance. The backpack moves beside the drawer while it is open.
 
 The area has a dashed canvas boundary. Drag its label to move it together with
 its current temporary windows; drag a corner to resize the boundary. These
@@ -66,7 +80,20 @@ editable areas at the same location.
 Tests cover upgrade adoption, first-launch batches, minimized state, spacing and
 content protection, stable slots and anchors, temporary cleanup and restart,
 explicit placement, delayed identity, ambiguous linking, file serialization,
-menu actions, canvas rendering and non-activating native notification behavior.
+menu actions, canvas rendering and non-activating native drawer behavior.
 Area tests also cover moving live/minimized contents without promoting them,
 header/corner gestures, group movement, undo/redo, empty-area persistence,
 name/color editing, restart and subsequent arrivals at the chosen location.
+
+## Drawer modules
+
+`Overlays/Temporary/TemporaryDrawerState.cs` owns arrival ordering and the
+monotonic peek/hover/drag lifetime without UI dependencies. `TemporaryDrawerPanel`
+owns list rendering and reduced-motion arrival animations; `DrawerRowDrag`
+handles captured-pointer release and cancellation. `TemporaryDrawerWindow`
+owns the screen-edge HWND, clipping, slide and timer lifecycle. Only its visible
+width intercepts clicks. `OverviewManager.Temporary.cs` translates screen drops
+to the active camera and wires navigation. `WorkspaceService.TemporaryDrawer.cs`
+provides detached live list snapshots and identity-validated, acknowledged
+placement commands. Capture policy and temporary-zone persistence remain in
+their existing modules.

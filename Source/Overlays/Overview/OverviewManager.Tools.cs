@@ -99,6 +99,7 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (_temporaryDrawer?.State.IsOpen == true) { _temporaryDrawer.ClosePeek(); return; }
         if (_backpack?.Panel.IsOpen == true) { SetInventoryVisible(false); return; }
         if (CloseSettingsPopup()) return;
         if (CloseActiveMenus()) return;
