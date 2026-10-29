@@ -112,8 +112,10 @@ public class AnnotationTextReviewRegressionTests
             Assert.True(editor.Editor.GetRectFromCharacterIndex(text.Length).X<=editor.Editor.ActualWidth);
         });
 
-    [Fact]
-    public void OversizedOffscreenTitlesUseABoundedViewportAndCanScrollBackToTheStart()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OversizedOffscreenTitlesUseABoundedViewportAndCanScrollBackToTheStart(bool renderBeforeMovingCaret)
         => WorkspaceViewTests.OnSta(() =>
         {
             var item=Note() with
@@ -123,7 +125,8 @@ public class AnnotationTextReviewRegressionTests
             };
             using var editor=new AnnotationTextEditor(item);
             editor.SetPlacement(new CanvasViewTransform(0,0,1,new(0,0,800,600)),new(0,0,800,600));
-            editor.Show(); System.Windows.Forms.Application.DoEvents();
+            editor.Show();
+            if (renderBeforeMovingCaret) System.Windows.Forms.Application.DoEvents();
             var handle=(Windows.Win32.Foundation.HWND)new System.Windows.Interop.WindowInteropHelper(editor).Handle;
             Assert.True(Windows.Win32.PInvoke.GetWindowRect(handle,out var bounds));
             Assert.InRange(bounds.left,0,800); Assert.InRange(bounds.top,0,600);
@@ -131,9 +134,22 @@ public class AnnotationTextReviewRegressionTests
             Assert.Equal(100000,editor.CurrentItem.Bounds.Width);
             editor.Editor.CaretIndex=0;
             editor.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,()=>{});
+            Assert.Equal(0,editor.Editor.CaretIndex);
             var caret=editor.Editor.PointToScreen(editor.Editor.GetRectFromCharacterIndex(0).TopLeft);
             Assert.InRange(caret.X,(double)bounds.left,bounds.right);
             Assert.InRange(caret.Y,(double)bounds.top,bounds.bottom);
+        });
+
+    [Fact]
+    public void MovingTheCaretBeforeTheFirstRenderedFrameDoesNotJumpBackToTheEnd()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var editor = new AnnotationTextEditor(Note() with { Text = "Keep the requested caret position" });
+            editor.Show();
+            Assert.Equal(editor.Editor.Text.Length, editor.Editor.CaretIndex);
+            editor.Editor.CaretIndex = 0;
+            editor.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => { });
+            Assert.Equal(0, editor.Editor.CaretIndex);
         });
 
     [Fact]
