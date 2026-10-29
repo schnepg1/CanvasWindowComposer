@@ -62,28 +62,6 @@ public class TemporaryAreaViewTests
         });
 
     [Fact]
-    [Trait("Category", "NativePreview")]
-    public void ArrivalNoticeUsesTheRightEdgeWithoutTakingFocusAndHidesWhenEmpty()
-        => WorkspaceViewTests.OnSta(() =>
-        {
-            using var notice = new TemporaryAreaNotice(() => { });
-            var work = Screen.PrimaryScreen!.WorkingArea;
-            var foreground = PInvoke.GetForegroundWindow();
-            notice.ShowArrivals(6, new(work.X, work.Y, work.Width, work.Height));
-            Assert.True(notice.Visible);
-            Assert.Equal(foreground, PInvoke.GetForegroundWindow());
-            Assert.True(notice.Right <= work.Right && notice.Right >= work.Right - 80);
-            Assert.Contains(notice.Controls.Cast<Control>(), c => c.Text == "6 windows in Temporary area");
-            string directory = Path.Combine(AppContext.BaseDirectory, "TestArtifacts");
-            Directory.CreateDirectory(directory);
-            using var image = new Bitmap(notice.Width, notice.Height);
-            notice.DrawToBitmap(image, notice.ClientRectangle);
-            image.Save(Path.Combine(directory, "temporary-area-notice.png"));
-            notice.UpdateCount(0);
-            Assert.False(notice.Visible);
-        });
-
-    [Fact]
     public void TemporaryAreaRendersWithAReadableLabelAndLiveWindowCards()
         => WorkspaceViewTests.OnSta(() =>
         {

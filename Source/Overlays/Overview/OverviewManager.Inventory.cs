@@ -22,12 +22,23 @@ internal sealed partial class OverviewManager
 
     private ArrivalViewport InventoryViewport()
         => new(CurrentMode == OverviewMode.Hidden ? _mainCanvas.Camera : ViewCamera, _screens.AllWorkingAreas,
-            _backpack?.IsVisible == true ? new[] { _backpack.ScreenBounds } : Array.Empty<ScreenRect>());
+            (_backpack?.IsVisible == true ? new[] { _backpack.ScreenBounds } : Array.Empty<ScreenRect>())
+                .Concat(_temporaryDrawer?.IsVisible == true ? new[] { _temporaryDrawer.ScreenBounds } : Array.Empty<ScreenRect>()).ToArray());
+
+    private ScreenRect BackpackWorkingArea()
+    {
+        var work = _screens.PrimaryWorkingArea;
+        return new(work.X, work.Y, Math.Max(1, work.Width - (_temporaryDrawer?.ScreenBounds.Width ?? 0)), work.Height);
+    }
+
+    private void PositionInventoryBesideDrawer()
+        => _backpack?.Present(_placeholderWorkspace?.Document.InventoryOpen ?? false,
+            CurrentMode != OverviewMode.Hidden, BackpackWorkingArea());
 
     private BackpackWindow EnsureBackpack()
     {
         if (_backpack != null) return _backpack;
-        _backpack = new(_screens.PrimaryWorkingArea);
+        _backpack = new(BackpackWorkingArea());
         _backpack.CloseRequested += () => SetInventoryVisible(false);
         _backpack.Panel.OpenRequested += open => SetInventoryVisible(open, activate: open);
         _backpack.Panel.PlaceRequested += id => DropInventory(id, null);
@@ -47,7 +58,7 @@ internal sealed partial class OverviewManager
         if (open) CancelInteraction();
         _placeholderWorkspace.SetInventoryOpen(open);
         EnsureBackpack(); RefreshInventory(); _backpack!.Panel.Highlight(selected);
-        _backpack.Present(open, CurrentMode != OverviewMode.Hidden, _screens.PrimaryWorkingArea, activate && open);
+        _backpack.Present(open, CurrentMode != OverviewMode.Hidden, BackpackWorkingArea(), activate && open);
         if (!open && CurrentMode == OverviewMode.Zooming) FocusOverview();
     }
 
@@ -62,7 +73,7 @@ internal sealed partial class OverviewManager
         var backpack = EnsureBackpack();
         backpack.Panel.UpdateItems(_placeholderWorkspace.InventoryItems);
         backpack.Panel.SetHint(_placeholderWorkspace.InventoryStatus);
-        backpack.Present(open, CurrentMode != OverviewMode.Hidden, _screens.PrimaryWorkingArea);
+        backpack.Present(open, CurrentMode != OverviewMode.Hidden, BackpackWorkingArea());
     }
 
     private void OnInventoryCollected(InventoryCollection collection)
@@ -74,7 +85,7 @@ internal sealed partial class OverviewManager
         RefreshInventory();
         var backpack = EnsureBackpack();
         backpack.Panel.UpdateItems(_placeholderWorkspace.InventoryItems);
-        backpack.Present(_placeholderWorkspace.Document.InventoryOpen, CurrentMode != OverviewMode.Hidden, _screens.PrimaryWorkingArea);
+        backpack.Present(_placeholderWorkspace.Document.InventoryOpen, CurrentMode != OverviewMode.Hidden, BackpackWorkingArea());
         backpack.NotifyArrival(); backpack.Panel.Highlight(collection.Id);
         if (!collection.Automatic) Selection.Clear();
         _inventoryFlight ??= new InventoryFlightWindow();
