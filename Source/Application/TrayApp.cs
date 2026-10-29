@@ -145,10 +145,29 @@ internal sealed class TrayApp : ApplicationContext
                 }
                 catch (Exception ex) { MessageBox.Show(ex.Message, "Performance diagnostics"); }
             }));
-            var windowDiagnostics = _lifecycle.Own(new WindowDiagnosticsRecorder(
-                () => new { Workspace = _workspace.WindowDiagnostics(),
-                    CanvasMode = _overview.CurrentMode.ToString(), Taskbar = _overview.TaskbarDiagnostics,
-                    Input = _input.Diagnostics, Interaction = _overview.InteractionDiagnostics },
+            object CaptureWindowDiagnostics() => new { Workspace = _workspace.WindowDiagnostics(validateNative: false),
+                CanvasMode = _overview.CurrentMode.ToString(), Taskbar = _overview.TaskbarDiagnostics,
+                Input = _input.Diagnostics, Interaction = _overview.InteractionDiagnostics,
+                NativeFailures = PerformanceDiagnostics.Shared.Snapshot().RecentFailures };
+            string diagnosticLogs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CanvasWindowComposer", "Logs");
+            var windowHistory = _lifecycle.Own(new RollingWindowDiagnostics(new WindowDiagnosticHistoryStore(
+                Path.Combine(diagnosticLogs, "WindowHistory"), diagnosticLogs), CaptureWindowDiagnostics),
+                ShutdownPhase.Quiesce, "Rolling window diagnostics");
+            var preserveHistory = new ToolStripMenuItem("Save last 30 minutes of diagnostics");
+            preserveHistory.Click += async (_, _) =>
+            {
+                preserveHistory.Enabled = false;
+                try
+                {
+                    string path = await windowHistory.PreserveAsync();
+                    if (!_lifecycle.IsStopping) _trayIcon?.ShowBalloonTip(10000, "Diagnostic history saved", path, ToolTipIcon.Info);
+                }
+                catch (Exception ex) { if (!_lifecycle.IsStopping) MessageBox.Show(ex.Message, "Window diagnostics"); }
+                finally { if (!_lifecycle.IsStopping) preserveHistory.Enabled = true; }
+            };
+            menu.Items.Add(preserveHistory);
+            var windowDiagnostics = _lifecycle.Own(new WindowDiagnosticsRecorder(CaptureWindowDiagnostics,
                 path => _trayIcon?.ShowBalloonTip(7000, "Window diagnostics saved", path, ToolTipIcon.Info)),
                 ShutdownPhase.Quiesce, "Window diagnostics recorder");
             menu.Items.Add(new ToolStripMenuItem("Record window diagnostics (15 seconds)", null, (_, _) =>
@@ -229,7 +248,11 @@ internal sealed class TrayApp : ApplicationContext
             _dispatcher.BeginInvoke((Action)(() =>
             {
                 if (!_lifecycle.IsStopping && _enabled) _overview.TryStartStartupIntro();
-                if (!_lifecycle.IsStopping) _updates.CheckAutomatically(_clock.TickCount64);
+                if (!_lifecycle.IsStopping)
+                {
+                    windowHistory.Start();
+                    _updates.CheckAutomatically(_clock.TickCount64);
+                }
             }));
         }
         catch

@@ -12,8 +12,35 @@ stale rectangles and destroyed chooser handles. This recovery only concerns
 Canvas covering a chooser. It cannot make Explorer create a chooser that is
 missing on the normal desktop too.
 
+Canvas now keeps a rolling history automatically from startup, including while
+Canvas view is closed. It samples window state every five seconds, with native
+inspection, compression and disk writes on a worker thread. Relevant window
+events are retained between samples, including shell chooser show/hide events,
+foreground changes, minimize/restore and destruction. The event ring reports any
+entries discarded during unusually heavy activity. Model bindings are copied
+without making extra process queries on the UI thread; native evidence in the
+same sample can be compared with those cached bindings.
+
+When you notice the bug, choose **Save last 30 minutes of diagnostics** from the
+Canvas tray menu before restarting Explorer or Canvas. This preserves the recent
+history in a `window-history-*.zip` report under
+`%LOCALAPPDATA%\CanvasWindowComposer\Logs`. The archive contains `samples.jsonl`
+and a manifest with the actual time range available. No advance knowledge of
+the trigger or manual recording is needed. Saving can use completed samples even
+if the current native inspection is stuck; the manifest records that condition.
+The first 30 minutes after enabling
+history naturally contain only the time collected so far.
+
+Rolling samples are individually compressed in `Logs\WindowHistory`, retained
+for 30 minutes and capped at 64 MiB and 361 samples. Old samples are removed
+automatically, including after a restart; preserved reports are kept separately
+until you delete them. Storage limits can shorten the available time range.
+If the tray is unresponsive, the compressed files in `WindowHistory` still
+contain the most recently completed samples. Titles, URLs, document contents
+and keystrokes are not collected. History is never uploaded automatically.
+
 Before restarting Explorer or Canvas, choose **Record window diagnostics
-(15 seconds)** from the Canvas tray menu and reproduce the failure. A balloon
+(15 seconds)** if you also want a denser recording while reproducing the failure. A balloon
 shows the report path under `%LOCALAPPDATA%\CanvasWindowComposer\Logs`.
 The JSONL file samples every 500 ms when the previous inspection has finished,
 including:

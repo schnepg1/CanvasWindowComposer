@@ -25,15 +25,17 @@ internal sealed class Win32EventRouter : IDisposable
     private readonly UnhookWinEventSafeHandle _hookMinimize;
     private readonly UnhookWinEventSafeHandle _hookForeground;
     private readonly UnhookWinEventSafeHandle _hookSwitch;
-    private readonly UnhookWinEventSafeHandle _hookObjectLifetime; // DESTROY + SHOW
+    private readonly UnhookWinEventSafeHandle _hookObjectLifetime; // DESTROY + SHOW + HIDE
     private readonly UnhookWinEventSafeHandle _hookLocationChange;
     private readonly UnhookWinEventSafeHandle _hookMoveEnd;
     private readonly WINEVENTPROC _winEventProc;
     private long _lastEventTick, _eventCount;
+    private readonly WindowEventHistory _history = new();
 
     internal object Diagnostics => new
     {
         EventCount = _eventCount,
+        History = _history.Snapshot(),
         LastEventAgeMilliseconds = _eventCount == 0 ? (long?)null : Environment.TickCount64 - _lastEventTick,
         LifetimeHookAvailable = !_hookObjectLifetime.IsInvalid && !_hookObjectLifetime.IsClosed,
         ForegroundHookAvailable = !_hookForeground.IsInvalid && !_hookForeground.IsClosed,
@@ -67,7 +69,7 @@ internal sealed class Win32EventRouter : IDisposable
 
         _hookObjectLifetime = PInvoke.SetWinEventHook(
             PInvoke.EVENT_OBJECT_DESTROY, // 0x8001
-            PInvoke.EVENT_OBJECT_SHOW,    // 0x8002 — adjacent, one hook covers both
+            PInvoke.EVENT_OBJECT_HIDE,    // Include hide events in diagnostics outside Canvas view.
             null, _winEventProc, 0, 0, flags);
 
         _hookLocationChange = PInvoke.SetWinEventHook(
@@ -82,6 +84,16 @@ internal sealed class Win32EventRouter : IDisposable
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         _lastEventTick = Environment.TickCount64; _eventCount++;
+        if (eventType != PInvoke.EVENT_OBJECT_LOCATIONCHANGE
+            && (eventType < PInvoke.EVENT_OBJECT_DESTROY
+                || idObject == (int)OBJECT_IDENTIFIER.OBJID_WINDOW && idChild == 0
+                    && (eventType == PInvoke.EVENT_OBJECT_DESTROY
+                        || PInvoke.GetAncestor(hwnd, GET_ANCESTOR_FLAGS.GA_ROOT) == hwnd)))
+        {
+            Span<char> name = stackalloc char[128];
+            int length = PInvoke.GetClassName(hwnd, name);
+            _history.Record(eventType, ((IntPtr)hwnd).ToInt64(), new string(name[..Math.Max(0, length)]), dwmsEventTime);
+        }
         switch (eventType)
         {
             case PInvoke.EVENT_SYSTEM_MOVESIZEEND:

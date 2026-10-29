@@ -3,12 +3,35 @@ using System.Reflection;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.Accessibility;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CanvasDesktop.Tests;
 
 [Collection("ShellViews")]
 public class ShellSelectionEventTests
 {
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DiagnosticsRetainHideEventsOutsideCanvasWithoutDispatchingAShowOrSelection()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var window = new System.Windows.Forms.Form();
+            using var router = new Win32EventRouter();
+            int shown = 0, selected = 0;
+            router.WindowShown += _ => shown++;
+            router.WindowSelected += _ => selected++;
+            var dispatch = Callback(router);
+            dispatch(default, PInvoke.EVENT_OBJECT_HIDE, (HWND)window.Handle,
+                (int)OBJECT_IDENTIFIER.OBJID_WINDOW, 0, 0, 1000);
+            dispatch(default, PInvoke.EVENT_OBJECT_SHOW, (HWND)window.Handle,
+                (int)OBJECT_IDENTIFIER.OBJID_CLIENT, 1, 0, 1010);
+            using var json = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(router.Diagnostics));
+            var events = json.RootElement.GetProperty("History").GetProperty("RecentEvents");
+            Assert.Contains(events.EnumerateArray(), e => e.GetProperty("Event").GetUInt32() == PInvoke.EVENT_OBJECT_HIDE);
+            Assert.DoesNotContain(events.EnumerateArray(), e => e.GetProperty("Event").GetUInt32() == PInvoke.EVENT_OBJECT_SHOW);
+            Assert.Equal(0, shown); Assert.Equal(0, selected);
+        });
+
     [Fact]
     [Trait("Category", "NativeRendering")]
     public void ReleasedAltTabSelectsOnForegroundWithoutWaitingForPoll()
