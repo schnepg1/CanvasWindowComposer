@@ -1,10 +1,13 @@
 # Backpack inventory
 
-While Canvas is running, new unmatched windows try free space inside the working
-areas visible through the active camera. Placement preserves window size and
-avoids existing windows, saved placeholders, areas, notes, and the backpack HUD.
-If the view is full, the window goes into the backpack. It does not spill into
-the temporary area. Startup discovery retains the existing temporary-area policy.
+While Canvas is running, new unmatched windows appear at the active camera,
+allowing overlap with existing content. This keeps dialogs and pop-ups available
+immediately, even when there is no free space. Canvas preserves their requested
+screen position when it fits, keeps their size and state, and brings off-screen
+windows into view. New windows are not automatically put in the backpack.
+Startup discovery retains the existing non-overlapping temporary-area policy.
+Live arrivals remain session-only until explicitly kept; closing one leaves no
+saved placeholder. Choose **Keep this place** from its Canvas window menu to save it.
 
 Press **I** while Canvas has keyboard focus, click the backpack badge, or choose
 **Backpack inventory** in the tray. I remains normal text input in application
@@ -24,17 +27,14 @@ item, or forget a saved entry.
 
 **KEPT** entries were deliberately collected. Their inventory membership survives
 restart, and closed applications remain as entries inside the backpack. **SESSION**
-entries are automatic overflow: they remain temporary, disappear when closed,
-and are excluded from workspace saves. Explicitly unpacking a session item keeps
-its new place. **Keep in backpack** makes an automatic entry persistent.
+entries remain temporary, disappear when closed, and are excluded from workspace
+saves. Explicitly unpacking a session item keeps its new place.
+**Keep in backpack** makes a session entry persistent.
 
 Collection shows a short card flight into the brass backpack badge with a pickup
-pulse and sparkle. Background overflow does not activate the panel or pan the
-camera. If the collected window had foreground focus, focus transfers to the
-backpack so typing cannot be trapped in the hidden source window.
+pulse and sparkle.
 Reduced-motion preferences replace the flight with a brief destination effect.
-The closed badge appears briefly for background overflow, and remains available
-in Canvas. The panel distinguishes kept entries in brass and session entries in
+The closed badge remains available in Canvas. The panel distinguishes kept entries in brass and session entries in
 teal, with a scrollable, searchable grid.
 
 The backpack is scoped to the active Windows virtual desktop. Carrying a window
@@ -51,8 +51,9 @@ Alt-Tab or taskbar entry. Explorer folders hold launch shortcuts,
 not live HWND ownership or canvas drop coordinates, so an ordinary folder cannot
 provide this behavior. No application windows are reparented into the UI.
 
-Validation covers visible-space placement, multi-monitor coordinates and HUD
-reservations, overflow lifetime, kept membership and restart, closed-app entries,
+Validation covers overlapping live arrivals, startup collection, multi-monitor
+coordinates, manual unpacking with HUD reservations, session lifetime, kept
+membership and restart, closed-app entries,
 native failure recovery, preview isolation, project and move-history detachment,
 virtual desktops, search navigation, DPI rendering, the shortcut and canvas drop,
 and test-owned native clipping and notification windows.

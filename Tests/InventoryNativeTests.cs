@@ -13,7 +13,7 @@ public class InventoryNativeTests
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "NativePreview")]
-    public void OnlyForegroundOverflowOpensTheBackpack(bool sourceHadFocus)
+    public void LiveArrivalInAFullViewNeverOpensTheBackpack(bool sourceHadFocus)
         => WorkspaceViewTests.OnSta(() =>
         {
             using var source = new Form();
@@ -23,11 +23,14 @@ public class InventoryNativeTests
             using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config, new FakeScreens());
             overview.AttachPlaceholderWorkspace(rig.Workspace);
             rig.Workspace.AdditionalPlacementObstacles = () => [new() { W = 1920, H = 1080 }];
-            rig.Api.AddWindow(source.Handle, 10, 20, 400, 300, title: "Overflow");
+            rig.Api.AddWindow(source.Handle, 10, 20, 400, 300, title: "Live popup");
             rig.Api.Foreground = sourceHadFocus ? source.Handle : IntPtr.Zero;
             rig.Workspace.SaveNow();
-            Assert.True(Assert.Single(rig.Workspace.Items).Bounds.InInventory);
-            Assert.Equal(sourceHadFocus, rig.Workspace.Document.InventoryOpen);
+            var item = Assert.Single(rig.Workspace.Items);
+            Assert.False(item.Bounds.InInventory);
+            Assert.Equal(10, item.Bounds.X); Assert.Equal(20, item.Bounds.Y);
+            Assert.False(rig.Workspace.Document.InventoryOpen);
+            Assert.Equal(sourceHadFocus ? source.Handle : IntPtr.Zero, rig.Api.Foreground);
         });
 
     [Fact]

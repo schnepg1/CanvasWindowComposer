@@ -165,8 +165,9 @@ internal sealed partial class WorkspaceService
         try
         {
             if (!liveArrival) placed = PlaceTemporary(live, world);
-            else if (!NearbyWindowPlacement.TryPlace(world, ArrivalViewportProvider!(), InventoryPlacementObstacles(Guid.Empty, live.Identity.Handle), out placed))
-            { placed = world; placed.InInventory = true; placed.PinnedToScreen = false; }
+            // A window opened during use is needed here, even over existing content.
+            // Collision avoidance belongs to startup collection and explicit unpacking.
+            else placed = LiveWindowPlacement.Place(world, _canvas.Camera, ArrivalViewportProvider!());
         }
         catch (InvalidOperationException)
         {
@@ -178,11 +179,7 @@ internal sealed partial class WorkspaceService
         if (!_bindings.Bind(live, item.Id)) { Document.Items.Remove(item); return; }
         if (!liveArrival) TemporaryZone!.ItemIds.Add(item.Id);
         RestoreBinding(live, item);
-        if (IsOpen(item))
-        {
-            if (!liveArrival) _arrivals++;
-            else if (item.Bounds.InInventory) InventoryCollected?.Invoke(new(item.Id, DisplayTitle(item), world, true, live.Identity.Handle));
-        }
+        if (!liveArrival && IsOpen(item)) _arrivals++;
     }
 
     private void DetachTemporary(WorkspaceLiveWindow live)

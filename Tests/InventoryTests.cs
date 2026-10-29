@@ -15,28 +15,34 @@ public class InventoryTests
         => rig.Workspace.ArrivalViewportProvider = () => new(new(x, y, 1), [new(0, 0, 1920, 1080)]);
 
     [Fact]
-    public void LiveArrivalUsesTheCurrentCameraAndKeepsExistingContentStationary()
+    public void LiveArrivalUsesTheCurrentCameraAndCanOverlapExistingContent()
     {
         using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); EnableNearby(rig);
-        var obstacle = new WorkspaceItem { Title = "Kept", Bounds = new() { X = 5600, Y = -1800, W = 600, H = 500 } };
+        var obstacle = new WorkspaceItem { Title = "Kept", Bounds = new() { X = 5000, Y = -2000, W = 1920, H = 1080 } };
         rig.Workspace.Document.Items.Add(obstacle); var original = obstacle.Bounds;
         var item = Add(rig);
-        Assert.InRange(item.Bounds.X, 5000, 6920); Assert.InRange(item.Bounds.Y, -2000, -920);
-        Assert.False(item.Bounds.InInventory); Assert.False(TemporaryAreaLayout.Overlaps(item.Bounds, original, 24));
+        Assert.Equal(5010, item.Bounds.X); Assert.Equal(-1980, item.Bounds.Y);
+        Assert.Equal(400, item.Bounds.W); Assert.Equal(300, item.Bounds.H);
+        Assert.False(item.Bounds.InInventory); Assert.True(TemporaryAreaLayout.Overlaps(item.Bounds, original, 0));
         Assert.Equal(original, obstacle.Bounds); Assert.Null(rig.Workspace.TemporaryArea);
     }
 
     [Fact]
-    public void AFullViewSendsOverflowToInventoryWithoutCreatingATemporaryArea()
+    public void AFullViewKeepsLiveArrivalsVisibleWithoutCollectingOrSavingThem()
     {
         using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); EnableNearby(rig);
+        rig.Canvas.SetCamera(5000, -2000);
         rig.Workspace.AdditionalPlacementObstacles = () => [new() { X = 5000, Y = -2000, W = 1920, H = 1080 }];
         var effects = new List<InventoryCollection>(); rig.Workspace.InventoryCollected += effects.Add;
         var item = Add(rig);
-        Assert.True(item.Bounds.InInventory); Assert.Equal(WorkspacePlacement.Temporary, item.Placement);
-        Assert.True(Assert.Single(effects).Automatic); Assert.Single(rig.Workspace.InventoryItems);
+        Assert.False(item.Bounds.InInventory); Assert.Equal(WorkspacePlacement.Temporary, item.Placement);
+        Assert.Empty(effects); Assert.Empty(rig.Workspace.InventoryItems);
         Assert.Empty(rig.Store.Document.Items); Assert.Null(rig.Workspace.TemporaryArea);
-        Assert.Contains((IntPtr)42, rig.Api.ClippedWindows);
+        Assert.DoesNotContain((IntPtr)42, rig.Api.ClippedWindows);
+        Assert.Empty(rig.Cards.Created);
+        var placed = item.Bounds;
+        rig.Workspace.SaveNow(); rig.Clock.Advance(3000); rig.Workspace.Tick();
+        Assert.Equal(placed, item.Bounds); Assert.Empty(effects);
     }
 
     [Fact]
@@ -46,6 +52,49 @@ public class InventoryTests
         rig.Api.AddWindow((IntPtr)42, 10, 20, 400, 300, title: "At startup"); rig.Workspace.Start();
         Assert.Equal(1, rig.Workspace.TemporaryArea!.Count);
         Assert.False(Assert.Single(rig.Workspace.Items).Bounds.InInventory);
+    }
+
+    [Fact]
+    public void LiveExplorerDialogStaysVisibleWhileFolderDiscoveryIsPending()
+    {
+        using var rig = new WorkspaceHarness(Fresh());
+        rig.Identity.Exe = @"C:\Windows\explorer.exe";
+        rig.Workspace.Start(); EnableNearby(rig);
+        rig.Canvas.SetCamera(5000, -2000);
+        rig.Workspace.AdditionalPlacementObstacles = () => [new() { X = 5000, Y = -2000, W = 1920, H = 1080 }];
+        var item = Add(rig);
+        var placed = item.Bounds;
+        Assert.False(placed.InInventory); Assert.Equal(5010, placed.X); Assert.Equal(-1980, placed.Y);
+        rig.Clock.Advance(9000); rig.Workspace.Tick();
+        Assert.Equal(placed, item.Bounds); Assert.Empty(rig.Workspace.InventoryItems);
+        Assert.Null(rig.Workspace.TemporaryArea); Assert.Empty(rig.Store.Document.Items);
+        Assert.DoesNotContain((IntPtr)42, rig.Api.ClippedWindows);
+    }
+
+    [Fact]
+    public void OversizedLiveWindowStaysOnCanvasWithoutBeingResizedOrCollected()
+    {
+        using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); EnableNearby(rig);
+        rig.Canvas.SetCamera(5000, -2000);
+        rig.Api.AddWindow((IntPtr)42, 10, 20, 2560, 1440, title: "Large popup");
+        rig.Workspace.SaveNow();
+        var item = Assert.Single(rig.Workspace.Items);
+        Assert.Equal(5000, item.Bounds.X); Assert.Equal(-2000, item.Bounds.Y);
+        Assert.Equal(2560, item.Bounds.W); Assert.Equal(1440, item.Bounds.H);
+        Assert.False(item.Bounds.InInventory); Assert.Empty(rig.Workspace.InventoryItems);
+        Assert.DoesNotContain((IntPtr)42, rig.Api.ClippedWindows);
+    }
+
+    [Fact]
+    public void KeepingAnOverlappingLiveWindowSavesItsCurrentPlace()
+    {
+        using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); EnableNearby(rig);
+        var item = Add(rig); var placed = item.Bounds;
+        Assert.Empty(rig.Store.Document.Items);
+        rig.Workspace.KeepPlace(item.Id);
+        var saved = Assert.Single(rig.Store.Document.Items);
+        Assert.Equal(placed, saved.Bounds); Assert.Equal(WorkspacePlacement.Deliberate, saved.Placement);
+        Assert.False(saved.OpenOnStartup);
     }
 
     [Fact]
@@ -103,11 +152,11 @@ public class InventoryTests
     }
 
     [Fact]
-    public void AutomaticOverflowDisappearsOnCloseWithoutAPlaceholder()
+    public void OverlappingLiveArrivalDisappearsOnCloseWithoutAPlaceholder()
     {
         using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); EnableNearby(rig);
         rig.Workspace.AdditionalPlacementObstacles = () => [new() { X = 5000, Y = -2000, W = 1920, H = 1080 }];
-        var item = Add(rig); Assert.True(item.Bounds.InInventory);
+        var item = Add(rig); Assert.False(item.Bounds.InInventory);
         rig.Api.Windows.Remove((IntPtr)42); rig.Wm.RemoveWindow((IntPtr)42); rig.Workspace.SaveNow();
         Assert.Empty(rig.Workspace.InventoryItems); Assert.Empty(rig.Store.Document.Items);
         Assert.All(rig.Cards.Created, c => Assert.True(c.Disposed));
@@ -125,7 +174,7 @@ public class InventoryTests
     }
 
     [Fact]
-    public void KeptInventoryMembershipSurvivesAFileRoundTripButOverflowDoesNot()
+    public void KeptInventoryMembershipSurvivesAFileRoundTripButLiveArrivalsDoNot()
     {
         string directory = Path.Combine(Path.GetTempPath(), "canvas-inventory-" + Guid.NewGuid().ToString("N"));
         try

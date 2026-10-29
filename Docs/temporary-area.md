@@ -2,7 +2,10 @@
 
 Canvas distinguishes deliberately placed windows from temporary arrivals. New
 installations collect existing windows in a non-overlapping temporary area;
-later launches restore saved places first and collect unmatched windows there.
+later launches restore saved places first and collect unmatched startup windows there.
+Windows opened while Canvas is running stay at the active camera and may overlap
+existing content, so dialogs are immediately usable. A full view does not send
+them into the backpack. They remain unsaved until explicitly kept.
 The area is a deliberately placed, desktop-local object. Its position, size,
 name and color survive a restart, including when it is empty. Its window slots
 are only session state: new arrivals never reflow existing windows.
@@ -25,7 +28,7 @@ double-click to find nearby space. Explicit placement keeps its new place;
 minimized windows stay minimized. Placement avoids existing content and visible
 Canvas panels. If there is no room or Windows rejects the move, the entry stays
 in the temporary zone. Closing an app removes its row. The drawer shows only
-temporary-zone members on the current virtual desktop; live nearby arrivals and
+temporary-zone members on the current virtual desktop; live overlapping arrivals and
 the backpack have their own existing behavior.
 
 **Show temporary area** in the drawer and **Go to temporary area** in the tray

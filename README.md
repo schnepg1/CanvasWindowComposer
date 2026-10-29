@@ -112,15 +112,16 @@ release preparation, signing, migration and support logs.
 This working copy includes automatic workspace saves, clickable placeholders for
 closed apps, Explorer folder targets, a saved-workspace manager, and opt-in startup
 restoration. See [LOCAL-SETUP.md](LOCAL-SETUP.md) for usage and current limitations.
-New, unplaced windows collect in a [temporary area](Docs/temporary-area.md)
+Unplaced windows already open at startup collect in a [temporary area](Docs/temporary-area.md)
 without leaving saved placeholders. Existing layouts are adopted on upgrade;
 move a temporary window out of the area or choose **Keep this place** to save it.
 The right-border **Temporary** drawer lists these windows. New entries peek out
 for five seconds; hover to keep it open, or drag a row onto the canvas to keep its new place.
-While Canvas is running, new windows use nearby free space and overflow into a
-[backpack inventory](Docs/backpack-inventory.md). Press **I** in Canvas to collect
-windows, travel elsewhere, and drag them back out; deliberately collected entries
-are kept across restarts while automatic overflow stays temporary.
+While Canvas is running, new windows stay at the active camera and may overlap
+existing content, keeping pop-ups usable even in a full view. They remain unsaved
+until explicitly kept. Use the [backpack inventory](Docs/backpack-inventory.md)
+to collect windows yourself, travel elsewhere, and drag them back out. Press **I**
+in Canvas to open it; deliberately collected entries are kept across restarts.
 Web resource placeholders save a URL, browser (Chrome, Edge or Firefox), and an
 optional profile. Use **Add web resource…** from canvas tools, the tray, or Saved
 Workspace; see [web resources](Docs/web-resources.md) for setup and recovery.
