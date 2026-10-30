@@ -23,7 +23,10 @@ namespace CanvasDesktop
         public sealed class Snapshot
         {
             public string HitTestMethod = "PassiveRootGeometry";
-            public DateTime CapturedUtc;
+            public DateTime CaptureStartedUtc, CapturedUtc;
+            public double CaptureMilliseconds;
+            public ulong UptimeMilliseconds;
+            public uint? LastInputAgeMilliseconds;
             public long Foreground, CursorWindow;
             public Point Cursor;
             public GuiInfo ForegroundGui = new GuiInfo();
@@ -37,8 +40,10 @@ namespace CanvasDesktop
         {
             public long Handle, Parent, Root;
             public string ClassName = "";
+            public int ProcessId, ThreadId;
             public bool Visible;
             public Rect Bounds;
+            public GuiInfo Gui = new GuiInfo();
         }
         public sealed class HitSurface
         {
@@ -58,6 +63,7 @@ namespace CanvasDesktop
 
         [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)] private struct LastInputInfo { public uint Size, Time; }
         [StructLayout(LayoutKind.Sequential)] private struct GuiThreadInfo
         {
             public int Size;
@@ -68,6 +74,8 @@ namespace CanvasDesktop
 
         public static Snapshot Capture(bool includeTitles = false)
         {
+            var startedUtc = DateTime.UtcNow;
+            var elapsed = Stopwatch.StartNew();
             var windows = new List<WindowInfo>();
             var names = new Dictionary<uint, string>();
             var gui = new Dictionary<uint, GuiInfo>();
@@ -80,8 +88,7 @@ namespace CanvasDesktop
                 bool visible = IsWindowVisible(window);
                 // Hidden application helper HWNDs are numerous and unrelated to
                 // taskbar eligibility. Preserve hidden shell choosers explicitly.
-                if (!visible && cls.ToString() != "TaskListThumbnailWnd"
-                    && cls.ToString() != "Shell_TrayWnd" && cls.ToString() != "Shell_SecondaryTrayWnd") return true;
+                if (!visible && !IsShellSurfaceClass(cls.ToString())) return true;
                 if (!names.ContainsKey(processId))
                 {
                     string name;
@@ -128,8 +135,12 @@ namespace CanvasDesktop
                 {
                     var name = new StringBuilder(128); GetClassName(child, name, name.Capacity);
                     Rect bounds; GetWindowRect(child, out bounds);
+                    uint processId;
+                    uint threadId = GetWindowThreadProcessId(child, out processId);
+                    if (!gui.ContainsKey(threadId)) gui[threadId] = ReadGui(threadId);
                     shellChildren.Add(new ShellChildInfo { Handle = child.ToInt64(), Parent = GetParent(child).ToInt64(),
-                        Root = window.Handle, ClassName = name.ToString(), Visible = IsWindowVisible(child), Bounds = bounds });
+                        Root = window.Handle, ClassName = name.ToString(), Visible = IsWindowVisible(child), Bounds = bounds,
+                        ProcessId = (int)processId, ThreadId = (int)threadId, Gui = gui[threadId] });
                     return shellChildren.Count < 256;
                 }, IntPtr.Zero);
             }
@@ -144,9 +155,22 @@ namespace CanvasDesktop
                     hits.Add(new HitInfo { Preview = window.Handle, Point = point, HitWindow = HitWindow(surfaces, point) });
                 }
             }
-            return new Snapshot { CapturedUtc = DateTime.UtcNow, Foreground = GetForegroundWindow().ToInt64(),
+            var input = new LastInputInfo { Size = (uint)Marshal.SizeOf(typeof(LastInputInfo)) };
+            uint? inputAge = GetLastInputInfo(ref input) ? (uint?)unchecked((uint)GetTickCount64() - input.Time) : null;
+            return new Snapshot { CaptureStartedUtc = startedUtc, CapturedUtc = DateTime.UtcNow,
+                CaptureMilliseconds = elapsed.Elapsed.TotalMilliseconds, UptimeMilliseconds = GetTickCount64(),
+                LastInputAgeMilliseconds = inputAge, Foreground = GetForegroundWindow().ToInt64(),
                 Cursor = cursor, CursorWindow = HitWindow(surfaces, cursor), ForegroundGui = ReadGui(0), Windows = windows,
                 PreviewHits = hits, ShellChildren = shellChildren };
+        }
+
+        // Windows 11 also uses XAML hosts and transient popup/LivePreview HWNDs.
+        // Keep their hidden state: five-second samples often miss the show interval.
+        internal static bool IsShellSurfaceClass(string name)
+        {
+            return name == "TaskListThumbnailWnd" || name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd"
+                || name == "XamlExplorerHostIslandWindow" || name == "Xaml_WindowedPopupClass"
+                || name == "TopLevelWindowForOverflowXamlIsland" || name == "LivePreview";
         }
 
         // Geometry APIs do not send WM_NCHITTEST into Explorer or applications.
@@ -243,6 +267,8 @@ namespace CanvasDesktop
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, int command);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
+        [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LastInputInfo info);
+        [DllImport("kernel32.dll")] private static extern ulong GetTickCount64();
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
         [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr window, IntPtr region);
         [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);

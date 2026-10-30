@@ -145,9 +145,12 @@ internal sealed class TrayApp : ApplicationContext
                 }
                 catch (Exception ex) { MessageBox.Show(ex.Message, "Performance diagnostics"); }
             }));
+            var diagnosticPower = _lifecycle.Own(new DiagnosticPowerHistory(),
+                ShutdownPhase.Quiesce, "Diagnostic power notifications");
             object CaptureWindowDiagnostics() => new { Workspace = _workspace.WindowDiagnostics(validateNative: false),
                 CanvasMode = _overview.CurrentMode.ToString(), Taskbar = _overview.TaskbarDiagnostics,
                 Input = _input.Diagnostics, Interaction = _overview.InteractionDiagnostics,
+                Power = diagnosticPower.Snapshot(),
                 NativeFailures = PerformanceDiagnostics.Shared.Snapshot().RecentFailures };
             string diagnosticLogs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CanvasWindowComposer", "Logs");

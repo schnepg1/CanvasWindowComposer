@@ -12,6 +12,48 @@ namespace CanvasDesktop.Tests;
 [Collection("ShellViews")]
 public class TaskbarPreviewTrackingTests
 {
+    [Theory]
+    [InlineData("XamlExplorerHostIslandWindow")]
+    [InlineData("Xaml_WindowedPopupClass")]
+    [InlineData("TopLevelWindowForOverflowXamlIsland")]
+    [InlineData("LivePreview")]
+    [Trait("Category", "NativePreview")]
+    public void DiagnosticsRetainHiddenShellPopupsWithoutChangingTheirVisibility(string className)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            WindowProc procedure = DefWindowProc;
+            var instance = GetModuleHandle(null);
+            var definition = new WindowClass { Procedure = Marshal.GetFunctionPointerForDelegate(procedure),
+                Instance = instance, Name = className };
+            Assert.NotEqual((ushort)0, RegisterClass(ref definition));
+            IntPtr popup = IntPtr.Zero;
+            try
+            {
+                popup = CreateWindowEx(0x80, className, "private popup title", 0x80000000,
+                    -30000, -30000, 400, 200, IntPtr.Zero, IntPtr.Zero, instance, IntPtr.Zero);
+                Assert.NotEqual(IntPtr.Zero, popup);
+                var snapshot = WindowStateSnapshot.Capture();
+                var hidden = Assert.Single(snapshot.Windows, w => w.Handle == popup.ToInt64());
+                Assert.False(hidden.Visible);
+                Assert.False(IsWindowVisible(popup));
+                Assert.Equal(className, hidden.ClassName);
+                Assert.Empty(hidden.Title);
+                Assert.True(snapshot.CapturedUtc >= snapshot.CaptureStartedUtc);
+                Assert.True(snapshot.CaptureMilliseconds >= 0);
+                Assert.True(snapshot.UptimeMilliseconds > 0);
+                Assert.NotNull(snapshot.LastInputAgeMilliseconds);
+                Assert.DoesNotContain(WindowStateSnapshot.CaptureHitSurfaces(), s => s.Handle == popup.ToInt64());
+                ShowWindow(popup, 4);
+                Assert.True(Assert.Single(WindowStateSnapshot.Capture().Windows, w => w.Handle == popup.ToInt64()).Visible);
+            }
+            finally
+            {
+                if (popup != IntPtr.Zero) DestroyWindow(popup);
+                UnregisterClass(className, instance);
+                GC.KeepAlive(procedure);
+            }
+        });
+
     [Fact]
     [Trait("Category", "NativeRendering")]
     public void ExistingPreviewAndShellEventsUpdateBoundsAndClearDismissedOrDisabledPreviews()
@@ -112,4 +154,5 @@ public class TaskbarPreviewTrackingTests
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after,
         int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
 }

@@ -48,10 +48,15 @@ The JSONL file samples every 500 ms when the previous inspection has finished,
 including:
 
 - Visible native window handles, process names, visibility, minimized/cloaked state,
-  z-order, styles and geometry, including hidden shell chooser windows.
+  z-order, styles and geometry, including hidden classic choosers, XAML hosts,
+  XAML popups, overflow islands and LivePreview windows. These classes are evidence,
+  not a claim that every XAML popup is a grouped taskbar chooser.
 - Foreground and per-thread focus, mouse capture, menu and move/size state.
 - Passive geometry estimates across any visible grouped chooser and classes,
-  bounds and parent/root handles for the taskbar's child windows.
+  bounds, process/thread IDs, GUI state and parent/root handles for taskbar children.
+- Native capture start/end time and duration, system uptime and session input age.
+- A bounded history of power notifications, including suspend/resume, in both
+  rolling history and tray recordings. Notifications only record metadata.
 - Canvas mode, preview hook status, recent chooser events and scan recoveries.
 - Global input-hook health, last window-event time and interaction-hook held buttons.
 - Mouse callback counts, time since the last callback, maximum own callback
@@ -70,7 +75,15 @@ of `WindowFromPoint`, with `HitTestMethod: PassiveRootGeometry` recorded explici
 These estimates respect native regions and click-through surfaces but do not
 claim to reproduce per-pixel transparency or a target's custom hit-test logic.
 An absent hook callback cannot be inferred from a still-valid native hook handle
-alone, which is why callback counts are now included.
+alone, which is why callback counts are now included. Compare callback age with
+`LastInputAgeMilliseconds` to distinguish inactivity from a possible lost hook.
+The latter comes from the session-specific
+[GetLastInputInfo API](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo).
+Power notifications come from
+[SystemEvents.PowerModeChanged](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.systemevents.powermodechanged).
+Their history begins at Canvas startup; it does not establish whether previews
+were working before a suspend. A failure noticed after resume is a correlation
+until reproduced.
 
 This avoids a known observer risk, not a proven explanation of every taskbar
 failure. Microsoft documents that [WindowFromPoint can send WM_NCHITTEST](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nchittest)
