@@ -325,6 +325,28 @@ public class InventoryTests
     }
 
     [Fact]
+    public void BackpackTipsPreferenceSurvivesRestartsAndCanBeRestored()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "canvas-backpack-tips-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new WorkspaceStore(Path.Combine(directory, "workspace.json"));
+            using (var rig = new WorkspaceHarness(store: store))
+            {
+                rig.Workspace.Start(); Assert.False(rig.Workspace.Document.InventoryHelpDismissed);
+                rig.Workspace.SetInventoryHelpDismissed(true);
+            }
+            using (var rig = new WorkspaceHarness(store: store))
+            {
+                rig.Workspace.Start(); Assert.True(rig.Workspace.Document.InventoryHelpDismissed);
+                rig.Workspace.SetInventoryHelpDismissed(false);
+            }
+            Assert.False(store.Load(out _).InventoryHelpDismissed);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void InventoryFlightStartsAndEndsAtItsEndpoints()
     {
         Assert.Equal((10d, 20d, 1d), InventoryFlight.Sample(0, 10, 20, 900, 200));

@@ -17,6 +17,7 @@ internal sealed partial class WorkspaceService
     public event Action<Guid?>? InventoryRequested;
 
     public void SetInventoryOpen(bool open) { Document.InventoryOpen = open; Save(); }
+    public void SetInventoryHelpDismissed(bool dismissed) { Document.InventoryHelpDismissed = dismissed; Save(); }
 
     public bool CollectInInventory(Guid id)
     {

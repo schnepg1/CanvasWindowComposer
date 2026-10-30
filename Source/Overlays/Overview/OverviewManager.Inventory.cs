@@ -32,6 +32,7 @@ internal sealed partial class OverviewManager
         _backpack.SetCanvasOwner(CanvasPanelOwner);
         _backpack.CloseRequested += () => SetInventoryVisible(false);
         _backpack.Panel.OpenRequested += open => SetInventoryVisible(open, activate: open);
+        _backpack.Panel.HelpDismissedChanged += dismissed => _placeholderWorkspace?.SetInventoryHelpDismissed(dismissed);
         _backpack.Panel.PlaceRequested += id => DropInventory(id, null);
         _backpack.Panel.DropRequested += (id, point) => DropInventory(id, new System.Drawing.Point((int)point.X, (int)point.Y));
         _backpack.Panel.KeepRequested += id => _placeholderWorkspace?.CollectInInventory(id);
@@ -64,6 +65,7 @@ internal sealed partial class OverviewManager
         var backpack = EnsureBackpack();
         backpack.SetCanvasOwner(CanvasPanelOwner);
         backpack.Panel.UpdateItems(_placeholderWorkspace.InventoryItems);
+        backpack.Panel.SetHelpDismissed(_placeholderWorkspace.Document.InventoryHelpDismissed);
         backpack.Panel.SetHint(_placeholderWorkspace.InventoryStatus);
         backpack.Present(open, CurrentMode != OverviewMode.Hidden, _screens.PrimaryWorkingArea);
     }

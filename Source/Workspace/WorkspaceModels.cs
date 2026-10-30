@@ -37,6 +37,7 @@ internal sealed class WorkspaceDocument
     public int Version { get; set; } = 1;
     public bool PlacementPolicyInitialized { get; set; }
     public bool InventoryOpen { get; set; }
+    public bool InventoryHelpDismissed { get; set; }
     public List<WorkspacePlacementAdoption> PendingPlacementAdoptions { get; set; } = new();
     public Dictionary<Guid, WorkspaceTemporaryArea> TemporaryAreas { get; set; } = new();
     public List<WorkspaceItem> Items { get; set; } = new();
