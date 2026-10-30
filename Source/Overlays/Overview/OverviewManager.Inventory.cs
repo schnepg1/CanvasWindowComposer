@@ -16,7 +16,7 @@ internal sealed partial class OverviewManager
         workspace.ArrivalViewportProvider = InventoryViewport;
         workspace.InventoryCollected += OnInventoryCollected;
         workspace.InventoryRequested += OnInventoryRequested;
-        if (!_inventoryAttached) { AfterModeChanged += OnInventoryModeChanged; _inventoryAttached = true; }
+        if (!_inventoryAttached) { BeforeModeChanged += CancelDrawerDrags; AfterModeChanged += OnInventoryModeChanged; _inventoryAttached = true; }
         RefreshInventory();
     }
 
@@ -34,10 +34,11 @@ internal sealed partial class OverviewManager
         _backpack.Panel.OpenRequested += open => SetInventoryVisible(open, activate: open);
         _backpack.Panel.HelpDismissedChanged += dismissed => _placeholderWorkspace?.SetInventoryHelpDismissed(dismissed);
         _backpack.Panel.PlaceRequested += id => DropInventory(id, null);
-        _backpack.Panel.DropRequested += (id, point) => DropInventory(id, new System.Drawing.Point((int)point.X, (int)point.Y));
+        _backpack.Panel.DropRequested += (id, point) => DropInventory(id, point);
         _backpack.Panel.KeepRequested += id => _placeholderWorkspace?.CollectInInventory(id);
         _backpack.Panel.OpenItemRequested += id => _placeholderWorkspace?.Open(id);
         _backpack.Panel.ForgetRequested += id => _placeholderWorkspace?.Forget(id);
+        AttachDrawerDragFeedback(_backpack.Panel.Drag, inventory: true);
         return _backpack;
     }
 
@@ -96,12 +97,10 @@ internal sealed partial class OverviewManager
         ToggleInventory(); e.Handled = e.SuppressKeyPress = true; return true;
     }
 
-    private void DropInventory(Guid id, System.Drawing.Point? point)
+    private void DropInventory(Guid id, System.Windows.Point? point)
     {
         if (_placeholderWorkspace == null) return;
-        var camera = CurrentMode == OverviewMode.Hidden ? _mainCanvas.Camera : ViewCamera;
-        double? x = point.HasValue ? camera.X + point.Value.X / camera.Zoom : null;
-        double? y = point.HasValue ? camera.Y + point.Value.Y / camera.Zoom : null;
+        if (!TryDrawerDropTarget(id, true, point, out _, out var x, out var y)) return;
         bool dropped = _placeholderWorkspace.DropFromInventory(id, x, y);
         _backpack?.Panel.SetHint(dropped ? "Unpacked. This place is now kept on the canvas." : _placeholderWorkspace.Status);
         RefreshOverviewWindows();
@@ -150,7 +149,9 @@ internal sealed partial class OverviewManager
 
     private void DisposeInventory()
     {
+        DisposeDrawerDragFeedback();
         AfterModeChanged -= OnInventoryModeChanged;
+        BeforeModeChanged -= CancelDrawerDrags;
         if (_placeholderWorkspace != null)
         {
             _placeholderWorkspace.InventoryCollected -= OnInventoryCollected;

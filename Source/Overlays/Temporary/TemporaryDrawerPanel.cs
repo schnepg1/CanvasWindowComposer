@@ -85,6 +85,7 @@ internal sealed class TemporaryDrawerPanel : UserControl
         _name.Text = name; _count.Text = $"{items.Count} windows \u00b7 newest first"; _railCount.Text = items.Count.ToString();
         _arrivals.UnionWith(arrivals); _reduceMotion = reduceMotion;
         bool changed = !_items.SequenceEqual(items); _items = items;
+        if (Drag.ItemId is { } held && !items.Any(i => i.Id == held)) Drag.Cancel();
         if (!Drag.IsHeld && (changed || arrivals.Count > 0 || _rows.Children.Count == 0)) Rebuild();
     }
 

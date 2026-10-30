@@ -4,6 +4,8 @@ using System.Windows.Input;
 
 namespace CanvasDesktop;
 
+internal readonly record struct DrawerDragPosition(Guid Id, Point Screen, bool Outside);
+
 /// <summary>Captured-pointer drag out of a drawer, with cancellation and screen-space release coordinates.</summary>
 internal sealed class DrawerRowDrag
 {
@@ -12,9 +14,11 @@ internal sealed class DrawerRowDrag
     private Point _origin;
     private bool _moved;
     public bool IsHeld => _pressed.HasValue;
+    public Guid? ItemId => _pressed;
     public bool IsDragging => _moved;
     public event Action<bool>? HeldChanged;
     public event Action<Guid, Point>? Dropped;
+    public event Action<DrawerDragPosition>? Moved;
 
     public DrawerRowDrag(FrameworkElement surface)
     {
@@ -22,6 +26,7 @@ internal sealed class DrawerRowDrag
         surface.PreviewMouseMove += (_, e) => Move(e.GetPosition(surface), e.LeftButton == MouseButtonState.Pressed);
         surface.PreviewMouseLeftButtonUp += (_, e) => { if (IsHeld) { Release(e.GetPosition(surface)); e.Handled = true; } };
         surface.LostMouseCapture += (_, _) => Cancel();
+        surface.Unloaded += (_, _) => Cancel();
         surface.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && IsHeld) { Cancel(); e.Handled = true; } };
     }
 
@@ -38,16 +43,16 @@ internal sealed class DrawerRowDrag
     {
         if (!IsHeld) return;
         if (!leftDown) { Cancel(); return; }
-        if (Math.Abs(point.X - _origin.X) >= SystemParameters.MinimumHorizontalDragDistance
-            || Math.Abs(point.Y - _origin.Y) >= SystemParameters.MinimumVerticalDragDistance)
+        if (!_moved && (Math.Abs(point.X - _origin.X) >= SystemParameters.MinimumHorizontalDragDistance
+            || Math.Abs(point.Y - _origin.Y) >= SystemParameters.MinimumVerticalDragDistance))
         { _moved = true; _surface.Cursor = Cursors.SizeAll; }
+        if (_moved) Moved?.Invoke(new(_pressed!.Value, _surface.PointToScreen(point), IsOutside(point)));
     }
 
     internal void Release(Point point)
     {
         if (_pressed is not { } id) return;
-        bool outside = point.X < 0 || point.Y < 0 || point.X >= _surface.ActualWidth || point.Y >= _surface.ActualHeight;
-        bool drop = _moved && outside;
+        bool drop = _moved && IsOutside(point);
         var screen = drop ? _surface.PointToScreen(point) : default;
         Cancel();
         if (drop) Dropped?.Invoke(id, screen);
@@ -60,4 +65,7 @@ internal sealed class DrawerRowDrag
         if (_surface.IsMouseCaptured) _surface.ReleaseMouseCapture();
         HeldChanged?.Invoke(false);
     }
+
+    private bool IsOutside(Point point)
+        => point.X < 0 || point.Y < 0 || point.X >= _surface.ActualWidth || point.Y >= _surface.ActualHeight;
 }

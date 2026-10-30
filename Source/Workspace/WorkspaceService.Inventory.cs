@@ -44,9 +44,7 @@ internal sealed partial class WorkspaceService
         if (_disposed || !_started || _switching || Find(id) is not { } item || !item.Bounds.InInventory || item.DesktopId != _desktop) return false;
         var view = ArrivalViewportProvider?.Invoke() ?? new ArrivalViewport(_canvas.Camera, [_windowActions.Viewport]);
         var source = item.Bounds;
-        var dropped = source; dropped.InInventory = dropped.PinnedToScreen = false;
-        if (dropped.State == WindowState.Maximized) dropped.State = WindowState.Normal;
-        if (!NearbyWindowPlacement.TryPlace(dropped, view, InventoryPlacementObstacles(id), out dropped, worldX, worldY))
+        if (!TryPreviewInventoryDrop(id, view, out var dropped, worldX, worldY))
         { _inventoryStatus = _status = "No clear landing space here. Pan to some open canvas and try again."; Changed?.Invoke(); return false; }
         if (BoundWindow(id) is { } live)
         {
@@ -64,6 +62,13 @@ internal sealed partial class WorkspaceService
         item.Bounds = dropped; item.Placement = WorkspacePlacement.Deliberate;
         _inventoryStatus = _status = null; InvalidateOverviewSnapshot(); EnsureCards(); Save(); Changed?.Invoke();
         return true;
+    }
+
+    public bool TryPreviewInventoryDrop(Guid id, ArrivalViewport view, out WorldRect placed, double? x = null, double? y = null)
+    {
+        placed = default;
+        if (_disposed || !_started || _switching || Find(id) is not { } item || !item.Bounds.InInventory || item.DesktopId != _desktop) return false;
+        return NearbyWindowPlacement.TryPlace(item.Bounds, view, InventoryPlacementObstacles(id), out placed, x, y);
     }
 
     private IReadOnlyList<WorldRect> InventoryPlacementObstacles(Guid except, IntPtr ignoreHandle = default)

@@ -20,6 +20,7 @@ internal sealed partial class OverviewManager
             _temporaryDrawer.Panel.ShowAreaRequested += ShowTemporaryArea;
             _temporaryDrawer.Panel.PlaceRequested += id => PlaceTemporaryDrawerItem(id, null);
             _temporaryDrawer.Panel.Drag.Dropped += (id, point) => PlaceTemporaryDrawerItem(id, point);
+            AttachDrawerDragFeedback(_temporaryDrawer.Panel.Drag, inventory: false);
         }
         _temporaryDrawer.SetCanvasOwner(CanvasPanelOwner);
         _temporaryDrawer.Refresh(_screens.PrimaryWorkingArea, _placeholderWorkspace.TemporaryArea,
@@ -32,13 +33,8 @@ internal sealed partial class OverviewManager
         if (_placeholderWorkspace == null) return;
         var item = _placeholderWorkspace.TemporaryAreaItems.FirstOrDefault(i => i.Id == id);
         if (item == null) { RefreshTemporaryDrawer(); return; }
-        // Do not turn releases on the taskbar or other Canvas panels into canvas placements.
-        if (screen is { } p && (!_screens.AllWorkingAreas.Any(r => p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom)
-            || InventoryViewport().Reserved!.Any(r => p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom))) return;
-        var camera = CurrentMode == OverviewMode.Hidden ? _mainCanvas.Camera : ViewCamera;
-        double? x = screen is { } at ? camera.X + at.X / camera.Zoom - item.Bounds.W / 2 : null;
-        double? y = screen is { } to ? camera.Y + to.Y / camera.Zoom - item.Bounds.H / 2 : null;
-        bool placed = _placeholderWorkspace.PlaceFromTemporaryArea(id, InventoryViewport(), x, y);
+        if (!TryDrawerDropTarget(id, false, screen, out var view, out var x, out var y)) return;
+        bool placed = _placeholderWorkspace.PlaceFromTemporaryArea(id, view, x, y);
         _temporaryDrawer?.Panel.SetHint(placed ? "Placed and kept on the canvas." : _placeholderWorkspace.Status ?? "This window is no longer available.");
         RefreshPlaceholderTitles();
     }

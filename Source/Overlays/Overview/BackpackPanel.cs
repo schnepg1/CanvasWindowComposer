@@ -163,6 +163,7 @@ internal sealed class BackpackPanel : UserControl
         string Key(WorkspaceItemView i) => $"{i.Id}/{i.Title}/{i.State}/{i.Temporary}/{i.ExecutablePath}";
         bool changed = !_items.Select(Key).SequenceEqual(items.Select(Key));
         _items = items;
+        if (Drag.ItemId is { } held && !items.Any(i => i.Id == held)) Drag.Cancel();
         _foldedCount.Text = items.Count == 1 ? "1 window ready to travel" : $"{items.Count} windows ready to travel";
         _count.Text = $"{items.Count} ITEMS  /  {items.Count(i => !i.Temporary)} KEPT";
         if (changed && !Drag.IsHeld) RebuildTiles();

@@ -21,7 +21,7 @@ internal sealed partial class WorkspaceService
         if (_disposed || !_started || _switching || TemporaryZone is not { } zone || Find(id) is not { } item
             || !IsTemporaryAreaMember(item, zone) || BoundWindow(id) is not { } live || !StillCurrent(live)) return false;
         var source = item.Bounds;
-        if (!NearbyWindowPlacement.TryPlace(source, viewport, InventoryPlacementObstacles(id), out var placed, x, y))
+        if (!TryPreviewTemporaryDrop(id, viewport, out var placed, x, y))
         { _status = "No clear landing space here. Pan to open canvas and try again."; Changed?.Invoke(); return false; }
         var restored = _api.RestoreNativeState(live.Identity.Handle, _canvas.WorldToScreen(placed), placed.State);
         if (!restored.Accepted || !StillCurrent(live))
@@ -39,5 +39,13 @@ internal sealed partial class WorkspaceService
         RemoveTemporaryMembership(id);
         _status = null; InvalidateOverviewSnapshot(); RemoveCard(id); EnsureCards(); Save(); PublishTemporaryAreaChange(); Changed?.Invoke();
         return true;
+    }
+
+    public bool TryPreviewTemporaryDrop(Guid id, ArrivalViewport viewport, out WorldRect placed, double? x = null, double? y = null)
+    {
+        placed = default;
+        if (_disposed || !_started || _switching || TemporaryZone is not { } zone || Find(id) is not { } item
+            || !IsTemporaryAreaMember(item, zone) || _bindings.ForItem(id) is not { } live || !StillCurrent(live)) return false;
+        return NearbyWindowPlacement.TryPlace(item.Bounds, viewport, InventoryPlacementObstacles(id), out placed, x, y);
     }
 }
