@@ -33,17 +33,29 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
             dc.PushClip(VisibleCard(card, context));
             dc.PushOpacity(card.Opacity);
-            if (imageOpacity < 1)
+            if (imageOpacity < 1 || card.ImageIsOverlay)
             {
                 dc.DrawRoundedRectangle(CardFill, Outline, rect, 6, 6);
                 if (card.Logo is { Width: > 0, Height: > 0 } logo)
                 {
-                    // Fit the icon to the card in world space, so it scales with
-                    // the window at every zoom and never becomes a fixed-size badge.
                     double scale = Math.Min(rect.Width / logo.Width, rect.Height / logo.Height);
                     double width = logo.Width * scale, height = logo.Height * scale;
-                    dc.DrawImage(logo, new Rect(rect.X + (rect.Width - width) / 2,
-                        rect.Y + (rect.Height - height) / 2, width, height));
+                    var logoRect = new Rect(rect.X + (rect.Width - width) / 2,
+                        rect.Y + (rect.Height - height) / 2, width, height);
+                    if (card.LogoBounds is { Width: > 0, Height: > 0 } near)
+                    {
+                        var compact = context.Project(new WorldRect { X = card.Bounds.X + near.X,
+                            Y = card.Bounds.Y + near.Y, W = near.Width, H = near.Height });
+                        // Smoothly grow from the close-up layout to a full-card
+                        // symbol. This is geometry only, including during gestures.
+                        double t = Math.Clamp((.75 - context.View.Zoom) / .45, 0, 1);
+                        t = t * t * (3 - 2 * t);
+                        logoRect = new Rect(compact.X + (logoRect.X - compact.X) * t,
+                            compact.Y + (logoRect.Y - compact.Y) * t,
+                            compact.Width + (logoRect.Width - compact.Width) * t,
+                            compact.Height + (logoRect.Height - compact.Height) * t);
+                    }
+                    dc.DrawImage(logo, logoRect);
                 }
             }
             if (card.Image != null && imageOpacity > 0)

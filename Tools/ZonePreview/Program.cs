@@ -12,6 +12,11 @@ internal static class Program
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
+        if (args.Length == 2 && args[0] == "--render-placeholder-zoom")
+        {
+            PlaceholderPreview.RenderZoomStages(args[1]);
+            return;
+        }
         if (args.Length == 2 && args[0] == "--render-launching-placeholders")
         {
             PlaceholderPreview.Render(args[1], optimized: true, state: "Opening…");

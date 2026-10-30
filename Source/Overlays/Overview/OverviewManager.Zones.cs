@@ -141,15 +141,17 @@ internal sealed partial class OverviewManager
             {
                 // Reuse an existing immutable card image or cached native source.
                 // A title card is immediate when no image exists; never capture here.
-                var image = (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.CachedOverviewImage;
-                var logo = (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.OverviewLogo;
+                var placeholder = Control.FromHandle(entry.HWnd) as PlaceholderForm;
+                var image = placeholder?.CachedOverviewImage;
+                var logo = placeholder?.OverviewLogo;
                 bool cachedThumbnail = _thumbnails.HasVisibleSource(entry.HWnd)
                     || (_cardSources.TryGetValue(entry.HWnd, out var cachedSource) && _thumbnails.HasVisibleSource(cachedSource));
                 if (cachedThumbnail) image = null;
                 (gestureCards ??= new()).Add(new(entry.HWnd, GestureTitle(entry.HWnd), entry.World, priority,
                     image, new ArraySegment<WorldRect>(occluders, 0, i), ImageOpacity: image != null || cachedThumbnail ? 1 : 0,
                     LabelOpacity: image != null ? 0 : 1, Logo: logo,
-                    LaunchStatus: (Control.FromHandle(entry.HWnd) as PlaceholderForm)?.LaunchStatus));
+                    LaunchStatus: placeholder?.LaunchStatus, LogoBounds: placeholder?.OverviewLogoBounds,
+                    ImageIsOverlay: image != null && placeholder?.OverviewImageIsOverlay == true));
                 hasRestoreFallback |= restoreFallback;
             }
             else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
@@ -176,7 +178,8 @@ internal sealed partial class OverviewManager
                     bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
                         image, new ArraySegment<WorldRect>(occluders, 0, i),
-                        Logo: card.OverviewLogo, LaunchStatus: card.LaunchStatus),
+                        Logo: card.OverviewLogo, LaunchStatus: card.LaunchStatus,
+                        LogoBounds: card.OverviewLogoBounds, ImageIsOverlay: card.OverviewImageIsOverlay),
                         simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger,
                         DetailReady: simple || image != null));
                 }

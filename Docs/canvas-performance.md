@@ -207,6 +207,16 @@ both quality modes; the existing Low quality mode alone controls gesture visuals
   form disposal retain their existing image-release behavior. Gesture lookups still
   borrow cached images without creating a screenshot.
 
+Placeholder icons now use a compact, DPI-aware 96-logical-pixel layout above the
+title at close zoom. Between 75% and 30% overview zoom the icon smoothly expands
+to fit the card; distant cards retain their full-card symbols. Bounded detailed
+snapshots cache transparent text and status rows, while WPF draws the existing
+128-pixel logo separately. Zoom changes only logo geometry, without extracting
+icons or rebuilding snapshots for each zoom value. Native cards retain the
+256-pixel source icon and full native diagnostic snapshots still include it.
+The text snapshot retains the existing size limits and allocation dimensions;
+this does not claim a reduction in snapshot memory or a measured frame-rate gain.
+
 New regressions cover ten gesture cycles with no new application registrations,
 no hidden geometry pushes, retained-source readiness, off-screen cleanup, no new
 uncached gesture registrations, failed-hide cleanup, failed lower/replacement

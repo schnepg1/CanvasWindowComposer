@@ -66,8 +66,23 @@ internal sealed class PlaceholderArtwork : Control
 
     /// <summary>One immutable icon reused at every distant-card size; null means extraction failed.</summary>
     internal BitmapSource? OverviewLogo => _overviewLogo;
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    internal bool DrawSymbolBackground { get; set; } = true;
+
+    // The close-up icon and its title form one centred group. All dimensions
+    // are native pixels here; the overview projects these same bounds to DIPs.
+    internal RectangleF IconBounds => ContentBounds().Icon;
+
+    private (RectangleF Icon, RectangleF Title) ContentBounds()
+    {
+        float dpi = DeviceDpi / 96f;
+        var area = new RectangleF(4 * dpi, 4 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 8 * dpi));
+        if (_symbol == null) return (RectangleF.Empty, area);
+        float edge = Math.Min(96 * dpi, Math.Min(area.Width, area.Height * .4f));
+        float gap = Math.Min(16 * dpi, area.Height * .06f);
+        float titleHeight = Math.Min(84 * dpi, Math.Max(1, area.Height - edge - gap));
+        float top = area.Y + (area.Height - edge - gap - titleHeight) / 2;
+        return (new RectangleF(area.X + (area.Width - edge) / 2, top, edge, edge),
+            new RectangleF(area.X, top + edge + gap, area.Width, titleHeight));
+    }
 
     private static BitmapSource CreateOverviewLogo(Bitmap source)
     {
@@ -96,7 +111,7 @@ internal sealed class PlaceholderArtwork : Control
 
     protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
 
-    internal void DrawIconBackground(Graphics graphics, RectangleF bounds)
+    private void DrawIcon(Graphics graphics, RectangleF bounds)
     {
         if (_symbol == null || bounds.Width <= 0 || bounds.Height <= 0) return;
         float scale = Math.Min(bounds.Width / _symbol.Width, bounds.Height / _symbol.Height);
@@ -109,21 +124,22 @@ internal sealed class PlaceholderArtwork : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        if (DrawSymbolBackground) DrawIconBackground(e.Graphics, ClientRectangle);
+        DrawIcon(e.Graphics, IconBounds);
         DrawForeground(e.Graphics);
     }
 
-    internal void DrawForeground(Graphics g)
+    internal void DrawForeground(Graphics g, bool transparent = false)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        g.TextRenderingHint = transparent ? System.Drawing.Text.TextRenderingHint.AntiAliasGridFit
+            : System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         float dpi = DeviceDpi / 96f;
-        var titleRect = new RectangleF(4 * dpi, 4 * dpi, Math.Max(1, Width - 8 * dpi), Math.Max(1, Height - 8 * dpi));
+        var titleRect = ContentBounds().Title;
         using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisWord, FormatFlags = StringFormatFlags.LineLimit };
-        float fontSize = Math.Min(84 * dpi, titleRect.Height * .65f);
-        float minimum = 20 * dpi;
+        float fontSize = Math.Min((_symbol == null ? 84 : 32) * dpi, titleRect.Height * .65f);
+        float minimum = Math.Min(20 * dpi, titleRect.Height * .5f);
         fontSize = Math.Max(minimum, fontSize);
         while (fontSize > minimum)
         {
@@ -189,15 +205,5 @@ internal sealed class PlaceholderArtwork : Control
     {
         if (disposing) { _symbol?.Dispose(); _symbol = null; _overviewLogo = null; }
         base.Dispose(disposing);
-    }
-}
-
-/// <summary>The icon covers the whole card behind the transparent title and backed text rows.</summary>
-internal sealed class PlaceholderCardPanel(PlaceholderArtwork artwork) : TableLayoutPanel
-{
-    protected override void OnPaintBackground(PaintEventArgs e)
-    {
-        base.OnPaintBackground(e);
-        artwork.DrawIconBackground(e.Graphics, ClientRectangle);
     }
 }

@@ -36,8 +36,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 11);
         _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40),
-            BackColor = Color.Transparent, DrawSymbolBackground = false };
-        var panel = new PlaceholderCardPanel(_title) { Dock = DockStyle.Fill, Padding = new Padding(18), RowCount = 4, ColumnCount = 1 };
+            BackColor = Color.Transparent };
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), RowCount = 4, ColumnCount = 1 };
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -177,14 +177,15 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     private void DrawOverview(Graphics graphics)
     {
-        graphics.Clear(BackColor);
+        // Cache only text. The overview draws the cached logo independently,
+        // so zoom can change its size without recapturing/resampling the card.
+        graphics.Clear(Color.Transparent);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-        _title.DrawIconBackground(graphics, new Rectangle(Point.Empty, Size));
         var panel = _title.Parent!;
         var state = graphics.Save();
         graphics.TranslateTransform(panel.Left + _title.Left, panel.Top + _title.Top);
-        _title.DrawForeground(graphics);
+        _title.DrawForeground(graphics, transparent: true);
         graphics.Restore(state);
         foreach (var label in new[] { _launchState, _pathHeader, _details })
         {
@@ -200,6 +201,16 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     }
 
     internal System.Windows.Media.ImageSource? OverviewLogo => _title.OverviewLogo;
+    internal bool OverviewImageIsOverlay => _overviewMaxDimension > 0;
+    internal System.Windows.Rect OverviewLogoBounds
+    {
+        get
+        {
+            var bounds = _title.IconBounds;
+            return new(bounds.X + _title.Left + _title.Parent!.Left,
+                bounds.Y + _title.Top + _title.Parent.Top, bounds.Width, bounds.Height);
+        }
+    }
     internal string? LaunchStatus => _launchState.Text.Length > 0 ? _launchState.Text : null;
 
     internal void ReleaseOverviewImage() => _overviewImage = null;

@@ -20,6 +20,8 @@ internal sealed class OverviewCardTransitions
         public long Started;
         public ImageSource? Image;
         public ImageSource? Logo;
+        public System.Windows.Rect? LogoBounds;
+        public bool ImageIsOverlay;
         public string Title = "";
         public bool Moving;
     }
@@ -48,8 +50,16 @@ internal sealed class OverviewCardTransitions
                 _entries.Add(input.Id, e);
             }
             Advance(e, now);
-            if (input.Card.Image != null) e.Image = input.Card.Image;
-            if (input.Mode != OverviewCardMode.Live) e.Logo = input.Card.Logo;
+            if (input.Card.Image != null)
+            {
+                e.Image = input.Card.Image;
+                e.ImageIsOverlay = input.Card.ImageIsOverlay;
+            }
+            if (input.Mode != OverviewCardMode.Live)
+            {
+                e.Logo = input.Card.Logo;
+                e.LogoBounds = input.Card.LogoBounds;
+            }
             if (input.Card.Title.Length > 0) e.Title = input.Card.Title;
             // If a native window has already been manually minimized there are
             // no underlying pixels to fade from. Show its card without a hole.
@@ -78,7 +88,8 @@ internal sealed class OverviewCardTransitions
             double imageOpacity = Math.Max(0, detail * 2 - 1);
             double labelOpacity = Math.Max(0, 1 - detail * 2);
             result.Add(input.Card with { Title = e.Title, Image = e.Image, Opacity = cover,
-                ImageOpacity = imageOpacity, LabelOpacity = labelOpacity, Logo = e.Logo });
+                ImageOpacity = imageOpacity, LabelOpacity = labelOpacity, Logo = e.Logo,
+                LogoBounds = e.LogoBounds, ImageIsOverlay = e.ImageIsOverlay });
         }
         _removed.Clear();
         foreach (var id in _entries.Keys)

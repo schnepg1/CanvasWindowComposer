@@ -50,3 +50,10 @@ dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Relea
 ```
 
 ![Placeholder cards and zoom-aware titles](placeholder-cards-preview.png)
+
+Compare compact close-up icons and their smooth expansion at 100%, 75%, 50%,
+30% and 10% zoom (creates temporary offscreen preview windows):
+
+```powershell
+dotnet run --project Tools/ZonePreview/CanvasDesktop.ZonePreview.csproj -c Release -- --render-placeholder-zoom TestResults/placeholder-zoom.png
+```

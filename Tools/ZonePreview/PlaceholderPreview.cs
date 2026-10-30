@@ -18,7 +18,7 @@ internal static class PlaceholderPreview
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         using var heading = new Font("Segoe UI", 21, FontStyle.Bold);
         using var small = new Font("Segoe UI", 12);
-        g.DrawString("Placeholder cards · full-color icon backgrounds", heading, Brushes.WhiteSmoke, 32, 24);
+        g.DrawString("Placeholder cards · compact icons near, full-card icons far", heading, Brushes.WhiteSmoke, 32, 24);
         var folder = new WorkspaceItemView(Guid.NewGuid(), "Canvas project", @"C:\Windows\explorer.exe",
             @"G:\Coding\Projects\Canvas", false, new WorldRect { W = 800, H = 550 }, state, IsFolder: true);
         string editor = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "notepad.exe");
@@ -50,7 +50,7 @@ internal static class PlaceholderPreview
         if (optimized)
         {
             form.ShowAt(new WindowRect(-10000, -10000, width, height));
-            var image = form.GetOverviewImage(OverviewCardImageQueue.ImageMaxDimension);
+            var image = RenderOverviewCard(form, width, height, 1);
             var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
             using var stream = new MemoryStream(); encoder.Save(stream); stream.Position = 0;
             using var rendered = Image.FromStream(stream);
@@ -67,6 +67,59 @@ internal static class PlaceholderPreview
         host.CreateControl(); host.PerformLayout();
         host.DrawToBitmap(bitmap, new Rectangle(0, 0, width, height));
         return bitmap;
+    }
+
+    public static void RenderZoomStages(string output)
+    {
+        using var sheet = new Bitmap(1560, 1560);
+        using var graphics = Graphics.FromImage(sheet);
+        graphics.Clear(Color.FromArgb(12, 18, 29));
+        using var font = new Font("Segoe UI", 16);
+        var folder = new WorkspaceItemView(Guid.NewGuid(), "Canvas project", "", @"C:\Projects\Canvas", false,
+            new WorldRect { W = 720, H = 430 }, "Placeholder", IsFolder: true);
+        var app = folder with { Id = Guid.NewGuid(), Title = "Research notes", IsFolder = false,
+            ExecutablePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "notepad.exe"),
+            Target = @"C:\Projects\research-notes.txt" };
+        var commands = new PreviewCommands(new[] { folder, app });
+        using var folderForm = new PlaceholderForm(commands, folder) { Size = new Size(720, 430) };
+        using var appForm = new PlaceholderForm(commands, app) { Size = new Size(720, 430) };
+        foreach (var form in new[] { folderForm, appForm })
+            form.ShowAt(new WindowRect(-10000, -10000, 720, 430));
+        int y = 12;
+        foreach (double zoom in new[] { 1, .75, .5, .3, .1 })
+        {
+            graphics.DrawString($"{zoom:P0} zoom", font, Brushes.WhiteSmoke, 32, y);
+            y += 38;
+            int x = 32;
+            foreach (var form in new[] { folderForm, appForm })
+            {
+                var image = RenderOverviewCard(form, 720, 430, zoom);
+                var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
+                using var stream = new MemoryStream(); encoder.Save(stream); stream.Position = 0;
+                using var bitmap = Image.FromStream(stream);
+                graphics.DrawImageUnscaled(bitmap, x, y);
+                x += 768;
+            }
+            y += (int)Math.Ceiling(430 * zoom) + 12;
+        }
+        sheet.Save(output, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    private static BitmapSource RenderOverviewCard(PlaceholderForm form, int width, int height, double zoom)
+    {
+        bool simple = zoom <= OverviewZoomDefaults.SimpleCardEnter;
+        var image = simple ? null : form.GetOverviewImage(OverviewCardImageQueue.ImageMaxDimension);
+        int w = (int)Math.Ceiling(width * zoom), h = (int)Math.Ceiling(height * zoom);
+        var surface = new OverviewAnnotationSurface();
+        surface.Update(OverviewAnnotationSnapshot.Create([], 0, 0, zoom, new Rectangle(0, 0, w, h), null, false,
+            placeholders: [new PlaceholderAnnotation(form.Handle, form.Text, new WorldRect { W = width, H = height },
+                Image: image, ImageOpacity: simple ? 0 : 1, Logo: form.OverviewLogo,
+                LogoBounds: form.OverviewLogoBounds, ImageIsOverlay: true)], showHints: false));
+        surface.Measure(new System.Windows.Size(w, h));
+        surface.Arrange(new System.Windows.Rect(0, 0, w, h));
+        var rendered = new RenderTargetBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        rendered.Render(surface);
+        return rendered;
     }
 
     public static void Benchmark(string output)
@@ -143,6 +196,7 @@ internal static class PlaceholderPreview
         public void KeepPlace(Guid id) { }
         public bool CollectInInventory(Guid id) => false;
         public void SetAutoOpen(Guid id, bool value) { }
+        public void SetAutomaticMinimizationExcluded(Guid id, bool value) { }
         public void SetTarget(Guid id, string selected, bool folder) { }
         public void SetName(Guid id, string name) { }
         public bool SetChromeProfile(Guid id, string profileDirectory) => false;
