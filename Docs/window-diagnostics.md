@@ -21,11 +21,13 @@ entries discarded during unusually heavy activity. Model bindings are copied
 without making extra process queries on the UI thread; native evidence in the
 same sample can be compared with those cached bindings.
 
-When you notice the bug, choose **Save last 30 minutes of diagnostics** from the
-Canvas tray menu before restarting Explorer or Canvas. This preserves the recent
-history in a `window-history-*.zip` report under
+When you notice the bug, open **Save diagnostic history** in the Canvas tray
+menu and choose **Last minute**, **Last 5 minutes**, **Last 10 minutes**,
+**Last 15 minutes** or **Last 30 minutes**, before restarting Explorer or Canvas.
+This preserves only the selected interval in a `window-history-last-<N>m-*.zip` report under
 `%LOCALAPPDATA%\CanvasWindowComposer\Logs`. The archive contains `samples.jsonl`
-and a manifest with the actual time range available. No advance knowledge of
+and a manifest with the selected interval and actual time range available.
+Saving a short interval does not truncate the rolling 30-minute history. No advance knowledge of
 the trigger or manual recording is needed. Saving can use completed samples even
 if the current native inspection is stuck; the manifest records that condition.
 The first 30 minutes after enabling
@@ -48,15 +50,31 @@ including:
 - Visible native window handles, process names, visibility, minimized/cloaked state,
   z-order, styles and geometry, including hidden shell chooser windows.
 - Foreground and per-thread focus, mouse capture, menu and move/size state.
-- Native hit-test results across any visible grouped chooser.
+- Passive geometry estimates across any visible grouped chooser and classes,
+  bounds and parent/root handles for the taskbar's child windows.
 - Canvas mode, preview hook status, recent chooser events and scan recoveries.
 - Global input-hook health, last window-event time and interaction-hook held buttons.
+- Mouse callback counts, time since the last callback, maximum own callback
+  duration, and recent left-click routing decisions with geometry age.
 - Session bindings and saved-place IDs, without titles, URLs or launch targets.
 
 The recording is read-only, runs native inspection on a worker thread, stops
 automatically, and is flushed after each sample
 so a partial report survives a later hang. It does not restart Explorer, change
 preferences, focus applications or release mouse capture.
+
+The shell mouse observer uses a cached geometry snapshot refreshed on a worker.
+Its callback never calls `WindowFromPoint` or sends `WM_NCHITTEST` to Explorer;
+native mouse events always pass through. Diagnostics also use geometry instead
+of `WindowFromPoint`, with `HitTestMethod: PassiveRootGeometry` recorded explicitly.
+These estimates respect native regions and click-through surfaces but do not
+claim to reproduce per-pixel transparency or a target's custom hit-test logic.
+An absent hook callback cannot be inferred from a still-valid native hook handle
+alone, which is why callback counts are now included.
+
+This avoids a known observer risk, not a proven explanation of every taskbar
+failure. Microsoft documents that [WindowFromPoint can send WM_NCHITTEST](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nchittest)
+and that [low-level mouse hooks must return promptly](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelmouseproc).
 
 The source checkout also has an independent recorder that works while an older
 Canvas build is running, or when Canvas's UI thread is unresponsive:

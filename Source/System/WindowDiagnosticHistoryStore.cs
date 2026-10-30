@@ -51,15 +51,17 @@ internal sealed class WindowDiagnosticHistoryStore
         }
     }
 
-    public string Preserve(DateTime nowUtc, object? collectorStatus = null)
+    public string Preserve(DateTime nowUtc, object? collectorStatus = null, TimeSpan? lookback = null)
     {
+        var window = lookback ?? Retention;
+        if (window <= TimeSpan.Zero || window > Retention) throw new ArgumentOutOfRangeException(nameof(lookback));
         lock (_gate)
         {
             Directory.CreateDirectory(_directory); Directory.CreateDirectory(_reports);
             Prune(nowUtc);
-            var samples = Samples();
+            var samples = Samples().Where(f => SampleTime(f) >= nowUtc - window).ToArray();
             if (samples.Length == 0) throw new InvalidOperationException("No diagnostic history is available yet.");
-            string path = Path.Combine(_reports, $"window-history-{nowUtc:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.zip");
+            string path = Path.Combine(_reports, $"window-history-last-{window.TotalMinutes:0}m-{nowUtc:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.zip");
             string pending = path + ".tmp";
             try
             {
@@ -69,6 +71,7 @@ internal sealed class WindowDiagnosticHistoryStore
                         JsonSerializer.Serialize(manifest, new
                         {
                             SchemaVersion = 1, PreservedAtUtc = nowUtc, RetentionMinutes = 30,
+                            RequestedWindowMinutes = window.TotalMinutes,
                             MaximumHistoryBytes = _maximumBytes, SampleCount = samples.Length,
                             Collector = collectorStatus,
                             OldestSampleUtc = SampleTime(samples[0]), NewestSampleUtc = SampleTime(samples[^1]),

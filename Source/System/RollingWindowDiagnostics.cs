@@ -56,7 +56,7 @@ internal sealed class RollingWindowDiagnostics : IDisposable
         return _pending;
     }
 
-    public async Task<string> PreserveAsync()
+    public async Task<string> PreserveAsync(TimeSpan? lookback = null)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(RollingWindowDiagnostics));
         var pending = CaptureNowAsync();
@@ -64,7 +64,7 @@ internal sealed class RollingWindowDiagnostics : IDisposable
         // being investigated. A fresh sample is helpful, but must not block export.
         bool currentSamplePending = await Task.WhenAny(pending, Task.Delay(2000)) != pending;
         var status = new { Collection = Status, CurrentSamplePending = currentSamplePending };
-        return await Task.Run(() => _store.Preserve(_utcNow(), status));
+        return await Task.Run(() => _store.Preserve(_utcNow(), status, lookback));
     }
 
     internal object Status

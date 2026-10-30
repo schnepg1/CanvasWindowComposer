@@ -154,18 +154,23 @@ internal sealed class TrayApp : ApplicationContext
             var windowHistory = _lifecycle.Own(new RollingWindowDiagnostics(new WindowDiagnosticHistoryStore(
                 Path.Combine(diagnosticLogs, "WindowHistory"), diagnosticLogs), CaptureWindowDiagnostics),
                 ShutdownPhase.Quiesce, "Rolling window diagnostics");
-            var preserveHistory = new ToolStripMenuItem("Save last 30 minutes of diagnostics");
-            preserveHistory.Click += async (_, _) =>
+            var preserveHistory = new ToolStripMenuItem("Save diagnostic history");
+            foreach (int minutes in new[] { 1, 5, 10, 15, 30 })
             {
-                preserveHistory.Enabled = false;
-                try
+                var interval = new ToolStripMenuItem(minutes == 1 ? "Last minute" : $"Last {minutes} minutes");
+                interval.Click += async (_, _) =>
                 {
-                    string path = await windowHistory.PreserveAsync();
-                    if (!_lifecycle.IsStopping) _trayIcon?.ShowBalloonTip(10000, "Diagnostic history saved", path, ToolTipIcon.Info);
-                }
-                catch (Exception ex) { if (!_lifecycle.IsStopping) MessageBox.Show(ex.Message, "Window diagnostics"); }
-                finally { if (!_lifecycle.IsStopping) preserveHistory.Enabled = true; }
-            };
+                    preserveHistory.Enabled = false;
+                    try
+                    {
+                        string path = await windowHistory.PreserveAsync(TimeSpan.FromMinutes(minutes));
+                        if (!_lifecycle.IsStopping) _trayIcon?.ShowBalloonTip(10000, "Diagnostic history saved", path, ToolTipIcon.Info);
+                    }
+                    catch (Exception ex) { if (!_lifecycle.IsStopping) MessageBox.Show(ex.Message, "Window diagnostics"); }
+                    finally { if (!_lifecycle.IsStopping) preserveHistory.Enabled = true; }
+                };
+                preserveHistory.DropDownItems.Add(interval);
+            }
             menu.Items.Add(preserveHistory);
             var windowDiagnostics = _lifecycle.Own(new WindowDiagnosticsRecorder(CaptureWindowDiagnostics,
                 path => _trayIcon?.ShowBalloonTip(7000, "Window diagnostics saved", path, ToolTipIcon.Info)),

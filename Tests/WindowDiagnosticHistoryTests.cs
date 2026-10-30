@@ -54,6 +54,27 @@ public class WindowDiagnosticHistoryTests : IDisposable
         Assert.InRange(new DirectoryInfo(Samples).GetFiles("*.json.gz").Sum(f => f.Length), 1, 1800);
     }
 
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(5, 2)]
+    [InlineData(10, 3)]
+    [InlineData(15, 4)]
+    [InlineData(30, 4)]
+    public void SelectedExportIntervalFiltersTheArchiveWithoutTruncatingRollingHistory(int minutes, int expected)
+    {
+        var store = new WindowDiagnosticHistoryStore(Samples, Reports);
+        foreach (int age in new[] { 14, 9, 4, 0 }) store.Append(Epoch.AddMinutes(15 - age), new { Age = age });
+        string report = store.Preserve(Epoch.AddMinutes(15), lookback: TimeSpan.FromMinutes(minutes));
+        Assert.Equal(expected, ReadSamples(report).Length);
+        Assert.Equal(4, Directory.GetFiles(Samples, "*.json.gz").Length);
+        Assert.Contains($"last-{minutes}m-", Path.GetFileName(report));
+        using var archive = ZipFile.OpenRead(report);
+        using var manifest = JsonDocument.Parse(archive.GetEntry("manifest.json")!.Open());
+        Assert.Equal(minutes, manifest.RootElement.GetProperty("RequestedWindowMinutes").GetDouble());
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.Preserve(Epoch, lookback: TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.Preserve(Epoch, lookback: TimeSpan.FromMinutes(31)));
+    }
+
     [Fact]
     public void OversizedSampleDoesNotDestroyExistingHistoryOrLeaveAPartialFile()
     {
@@ -95,7 +116,9 @@ public class WindowDiagnosticHistoryTests : IDisposable
             PumpUntil(() => preservation.IsCompleted);
             var lines = ReadSamples(preservation.GetAwaiter().GetResult());
             Assert.True(lines.Length >= 2);
-            Assert.Contains("\"Sequence\":1", lines[0]);
+            // The fake clock gives multiple samples the same UTC timestamp;
+            // their GUID filename tie-breaker does not define sequence order.
+            Assert.Contains(lines, line => line.Contains("\"Sequence\":1"));
             Assert.All(lines, line => Assert.Contains("\"TestNative\":true", line));
             rolling.Dispose();
             rolling.CaptureNowAsync().GetAwaiter().GetResult(); // Finish any sample already in flight before removing the test directory.

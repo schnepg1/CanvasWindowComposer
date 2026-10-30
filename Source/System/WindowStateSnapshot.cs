@@ -22,15 +22,32 @@ namespace CanvasDesktop
 
         public sealed class Snapshot
         {
+            public string HitTestMethod = "PassiveRootGeometry";
             public DateTime CapturedUtc;
             public long Foreground, CursorWindow;
             public Point Cursor;
             public GuiInfo ForegroundGui = new GuiInfo();
             public List<WindowInfo> Windows = new List<WindowInfo>();
             public List<HitInfo> PreviewHits = new List<HitInfo>();
+            public List<ShellChildInfo> ShellChildren = new List<ShellChildInfo>();
         }
 
         public sealed class HitInfo { public long Preview, HitWindow; public Point Point; }
+        public sealed class ShellChildInfo
+        {
+            public long Handle, Parent, Root;
+            public string ClassName = "";
+            public bool Visible;
+            public Rect Bounds;
+        }
+        public sealed class HitSurface
+        {
+            public long Handle;
+            public string ClassName = "";
+            public Rect Bounds;
+            public Rect[] Region = new Rect[0];
+            public bool HasRegion;
+        }
 
         public sealed class GuiInfo
         {
@@ -102,6 +119,20 @@ namespace CanvasDesktop
             }, IntPtr.Zero);
             Point cursor;
             GetCursorPos(out cursor);
+            var surfaces = CaptureHitSurfaces();
+            var shellChildren = new List<ShellChildInfo>();
+            foreach (var window in windows)
+            {
+                if (window.ClassName != "Shell_TrayWnd" && window.ClassName != "Shell_SecondaryTrayWnd") continue;
+                EnumChildWindows(new IntPtr(window.Handle), delegate(IntPtr child, IntPtr parameter)
+                {
+                    var name = new StringBuilder(128); GetClassName(child, name, name.Capacity);
+                    Rect bounds; GetWindowRect(child, out bounds);
+                    shellChildren.Add(new ShellChildInfo { Handle = child.ToInt64(), Parent = GetParent(child).ToInt64(),
+                        Root = window.Handle, ClassName = name.ToString(), Visible = IsWindowVisible(child), Bounds = bounds });
+                    return shellChildren.Count < 256;
+                }, IntPtr.Zero);
+            }
             var hits = new List<HitInfo>();
             foreach (var window in windows)
             {
@@ -110,12 +141,84 @@ namespace CanvasDesktop
                 for (int x = 1; x <= 3; x++)
                 {
                     var point = new Point { X = b.Left + (b.Right - b.Left) * x / 4, Y = b.Top + (b.Bottom - b.Top) / 2 };
-                    hits.Add(new HitInfo { Preview = window.Handle, Point = point, HitWindow = WindowFromPoint(point).ToInt64() });
+                    hits.Add(new HitInfo { Preview = window.Handle, Point = point, HitWindow = HitWindow(surfaces, point) });
                 }
             }
             return new Snapshot { CapturedUtc = DateTime.UtcNow, Foreground = GetForegroundWindow().ToInt64(),
-                Cursor = cursor, CursorWindow = WindowFromPoint(cursor).ToInt64(), ForegroundGui = ReadGui(0), Windows = windows, PreviewHits = hits };
+                Cursor = cursor, CursorWindow = HitWindow(surfaces, cursor), ForegroundGui = ReadGui(0), Windows = windows,
+                PreviewHits = hits, ShellChildren = shellChildren };
         }
+
+        // Geometry APIs do not send WM_NCHITTEST into Explorer or applications.
+        // Keep this separate from the full diagnostic capture: the shell input
+        // observer refreshes it off its hook thread, then classifies clicks in memory.
+        public static HitSurface[] CaptureHitSurfaces()
+        {
+            var surfaces = new List<HitSurface>();
+            EnumWindows(delegate(IntPtr window, IntPtr parameter)
+            {
+                if (!IsWindowVisible(window) || IsIconic(window) || (GetWindowLong(window, -20) & 0x20) != 0) return true;
+                int cloaked;
+                if (DwmGetWindowAttribute(window, 14, out cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
+                Rect bounds;
+                if (!GetWindowRect(window, out bounds) || bounds.Right <= bounds.Left || bounds.Bottom <= bounds.Top) return true;
+                var name = new StringBuilder(128); GetClassName(window, name, name.Capacity);
+                var surface = new HitSurface { Handle = window.ToInt64(), ClassName = name.ToString(), Bounds = bounds };
+                IntPtr region = CreateRectRgn(0, 0, 0, 0);
+                if (region != IntPtr.Zero)
+                {
+                    try
+                    {
+                        if (GetWindowRgn(window, region) != 0)
+                        {
+                            uint bytes = GetRegionData(region, 0, IntPtr.Zero);
+                            // Bound unusually complex regions. Unknown shapes are
+                            // conservative occluders rather than guessed taskbar clicks.
+                            if (bytes >= 32 && bytes <= 262144)
+                            {
+                                IntPtr data = Marshal.AllocHGlobal((int)bytes);
+                                try
+                                {
+                                    if (GetRegionData(region, bytes, data) == bytes)
+                                    {
+                                        int count = Marshal.ReadInt32(data, 8);
+                                        if (count >= 0 && count <= ((int)bytes - 32) / 16)
+                                        {
+                                            surface.HasRegion = true;
+                                            surface.Region = new Rect[count];
+                                            for (int i = 0; i < count; i++) surface.Region[i] = Marshal.PtrToStructure<Rect>(
+                                                IntPtr.Add(data, 32 + i * 16));
+                                        }
+                                    }
+                                }
+                                finally { Marshal.FreeHGlobal(data); }
+                            }
+                            else surface.HasRegion = false;
+                        }
+                    }
+                    finally { DeleteObject(region); }
+                }
+                surfaces.Add(surface); return true;
+            }, IntPtr.Zero);
+            return surfaces.ToArray();
+        }
+
+        public static int HitSurfaceIndex(HitSurface[] surfaces, Point point)
+        {
+            for (int i = 0; i < surfaces.Length; i++)
+            {
+                var s = surfaces[i]; var b = s.Bounds;
+                if (point.X < b.Left || point.X >= b.Right || point.Y < b.Top || point.Y >= b.Bottom) continue;
+                if (!s.HasRegion) return i;
+                foreach (var r in s.Region)
+                    if (point.X - b.Left >= r.Left && point.X - b.Left < r.Right
+                        && point.Y - b.Top >= r.Top && point.Y - b.Top < r.Bottom) return i;
+            }
+            return -1;
+        }
+
+        private static long HitWindow(HitSurface[] surfaces, Point point)
+        { int index = HitSurfaceIndex(surfaces, point); return index < 0 ? 0 : surfaces[index].Handle; }
 
         private static GuiInfo ReadGui(uint thread)
         {
@@ -127,6 +230,8 @@ namespace CanvasDesktop
 
         private delegate bool EnumCallback(IntPtr window, IntPtr parameter);
         [DllImport("user32.dll")] private static extern bool EnumWindows(EnumCallback callback, IntPtr parameter);
+        [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, EnumCallback callback, IntPtr parameter);
+        [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
         [DllImport("user32.dll", EntryPoint = "GetClassNameW", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder text, int length);
         [DllImport("user32.dll", EntryPoint = "GetWindowTextW", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int length);
@@ -138,11 +243,11 @@ namespace CanvasDesktop
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, int command);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
-        [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(Point point);
         [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
         [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr window, IntPtr region);
         [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
         [DllImport("gdi32.dll")] private static extern int GetRgnBox(IntPtr region, out Rect bounds);
+        [DllImport("gdi32.dll")] private static extern uint GetRegionData(IntPtr region, uint size, IntPtr data);
         [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
         [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
     }
