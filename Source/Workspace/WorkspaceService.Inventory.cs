@@ -73,7 +73,6 @@ internal sealed partial class WorkspaceService
         if (_cards.TryGetValue(except, out var card)) handles.Add(card.Handle);
         return Document.Items.Where(i => i.Id != except && i.DesktopId == _desktop && !i.Bounds.InInventory && !i.Bounds.PinnedToScreen).Select(i => i.Bounds)
             .Concat(_canvas.Windows.Where(p => !handles.Contains(p.Key) && !p.Value.InInventory && !p.Value.PinnedToScreen).Select(p => p.Value))
-            .Concat(Document.Zones.Where(z => z.DesktopId == _desktop).Select(z => z.Bounds))
             .Concat(AdditionalPlacementObstacles?.Invoke() ?? Array.Empty<WorldRect>()).Where(ZoneGeometry.ValidBounds).ToArray();
     }
 

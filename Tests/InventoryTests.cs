@@ -132,6 +132,60 @@ public class InventoryTests
         Assert.Equal(WorkspacePlacement.Deliberate, item.Placement); Assert.Empty(rig.Workspace.InventoryItems);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void BackpackDropsUseClearSpaceInsideProjectZones(bool closed, bool preferredPoint)
+    {
+        using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); var item = Add(rig);
+        Assert.True(rig.Workspace.CollectInInventory(item.Id));
+        if (closed)
+        {
+            rig.Api.Windows.Remove((IntPtr)42); rig.Wm.RemoveWindow((IntPtr)42); rig.Workspace.SaveNow();
+        }
+        EnableNearby(rig);
+        var zone = new WorldRect { X = 5000, Y = -2000, W = 1920, H = 1080 };
+        Assert.True(rig.Workspace.Zones.Add(zone, out _));
+
+        Assert.True(rig.Workspace.DropFromInventory(item.Id, preferredPoint ? 5200 : null, preferredPoint ? -1800 : null));
+
+        Assert.False(item.Bounds.InInventory);
+        Assert.Equal(preferredPoint ? 5200 : 5760, item.Bounds.X);
+        Assert.Equal(preferredPoint ? -1800 : -1610, item.Bounds.Y);
+        Assert.Equal(400, item.Bounds.W); Assert.Equal(300, item.Bounds.H);
+        Assert.Equal(zone, Assert.Single(rig.Workspace.Document.Zones, z => !z.IsTemporaryArea).Bounds);
+    }
+
+    [Theory]
+    [InlineData("live")]
+    [InlineData("placeholder")]
+    [InlineData("shape")]
+    public void BackpackDropsFindAdjacentSpaceInsideZonesWhileAvoidingContent(string obstacleKind)
+    {
+        using var rig = new WorkspaceHarness(Fresh()); rig.Workspace.Start(); var item = Add(rig);
+        Assert.True(rig.Workspace.CollectInInventory(item.Id)); EnableNearby(rig);
+        var zone = new WorldRect { X = 5000, Y = -2000, W = 1920, H = 1080 };
+        Assert.True(rig.Workspace.Zones.Add(zone, out var zoneId));
+        var obstacle = new WorldRect { X = 5200, Y = -1800, W = 400, H = 300 };
+        if (obstacleKind == "shape") rig.Workspace.AdditionalPlacementObstacles = () => [obstacle];
+        else if (obstacleKind == "live") rig.Canvas.SetWindow((IntPtr)43, obstacle.X, obstacle.Y, obstacle.W, obstacle.H);
+        else
+        {
+            var kept = new WorkspaceItem { DesktopId = rig.Workspace.Zones.DesktopId, Title = "Kept", Bounds = obstacle };
+            rig.Workspace.Document.Items.Add(kept);
+            Assert.True(rig.Workspace.Zones.SetMembership(zoneId, [kept.Id]));
+        }
+
+        Assert.True(rig.Workspace.DropFromInventory(item.Id, obstacle.X, obstacle.Y));
+
+        Assert.Equal(obstacle.X, item.Bounds.X); Assert.Equal(obstacle.Y + obstacle.H + 24, item.Bounds.Y);
+        Assert.False(TemporaryAreaLayout.Overlaps(item.Bounds, obstacle, 24));
+        Assert.True(item.Bounds.X >= zone.X && item.Bounds.X + item.Bounds.W <= zone.X + zone.W);
+        Assert.True(item.Bounds.Y >= zone.Y && item.Bounds.Y + item.Bounds.H <= zone.Y + zone.H);
+    }
+
     [Fact]
     public void FailedDropKeepsTheWindowSafelyInTheBackpack()
     {
