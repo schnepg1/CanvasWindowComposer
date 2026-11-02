@@ -82,7 +82,8 @@ internal sealed class CanvasPlacementBadgeSurface : FrameworkElement
     public void Update(string title, bool outside, bool canDrop, bool clickToPlace = false)
     {
         string status = !outside ? "Drag onto canvas" : canDrop
-            ? (clickToPlace ? "Click to place · Esc: cancel" : "Release to place") : "No clear landing space";
+            ? (clickToPlace ? "Click to place · Esc: cancel" : "Release to place")
+            : clickToPlace ? "No space · scroll to zoom" : "No clear landing space";
         if (_title == title && _status == status && _canDrop == canDrop) return;
         _title = title; _status = status; _canDrop = canDrop; InvalidateVisual();
     }

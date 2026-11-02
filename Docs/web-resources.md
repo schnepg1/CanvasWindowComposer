@@ -11,6 +11,8 @@ placeholder's landing outline, then click to open the creation dialog. The
 preview uses the backpack's placement system to find clear space in the current
 view. **Esc** or right-click cancels placement. Saving creates the placeholder
 at the chosen place; cancelling the dialog leaves the canvas unchanged.
+If no clear space fits, scroll down or press **−** to zoom out while keeping the
+preview active. **Ctrl+scroll** pans vertically; **Shift+scroll** pans horizontally.
 
 Existing browser cards and saved live previews offer **Web resource settings…**
 in their right-click menu. The same action appears in Saved Workspace. Saving

@@ -108,6 +108,45 @@ public class WebResourcePlacementNativeTests
             finally { Directory.Delete(directory, recursive: true); }
         });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativeRendering")]
+    public void SmallWorkAreaCanZoomOutAndPanWithoutCancellingPlacement(bool keyboard)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var config = new FakeAppConfig { EnableStartupIntro = false, ReduceStartupMotion = true };
+            using var rig = new WorkspaceHarness(config: config); rig.Workspace.Start();
+            var screens = new FakeScreens
+            {
+                Bounds = [new(0, 0, 1366, 768)], WorkingAreas = [new(0, 0, 1366, 728)],
+                Primary = new(0, 0, 1366, 768), PrimaryWa = new(0, 0, 1366, 728), Virtual = new(0, 0, 1366, 768)
+            };
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config, screens);
+            overview.AttachPlaceholderWorkspace(rig.Workspace); overview.TransitionTo(OverviewMode.Zooming);
+            var pass = (OverviewOverlay)Forms.Control.FromHandle(overview.MonitorHandles[0])!;
+            Assert.Equal(1, overview.ViewCamera.Zoom);
+            overview.ShowAddWebResource();
+            pass.OnMouseMoved!(pass, new(Forms.MouseButtons.None, 0, 683, 364, 0));
+            Assert.Null(overview.WebResourcePlacementBounds); // 700 high plus margins cannot fit at 100%.
+            // The folded backpack also reserves space; keep zooming until both it and the preview fit.
+            for (int step = 0; step < 5 && overview.WebResourcePlacementBounds == null; step++)
+            {
+                if (keyboard) pass.OnKey!(pass, new(Forms.Keys.OemMinus));
+                else pass.OnWheel!(pass, 683, 364, -120, false, false, false);
+            }
+            Assert.True(overview.PlacingWebResource); Assert.True(overview.CanvasInputSuspended);
+            double zoom = overview.ViewCamera.Zoom;
+            Assert.True(zoom < 1); Assert.NotNull(overview.WebResourcePlacementBounds);
+            var beforePan = overview.WebResourcePlacementBounds!.Value;
+            pass.OnWheel!(pass, 683, 364, 120, false, true, false);
+            var afterPan = overview.WebResourcePlacementBounds!.Value;
+            Assert.True(overview.PlacingWebResource); Assert.Equal(zoom, overview.ViewCamera.Zoom, 5);
+            Assert.Equal(beforePan.Y - 120 / zoom, afterPan.Y, 5);
+            Assert.Null(overview.WebResourceDialog); Assert.Empty(rig.Workspace.Document.Items);
+            overview.HandleEscape(); Assert.False(overview.PlacingWebResource);
+        });
+
     [Fact]
     [Trait("Category", "NativeRendering")]
     public void BlockedSpaceAndReservedPanelsCannotOpenTheDialogAndRightClickCancels()

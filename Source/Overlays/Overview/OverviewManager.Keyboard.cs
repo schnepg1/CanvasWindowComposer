@@ -12,6 +12,14 @@ internal sealed partial class OverviewManager
         if (PlacingWebResource)
         {
             if (e.KeyCode == Keys.Escape) HandleEscape();
+            else if (_cfg.InputEnabled && e.KeyCode is Keys.Oemplus or Keys.Add or Keys.OemMinus or Keys.Subtract)
+            {
+                var center = pass.Screen.Bounds;
+                double notches = e.KeyCode is Keys.Oemplus or Keys.Add ? 1 : -1;
+                ZoomOverview(center.Left + center.Width / 2, center.Top + center.Height / 2, notches);
+                _visualFrames.Flush();
+                _webResourcePlacement!.RefreshPreview();
+            }
             e.Handled = e.SuppressKeyPress = true;
             return;
         }

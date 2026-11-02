@@ -199,17 +199,22 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift)
     {
-        if (PlacingWebResource) return;
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
         CancelInertia();
         if (_composerWindow is { WaitingForBrowser: false }) return;
         bool canvasNavigation = control || ((_windowInteraction.Active ? InteractionKeys : Control.ModifierKeys) & Keys.Alt) != 0;
-        if (RouteWindowWheel(pass, x, y, delta, horizontal, canvasNavigation)) return;
+        if (!PlacingWebResource && RouteWindowWheel(pass, x, y, delta, horizontal, canvasNavigation)) return;
         if (_windowInteraction.Active && _windowInteraction.Captured) return;
         var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, control, shift);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
         else PanOverview(panX, panY);
+        if (PlacingWebResource)
+        {
+            _visualFrames.Flush();
+            _webResourcePlacement!.Move(new(x + pass.OriginX, y + pass.OriginY), "New web resource");
+            _webResourcePlacement.RefreshPreview();
+        }
     }
 
     private void PanOverview(double virtualDx, double virtualDy)
