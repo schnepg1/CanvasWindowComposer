@@ -25,7 +25,7 @@ public class DrawerDragFeedbackNativeTests
             try
             {
                 var foreground = PInvoke.GetForegroundWindow();
-                using var feedback = new DrawerDragFeedbackView(WinFormsScreens.Instance);
+                using var feedback = new CanvasPlacementFeedbackView(WinFormsScreens.Instance);
                 feedback.ShowLanding(new(work.X + 100, work.Y + 200, 300, 200));
                 feedback.ShowPointer(new(work.X + 130, work.Y + 230), "Project notes", true, true);
                 Assert.Equal(foreground, PInvoke.GetForegroundWindow()); Assert.Same(bag.Panel, Mouse.Captured);

@@ -33,6 +33,45 @@ public sealed class WebResourceTests : IDisposable
         Assert.Empty(rig.Store.Document.Zones.Single(z => z.Id == area.Id).ItemIds);
     }
 
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(.25)]
+    public void NewResourcePreviewIsReadOnlyAndSaveUsesTheChosenPlace(double zoom)
+    {
+        using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true });
+        rig.Workspace.Start();
+        var camera = new CanvasCamera(-8000, 5000, zoom);
+        var view = new ArrivalViewport(camera, [new(-1920, -1080, 1920, 1080)], [new(-450, -1080, 450, 400)]);
+        var point = new System.Windows.Point(-1100, -600);
+        Assert.True(CanvasPlacementGeometry.TryWorldAnchor(view, point, WorkspaceService.NewWebResourceBounds, true, out var x, out var y));
+        var obstacle = new WorldRect { X = x, Y = y, W = 200, H = 100 };
+        rig.Workspace.AdditionalPlacementObstacles = () => [obstacle];
+        int saves = rig.Store.Saves, calls = rig.Api.NativeStateCalls.Count;
+        WorldRect preview = default;
+        for (int i = 0; i < 10; i++)
+            Assert.True(rig.Workspace.TryPreviewWebResourcePlacement(view, out preview, x, y));
+        Assert.Empty(rig.Workspace.Document.Items); Assert.Equal(saves, rig.Store.Saves);
+        Assert.Equal(calls, rig.Api.NativeStateCalls.Count); Assert.Null(rig.Workspace.Status);
+        Assert.False(TemporaryAreaLayout.Overlaps(preview, obstacle, 24 / zoom));
+        var projected = CanvasPlacementGeometry.Project(preview, camera, desktop: false);
+        Assert.InRange(projected.X, -1920, -1); Assert.InRange(projected.Y, -1080, -1);
+        Assert.True(rig.Workspace.SaveWebResource(null, Exe("chrome.exe"), "Reference", new("https://example.com/"), preview));
+        Assert.Equal(preview, Assert.Single(rig.Workspace.Document.Items).Bounds);
+    }
+
+    [Fact]
+    public void PlacementRejectsPanelsTaskbarAndACanvasWithoutClearSpace()
+    {
+        using var rig = new WorkspaceHarness(); rig.Workspace.Start();
+        var view = new ArrivalViewport(new(3000, -9000, .5), [new(-1920, 0, 1920, 1040)], [new(-500, 0, 500, 600)]);
+        foreach (var point in new[] { new System.Windows.Point(-100, 100), new(-1000, 1060), new(100, 100) })
+            Assert.False(CanvasPlacementGeometry.TryWorldAnchor(view, point, WorkspaceService.NewWebResourceBounds, true, out _, out _));
+        rig.Workspace.AdditionalPlacementObstacles = () => [new() { X = -840, Y = -9000, W = 3840, H = 2080 }];
+        int saves = rig.Store.Saves;
+        Assert.False(rig.Workspace.TryPreviewWebResourcePlacement(view, out _, 0, -8000));
+        Assert.Empty(rig.Workspace.Document.Items); Assert.Equal(saves, rig.Store.Saves); Assert.Null(rig.Workspace.Status);
+    }
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "canvas-web-tests-" + Guid.NewGuid().ToString("N"));
     public WebResourceTests() => Directory.CreateDirectory(_root);
     private string Exe(string name)

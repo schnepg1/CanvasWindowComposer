@@ -81,7 +81,8 @@ internal sealed partial class OverviewManager
         StopWindowNavigation();
         StopTutorialTravel();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
-        bool cancelled = EndWindowInteraction();
+        bool cancelled = EndWindowInteraction();
+        cancelled |= CancelWebResourcePlacement();
         cancelled |= CancelCanvasComposer();
         cancelled |= CancelAnnotationEdit();
         cancelled |= _tools.Cancel(); // Clear owner before releasing native capture.
@@ -99,6 +100,7 @@ internal sealed partial class OverviewManager
     public void HandleEscape()
     {
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming) return;
+        if (CancelWebResourcePlacement()) return;
         if (_temporaryDrawer?.State.IsOpen == true) { _temporaryDrawer.ClosePeek(); return; }
         if (_backpack?.Panel.IsOpen == true) { SetInventoryVisible(false); return; }
         if (CloseSettingsPopup()) return;

@@ -319,7 +319,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         if (target != OverviewMode.Zooming) { _tutorialOfferVisible=false;_tourPanel?.Hide(); }
         StopWindowNavigation();
-        if (!_state.SetMode(target)) return;
+        if (!_state.SetMode(target)) return;
+        CancelWebResourcePlacement();
 
         BeforeModeChanged?.Invoke(from, target);
 

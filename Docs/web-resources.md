@@ -6,6 +6,12 @@ Edge or Firefox browser, and optionally choose one of its detected profiles.
 **Choose browser executable…** supports custom installation locations.
 **Choose profile folder…** supports profiles outside the standard catalog.
 
+From canvas tools, choose the place first: move the pointer to preview the
+placeholder's landing outline, then click to open the creation dialog. The
+preview uses the backpack's placement system to find clear space in the current
+view. **Esc** or right-click cancels placement. Saving creates the placeholder
+at the chosen place; cancelling the dialog leaves the canvas unchanged.
+
 Existing browser cards and saved live previews offer **Web resource settings…**
 in their right-click menu. The same action appears in Saved Workspace. Saving
 changed launch settings keeps the current window open and detaches it from the

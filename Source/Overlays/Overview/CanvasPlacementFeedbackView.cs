@@ -8,10 +8,10 @@ using System.Windows.Media;
 namespace CanvasDesktop;
 
 /// <summary>Two small passive overlays, so neither mouse capture nor foreground focus changes during a drag.</summary>
-internal sealed class DrawerDragFeedbackView(IScreens screens) : IDrawerDragFeedbackView
+internal sealed class CanvasPlacementFeedbackView(IScreens screens, bool clickToPlace = false) : ICanvasPlacementFeedbackView
 {
     private PassiveDragWindow? _pointer, _landing;
-    private readonly DrawerDragBadgeSurface _badge = new();
+    private readonly CanvasPlacementBadgeSurface _badge = new();
     internal Window? PointerWindow => _pointer;
     internal Window? LandingWindow => _landing;
 
@@ -20,7 +20,7 @@ internal sealed class DrawerDragFeedbackView(IScreens screens) : IDrawerDragFeed
         _pointer ??= new(_badge);
         var screen = screens.AllBounds.FirstOrDefault(s => point.X >= s.Left && point.X < s.Right && point.Y >= s.Top && point.Y < s.Bottom);
         if (screen.Width <= 0) screen = screens.PrimaryBounds;
-        _badge.Update(title, outside, canDrop);
+        _badge.Update(title, outside, canDrop, clickToPlace);
         // Move to the target monitor first so WPF reports its current DPI before sizing the badge.
         _pointer.MoveTo(point);
         var dpi = VisualTreeHelper.GetDpi(_pointer);
@@ -41,7 +41,7 @@ internal sealed class DrawerDragFeedbackView(IScreens screens) : IDrawerDragFeed
     public void ShowLanding(WindowRect? landing)
     {
         if (landing is not { } rect) { _landing?.Hide(); return; }
-        _landing ??= new(new DrawerLandingSurface());
+        _landing ??= new(new CanvasLandingSurface());
         _landing.Present(new(rect.X - 2, rect.Y - 2, rect.W + 4, rect.H + 4));
     }
 
@@ -74,14 +74,15 @@ internal sealed class DrawerDragFeedbackView(IScreens screens) : IDrawerDragFeed
     }
 }
 
-internal sealed class DrawerDragBadgeSurface : FrameworkElement
+internal sealed class CanvasPlacementBadgeSurface : FrameworkElement
 {
     private string _title = "", _status = "";
     private bool _canDrop;
 
-    public void Update(string title, bool outside, bool canDrop)
+    public void Update(string title, bool outside, bool canDrop, bool clickToPlace = false)
     {
-        string status = !outside ? "Drag onto canvas" : canDrop ? "Release to place" : "No clear landing space";
+        string status = !outside ? "Drag onto canvas" : canDrop
+            ? (clickToPlace ? "Click to place · Esc: cancel" : "Release to place") : "No clear landing space";
         if (_title == title && _status == status && _canDrop == canDrop) return;
         _title = title; _status = status; _canDrop = canDrop; InvalidateVisual();
     }
@@ -104,7 +105,7 @@ internal sealed class DrawerDragBadgeSurface : FrameworkElement
     }
 }
 
-internal sealed class DrawerLandingSurface : FrameworkElement
+internal sealed class CanvasLandingSurface : FrameworkElement
 {
     protected override void OnRender(DrawingContext dc)
         => dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(25, 130, 235, 174)), new Pen(BackpackPanel.Ink("#97EDBD"), 2),

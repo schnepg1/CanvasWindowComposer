@@ -26,6 +26,13 @@ internal sealed partial class OverviewManager
             return;
         }
 
+        if (PlacingWebResource)
+        {
+            if (e.Button == MouseButtons.Right) { CancelWebResourcePlacement(); return; }
+            _webResourcePlacementPressed = e.Button == MouseButtons.Left;
+            return;
+        }
+
         if (_annotationEditor is {} activeEditor && !activeEditor.Complete(true, returnFocus: false)) return;
         if (_shapeEditor != null || (_composerWindow != null && e.Button == MouseButtons.Left)) return;
         if (RouteCanvasWindowPointer(pass, e, down: true)) return;
@@ -90,6 +97,11 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (PlacingWebResource)
+        {
+            _webResourcePlacement!.Move(new(e.X + pass.OriginX, e.Y + pass.OriginY), "New web resource");
+            return;
+        }
         UpdateInventoryDropHover(pass, e);
         if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
         if (RouteCanvasWindowPointer(pass, e)) return;
@@ -152,6 +164,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (PlacingWebResource) { CompleteWebResourcePlacement(pass, e); return; }
         if (TryCollectInventoryDrop(pass, e)) return;
         if (CompleteDesktopStoppingClick(pass, e)) return;
         _visualFrames.Flush();
@@ -186,6 +199,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift)
     {
+        if (PlacingWebResource) return;
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
         CancelInertia();
@@ -228,6 +242,7 @@ internal sealed partial class OverviewManager
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (PlacingWebResource) return;
         _visualFrames.Flush();
         if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;

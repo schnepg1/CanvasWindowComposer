@@ -31,6 +31,7 @@ internal sealed partial class OverviewManager
     }
 
     private bool InteractionToolReady => !_tools.Active && !_tools.ToolHasPendingInteraction
+        && !PlacingWebResource && !_webResourceDialogOpen
         && _annotationEditor == null && _shapeEditor == null && _composerWindow == null
         && (_annotationTool == null || _annotationTool.Mode is AnnotationMode.Select or AnnotationMode.Navigate)
         && !GuidedTutorialActive && !IsStartupIntroActive;

@@ -9,6 +9,12 @@ internal sealed partial class OverviewManager
 {
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (PlacingWebResource)
+        {
+            if (e.KeyCode == Keys.Escape) HandleEscape();
+            e.Handled = e.SuppressKeyPress = true;
+            return;
+        }
         CancelInertia();
         if (HandleCameraBookmarkKey(pass, e)) return;
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
@@ -86,6 +92,7 @@ internal sealed partial class OverviewManager
 
     private void HandleKeyUp(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (PlacingWebResource) { e.Handled = e.SuppressKeyPress = true; return; }
         if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
         {
             var pointer = Pointer(pass, new MouseEventArgs(MouseButtons.None, 0, pass.PointToClient(Cursor.Position).X, pass.PointToClient(Cursor.Position).Y, 0));

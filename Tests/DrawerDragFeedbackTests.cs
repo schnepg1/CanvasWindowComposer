@@ -84,7 +84,7 @@ public class DrawerDragFeedbackTests
         var monitor = new ScreenRect(-1920, -1080, 1920, 1080);
         foreach (var point in new[] { new Point(-1, -1), new Point(-1920, -1080), new Point(-50, -500) })
         {
-            var badge = DrawerDragFeedbackView.BadgeBounds(point, monitor, dpi, dpi);
+            var badge = CanvasPlacementFeedbackView.BadgeBounds(point, monitor, dpi, dpi);
             Assert.True(badge.Left >= monitor.Left && badge.Right <= monitor.Right);
             Assert.True(badge.Top >= monitor.Top && badge.Bottom <= monitor.Bottom);
             Assert.False(point.X >= badge.Left && point.X < badge.Right && point.Y >= badge.Top && point.Y < badge.Bottom);
@@ -98,9 +98,9 @@ public class DrawerDragFeedbackTests
         => WorkspaceViewTests.OnSta(() =>
         {
             var scene = new Grid { Background = BackpackPanel.Ink("#0D1722") };
-            scene.Children.Add(new DrawerLandingSurface { Width = 360, Height = 220, HorizontalAlignment = HorizontalAlignment.Left,
+            scene.Children.Add(new CanvasLandingSurface { Width = 360, Height = 220, HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(30, 30, 0, 0) });
-            var badge = new DrawerDragBadgeSurface { Width = 180, Height = 48, HorizontalAlignment = HorizontalAlignment.Left,
+            var badge = new CanvasPlacementBadgeSurface { Width = 180, Height = 48, HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(260, 210, 0, 0) };
             badge.Update("Project notes", true, true); scene.Children.Add(badge);
             scene.Measure(new Size(480, 300)); scene.Arrange(new Rect(0, 0, 480, 300)); scene.UpdateLayout();
@@ -110,7 +110,7 @@ public class DrawerDragFeedbackTests
             using var stream = File.Create(Path.Combine(path, $"drawer-drag-feedback-{scale}x.png")); encoder.Save(stream);
         });
 
-    private sealed class FakeFeedbackView : IDrawerDragFeedbackView
+    private sealed class FakeFeedbackView : ICanvasPlacementFeedbackView
     {
         public Point Pointer;
         public WindowRect? Landing;

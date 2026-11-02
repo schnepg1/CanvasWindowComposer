@@ -5,6 +5,15 @@ namespace CanvasDesktop;
 
 internal sealed partial class WorkspaceService
 {
+    internal static WorldRect NewWebResourceBounds => new() { W = 1000, H = 700 };
+
+    internal bool TryPreviewWebResourcePlacement(ArrivalViewport view, out WorldRect placed, double x, double y)
+    {
+        placed = default;
+        return !_disposed && _started && !_switching
+            && NearbyWindowPlacement.TryPlace(NewWebResourceBounds, view, InventoryPlacementObstacles(Guid.Empty), out placed, x, y);
+    }
+
     public bool SaveWebResource(Guid? id, string executable, string name, WebResource resource, WorldRect? bounds = null)
     {
         if (_disposed || !BrowserSupport.ValidResource(executable, resource) || resource == null
@@ -20,7 +29,7 @@ internal sealed partial class WorkspaceService
             Id = old?.Id ?? Guid.NewGuid(), DesktopId = old?.DesktopId ?? _desktop,
             Title = old?.Title ?? new Uri(resource.Url).Host, Name = name.Trim(), ExecutablePath = Path.GetFullPath(executable),
             WebResource = resource, CaptureChromeProfile = false, OpenOnStartup = old?.OpenOnStartup ?? false,
-            Bounds = old?.Bounds ?? bounds ?? new WorldRect { X = _canvas.CamX + 80, Y = _canvas.CamY + 80, W = 1000, H = 700 }
+            Bounds = old?.Bounds ?? bounds ?? NewWebResourceBounds with { X = _canvas.CamX + 80, Y = _canvas.CamY + 80 }
         };
         if (!WorkspaceGeometry.ValidBounds(item.Bounds)) return false;
         int index = old == null ? Document.Items.Count : Document.Items.IndexOf(old);
