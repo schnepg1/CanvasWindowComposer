@@ -87,6 +87,25 @@ public sealed class WebResourceTests : IDisposable
         WebResource = new(url, profile), Bounds = new WorldRect { X = 2400, Y = -100, W = 1000, H = 700 }
     };
 
+    [Fact]
+    public void GivingAnOldBrowserCardAUrlPreservesItsProfilePlaceAndUserPreferences()
+    {
+        var item = new WorkspaceItem { ExecutablePath = Exe("chrome.exe"), Title = "Old website title", Name = "Work",
+            ChromeProfilePath = Profile("chrome"), OpenOnStartup = true, ExcludeFromAutomaticMinimization = true,
+            Bounds = new() { X = -4000, Y = 2000, W = 800, H = 600 } };
+        using var rig = new WorkspaceHarness(new() { Items = [item] });
+        var resource = new WebResource("https://example.com/", item.ChromeProfilePath);
+        Assert.True(rig.Workspace.SaveWebResource(item.Id, item.ExecutablePath, item.Name, resource));
+        var saved = Assert.Single(rig.Workspace.Document.Items);
+        Assert.Equal(item.Id, saved.Id); Assert.Equal(item.Bounds, saved.Bounds); Assert.Equal(item.DesktopId, saved.DesktopId);
+        Assert.Equal(item.Title, saved.Title); Assert.Equal(item.Name, saved.Name);
+        Assert.True(saved.OpenOnStartup); Assert.True(saved.ExcludeFromAutomaticMinimization);
+        Assert.Equal(resource, saved.WebResource); Assert.Empty(saved.ChromeProfilePath); Assert.False(saved.CaptureChromeProfile);
+        var launch = WorkspaceIdentity.LaunchInfo(saved);
+        Assert.Equal(new[] { "--user-data-dir=" + Path.GetDirectoryName(resource.ProfilePath),
+            "--profile-directory=" + Path.GetFileName(resource.ProfilePath), "--new-window", resource.Url }, launch.ArgumentList);
+    }
+
     [Theory]
     [InlineData("https://dash.cloudflare.com/")]
     [InlineData("http://localhost:8080/path?one=1&two=2#section")]

@@ -29,6 +29,7 @@ internal sealed partial class WorkspaceService
             Id = old?.Id ?? Guid.NewGuid(), DesktopId = old?.DesktopId ?? _desktop,
             Title = old?.Title ?? new Uri(resource.Url).Host, Name = name.Trim(), ExecutablePath = Path.GetFullPath(executable),
             WebResource = resource, CaptureChromeProfile = false, OpenOnStartup = old?.OpenOnStartup ?? false,
+            ExcludeFromAutomaticMinimization = old?.ExcludeFromAutomaticMinimization ?? false,
             Bounds = old?.Bounds ?? bounds ?? NewWebResourceBounds with { X = _canvas.CamX + 80, Y = _canvas.CamY + 80 }
         };
         if (!WorkspaceGeometry.ValidBounds(item.Bounds)) return false;

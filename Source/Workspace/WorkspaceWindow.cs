@@ -19,6 +19,8 @@ internal sealed class WorkspaceWindow : Window
     private readonly TextBlock _selection = new() { TextWrapping = TextWrapping.Wrap, FontSize = 18, FontWeight = FontWeights.SemiBold };
     private readonly StackPanel _actions = new();
     private readonly Button _chromeProfile, _webResource, _fileTarget, _folderTarget;
+    private readonly StackPanel _targets = new();
+    private readonly Expander _advancedTargets = new() { Header = "Advanced launch settings", Margin = new Thickness(0, 12, 0, 0) };
     private bool _closed, _refreshQueued;
 
     public WorkspaceWindow(IWorkspaceCommands workspace)
@@ -100,6 +102,9 @@ internal sealed class WorkspaceWindow : Window
         AddAction("Close to placeholder", workspace.CloseToPlaceholder);
         _fileTarget = AddAction("Choose file…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, false));
         _folderTarget = AddAction("Choose folder…", id => WorkspaceDialogs.ChooseTarget(OwnerHandle(), workspace, id, true));
+        _actions.Children.Remove(_fileTarget); _actions.Children.Remove(_folderTarget);
+        _targets.Children.Add(_fileTarget); _targets.Children.Add(_folderTarget);
+        _actions.Children.Add(_targets); _actions.Children.Add(_advancedTargets);
         AddAction("Forget saved place", workspace.Forget);
         _items.SelectionChanged += (_, _) => UpdateSelection();
         _items.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler((_, e) =>
@@ -162,11 +167,20 @@ internal sealed class WorkspaceWindow : Window
         _chromeProfile.Visibility = selected != null && selected.WebResource == null && ChromeProfiles.Supports(selected.ExecutablePath) && !selected.IsFolder
             ? Visibility.Visible : Visibility.Collapsed;
         _chromeProfile.IsEnabled = selected?.State is not "Opening…" and not "Queued";
-        _webResource.Visibility = selected != null && BrowserSupport.Supports(selected.ExecutablePath) && !selected.IsFolder ? Visibility.Visible : Visibility.Collapsed;
+        var capabilities = selected?.Capabilities ?? default;
+        _webResource.Visibility = capabilities.Website ? Visibility.Visible : Visibility.Collapsed;
+        _webResource.Content = selected?.WebResource == null ? "Set website URL…" : "Web resource settings…";
         _webResource.IsEnabled = selected?.State is not "Opening…" and not "Queued";
-        _fileTarget.Visibility = _folderTarget.Visibility = selected?.WebResource == null ? Visibility.Visible : Visibility.Collapsed;
+        if (capabilities.AdvancedTargets && _advancedTargets.Content == null)
+        { _actions.Children.Remove(_targets); _advancedTargets.Content = _targets; }
+        else if (!capabilities.AdvancedTargets && _advancedTargets.Content != null)
+        { _advancedTargets.Content = null; _actions.Children.Insert(_actions.Children.IndexOf(_advancedTargets), _targets); }
+        _advancedTargets.Visibility = capabilities.AdvancedTargets ? Visibility.Visible : Visibility.Collapsed;
+        _fileTarget.Visibility = capabilities.File ? Visibility.Visible : Visibility.Collapsed;
+        _folderTarget.Visibility = capabilities.Folder ? Visibility.Visible : Visibility.Collapsed;
         _selection.Text = selected == null ? "Select a saved place" :
             $"{selected.Title}\n\n{selected.Bounds.X:0}, {selected.Bounds.Y:0}" + (selected.WebResource == null ? "" : "\n\n" + selected.DisplayTarget + "\n" + selected.BrowserDetails);
+        if (selected?.MissingWebsiteUrl == true) _selection.Text += "\n\nNo website URL saved. Use ‘Set website URL…’ to reopen a specific page.";
         _selection.Margin = new Thickness(0, 0, 0, 12);
     }
 }

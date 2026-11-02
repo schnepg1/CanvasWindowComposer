@@ -9,6 +9,8 @@ internal sealed record WorkspaceItemView(Guid Id, string Title, string Executabl
     string ChromeProfilePath = "", string? LaunchMessage = null, WebResource? WebResource = null,
     bool ExcludeFromAutomaticMinimization = false, bool Temporary = false)
 {
+    public WorkspaceApplicationCapabilities Capabilities => WorkspaceApplicationCapabilities.For(ExecutablePath, IsFolder, WebResource != null);
+    public bool MissingWebsiteUrl => Capabilities.Website && WebResource == null && Target.Length == 0;
     public string DisplayTarget => WebResource?.Url ?? Target;
     public string BrowserDetails => WebResource == null ? "" : BrowserSupport.Name(ExecutablePath)
         + (WebResource.ProfilePath.Length > 0 ? " · " + System.IO.Path.GetFileName(WebResource.ProfilePath) : " · Default profile");

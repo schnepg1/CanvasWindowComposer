@@ -118,9 +118,10 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         Text = "Saved: " + _item.Title;
         _title.UpdateItem(item);
         _title.Parent?.Invalidate(true);
-        _pathHeader.Text = item.WebResource == null ? "Path:" : "Website:";
+        _pathHeader.Text = item.MissingWebsiteUrl ? "Browser:" : item.WebResource == null ? "Path:" : "Website:";
         _details.Text = item.WebResource == null ? (_item.Target.Length > 0 ? _item.Target : System.IO.Path.GetFileName(_item.ExecutablePath))
             : new Uri(item.WebResource.Url).Host + "\n" + item.BrowserDetails;
+        if (item.MissingWebsiteUrl) _details.Text = BrowserSupport.Name(item.ExecutablePath) + " · No website URL saved";
         _resourceTip.SetToolTip(_details, item.WebResource == null ? "" : item.WebResource.Url + "\n" + item.BrowserDetails);
         _details.AccessibleDescription = item.WebResource?.Url;
         _launchState.Text = launch.Text;

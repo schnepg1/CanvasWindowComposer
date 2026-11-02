@@ -20,7 +20,9 @@ internal static partial class WorkspaceInteractionDialogs
         var dialog = Create(owner, id == null ? "Add web resource" : "Web resource settings", 680, 650);
         var root = new StackPanel { Margin = new Thickness(24) };
         dialog.Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        root.Children.Add(new TextBlock { Text = "Save a website in its own browser window at this place on the canvas.", TextWrapping = TextWrapping.Wrap });
+        root.Children.Add(new TextBlock { Text = item != null && item.WebResource == null
+            ? "No website URL is saved for this browser window. Its title is a window label. Paste a URL below to reopen a specific page."
+            : "Save a website in its own browser window at this place on the canvas.", TextWrapping = TextWrapping.Wrap });
         void Label(string label) => root.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 14, 0, 6) });
         Label("Name (optional)");
         var name = new TextBox { Text = item?.Name ?? "", MaxLength = 200 };

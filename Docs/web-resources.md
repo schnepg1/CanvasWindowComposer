@@ -14,12 +14,27 @@ at the chosen place; cancelling the dialog leaves the canvas unchanged.
 If no clear space fits, scroll down or press **−** to zoom out while keeping the
 preview active. **Ctrl+scroll** pans vertically; **Shift+scroll** pans horizontally.
 
-Existing browser cards and saved live previews offer **Web resource settings…**
-in their right-click menu. The same action appears in Saved Workspace. Saving
+Browser cards without a configured website offer **Set website URL…** in their
+right-click menu. Configured resources offer **Web resource settings…**. The
+same actions appear in Saved Workspace. Saving
 changed launch settings keeps the current window open and detaches it from the
 saved place; reopening creates a window with the new settings. Renaming alone
 keeps an already-attached web resource window attached. Saving errors leave the
 previous configuration and binding intact.
+
+Older browser placeholders saved a window title, application and optionally a
+Chrome profile, without saving the page's address. These cards show **No website
+URL saved**. A page title, even one containing a URL, is not used as a launch
+address. Choose **Set website URL…** and paste the address once; the existing
+Chrome profile is preselected. Saving preserves the card's position, startup
+choice and automatic minimization preference.
+
+Launch settings follow the application: supported browsers offer website/profile
+settings, Explorer offers a folder, and VS Code (including Insiders) offers files
+and project folders. VS Code folders reopen in VS Code; Explorer folders reopen
+in Explorer. Other apps retain manual file/folder arguments under **Advanced
+launch settings**, since support depends on the application. Application types
+are derived from executables, not titles, so older cards need no format upgrade.
 
 A web resource saves its URL independently of file/folder launch targets. It
 opens in a separate browser window at the saved canvas position. Opening an
