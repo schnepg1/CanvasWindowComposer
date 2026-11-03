@@ -10,10 +10,11 @@ internal sealed partial class OverviewManager
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
         if (PeekWorking) return;
-        if (_peekWindow != null && e.KeyData == Keys.Enter)
+        if (_peekWindow != null && e.KeyCode == Keys.Enter)
         {
-            _peekEnterPending = true;
             e.Handled = e.SuppressKeyPress = true;
+            if (e.Alt) OpenPeekAtDesktop(); // Hand the preview over to the native app view.
+            else _peekEnterPending = true;
             return;
         }
         if (_peekWindow != null && e.KeyCode != Keys.Escape) CloseWindowPeek();

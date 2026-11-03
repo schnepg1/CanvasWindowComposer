@@ -12,7 +12,8 @@ namespace CanvasDesktop;
 internal sealed class CanvasPeekWindow : Form
 {
     private readonly IDwmThumbnailApi _dwm;
-    private readonly Button _work = new(), _open = new(), _return = new();
+    private readonly ToolTip _toolTip = new();
+    private readonly Button _work = new(), _open = new(), _return = new(), _help = new();
     private IntPtr _thumbnail;
     private Rectangle _sourceCrop;
     private string _title = "";
@@ -37,7 +38,9 @@ internal sealed class CanvasPeekWindow : Form
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
     {
-        get { var cp = base.CreateParams; cp.ExStyle |= 0x08000080; return cp; }
+        // CS_DBLCLKS (0x0008): the content must report double clicks so a quick
+        // double-click can hand the preview over to Work here.
+        get { var cp = base.CreateParams; cp.ExStyle |= 0x08000080; cp.ClassStyle |= 0x0008; return cp; }
     }
 
     public CanvasPeekWindow(IDwmThumbnailApi dwm)
@@ -53,7 +56,7 @@ internal sealed class CanvasPeekWindow : Form
         BackColor = Color.FromArgb(20, 24, 33);
         ForeColor = Color.FromArgb(235, 241, 249);
         Font = new Font("Segoe UI", 9.25f);
-        foreach (var button in new[] { _work, _open, _return })
+        foreach (var button in new[] { _work, _open, _return, _help })
         {
             button.FlatStyle = FlatStyle.Flat;
             button.BackColor = Color.FromArgb(30, 36, 50);
@@ -67,9 +70,13 @@ internal sealed class CanvasPeekWindow : Form
         _open.Text = _open.AccessibleName = "Open app";
         _return.Text = _return.AccessibleName = "Return";
         _return.AccessibleDescription = "Return to the unchanged canvas view without closing the application.";
+        _help.Text = "?";
+        _help.AccessibleName = "Control info";
+        _help.AccessibleDescription = "Shows the current status and keyboard hints for this preview.";
         _work.Click += (_, _) => WorkRequested?.Invoke();
         _open.Click += (_, _) => OpenRequested?.Invoke();
         _return.Click += (_, _) => ReturnRequested?.Invoke();
+        UpdateControlInfo();
     }
 
     public bool ShowPreview(OverviewOverlay owner, IntPtr source, Rectangle crop, string title,
@@ -86,6 +93,7 @@ internal sealed class CanvasPeekWindow : Form
             { _thumbnail = IntPtr.Zero; return false; }
         }
         else _status = "Preview unavailable. Open app to continue.";
+        UpdateControlInfo();
         LayoutPreview();
         return !Live || UpdateThumbnail();
     }
@@ -103,7 +111,8 @@ internal sealed class CanvasPeekWindow : Form
     {
         Working = working;
         _status = error ?? (working ? (ShowingOwnedDialog ? "Finish or cancel this dialog to return" : "Working here · Return to resume the canvas")
-            : Live ? "Preview only · Enter to work here" : "Preview unavailable · Choose Open app");
+            : Live ? "Preview only · Enter to work here · Alt+Enter opens the app" : "Preview unavailable · Choose Open app");
+        UpdateControlInfo();
         LayoutPreview(); Invalidate();
     }
 
@@ -139,18 +148,25 @@ internal sealed class CanvasPeekWindow : Form
         int pad = Math.Max(4, (int)(8 * scale));
         int header = CanvasPeekLayout.HeaderHeight(dpi);
         int buttonHeight = (int)Math.Ceiling(28 * scale);
-        int buttonWidth = Math.Max(1, Math.Min((int)(102 * scale), (ClientSize.Width - pad * 4) / 3));
-        _return.SetBounds(ClientSize.Width - pad - buttonWidth, header - buttonHeight - pad,
-            buttonWidth, buttonHeight);
-        _open.SetBounds(_return.Left - pad - buttonWidth, _return.Top, buttonWidth, buttonHeight);
-        _work.SetBounds(_open.Left - pad - buttonWidth, _return.Top, buttonWidth, buttonHeight);
-        foreach (var button in new[] { _work, _open, _return }) button.Visible = !_animating;
+        // One compact chrome row: [?] [Work here] [Open app] [Return] on the
+        // former control-info line. The "?" button carries that info as a tooltip.
+        int buttonWidth = Math.Max(1, Math.Min((int)(102 * scale), (ClientSize.Width - pad * 5 - buttonHeight) / 3));
+        int row = Math.Max(1, header - buttonHeight - pad);
+        _return.SetBounds(ClientSize.Width - pad - buttonWidth, row, buttonWidth, buttonHeight);
+        _open.SetBounds(_return.Left - pad - buttonWidth, row, buttonWidth, buttonHeight);
+        _work.SetBounds(_open.Left - pad - buttonWidth, row, buttonWidth, buttonHeight);
+        int helpWidth = buttonHeight;
+        if (_work.Left - pad - helpWidth < pad) helpWidth = Math.Max(16, _work.Left - pad * 2);
+        _help.SetBounds(Math.Max(pad, _work.Left - pad - helpWidth), row, Math.Max(16, helpWidth), buttonHeight);
+        foreach (var button in new[] { _work, _open, _return, _help }) button.Visible = !_animating;
         _work.Visible = !_animating && Live && !Working;
         _work.Enabled = Live && !Working;
         _return.Enabled = !ShowingOwnedDialog;
         ContentBounds = CanvasPeekLayout.Fit(_sourceCrop.Size,
             new(1, header + 1, Math.Max(0, ClientSize.Width - 2), Math.Max(0, ClientSize.Height - header - 2)));
     }
+
+    private void UpdateControlInfo() => _toolTip.SetToolTip(_help, _status);
 
     private bool UpdateThumbnail()
     {
@@ -176,7 +192,8 @@ internal sealed class CanvasPeekWindow : Form
         if (up) _chromeButtons &= ~button;
         if (button == MouseButtons.Left)
         {
-            if (down) _pressed = Array.Find(new[] { _work, _open, _return }, b => b.Visible && b.Enabled && b.Bounds.Contains(local));
+            if (down) _pressed = Array.Find(new[] { _help, _work, _open, _return },
+                b => b.Visible && b.Enabled && b.Bounds.Contains(local));
             if (up)
             {
                 var pressed = _pressed; _pressed = null;
@@ -205,9 +222,8 @@ internal sealed class CanvasPeekWindow : Form
         int pad = Math.Max(4, (int)(8 * DeviceDpi / 96.0));
         TextRenderer.DrawText(e.Graphics, _title, Font, new Rectangle(pad, pad, Math.Max(1, Width - 2 * pad), 22 * DeviceDpi / 96),
             ForeColor, TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-        TextRenderer.DrawText(e.Graphics, _status, Font, new Rectangle(pad, pad + 22 * DeviceDpi / 96,
-            Math.Max(1, Width - 2 * pad), 22 * DeviceDpi / 96), ForeColor,
-            TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        // The control-info line is the chrome row itself; it reaches the pointer
+        // through the "?" tooltip button and stays out of the way of the buttons.
         // Status is in the content's empty letterbox, never on top of DWM pixels.
         if (!Live) TextRenderer.DrawText(e.Graphics, _status, Font,
             new Rectangle(pad, CanvasPeekLayout.HeaderHeight(DeviceDpi) + pad, Math.Max(1, Width - pad * 2), Math.Max(1, Height / 2)),
@@ -225,6 +241,11 @@ internal sealed class CanvasPeekWindow : Form
     {
         var thumbnail = _thumbnail; _thumbnail = IntPtr.Zero;
         try { if (thumbnail != IntPtr.Zero) _dwm.Unregister(thumbnail); }
-        finally { base.Dispose(disposing); }
+        finally
+        {
+            var toolTip = _toolTip;
+            base.Dispose(disposing);
+            toolTip.Dispose();
+        }
     }
 }

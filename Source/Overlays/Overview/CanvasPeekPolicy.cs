@@ -58,7 +58,9 @@ internal static class CanvasPeekLayout
             Math.Clamp(y, available.Top, Math.Max(available.Top, available.Bottom - height)), width, height);
     }
 
-    public static int HeaderHeight(int dpi) => (int)Math.Ceiling(88 * dpi / 96.0);
+    // Title line + one chrome row (buttons with the "?" control-info tooltip):
+    // inner padding top/bottom.
+    public static int HeaderHeight(int dpi) => (int)Math.Ceiling(66 * dpi / 96.0);
 
     /// <summary>Letterbox without stretching or upscaling the native pixels.</summary>
     public static Rectangle Fit(Size source, Rectangle destination)

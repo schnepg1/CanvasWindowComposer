@@ -156,6 +156,44 @@ public class CanvasPeekIntegrationTests
 
     [Fact]
     [Trait("Category", "NativePreview")]
+    public void DoubleClickArmsInteractionWithoutInteractMode()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var h = new Rig();
+            Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
+            var peek = h.Overview.PeekWindow!;
+            var content = peek.ContentBounds;
+            var point = new Point(content.Left + content.Width / 2, content.Top + content.Height / 2);
+            var down = typeof(Control).GetMethod("OnMouseDown", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var up = typeof(Control).GetMethod("OnMouseUp", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            MouseEventArgs At(int clicks) => new(MouseButtons.Left, clicks, point.X, point.Y, 0);
+            down.Invoke(peek, new object[] { At(1) });   // A single click stays passive...
+            up.Invoke(peek, new object[] { At(1) });
+            Assert.False(h.Overview.PeekWorking);
+            down.Invoke(peek, new object[] { At(2) });   // ...the double-click arms Work here.
+            Assert.True(h.Overview.PeekWorking);
+            up.Invoke(peek, new object[] { At(2) });
+            Assert.Empty(h.Pointer.Messages);            // The arming click never reaches the app.
+        });
+
+    [Fact]
+    [Trait("Category", "NativePreview")]
+    public void AltEnterOpensTheAppInsteadOfArmingInteraction()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var h = new Rig();
+            Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
+            var altEnter = new KeyEventArgs(Keys.Enter | Keys.Alt);
+            h.Pass.OnKey!(h.Pass, altEnter);
+            Assert.True(altEnter.SuppressKeyPress);
+            // The native app view takes over; no interaction was armed.
+            Assert.Null(h.Overview.PeekWindow); Assert.False(h.Overview.PeekWorking);
+            h.Pass.OnKeyReleased!(h.Pass, new(Keys.Enter));
+            Assert.False(h.Overview.PeekWorking); Assert.Null(h.Overview.PeekWindow);
+        });
+
+    [Fact]
+    [Trait("Category", "NativePreview")]
     public void RejectedInputRestoresActivatingCanvasStylesAndReleasesTheHook()
         => WorkspaceViewTests.OnSta(() =>
         {

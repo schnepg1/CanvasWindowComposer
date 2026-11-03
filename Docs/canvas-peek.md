@@ -22,9 +22,14 @@ morph. Only one expanded preview is held at a time.
 
 - A passive preview never takes focus. Move into it to read it; a 400 ms grace
   period lets the pointer cross the gap. Leaving both source and preview closes it.
-- Choose **Work here**, or press **Enter** while a passive live preview is open.
-  In Interact mode, clicking preview content also enters Work here; that first
-  click is consumed rather than operating an unknown source control.
+- Choose **Work here**, double-click the preview content, or press **Enter**
+  while a passive live preview is open. In Interact mode, clicking preview
+  content also enters Work here; that first click is consumed rather than
+  operating an unknown source control. **Alt+Enter** hands the preview over to
+  the app at its native desktop position instead.
+- The chrome row holds Work here, Open app, Return and a **?** button whose
+  tooltip shows the current status and keyboard hints; nothing else competes
+  with the preview pixels.
 - Work here stays open when the pointer leaves. Typing, numbers, clipboard
   shortcuts and Escape belong to the application. Wheel input over the preview,
   including modified and horizontal wheel, is forwarded to the application.

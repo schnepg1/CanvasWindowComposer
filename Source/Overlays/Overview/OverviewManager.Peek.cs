@@ -133,8 +133,11 @@ internal sealed partial class OverviewManager
         window.ContentPointer += (e, down, up) =>
         {
             if (_peekWindow != window) return;
-            if (!PeekWorking && down && e.Button == MouseButtons.Left && _interactMode && !_peekAnimating)
+            if (!PeekWorking && down && e.Button == MouseButtons.Left && !_peekAnimating
+                && (_interactMode || e.Clicks > 1))
             {
+                // A single click arms in Interact mode; a double-click arms from
+                // any mode. The arming click is never operated on the source.
                 _peekConsumeUp = true;
                 BeginPeekInteraction();
                 _peekConsumeUp = PeekWorking;
