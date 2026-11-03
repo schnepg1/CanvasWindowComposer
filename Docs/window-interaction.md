@@ -1,5 +1,10 @@
 # Interacting with windows on the canvas
 
+For a readable temporary view while zoomed out, use [Canvas Peek](canvas-peek.md).
+Its **Work here** action reuses the interaction bridge below. **Return** leaves
+its camera and source bounds unchanged; Escape and modified wheel remain with
+the application during that expanded interaction session.
+
 Open the overview with **Alt+Q**, right-click a live window thumbnail, and choose
 **Interact with window (mouse and keyboard)**. The view stays at its current zoom.
 Click links and controls, scroll, drag sliders, select text, and type into the app.

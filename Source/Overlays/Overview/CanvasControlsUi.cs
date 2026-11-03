@@ -200,6 +200,7 @@ internal sealed class CanvasControlsPopup : Form
         }
 
         AddSection("Canvas navigation", [
+            ("Hover a small window", "Canvas Peek: readable preview without moving the camera. Work here keeps it open; Return resumes the canvas."),
             ("Space + left-drag", "Pan the canvas from anywhere."),
             ("Middle-drag", "Pan the canvas from anywhere."),
             ("Right-drag empty space", "Pan from empty canvas; right-click a card for its menu."),

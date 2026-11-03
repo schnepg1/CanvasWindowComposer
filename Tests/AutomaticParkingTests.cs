@@ -57,6 +57,31 @@ public class AutomaticParkingTests
     }
 
     [Fact]
+    public void PeekLeaseKeepsOnlyItsLiveSourceAwakeAndReleasesWithoutPersistingAnExclusion()
+    {
+        using var h = new Harness();
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .25));
+        h.Manager.SetTransientPreviewWindow(h.Handle);
+        h.Tick(5000);
+        Assert.Empty(h.Api.MinimizeCalls);
+        Assert.False(h.Manager.Previews.CapturePending);
+        h.Manager.SetTransientPreviewWindow(IntPtr.Zero);
+        h.Tick(5001); h.FinishCapture(); h.Tick(5002);
+        Assert.True(h.IsMinimized);
+    }
+
+    [Fact]
+    public void PeekLeaseDoesNotRestoreAnAlreadyMinimizedSource()
+    {
+        using var h = new Harness(); h.Park();
+        h.Manager.SetTransientPreviewWindow(h.Handle);
+        // A transient preview lease is observational for already-parked apps.
+        h.Manager.SetOverviewViewport(new CanvasCamera(0, 0, .25));
+        Assert.True(h.IsMinimized);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+    }
+
+    [Fact]
     public void ExclusionPreventsParkingAndRestoresAnAlreadyParkedWindow()
     {
         using var h = new Harness();

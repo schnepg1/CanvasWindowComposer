@@ -14,6 +14,38 @@ public class SettingsWindowTests
     [InlineData(true, "Save settings")]
     [InlineData(false, "Save settings")]
     [InlineData(false, "Cancel")]
+    public void CanvasPeekSettingsKeepDelayWhenDisabledAndOnlySaveOnRequest(bool enabled, string action)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "canvas-peek-settings-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var config = new AppConfig(directory: directory); config.Load();
+                var original = config.Preferences;
+                var window = new SettingsWindow(config, () => { }, zoomOnly: true);
+                var delay = WorkspaceViewTests.Descendants(window).OfType<Slider>()
+                    .Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "Preview hover delay (milliseconds)");
+                var toggle = WorkspaceViewTests.Descendants(window).OfType<CheckBox>()
+                    .Single(b => Equals(b.Content, "Hover to preview windows (Canvas Peek)"));
+                delay.Value = 1800;
+                toggle.IsChecked = false; Assert.False(delay.IsEnabled); Assert.Equal(1800, delay.Value);
+                toggle.IsChecked = true; Assert.True(delay.IsEnabled); Assert.Equal(1800, delay.Value);
+                toggle.IsChecked = enabled;
+                Assert.Equal(original, config.Preferences);
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, action))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expected = action == "Save settings"
+                    ? original with { EnableCanvasPeek = enabled, CanvasPeekDelayMs = 1800 } : original;
+                using var reopened = new AppConfig(directory: directory); reopened.Load();
+                Assert.Equal(expected, reopened.Preferences);
+            }
+            finally { Directory.Delete(directory, true); }
+        });
+
+    [Theory]
+    [InlineData(true, "Save settings")]
+    [InlineData(false, "Save settings")]
+    [InlineData(false, "Cancel")]
     public void ShortcutZoomOutToggleKeepsItsAmountAndOnlySavesOnRequest(bool enabled, string action)
         => WorkspaceViewTests.OnSta(() =>
         {
@@ -64,7 +96,7 @@ public class SettingsWindowTests
                 overview.TransitionTo(OverviewMode.Zooming);
                 overview.ShowSettings(zoomOnly);
                 var popup = overview.SettingsPopup!;
-                var sliders = WorkspaceViewTests.Descendants(popup).OfType<Slider>().Skip(1).ToArray();
+                var sliders = WorkspaceViewTests.Descendants(popup).OfType<Slider>().Skip(1).Take(4).ToArray();
                 sliders[0].Value = 35; sliders[1].Value = 43;
                 sliders[2].Value = 8; sliders[3].Value = 12;
                 int closings = 0;
@@ -108,7 +140,7 @@ public class SettingsWindowTests
                 WorkspaceViewTests.Render(window, "zoom-settings-popup-preview.png");
                 window.Width = 360; window.Height = 420;
                 WorkspaceViewTests.Render(window, "zoom-settings-popup-small-150-preview.png", 1.5);
-                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).ToArray();
+                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).Take(4).ToArray();
                 Assert.Equal(4, sliders.Length);
                 sliders[0].Value = 55; sliders[1].Value = 65;
                 sliders[2].Value = 15; sliders[3].Value = 22;
@@ -142,16 +174,24 @@ public class SettingsWindowTests
                 var before = File.ReadAllText(Path.Combine(directory, "config.ini"));
                 int applied = 0;
                 var window = new SettingsWindow(config, () => applied++, zoomOnly: true);
-                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).ToArray();
+                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).Take(4).ToArray();
                 sliders[0].Value = 80;
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(0, applied);
                 Assert.Contains(WorkspaceViewTests.Descendants(window).OfType<TextBlock>(), b => b.Text.Contains("must be higher"));
+                var delay = WorkspaceViewTests.Descendants(window).OfType<Slider>()
+                    .Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "Preview hover delay (milliseconds)");
+                delay.Value = 2300;
+                WorkspaceViewTests.Descendants(window).OfType<CheckBox>()
+                    .Single(b => Equals(b.Content, "Hover to preview windows (Canvas Peek)")).IsChecked = false;
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Reset zoom defaults"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(new double[] { 40, 45, 10, 13 }, sliders.Select(s => s.Value));
                 Assert.Equal(15, WorkspaceViewTests.Descendants(window).OfType<Slider>().First().Value);
+                Assert.Equal(1000, delay.Value);
+                Assert.True(WorkspaceViewTests.Descendants(window).OfType<CheckBox>()
+                    .Single(b => Equals(b.Content, "Hover to preview windows (Canvas Peek)")).IsChecked);
                 window.Close();
                 Assert.Equal(before, File.ReadAllText(Path.Combine(directory, "config.ini")));
             }
@@ -263,7 +303,7 @@ public class SettingsWindowTests
                 foreach (var name in new[] { "settings-shell-preview.png", "settings-shell-small-150-preview.png" })
                     File.Copy(Path.Combine(AppContext.BaseDirectory, name), Path.Combine(renders, name), true);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(19, boxes.Length);
+                Assert.Equal(20, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Animate navigation to apps selected with Alt+Tab or the taskbar").IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Show Windows taskbar in canvas view").IsChecked = false;

@@ -36,8 +36,10 @@ internal sealed class WindowInteractionMouseHook : IDisposable
         HookAvailable = _hook is { IsInvalid: false, IsClosed: false }
     };
 
-    public WindowInteractionMouseHook(Func<Point, bool> isSurface, Action<InteractionMouseEvent> enqueue, Action outside)
+    public WindowInteractionMouseHook(Func<Point, bool> isSurface, Action<InteractionMouseEvent> enqueue, Action outside,
+        MouseButtons initiallyHeld = MouseButtons.None)
     {
+        _held = initiallyHeld;
         _isSurface = isSurface; _enqueue = enqueue; _outside = outside;
         _callback = Callback;
         Exception? failure = null;

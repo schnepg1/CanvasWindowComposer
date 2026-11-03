@@ -5,6 +5,60 @@ namespace CanvasDesktop.Tests;
 public class CanvasPreferencesTests : IDisposable
 {
     [Fact]
+    public void CanvasPeekDefaultsOnForLegacyConfigAndIsIndependentOfCardTiers()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "EnableDetailedCardsTier=false\nEnableSimpleCardsTier=false\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.EnableCanvasPeek);
+        Assert.Equal(1000, config.CanvasPeekDelayMs);
+        foreach (bool enabled in new[] { false, true })
+        {
+            var wanted = config.Preferences with { EnableCanvasPeek = enabled, CanvasPeekDelayMs = 1700 };
+            config.SavePreferences(wanted);
+            using var reopened = new AppConfig(directory: _directory); reopened.Load();
+            Assert.Equal(wanted, reopened.Preferences);
+            Assert.Equal(enabled, reopened.EnableCanvasPeek);
+            Assert.Equal(1700, reopened.CanvasPeekDelayMs);
+            Assert.False(reopened.EnableDetailedCardsTier);
+            Assert.False(reopened.EnableSimpleCardsTier);
+        }
+    }
+
+    [Theory]
+    [InlineData("-1", 300)]
+    [InlineData("299", 300)]
+    [InlineData("300", 300)]
+    [InlineData("1234", 1234)]
+    [InlineData("3000", 3000)]
+    [InlineData("3001", 3000)]
+    [InlineData("2147483647", 3000)]
+    [InlineData("NaN", 1000)]
+    [InlineData("1.5", 1000)]
+    [InlineData("invalid", 1000)]
+    [InlineData("2147483648", 1000)]
+    public void CanvasPeekDelayClampsIntegersAndFallsBackForInvalidInput(string delay, int expected)
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "CanvasPeekDelayMs=" + delay);
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.Equal(expected, config.CanvasPeekDelayMs);
+        Assert.Equal(expected, config.Preferences.CanvasPeekDelayMs);
+    }
+
+    [Theory]
+    [InlineData(0, 300)]
+    [InlineData(4000, 3000)]
+    public void SavingCanvasPeekClampsDelayWithoutLosingOtherPreferences(int delay, int expected)
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        var wanted = config.Preferences with { EnableCanvasPeek = false, CanvasPeekDelayMs = delay, Search = false };
+        config.SavePreferences(wanted);
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.Equal(wanted with { CanvasPeekDelayMs = expected }, reopened.Preferences);
+    }
+
+    [Fact]
     public void ShortcutZoomOutDefaultsOnAndDisabledAmountSurvivesReload()
     {
         Directory.CreateDirectory(_directory);
@@ -101,6 +155,10 @@ public class CanvasPreferencesTests : IDisposable
         Assert.Equal(.45, config.OverviewCardExitZoom);
         Assert.Equal(.10, config.OverviewSimpleCardEnterZoom);
         Assert.Equal(.13, config.OverviewSimpleCardExitZoom);
+        Assert.True(config.EnableCanvasPeek);
+        Assert.Equal(1000, config.CanvasPeekDelayMs);
+        Assert.Contains(";EnableCanvasPeek=true", File.ReadAllText(Path.Combine(_directory, "config.ini")));
+        Assert.Contains(";CanvasPeekDelayMs=1000", File.ReadAllText(Path.Combine(_directory, "config.ini")));
     }
 
     [Fact]

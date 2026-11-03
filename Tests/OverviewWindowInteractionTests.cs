@@ -119,6 +119,17 @@ public class OverviewWindowInteractionTests
     }
 
     [Fact]
+    public void MiddleButtonBelongsToTheAppAndIsReleasedOnCancellation()
+    {
+        var api = new PointerApi(); var bridge = new OverviewWindowInteraction(api); bridge.Begin(Root);
+        Assert.True(bridge.Pointer(Geometry, new(-300, 250), MouseButtons.Middle, down: true));
+        Assert.True(bridge.Captured);
+        bridge.End();
+        Assert.Equal(new uint[] { 0x207, 0x208, 0x2A3 }, api.Messages.Select(m => m.Id));
+        Assert.Equal(0x10u, api.Messages[0].Flags);
+    }
+
+    [Fact]
     public void NonclientAreaDoesNotReceiveClicks()
     {
         var api = new PointerApi { Client = false }; var bridge = new OverviewWindowInteraction(api); bridge.Begin(Root);
