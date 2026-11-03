@@ -65,6 +65,8 @@ public class OverviewZoneInteractionTests
         var zone = new WorldRect { X = -1800, Y = 250, W = 900, H = 700 };
         var header = ZoneLabelLayout.Get(zone, 0, 0, 1, monitor, dpi, dpi)!.Value;
         Assert.Equal(120 + 10 * dpi, header.X);
+        Assert.Equal(150 - 34 * dpi, header.Y);
+        Assert.True(header.Y + header.Height < 150);
         Assert.True(header.Contains(header.X + 2, header.Y + 2));
         Assert.False(header.Contains(header.X, header.Y + header.Height));
         Assert.Equal(28 * dpi, header.Height);

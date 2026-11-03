@@ -104,16 +104,16 @@ public class TemporaryAreaPlacementTests
             else Assert.True(rig.Workspace.ResizeZone(edit.ZoneId, edit.Bounds));
         };
         CanvasPointer Pointer(double x, double y) => new(0, new(x, y), CanvasPointerButton.Left, CanvasModifiers.None,
-            new(area.Bounds.X, area.Bounds.Y, 1, new(0, 0, 1920, 1080)));
+            new(area.Bounds.X, area.Bounds.Y - 100, 1, new(0, 0, 1920, 1080)));
         var controller = new CanvasToolController(); controller.SetTool(tool);
         Assert.True(controller.TryBeginTool(Pointer(30, 75)));
         Assert.Equal(ZoneGestureKind.Move, tool.Gesture.Kind);
         controller.MoveTool(Pointer(230, 175)); controller.CompleteTool(Pointer(230, 175));
         Assert.Equal(before.X + 200, item.Bounds.X); Assert.Equal(before.Y + 100, item.Bounds.Y);
         area = rig.Workspace.TemporaryArea!;
-        Assert.True(controller.TryBeginTool(Pointer(0, 0)));
+        Assert.True(controller.TryBeginTool(Pointer(0, 100)));
         Assert.Equal(ZoneGestureKind.Resize, tool.Gesture.Kind);
-        controller.CompleteTool(Pointer(-100, -100));
+        controller.CompleteTool(Pointer(-100, 0));
         Assert.Equal(area.Bounds.X - 100, rig.Workspace.TemporaryArea!.Bounds.X);
         Assert.True(Assert.Single(rig.Workspace.Items).Temporary); Assert.Empty(rig.Store.Document.Items);
     }

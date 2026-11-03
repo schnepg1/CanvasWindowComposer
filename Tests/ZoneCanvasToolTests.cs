@@ -33,7 +33,8 @@ public class ZoneCanvasToolTests
         controller.TryBeginTool(Pointer(100, 200));
         Assert.Equal(ZoneGestureKind.Resize, tool.Gesture.Kind);
         controller.MoveTool(Pointer(150, 250)); controller.Cancel();
-        controller.TryBeginTool(Pointer(120, 220));
+        Assert.False(controller.TryBeginTool(Pointer(120, 220)));
+        controller.TryBeginTool(Pointer(120, 180));
         Assert.Equal(ZoneGestureKind.Move, tool.Gesture.Kind);
         controller.MoveTool(Pointer(220, 320));
         Assert.Equal(400, Assert.Single(tool.Gesture.Ghosts).X);

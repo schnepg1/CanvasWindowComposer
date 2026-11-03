@@ -23,8 +23,8 @@ internal static class ZoneLabelLayout
         double dpiX = view.DpiX, dpiY = view.DpiY;
         if (width < 40 * dpiX || x >= monitor.Width || y >= monitor.Height || x + width <= 0 || y + height <= 0) return null;
         double labelX = Math.Max(4 * dpiX, x + 10 * dpiX);
-        double labelY = Math.Max(64 * dpiY, y + 10 * dpiY);
-        if (labelY + 28 * dpiY > y + height) return null;
+        double labelY = y - 34 * dpiY;
+        if (labelY + 28 * dpiY <= 0) return null;
         return new(labelX, labelY, Math.Min(284 * dpiX, width - 16 * dpiX), 28 * dpiY);
     }
 }
