@@ -13,6 +13,9 @@ internal interface IWindowInteractionApi
     bool IsChildOf(IntPtr window, IntPtr child);
     bool IsOwnedBy(IntPtr window, IntPtr owner) => false;
     bool Post(IntPtr window, uint message, uint flags, Point point);
+    // Standard buttons can reject mouse-up when WindowFromPoint finds the
+    // covering overview. Null leaves message-driven/custom controls unchanged.
+    bool? ReleaseStandardButton(IntPtr window, uint flags, Point client, bool invoke) => null;
 }
 
 /// <summary>Maps the exact DWM destination back to its visible source frame.</summary>
@@ -84,7 +87,10 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
         if (button == MouseButtons.None && _lastMove == screen && _child == child && _lastMoveFlags == flags) return true;
         if (button is MouseButtons.XButton1 or MouseButtons.XButton2)
             flags |= (button == MouseButtons.XButton1 ? 1u : 2u) << 16;
-        if (!api.Post(child, message, flags, client)) { End(); return false; }
+        bool posted = up && button == MouseButtons.Left && (_buttons & MouseButtons.Left) != 0
+            ? api.ReleaseStandardButton(child, flags, client, invoke: true) ?? api.Post(child, message, flags, client)
+            : api.Post(child, message, flags, client);
+        if (!posted) { End(); return false; }
         if (_child != IntPtr.Zero && _child != child && !Captured) api.Post(_child, 0x2A3, 0, default);
         _child = child;
         _lastMove = button == MouseButtons.None ? screen : null;
@@ -127,8 +133,9 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
                 uint flags = ButtonFlags(buttons);
                 if (button is MouseButtons.XButton1 or MouseButtons.XButton2)
                     flags |= (button == MouseButtons.XButton1 ? 1u : 2u) << 16;
-                api.Post(child, button == MouseButtons.Left ? 0x202u : button == MouseButtons.Right ? 0x205u
-                    : button == MouseButtons.Middle ? 0x208u : 0x20Cu, flags, client);
+                if (button != MouseButtons.Left || api.ReleaseStandardButton(child, flags, client, invoke: false) == null)
+                    api.Post(child, button == MouseButtons.Left ? 0x202u : button == MouseButtons.Right ? 0x205u
+                        : button == MouseButtons.Middle ? 0x208u : 0x20Cu, flags, client);
             }
             api.Post(child, 0x2A3, 0, default); // WM_MOUSELEAVE: clear hover controls/tooltips.
         }

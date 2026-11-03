@@ -270,6 +270,23 @@ public class CanvasPeekIntegrationTests
         });
 
     [Theory]
+    [InlineData("move")]
+    [InlineData("release")]
+    [InlineData("wheel")]
+    [Trait("Category", "NativePreview")]
+    public void PointerDispatchDuringModalCreationHandsOffBeforeReclaimingEscape(string gesture)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var h = new Rig(); Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
+            h.Overview.BeginPeekInteraction(); var point = h.ContentPoint;
+            h.Pointer.Available = false;
+            h.Dispatch(new(point, gesture == "release" ? MouseButtons.Left : MouseButtons.None, false,
+                gesture == "release", Wheel: gesture == "wheel", Delta: -120));
+            Assert.Null(h.Overview.PeekWindow); Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode);
+            Assert.False(h.Input.EscHotkeyEnabled);
+        });
+
+    [Theory]
     [InlineData(MouseButtons.Left)]
     [InlineData(MouseButtons.Right)]
     [InlineData(MouseButtons.Middle)]
@@ -341,13 +358,25 @@ public class CanvasPeekIntegrationTests
         => WorkspaceViewTests.OnSta(() =>
         {
             using var h = new Rig(nativeInteraction: true);
-            using var button = new Button { Dock = DockStyle.Fill, Text = "Run next agent step" };
+            using var button = new Button { Dock = DockStyle.Fill, Text = "Run next agent step",
+                BackColor = Color.FromArgb(30, 65, 80), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             h.Source.Controls.Add(button); h.Source.PerformLayout();
             int clicked = 0; button.Click += (_, _) => clicked++;
             var bounds = h.Source.Bounds; var camera = h.Overview.ViewCamera;
             var foreground = PInvoke.GetForegroundWindow();
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
             Assert.Equal(foreground, PInvoke.GetForegroundWindow());
+            var rendered = System.Diagnostics.Stopwatch.StartNew();
+            while (rendered.Elapsed < TimeSpan.FromMilliseconds(200)) { Application.DoEvents(); Thread.Yield(); }
+            var peek = h.Overview.PeekWindow!;
+            using (var image = new Bitmap(peek.Width, peek.Height))
+            {
+                using var graphics = Graphics.FromImage(image);
+                graphics.CopyFromScreen(peek.Location, Point.Empty, image.Size);
+                var folder = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TestResults");
+                Directory.CreateDirectory(folder);
+                image.Save(Path.Combine(folder, "canvas-peek-native-content.png"));
+            }
             h.Overview.BeginPeekInteraction();
             Assert.True(h.Overview.PeekWorking);
             Assert.Equal((HWND)h.Source.Handle, PInvoke.GetForegroundWindow());
@@ -358,7 +387,13 @@ public class CanvasPeekIntegrationTests
             { Application.DoEvents(); Thread.Yield(); }
             Assert.Equal(1, clicked);
             Assert.Equal(bounds, h.Source.Bounds); Assert.Equal(camera, h.Overview.ViewCamera);
+            h.Dispatch(new(h.ContentPoint, MouseButtons.Left, true, false));
+            h.Dispatch(new(new(peek.Left - 20, h.ContentPoint.Y), MouseButtons.Left, false, true));
+            Application.DoEvents();
+            Assert.Equal(1, clicked); // Dragging out must not invoke the button.
+            h.Dispatch(new(h.ContentPoint, MouseButtons.Left, true, false));
             h.Return();
+            Application.DoEvents(); Assert.Equal(1, clicked); // Cancelling must not invoke either.
             Assert.Equal(bounds, h.Source.Bounds); Assert.False(h.Overview.WindowInteractionActive);
         });
 

@@ -65,6 +65,13 @@ view. A successful message post does not guarantee that an application handles
 it. Browser/YouTube compatibility still needs manual validation on the user's
 browser; native control and input-routing tests do not establish that support.
 
+Standard Win32/WinForms buttons use their documented `BM_CLICK` action after a
+matched left-button release inside the original child. Their native press is
+released outside the child first, preventing duplicate clicks when the source
+is also physically visible. Dragging away or cancelling only releases the press.
+This accommodates controls that otherwise reject clicks because `WindowFromPoint`
+sees the covering overview; custom and message-driven controls retain pointer routing.
+
 ## Performance
 
 Rendering still uses the existing live DWM thumbnail. Interaction adds no image

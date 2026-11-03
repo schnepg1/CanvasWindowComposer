@@ -164,12 +164,7 @@ internal sealed partial class OverviewManager
         long now = _gestureClock.TickCount64;
         if (_peekWindow is { } window)
         {
-            if (PeekWorking && (!PeekIdentityCurrent || !_interactionApi.IsAvailable(_peekSource)))
-            {
-                if (TryUsePeekForeground(_win32.GetForegroundWindow())) return;
-                if (PeekRootCurrent && (_win32.GetWindowStyle(_peekRoot) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0)
-                { HandOffPeekToDesktop(); return; }
-            }
+            if (RecoverUnavailablePeekSource()) return;
             if (!PeekIdentityCurrent) { CloseWindowPeek(); return; }
             if (window.Live && (_wm.UsesCachedPreview(_peekSource) || !_interactionApi.IsAvailable(_peekSource)))
             { CloseWindowPeek(); return; }
@@ -242,6 +237,7 @@ internal sealed partial class OverviewManager
             return true;
         }
         if (!captured && window.RouteChrome(input.Screen, input.Button, input.Down, input.Up)) return true;
+        if (RecoverUnavailablePeekSource()) return true;
         if (!PeekIdentityCurrent) { CloseWindowPeek(); return true; }
         var native = _win32.GetWindowRect(_peekSource);
         var crop = PeekSourceCrop();
@@ -253,6 +249,7 @@ internal sealed partial class OverviewManager
             input.Down, input.Up, input.Down && input.Clicks > 1, modifiers);
         if (!_windowInteraction.Active)
         {
+            if (RecoverUnavailablePeekSource()) return true;
             EndWindowInteraction();
             if (_peekWindow == window) window.SetWorking(false, "This app rejected interaction. Choose Open app.");
             FocusOverview();
@@ -294,6 +291,16 @@ internal sealed partial class OverviewManager
     {
         CloseWindowPeek();
         TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+    }
+
+    private bool RecoverUnavailablePeekSource()
+    {
+        if (!PeekWorking || (PeekIdentityCurrent && _interactionApi.IsAvailable(_peekSource))) return false;
+        if (TryUsePeekForeground(_win32.GetForegroundWindow())) return true;
+        if (PeekRootCurrent && (_win32.GetWindowStyle(_peekRoot) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0)
+            HandOffPeekToDesktop();
+        else CloseWindowPeek();
+        return true;
     }
 
     private void ResetPeekHover()

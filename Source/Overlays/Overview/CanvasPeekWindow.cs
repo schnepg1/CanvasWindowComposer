@@ -60,6 +60,7 @@ internal sealed class CanvasPeekWindow : Form
             button.ForeColor = ForeColor;
             button.FlatAppearance.BorderColor = Color.FromArgb(65, 78, 99);
             button.Cursor = Cursors.Hand;
+            button.Visible = false;
             Controls.Add(button);
         }
         _work.Text = _work.AccessibleName = "Work here";
@@ -144,6 +145,7 @@ internal sealed class CanvasPeekWindow : Form
         _open.SetBounds(_return.Left - pad - buttonWidth, _return.Top, buttonWidth, buttonHeight);
         _work.SetBounds(_open.Left - pad - buttonWidth, _return.Top, buttonWidth, buttonHeight);
         foreach (var button in new[] { _work, _open, _return }) button.Visible = !_animating;
+        _work.Visible = !_animating && Live && !Working;
         _work.Enabled = Live && !Working;
         _return.Enabled = !ShowingOwnedDialog;
         ContentBounds = CanvasPeekLayout.Fit(_sourceCrop.Size,

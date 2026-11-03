@@ -130,6 +130,20 @@ public class OverviewWindowInteractionTests
     }
 
     [Fact]
+    public void ButtonAdapterInvokesOnlyAMatchedReleaseAndCancellationNeverClicks()
+    {
+        var api = new PointerApi { AdaptButtons = true };
+        var bridge = new OverviewWindowInteraction(api); bridge.Begin(Root);
+        bridge.Pointer(Geometry, new(-300, 250), MouseButtons.Left, down: true);
+        bridge.Pointer(Geometry, new(-300, 250), MouseButtons.Left, up: true);
+        Assert.True(Assert.Single(api.ButtonReleases).Invoke);
+        bridge.Pointer(Geometry, new(-300, 250), MouseButtons.Left, down: true);
+        bridge.End();
+        Assert.False(api.ButtonReleases[1].Invoke);
+        Assert.DoesNotContain(api.Messages, m => m.Id == 0x202);
+    }
+
+    [Fact]
     public void NonclientAreaDoesNotReceiveClicks()
     {
         var api = new PointerApi { Client = false }; var bridge = new OverviewWindowInteraction(api); bridge.Begin(Root);
@@ -142,6 +156,8 @@ public class OverviewWindowInteractionTests
         public bool Available = true, Activated = true, Related = true, Client = true, Accept = true;
         public IntPtr Child = (IntPtr)11;
         public Dictionary<IntPtr, IntPtr> Owners = new();
+        public bool AdaptButtons;
+        public List<(IntPtr Window, Point Client, bool Invoke)> ButtonReleases = [];
         public List<(IntPtr Window, uint Id, uint Flags, Point Point)> Messages = [];
         public bool IsAvailable(IntPtr window) => Available;
         public bool Activate(IntPtr window) => Activated;
@@ -158,5 +174,10 @@ public class OverviewWindowInteractionTests
         }
         public bool Post(IntPtr window, uint message, uint flags, Point point)
         { Messages.Add((window, message, flags, point)); return Accept; }
+        public bool? ReleaseStandardButton(IntPtr window, uint flags, Point client, bool invoke)
+        {
+            if (!AdaptButtons) return null;
+            ButtonReleases.Add((window, client, invoke)); return Accept;
+        }
     }
 }
