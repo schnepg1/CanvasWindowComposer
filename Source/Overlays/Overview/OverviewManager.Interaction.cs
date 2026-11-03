@@ -90,6 +90,11 @@ internal sealed partial class OverviewManager
     {
         if (!CanInteract(pass, window)) return false;
         CancelInteraction();
+        return StartWindowInteraction(pass, window);
+    }
+
+    private bool StartWindowInteraction(OverviewOverlay pass, IntPtr window)
+    {
         _interactionError = null;
         _annotationTool?.SetMode(AnnotationMode.Select);
         _zoneTool.Cancel();
@@ -107,12 +112,21 @@ internal sealed partial class OverviewManager
         }
         try
         {
+            // An armed Interact hook may outlive its previous target. Rebuild
+            // its surface set for the newly created peek and its native buttons.
+            if (PeekWorking && _interactionMouseHook != null) StopInteractionMouseHook();
             if (_interactionMouseHook == null)
             {
                 long generation = _interactionGeneration;
                 var surfaces = new HashSet<IntPtr>(_passes.ConvertAll(p => p.Handle));
+                if (_peekWindow != null) surfaces.UnionWith(_peekWindow.InputHandles);
                 _interactionMouseHook = new(point => surfaces.Contains(PInvoke.WindowFromPoint(point)), QueueInteractionMouse,
-                    () => pass.BeginInvoke(() => { if (generation == _interactionGeneration) EndWindowInteraction(); }));
+                    () => pass.BeginInvoke(() =>
+                    {
+                        if (generation != _interactionGeneration) return;
+                        if (PeekWorking) CloseWindowPeek();
+                        else EndWindowInteraction();
+                    }), initiallyHeld: _peekConsumeUp ? MouseButtons.Left : MouseButtons.None);
             }
         }
         catch (Exception ex)
@@ -124,6 +138,7 @@ internal sealed partial class OverviewManager
             return false;
         }
         RaiseOverviewPassesAboveTopmostWindows();
+        _peekWindow?.RaiseWithoutActivation();
         RefreshToolPreview();
         return true;
     }
@@ -143,33 +158,53 @@ internal sealed partial class OverviewManager
     {
         // Keep one input hook while Interact is armed. Switching target or
         // beginning a canvas drag must not discard already queued button-up events.
-        if (!InteractionRoutingEnabled)
-        {
-            _interactionMouseHook?.Dispose(); _interactionMouseHook = null;
-            lock (_interactionEventGate)
-            {
-                _interactionEvents.Clear(); _pendingInteractionMove = null; _interactionGeneration++;
-                _interactionDispatchQueued = false;
-            }
-        }
+        if (!InteractionRoutingEnabled || PeekWorking || _peekClosing)
+            StopInteractionMouseHook();
         bool ended = _windowInteraction.End();
+        if (PeekWorking)
+        {
+            _peekWindow!.SetWorking(false);
+            if (!_disposed && CurrentMode == OverviewMode.Zooming) _input.EnableEscHotkey();
+        }
         var capture = _interactionCapture;
         _interactionCapture = null;
         if (capture != null) capture.Capture = false;
-        if (!ended) return false;
         SetInteractionStyle(false);
+        if (!ended) return false;
         if (!_disposed) RefreshToolPreview();
         if (focus) FocusOverview();
         return true;
     }
 
+    private void StopInteractionMouseHook()
+    {
+        _interactionMouseHook?.Dispose(); _interactionMouseHook = null;
+        lock (_interactionEventGate)
+        {
+            _interactionEvents.Clear(); _pendingInteractionMove = null; _interactionGeneration++;
+            _interactionDispatchQueued = false;
+        }
+    }
+
     private void OnInteractionWindowLost(IntPtr window)
     {
+        if (PeekWorking && window == _peekSource && window != _peekRoot)
+        {
+            if (!TryUsePeekForeground(_peekRoot)) HandOffPeekToDesktop();
+            return;
+        }
+        if (window == _peekSource || window == _peekCard || window == _peekRoot) CloseWindowPeek();
         if (window == _windowInteraction.Window) EndWindowInteraction();
     }
 
     private void OnInteractionForegroundChanged(IntPtr window)
     {
+        if (TryUsePeekForeground(window)) return;
+        if (PeekWorking && PeekRootCurrent && (window == _peekRoot || _interactionApi.IsOwnedBy(window, _peekRoot)))
+        { HandOffPeekToDesktop(); return; }
+        if (_peekWindow != null && window != _peekSource && !_passes.Exists(p => p.Handle == window)
+            && !new HashSet<IntPtr>(_peekWindow.InputHandles).Contains(window))
+        { CloseWindowPeek(); return; }
         if (_windowInteraction.Active && window != _windowInteraction.Window)
             EndWindowInteraction();
     }
@@ -276,6 +311,7 @@ internal sealed partial class OverviewManager
                     { _interactionDispatchQueued = false; return; }
                     next = _interactionEvents.Dequeue();
                 }
+                if (PeekWorking && RoutePeekMouse(next)) continue;
                 var pass = _passes.Find(p => p.Screen.Bounds.Contains(next.Screen)) ?? _interactionCapture ?? _passes[0];
                 int x = next.Screen.X - pass.OriginX, y = next.Screen.Y - pass.OriginY;
                 _dispatchInteractionKeys = next.Modifiers;

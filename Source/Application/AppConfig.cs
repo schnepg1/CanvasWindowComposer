@@ -46,6 +46,8 @@ internal interface IAppConfig
     bool EnableLivePreviewsTier => true;
     bool EnableDetailedCardsTier => true;
     bool EnableSimpleCardsTier => true;
+    bool EnableCanvasPeek => true;
+    int CanvasPeekDelayMs => AppConfig.DefaultCanvasPeekDelayMs;
     double OverviewCardEnterZoom => OverviewZoomDefaults.CardEnter;
     double OverviewCardExitZoom => OverviewZoomDefaults.CardExit;
     double OverviewSimpleCardEnterZoom => OverviewZoomDefaults.SimpleCardEnter;
@@ -58,6 +60,10 @@ internal interface IAppConfig
 /// </summary>
 internal sealed class AppConfig : IAppConfig, IDisposable
 {
+    internal const int DefaultCanvasPeekDelayMs = 1000;
+    internal const int MinimumCanvasPeekDelayMs = 300;
+    internal const int MaximumCanvasPeekDelayMs = 3000;
+
     public static readonly string ConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "CanvasWindowComposer");
@@ -95,6 +101,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool EnableLivePreviewsTier { get; private set; } = true;
     public bool EnableDetailedCardsTier { get; private set; } = true;
     public bool EnableSimpleCardsTier { get; private set; } = true;
+    public bool EnableCanvasPeek { get; private set; } = true;
+    public int CanvasPeekDelayMs { get; private set; } = DefaultCanvasPeekDelayMs;
     public double OverviewCardEnterZoom { get; private set; } = OverviewZoomDefaults.CardEnter;
     public double OverviewCardExitZoom { get; private set; } = OverviewZoomDefaults.CardExit;
     public double OverviewSimpleCardEnterZoom { get; private set; } = OverviewZoomDefaults.SimpleCardEnter;
@@ -143,6 +151,12 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             EnableLivePreviewsTier = GetBool(values, "EnableLivePreviewsTier", defaultValue: true);
             EnableDetailedCardsTier = GetBool(values, "EnableDetailedCardsTier", defaultValue: true);
             EnableSimpleCardsTier = GetBool(values, "EnableSimpleCardsTier", defaultValue: true);
+            EnableCanvasPeek = GetBool(values, "EnableCanvasPeek", defaultValue: true);
+            CanvasPeekDelayMs = values.TryGetValue("CanvasPeekDelayMs", out var delay)
+                && int.TryParse(delay, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out int parsedDelay)
+                ? Math.Clamp(parsedDelay, MinimumCanvasPeekDelayMs, MaximumCanvasPeekDelayMs)
+                : DefaultCanvasPeekDelayMs;
             OverviewCardEnterZoom = GetDouble(values, "OverviewCardEnterZoom", defaultValue: OverviewZoomDefaults.CardEnter, min: 0.05, max: 2.0);
             OverviewCardExitZoom = GetDouble(values, "OverviewCardExitZoom", defaultValue: OverviewZoomDefaults.CardExit, min: 0.05, max: 2.0);
             OverviewSimpleCardEnterZoom = GetDouble(values, "OverviewSimpleCardEnterZoom", defaultValue: OverviewZoomDefaults.SimpleCardEnter, min: 0.01, max: 1.0);
@@ -190,7 +204,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 !DisableMouseCurve, ShowScreenFixedWindowsDuringPan, !DisableGreedyDraw,
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
-                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount);
+                OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
+                EnableCanvasPeek, CanvasPeekDelayMs);
         }
     }
 
@@ -221,6 +236,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["EnableLivePreviewsTier"] = preferences.LivePreviewsTier.ToString().ToLowerInvariant(),
                 ["EnableDetailedCardsTier"] = preferences.DetailedCardsTier.ToString().ToLowerInvariant(),
                 ["EnableSimpleCardsTier"] = preferences.SimpleCardsTier.ToString().ToLowerInvariant(),
+                ["EnableCanvasPeek"] = preferences.EnableCanvasPeek.ToString().ToLowerInvariant(),
+                ["CanvasPeekDelayMs"] = Math.Clamp(preferences.CanvasPeekDelayMs, MinimumCanvasPeekDelayMs, MaximumCanvasPeekDelayMs)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["OverviewCardEnterZoom"] = preferences.CardEnterZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["OverviewCardExitZoom"] = preferences.CardExitZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["OverviewSimpleCardEnterZoom"] = preferences.SimpleCardEnterZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
@@ -359,6 +377,11 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ;EnableDetailedCardsTier=true
 ;EnableSimpleCardsTier=true
 
+; Hover over a zoomed-out window to preview it without moving the camera
+; Independent of overview card tiers; delay in milliseconds (300..3000)
+;EnableCanvasPeek=true
+;CanvasPeekDelayMs=1000
+
 ; Overview tier zoom thresholds
 ;OverviewCardEnterZoom=0.40
 ;OverviewCardExitZoom=0.45
@@ -466,4 +489,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     double SimpleCardEnterZoom = OverviewZoomDefaults.SimpleCardEnter, double SimpleCardExitZoom = OverviewZoomDefaults.SimpleCardExit,
     bool ShowTaskbarInCanvas = true, bool AnimateWindowNavigation = true,
     bool DesktopPanMomentum = true, bool CanvasPanMomentum = true,
-    bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount);
+    bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount,
+    bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs);

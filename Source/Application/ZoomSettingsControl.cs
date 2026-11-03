@@ -8,8 +8,8 @@ namespace CanvasDesktop;
 /// <summary>A detached zoom-policy editor shared by Settings and the canvas popup.</summary>
 internal sealed class ZoomSettingsControl : UserControl
 {
-    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut;
-    private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount;
+    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek;
+    private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay;
 
     public ZoomSettingsControl(CanvasPreferences preferences)
     {
@@ -33,6 +33,28 @@ internal sealed class ZoomSettingsControl : UserControl
         _simpleEnter = Threshold("Simple cards · zoom out below", preferences.SimpleCardEnterZoom, 1, 100);
         _simpleExit = Threshold("Detailed cards · zoom in above", preferences.SimpleCardExitZoom, 1, 100);
         Hint("Separate zoom-out and zoom-in thresholds prevent flickering between card styles. Zoom-in must be higher than zoom-out.");
+        _peek = Option("Hover to preview windows (Canvas Peek)", preferences.EnableCanvasPeek);
+        var delayHeader = new DockPanel();
+        var delayReadout = new TextBlock { Width = 72, TextAlignment = TextAlignment.Right, FontWeight = FontWeights.SemiBold };
+        DockPanel.SetDock(delayReadout, Dock.Right);
+        delayHeader.Children.Add(delayReadout);
+        delayHeader.Children.Add(new TextBlock { Text = "Preview hover delay", TextWrapping = TextWrapping.Wrap });
+        body.Children.Add(delayHeader);
+        _peekDelay = new Slider
+        {
+            Minimum = AppConfig.MinimumCanvasPeekDelayMs, Maximum = AppConfig.MaximumCanvasPeekDelayMs,
+            Value = preferences.CanvasPeekDelayMs, TickFrequency = 100, IsSnapToTickEnabled = true,
+            SmallChange = 100, LargeChange = 500, Margin = new Thickness(0, 4, 0, 12),
+            AutoToolTipPlacement = System.Windows.Controls.Primitives.AutoToolTipPlacement.TopLeft,
+            AutoToolTipPrecision = 0, IsEnabled = _peek.IsChecked == true
+        };
+        AutomationProperties.SetName(_peekDelay, "Preview hover delay (milliseconds)");
+        delayReadout.Text = $"{_peekDelay.Value:0} ms";
+        _peekDelay.ValueChanged += (_, _) => delayReadout.Text = $"{_peekDelay.Value:0} ms";
+        _peek.Checked += (_, _) => _peekDelay.IsEnabled = true;
+        _peek.Unchecked += (_, _) => _peekDelay.IsEnabled = false;
+        body.Children.Add(_peekDelay);
+        Hint("Peek works independently of card styles, including small live windows. Work here keeps the preview open for input; Return leaves your camera unchanged.");
         body.Children.Add(ZoneTheme.Button("Reset zoom defaults", () =>
         {
             _shortcutZoomOut.IsChecked = true;
@@ -42,6 +64,8 @@ internal sealed class ZoomSettingsControl : UserControl
             _cardExit.Value = OverviewZoomDefaults.CardExit * 100;
             _simpleEnter.Value = OverviewZoomDefaults.SimpleCardEnter * 100;
             _simpleExit.Value = OverviewZoomDefaults.SimpleCardExit * 100;
+            _peek.IsChecked = true;
+            _peekDelay.Value = AppConfig.DefaultCanvasPeekDelayMs;
         }));
 
         void Hint(string text) => body.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap,
@@ -87,7 +111,8 @@ internal sealed class ZoomSettingsControl : UserControl
             ShortcutZoomOut = _shortcutZoomOut.IsChecked == true, ShortcutZoomOutAmount = _shortcutAmount.Value / 100,
             SimpleCardsTier = _simple.IsChecked == true, CardEnterZoom = _cardEnter.Value / 100,
             CardExitZoom = _cardExit.Value / 100, SimpleCardEnterZoom = _simpleEnter.Value / 100,
-            SimpleCardExitZoom = _simpleExit.Value / 100 };
+            SimpleCardExitZoom = _simpleExit.Value / 100,
+            EnableCanvasPeek = _peek.IsChecked == true, CanvasPeekDelayMs = (int)Math.Round(_peekDelay.Value) };
         return true;
     }
 }

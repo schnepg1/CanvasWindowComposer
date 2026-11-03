@@ -87,7 +87,7 @@ public class WindowDiagnosticHistoryTests : IDisposable
             DateTime now = Epoch;
             int captures = 0;
             using var rolling = new RollingWindowDiagnostics(store, () => new { Number = ++captures },
-                intervalMilliseconds: 50, native: () => new { TestNative = true }, utcNow: () => now);
+                intervalMilliseconds: 50, native: () => new { TestNative = true }, utcNow: () => now.AddTicks(captures));
             rolling.Start();
             PumpUntil(() => Directory.Exists(Samples) && Directory.GetFiles(Samples, "*.json.gz").Length >= 2);
             now = Epoch.AddMinutes(2);

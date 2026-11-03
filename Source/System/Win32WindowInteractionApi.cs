@@ -18,6 +18,19 @@ internal sealed class Win32WindowInteractionApi : IWindowInteractionApi
     public bool IsChildOf(IntPtr window, IntPtr child) => child != IntPtr.Zero
         && (child == window || PInvoke.IsChild((HWND)window, (HWND)child));
 
+    public bool IsOwnedBy(IntPtr window, IntPtr owner)
+    {
+        if (window == IntPtr.Zero || owner == IntPtr.Zero || window == owner) return false;
+        var next = (HWND)window;
+        for (int depth = 0; depth < 32; depth++)
+        {
+            next = PInvoke.GetWindow(next, GET_WINDOW_CMD.GW_OWNER);
+            if (next == HWND.Null) return false;
+            if (next == (HWND)owner) return true;
+        }
+        return false;
+    }
+
     public bool TryToClient(IntPtr window, Point screen, out Point client)
     {
         var point = new System.Drawing.Point(screen.X, screen.Y);
@@ -53,5 +66,23 @@ internal sealed class Win32WindowInteractionApi : IWindowInteractionApi
         if (point.X is < short.MinValue or > short.MaxValue || point.Y is < short.MinValue or > short.MaxValue) return false;
         int packed = (ushort)point.X | ((ushort)point.Y << 16);
         return PInvoke.PostMessage((HWND)window, message, (WPARAM)flags, (LPARAM)packed);
+    }
+
+    public bool? ReleaseStandardButton(IntPtr window, uint flags, Point client, bool invoke)
+    {
+        Span<char> buffer = stackalloc char[256];
+        int length = PInvoke.GetClassName((HWND)window, buffer);
+        var name = buffer[..Math.Max(0, length)];
+        if (!name.Equals("Button", StringComparison.OrdinalIgnoreCase)
+            && !name.StartsWith("WindowsForms10.BUTTON.", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!PInvoke.GetClientRect((HWND)window, out var rect)) return false;
+        bool inside = client.X >= rect.left && client.X < rect.right && client.Y >= rect.top && client.Y < rect.bottom;
+        // Release native capture outside the button first, so the original up
+        // cannot also click when the source happens to be physically visible.
+        // Then use its documented action, independent of covering HWNDs. Never
+        // invoke on cancellation or on a drag released outside the original child.
+        if (!Post(window, 0x202, flags, new(short.MinValue, short.MinValue))) return false;
+        return !invoke || !inside || !PInvoke.IsWindowEnabled((HWND)window)
+            || PInvoke.PostMessage((HWND)window, 0xF5, default, default); // BM_CLICK
     }
 }

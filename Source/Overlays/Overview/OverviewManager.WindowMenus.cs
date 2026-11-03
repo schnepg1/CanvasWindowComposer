@@ -23,6 +23,7 @@ internal sealed partial class OverviewManager
         {
             PInvoke.SetForegroundWindow((HWND)pass.Handle);
             _activeCardMenu = card.ContextMenuStrip; // Borrowed; the card owns disposal.
+            if (_activeCardMenu != null) AddWindowPeekCommand(_activeCardMenu, pass, window, borrowed: true);
             card.ShowContextMenu(pass, location);
         }
         else if (_placeholderWorkspace?.GetWindowContextItem(window) is { } id)
@@ -30,6 +31,7 @@ internal sealed partial class OverviewManager
             _windowContextMenu?.Dispose();
             _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
             AddWindowInteractionCommand(_windowContextMenu, pass, window);
+            AddWindowPeekCommand(_windowContextMenu, pass, window);
             PInvoke.SetForegroundWindow((HWND)pass.Handle);
             _windowContextMenu.Show(pass, location);
         }
@@ -66,8 +68,30 @@ internal sealed partial class OverviewManager
             foreach (var entry in _windows.Windows)
                 if (entry.HWnd == window) { GoToWindow(window, entry.World); break; }
         });
+        AddWindowPeekCommand(menu, pass, window);
         PInvoke.SetForegroundWindow((HWND)pass.Handle);
         menu.Show(pass, location);
+    }
+
+    internal void AddWindowPeekCommand(ContextMenuStrip menu, OverviewOverlay pass, IntPtr window, bool borrowed = false)
+    {
+        if (!_appConfig.EnableCanvasPeek || !TryResolvePeekSource(window, out _, out _)) return;
+        var peek = new ToolStripMenuItem("Preview window (Canvas Peek)");
+        peek.Click += (_, _) => pass.BeginInvoke(() =>
+        {
+            if (!_disposed && CurrentMode == OverviewMode.Zooming) ShowWindowPeek(pass, window);
+        });
+        menu.Items.Insert(0, peek);
+        if (borrowed)
+        {
+            void Remove(object? sender, ToolStripDropDownClosedEventArgs args)
+            {
+                menu.Closed -= Remove;
+                menu.Items.Remove(peek);
+                peek.Dispose();
+            }
+            menu.Closed += Remove;
+        }
     }
 
     public bool CloseActiveMenus()

@@ -21,6 +21,8 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool EnableLivePreviewsTier { get; set; } = true;
     public bool EnableDetailedCardsTier { get; set; } = true;
     public bool EnableSimpleCardsTier { get; set; } = true;
+    public bool EnableCanvasPeek { get; set; } = true;
+    public int CanvasPeekDelayMs { get; set; } = AppConfig.DefaultCanvasPeekDelayMs;
     public double OverviewCardEnterZoom { get; set; } = OverviewZoomDefaults.CardEnter;
     public double OverviewCardExitZoom { get; set; } = OverviewZoomDefaults.CardExit;
     public double OverviewSimpleCardEnterZoom { get; set; } = OverviewZoomDefaults.SimpleCardEnter;

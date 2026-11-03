@@ -104,6 +104,21 @@ public class WindowInteractionNativeTests
         });
 
     [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void OwnedWindowDetectionAcceptsNestedDialogsButRejectsUnrelatedWindows()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var root = new Form(); using var child = new Form(); using var nested = new Form(); using var other = new Form();
+            root.Show(); child.Show(root); nested.Show(child); other.Show();
+            var api = new Win32WindowInteractionApi();
+            Assert.True(api.IsOwnedBy(child.Handle, root.Handle));
+            Assert.True(api.IsOwnedBy(nested.Handle, child.Handle));
+            Assert.True(api.IsOwnedBy(nested.Handle, root.Handle));
+            Assert.False(api.IsOwnedBy(other.Handle, root.Handle));
+            Assert.False(api.IsOwnedBy(root.Handle, root.Handle));
+        });
+
+    [Fact]
     public void UnrepresentableMessageCoordinatesAreRejected()
     {
         var api = new Win32WindowInteractionApi();

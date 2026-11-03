@@ -14,6 +14,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Inertia** — Fling to keep sliding, smooth deceleration
 - **Zoom** — Pinch, Ctrl+scroll, or use + / - in the overview
 - **Interact at any live-thumbnail zoom** — Right-click a live window and choose **Interact with window** to use its mouse controls, typing, and keyboard shortcuts. **Esc** returns to canvas navigation. Experimental; see [window interaction](Docs/window-interaction.md).
+- **Canvas Peek** — Hover a zoomed-out window or running-app card for a readable live preview. Choose **Work here** for a quick reply, then **Return** to the unchanged overview. Hover delay and enable switch are in Zoom settings. See [Canvas Peek](Docs/canvas-peek.md).
 - **Fuzzy search** — Alt+S to find and jump to any window
 - **Minimap** — Click or drag to navigate; right-click the minimap or use the tray menu to keep it visible
 - **Virtual desktops** — Independent canvas per desktop
@@ -47,6 +48,8 @@ Choose **Arrange** to move items or **Interact** to use a live app on the canvas
 | Shift + scroll in overview | Pan horizontally |
 | Pinch in overview | Zoom around the pointer (Windows precision touchpad) |
 | Right-click a live thumbnail > Interact with window | Use the app at the current zoom, with mouse and real keyboard focus |
+| Hover a window below 80% zoom | Expand a passive Canvas Peek after the configured delay, independently of card tiers |
+| Work here / Return in Canvas Peek | Use the expanded window / return to the same canvas position and zoom |
 | Esc while interacting | Return to canvas navigation, keeping the overview open |
 | Scroll, Alt + scroll, or + / - in overview | Zoom around the pointer |
 | Alt + S | Fuzzy window search |
@@ -84,6 +87,8 @@ Right-click a saved window or its overview card and choose **Exclude from auto-m
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
 | `EnableShortcutZoomOut` | `true` | Zoom out immediately when Alt+Q opens canvas view; toggle in the zoom settings popup |
 | `ShortcutZoomOutAmount` | `0.15` | Fraction to reduce the current zoom by (0–0.80); adjust with the zoom popup slider. 0.15 changes 100% zoom to 85% |
+| `EnableCanvasPeek` | `true` | Enable readable hover previews of zoomed-out running windows, including detailed/simple cards |
+| `CanvasPeekDelayMs` | `1000` | Stationary hover delay in milliseconds (300–3000), adjustable in Zoom settings |
 | `LowQualityMode` | `false` | Simple grid without nebula/decorations; cached previews or title cards during pan/zoom/window dragging. Change through Settings → Rendering for immediate application |
 | `ShowTaskbarInCanvas` | `true` | Keep the real Windows taskbar visible and clickable while panning and zooming. Toggle in Settings > Rendering; applies immediately. Disable Windows taskbar auto-hide for permanent visibility |
 | `AnimateWindowNavigation` | `true` | Animate app selection from Alt+Tab or the taskbar within Canvas view. Disable in Settings > Interaction for an immediate jump. Applies immediately; Windows animation preferences are respected |

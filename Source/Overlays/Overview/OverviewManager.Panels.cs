@@ -23,6 +23,7 @@ internal sealed partial class OverviewManager
     private void RaiseCanvasPanels()
     {
         if (_disposed) return;
+        _peekWindow?.RaiseWithoutActivation();
         _backpack?.RaiseWithoutActivation();
         _temporaryDrawer?.RaiseWithoutActivation();
     }
