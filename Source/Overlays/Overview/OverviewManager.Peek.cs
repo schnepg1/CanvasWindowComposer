@@ -90,7 +90,7 @@ internal sealed partial class OverviewManager
 
     private bool PeekIdentityCurrent => PeekRootCurrent && _peekSource != IntPtr.Zero && _win32.IsWindowVisible(_peekSource)
         && _win32.GetWindowProcessId(_peekSource) == _peekPid
-        && (_peekSource == _peekRoot || PInvoke.GetAncestor((HWND)_peekSource, GET_ANCESTOR_FLAGS.GA_ROOTOWNER) == (HWND)_peekRoot);
+        && (_peekSource == _peekRoot || _interactionApi.IsOwnedBy(_peekSource, _peekRoot));
 
     internal bool ShowWindowPeek(OverviewOverlay pass, IntPtr card)
     {
@@ -231,6 +231,8 @@ internal sealed partial class OverviewManager
             return true;
         }
         bool captured = _windowInteraction.Captured;
+        if (!captured && window.ChromeCaptured)
+            return window.RouteChrome(input.Screen, input.Button, input.Down, input.Up);
         if (!captured && !window.Bounds.Contains(input.Screen))
         {
             // Working peeks remain pinned, but canvas clicks explicitly leave
@@ -274,7 +276,7 @@ internal sealed partial class OverviewManager
         if (!PeekWorking || !PeekRootCurrent || window == IntPtr.Zero || !_win32.IsWindowVisible(window)
             || _win32.GetWindowProcessId(window) != _peekPid || !_interactionApi.IsAvailable(window)) return false;
         if (window == _peekSource) return true;
-        if (window != _peekRoot && PInvoke.GetAncestor((HWND)window, GET_ANCESTOR_FLAGS.GA_ROOTOWNER) != (HWND)_peekRoot) return false;
+        if (window != _peekRoot && !_interactionApi.IsOwnedBy(window, _peekRoot)) return false;
         _peekSource = window;
         if (!_peekWindow!.ChangeSource(window, PeekSourceCrop(), _win32.GetWindowTitle(window), window != _peekRoot)
             || !_windowInteraction.Begin(window))
@@ -327,7 +329,7 @@ internal sealed partial class OverviewManager
                 _thumbnails.Reconcile();
                 RefreshToolPreview();
             }
-            if (focus && !_disposed) FocusOverview();
+            if (focus && window != null && !_disposed) FocusOverview();
         }
         finally { _peekClosing = false; }
         return window != null;

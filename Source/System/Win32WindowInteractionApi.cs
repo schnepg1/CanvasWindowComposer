@@ -18,6 +18,19 @@ internal sealed class Win32WindowInteractionApi : IWindowInteractionApi
     public bool IsChildOf(IntPtr window, IntPtr child) => child != IntPtr.Zero
         && (child == window || PInvoke.IsChild((HWND)window, (HWND)child));
 
+    public bool IsOwnedBy(IntPtr window, IntPtr owner)
+    {
+        if (window == IntPtr.Zero || owner == IntPtr.Zero || window == owner) return false;
+        var next = (HWND)window;
+        for (int depth = 0; depth < 32; depth++)
+        {
+            next = PInvoke.GetWindow(next, GET_WINDOW_CMD.GW_OWNER);
+            if (next == HWND.Null) return false;
+            if (next == (HWND)owner) return true;
+        }
+        return false;
+    }
+
     public bool TryToClient(IntPtr window, Point screen, out Point client)
     {
         var point = new System.Drawing.Point(screen.X, screen.Y);

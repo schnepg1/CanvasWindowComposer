@@ -19,9 +19,11 @@ internal sealed class CanvasPeekWindow : Form
     private string _status = "Preview only";
     private bool _animating;
     private Button? _pressed;
+    private MouseButtons _chromeButtons;
     public bool Working { get; private set; }
     public bool ShowingOwnedDialog { get; private set; }
     public bool Live => _thumbnail != IntPtr.Zero;
+    public bool ChromeCaptured => _chromeButtons != MouseButtons.None;
     public Rectangle ContentBounds { get; private set; }
     public event Action? WorkRequested, ReturnRequested, OpenRequested;
     public event Action<MouseEventArgs, bool, bool>? ContentPointer;
@@ -167,7 +169,9 @@ internal sealed class CanvasPeekWindow : Form
     public bool RouteChrome(Point screen, MouseButtons button, bool down, bool up)
     {
         var local = PointToClient(screen);
-        if (ContentBounds.Contains(local)) return false;
+        if (!ChromeCaptured && ContentBounds.Contains(local)) return false;
+        if (down) _chromeButtons |= button;
+        if (up) _chromeButtons &= ~button;
         if (button == MouseButtons.Left)
         {
             if (down) _pressed = Array.Find(new[] { _work, _open, _return }, b => b.Visible && b.Enabled && b.Bounds.Contains(local));

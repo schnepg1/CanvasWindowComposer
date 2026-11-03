@@ -11,6 +11,7 @@ internal interface IWindowInteractionApi
     bool TryResolveClient(IntPtr window, Point screen, out IntPtr child, out Point client);
     bool TryToClient(IntPtr window, Point screen, out Point client);
     bool IsChildOf(IntPtr window, IntPtr child);
+    bool IsOwnedBy(IntPtr window, IntPtr owner) => false;
     bool Post(IntPtr window, uint message, uint flags, Point point);
 }
 

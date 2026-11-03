@@ -201,6 +201,7 @@ public class CanvasPeekIntegrationTests
         {
             using var h = new Rig();
             using var dialog = new Form { Owner = h.Source };
+            h.Pointer.Owners[dialog.Handle] = h.Source.Handle;
             h.Api.AddWindow(dialog.Handle, 200, 200, 400, 300, title: "Save changes");
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle)); h.Overview.BeginPeekInteraction();
             h.Input.RaiseWindowFocused(dialog.Handle);
@@ -241,6 +242,7 @@ public class CanvasPeekIntegrationTests
         {
             using var h = new Rig();
             using var dialog = new Form { Owner = h.Source };
+            h.Pointer.Owners[dialog.Handle] = h.Source.Handle;
             h.Api.AddWindow(dialog.Handle, 200, 200, 400, 300, title: "Save changes");
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle)); h.Overview.BeginPeekInteraction();
             if (dialogWasShown) h.Input.RaiseWindowFocused(dialog.Handle);
@@ -249,6 +251,42 @@ public class CanvasPeekIntegrationTests
             else h.Overview.TickWindowPeek(h.ContentPoint);
             Assert.Null(h.Overview.PeekWindow); Assert.False(h.Overview.WindowInteractionActive);
             Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode); Assert.False(h.Input.EscHotkeyEnabled);
+        });
+
+    [Fact]
+    [Trait("Category", "NativePreview")]
+    public void UnavailableOwnedForegroundWindowHandsOffWithoutTakingEscape()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var h = new Rig();
+            using var dialog = new Form();
+            h.Pointer.Owners[dialog.Handle] = h.Source.Handle;
+            h.Api.AddWindow(dialog.Handle, 200, 200, 400, 300, title: "Save changes");
+            Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle)); h.Overview.BeginPeekInteraction();
+            h.Pointer.Available = false;
+            h.Input.RaiseWindowFocused(dialog.Handle);
+            Assert.Null(h.Overview.PeekWindow); Assert.Equal(OverviewMode.Hidden, h.Overview.CurrentMode);
+            Assert.False(h.Input.EscHotkeyEnabled);
+        });
+
+    [Theory]
+    [InlineData(MouseButtons.Left)]
+    [InlineData(MouseButtons.Right)]
+    [InlineData(MouseButtons.Middle)]
+    [Trait("Category", "NativePreview")]
+    public void ChromeOwnsItsGestureThroughReleaseOverAppContent(MouseButtons button)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var h = new Rig();
+            Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle)); h.Overview.BeginPeekInteraction();
+            var header = h.Overview.PeekWindow!.PointToScreen(new(20, 10));
+            h.Dispatch(new(header, button, true, false));
+            h.Dispatch(new(h.ContentPoint, button, false, true));
+            Assert.Empty(h.Pointer.Messages);
+            h.Dispatch(new(h.ContentPoint, MouseButtons.Left, true, false));
+            h.Dispatch(new(h.ContentPoint, MouseButtons.Left, false, true));
+            Assert.Single(h.Pointer.Messages, m => m.Id == 0x201);
+            Assert.Single(h.Pointer.Messages, m => m.Id == 0x202);
         });
 
     [Fact]
@@ -307,8 +345,9 @@ public class CanvasPeekIntegrationTests
             h.Source.Controls.Add(button); h.Source.PerformLayout();
             int clicked = 0; button.Click += (_, _) => clicked++;
             var bounds = h.Source.Bounds; var camera = h.Overview.ViewCamera;
+            var foreground = PInvoke.GetForegroundWindow();
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
-            Assert.Equal((HWND)h.Pass.Handle, PInvoke.GetForegroundWindow());
+            Assert.Equal(foreground, PInvoke.GetForegroundWindow());
             h.Overview.BeginPeekInteraction();
             Assert.True(h.Overview.PeekWorking);
             Assert.Equal((HWND)h.Source.Handle, PInvoke.GetForegroundWindow());

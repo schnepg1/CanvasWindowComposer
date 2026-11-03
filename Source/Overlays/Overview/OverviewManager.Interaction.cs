@@ -200,6 +200,8 @@ internal sealed partial class OverviewManager
     private void OnInteractionForegroundChanged(IntPtr window)
     {
         if (TryUsePeekForeground(window)) return;
+        if (PeekWorking && PeekRootCurrent && (window == _peekRoot || _interactionApi.IsOwnedBy(window, _peekRoot)))
+        { HandOffPeekToDesktop(); return; }
         if (_peekWindow != null && window != _peekSource && !_passes.Exists(p => p.Handle == window)
             && !new HashSet<IntPtr>(_peekWindow.InputHandles).Contains(window))
         { CloseWindowPeek(); return; }

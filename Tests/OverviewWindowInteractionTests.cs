@@ -141,6 +141,7 @@ public class OverviewWindowInteractionTests
     {
         public bool Available = true, Activated = true, Related = true, Client = true, Accept = true;
         public IntPtr Child = (IntPtr)11;
+        public Dictionary<IntPtr, IntPtr> Owners = new();
         public List<(IntPtr Window, uint Id, uint Flags, Point Point)> Messages = [];
         public bool IsAvailable(IntPtr window) => Available;
         public bool Activate(IntPtr window) => Activated;
@@ -149,6 +150,12 @@ public class OverviewWindowInteractionTests
         public bool TryToClient(IntPtr window, Point screen, out Point client)
         { client = new(screen.X - 100, screen.Y - 50); return true; }
         public bool IsChildOf(IntPtr window, IntPtr child) => child != IntPtr.Zero && Related;
+        public bool IsOwnedBy(IntPtr window, IntPtr owner)
+        {
+            for (int depth = 0; depth < 32 && Owners.TryGetValue(window, out var parent); depth++)
+            { if (parent == owner) return true; window = parent; }
+            return false;
+        }
         public bool Post(IntPtr window, uint message, uint flags, Point point)
         { Messages.Add((window, message, flags, point)); return Accept; }
     }
