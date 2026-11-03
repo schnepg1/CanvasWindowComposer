@@ -9,6 +9,14 @@ internal sealed partial class OverviewManager
 {
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (PeekWorking) return;
+        if (_peekWindow != null && e.KeyData == Keys.Enter)
+        {
+            _peekEnterPending = true;
+            e.Handled = e.SuppressKeyPress = true;
+            return;
+        }
+        if (_peekWindow != null && e.KeyCode != Keys.Escape) CloseWindowPeek();
         if (PlacingWebResource)
         {
             if (e.KeyCode == Keys.Escape) HandleEscape();
@@ -100,6 +108,14 @@ internal sealed partial class OverviewManager
 
     private void HandleKeyUp(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (_peekEnterPending && e.KeyCode == Keys.Enter)
+        {
+            _peekEnterPending = false;
+            if (_peekWindow != null) BeginPeekInteraction();
+            e.Handled = e.SuppressKeyPress = true;
+            return;
+        }
+        if (PeekWorking) return;
         if (PlacingWebResource) { e.Handled = e.SuppressKeyPress = true; return; }
         if (e.KeyCode == Keys.Space && _annotationEditor == null && _composerWindow == null)
         {

@@ -9,6 +9,10 @@ internal sealed partial class OverviewManager
 {
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (PeekWorking && RoutePeekMouse(new(new(e.X + pass.OriginX, e.Y + pass.OriginY), e.Button, true, false,
+            Clicks: e.Clicks, Modifiers: InteractionKeys))) return;
+        CloseWindowPeek();
+        ResetPeekHover();
         if (CurrentMode == OverviewMode.Panning)
         {
             StopDesktopPanWithClick(pass, e);
@@ -97,6 +101,8 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (PeekWorking && RoutePeekMouse(new(new(e.X + pass.OriginX, e.Y + pass.OriginY), MouseButtons.None, false, false,
+            Modifiers: InteractionKeys))) return;
         if (PlacingWebResource)
         {
             _webResourcePlacement!.Move(new(e.X + pass.OriginX, e.Y + pass.OriginY), "New web resource");
@@ -104,6 +110,7 @@ internal sealed partial class OverviewManager
         }
         UpdateInventoryDropHover(pass, e);
         if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
+        ObserveWindowPeek(pass, new(e.X + pass.OriginX, e.Y + pass.OriginY));
         if (RouteCanvasWindowPointer(pass, e)) return;
 
         int vx = e.X + pass.OriginX;
@@ -164,6 +171,8 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (PeekWorking && RoutePeekMouse(new(new(e.X + pass.OriginX, e.Y + pass.OriginY), e.Button, false, true,
+            Modifiers: InteractionKeys))) return;
         if (PlacingWebResource) { CompleteWebResourcePlacement(pass, e); return; }
         if (TryCollectInventoryDrop(pass, e)) return;
         if (CompleteDesktopStoppingClick(pass, e)) return;
@@ -199,6 +208,10 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift)
     {
+        if (PeekWorking && RoutePeekMouse(new(new(x + pass.OriginX, y + pass.OriginY), MouseButtons.None, false, false,
+            Wheel: true, Delta: delta, Horizontal: horizontal, Modifiers: InteractionKeys))) return;
+        CloseWindowPeek();
+        ResetPeekHover();
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
         CancelInertia();
@@ -220,6 +233,8 @@ internal sealed partial class OverviewManager
     private void PanOverview(double virtualDx, double virtualDy)
     {
         if (virtualDx == 0 && virtualDy == 0) return;
+        CloseWindowPeek();
+        ResetPeekHover();
         StopWindowNavigation();
         StopTutorialTravel();ObserveTourPan(virtualDx,virtualDy);
         _startupIntroLanded = false;
@@ -234,6 +249,8 @@ internal sealed partial class OverviewManager
 
     private void ZoomOverview(int virtualX, int virtualY, double notches)
     {
+        CloseWindowPeek();
+        ResetPeekHover();
         StopTutorialTravel();
         StopWindowNavigation();
         double before=_camera.Zoom;

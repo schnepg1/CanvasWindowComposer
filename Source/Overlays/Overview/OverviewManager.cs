@@ -121,7 +121,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         RefreshCardIdentities();
         _thumbnails.Reconcile(camera);
-        if (_windowInteraction.Active && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
+        if (_windowInteraction.Active && !PeekWorking && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
         RefreshZoneAnnotations();
         RaiseCanvasPanels();
@@ -165,7 +165,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _inertia = new InertiaTracker(_gestureClock);
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
-        _windowInteraction = new(interactionApi ?? new Win32WindowInteractionApi());
+        _interactionApi = interactionApi ?? new Win32WindowInteractionApi();
+        _windowInteraction = new(_interactionApi);
+        _peekDwm = dwm ?? new DwmThumbnailApi();
         input.WindowDestroyed += OnInteractionWindowLost;
         input.WindowMinimized += OnInteractionWindowLost;
         input.WindowFocused += OnInteractionForegroundChanged;
@@ -178,7 +180,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _tools.SetTool(_zoneTool);
         _windows = new OverviewWindowList(mainCanvas, win32);
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-            UseCachedOverviewSource, _wm.GetCachedPreviewSource, dwm: dwm, prepareLiveSources: _wm.SetLivePreviewWindows,
+            UseCachedOverviewSource, _wm.GetCachedPreviewSource, dwm: dwm, prepareLiveSources: PrepareOverviewLiveSources,
             useNativeSource: handle => !_placeholderTitles.ContainsKey(handle),
             transitionSource: GetCardTransitionSource);
         _wm.Previews.Changed += OnPreviewChanged;
@@ -193,6 +195,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     public void RefreshConfig()
     {
         if (_inertia.IsActive && !MomentumAllowed) FinishMomentum();
+        if (!_appConfig.EnableCanvasPeek) CloseWindowPeek();
         if (CurrentMode != OverviewMode.Hidden)
             ApplyConfig();
     }
@@ -273,7 +276,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             pass.OnKey = HandleKeyDown;
             pass.OnKeyReleased = HandleKeyUp;
             pass.OnMouseButtonDown = HandleMouseDown;
-            pass.OnMouseMoved = HandleMouseMove;
+            pass.OnMouseMoved = HandleMouseMove;
+            pass.MouseLeave += (_, _) => { if (_peekWindow == null) ResetPeekHover(); };
             pass.OnMouseButtonUp = HandleMouseUp;
             pass.OnWheel = HandleMouseWheel;
             pass.OnMouseDoubleClicked = HandleDoubleClick;
@@ -630,6 +634,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
         var failures = new List<Exception>();
         void Attempt(Action action) { try { action(); } catch (Exception ex) { failures.Add(ex); } }
+        Attempt(() => CloseWindowPeek());
+        Attempt(() => _peekTimer?.Dispose());
         Attempt(_taskbarPreviews.Dispose);
         Attempt(() => _temporaryDrawer?.Dispose());
         Attempt(DisposeInventory);

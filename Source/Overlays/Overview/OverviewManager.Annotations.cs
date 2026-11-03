@@ -24,7 +24,11 @@ internal sealed partial class OverviewManager
     private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
     private string? _annotationError;
-    public bool CanvasInputSuspended => PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
+    public bool CanvasInputSuspended => PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
+
+
+
+
     internal AnnotationDocument? Annotations => _annotationDocument;
     internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
@@ -83,7 +87,7 @@ internal sealed partial class OverviewManager
     {
         if(!_disposed && CurrentMode==OverviewMode.Zooming) _passes.FirstOrDefault(p=>p.Visible)?.Activate();
     }
-    private string? AnnotationHint => _windowInteraction.Active
+    private string? AnnotationHint => PeekWorking ? "Working in Canvas Peek · Mouse and keyboard go to app · Choose Return to resume the canvas" : _windowInteraction.Active
         ? "Interacting: mouse and keyboard go to app  ·  Drag header: move  ·  Ctrl+click: select  ·  Esc: Arrange"
         : _interactionError ?? (_interactMode && InteractionToolReady ? "Interact: click live content  ·  Drag header: move window  ·  Ctrl+click: select  ·  Esc: Arrange" : null) ?? (_annotationTool?.Mode switch
     {

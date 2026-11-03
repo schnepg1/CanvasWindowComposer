@@ -25,6 +25,11 @@ internal sealed partial class WindowManager
     public bool SuspendAutomaticParking { get; set; }
     public event Action? AutomaticParkingChanged;
     public Func<AutomaticParkingToken, bool>? IsAutomaticMinimizationExcluded { get; set; }
+    private IntPtr _transientPreviewWindow;
+
+    // A peek keeps only its already-running source awake. This lease never
+    // restores a user-minimized window or changes saved placement/state.
+    internal void SetTransientPreviewWindow(IntPtr handle) => _transientPreviewWindow = handle;
 
     public void RefreshAutomaticParking() => ProcessAutomaticParking();
 
@@ -38,7 +43,7 @@ internal sealed partial class WindowManager
     }
 
     private bool IsParkingCandidate(IntPtr handle)
-        => _canvas.Windows.TryGetValue(handle, out var world) && world.State == WindowState.Normal
+        => handle != _transientPreviewWindow && _canvas.Windows.TryGetValue(handle, out var world) && world.State == WindowState.Normal
             && !world.PinnedToScreen && (_vds == null || _vds.IsOnCurrentDesktop(handle))
             && !(_visibility.GetToken(handle) is { } token && IsAutomaticMinimizationExcluded?.Invoke(token) == true)
             && _win32.CanAutomaticallyMinimize(handle)
@@ -79,7 +84,7 @@ internal sealed partial class WindowManager
                 || !_canvas.Windows.TryGetValue(handle, out var world)
                 || world.State != WindowState.Normal || world.PinnedToScreen
                 || _visibility.Get(handle)?.ShouldRestore == true
-                || (!cameraOnly && !IsParkingCandidate(handle));
+                || (!cameraOnly && handle != _transientPreviewWindow && !IsParkingCandidate(handle));
             if (shouldRestore && now >= record.RetryAt) RestoreAutomaticWindow(handle, record);
         }
 

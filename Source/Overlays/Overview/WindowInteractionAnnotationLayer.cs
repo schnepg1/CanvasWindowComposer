@@ -13,12 +13,14 @@ internal sealed partial class OverviewManager
         public void Draw(DrawingContext dc, OverviewAnnotationContext context)
         {
             if (owner.CurrentMode != OverviewMode.Zooming || owner.IsStartupIntroActive
-                || (!owner._interactMode && !owner._windowInteraction.Active)) return;
+                || (!owner._interactMode && !owner._windowInteraction.Active && owner._peekWindow == null)) return;
             var screen = context.Frame.Screen;
             var pass = owner._passes.FirstOrDefault(p => p.OriginX == screen.X && p.OriginY == screen.Y);
             if (pass == null) return;
             Rect Dip(System.Drawing.Rectangle r) => new((r.X - screen.X) / context.Dpi.DpiScaleX,
                 (r.Y - screen.Y) / context.Dpi.DpiScaleY, r.Width / context.Dpi.DpiScaleX, r.Height / context.Dpi.DpiScaleY);
+            if (owner._peekWindow != null && owner._peekPass == pass)
+                dc.DrawRectangle(null, new Pen(Brushes.MediumSpringGreen, 2), Dip(owner._peekOrigin));
             var windows = owner._windows.Windows;
             for (int i = windows.Count - 1; i >= 0; i--)
             {
