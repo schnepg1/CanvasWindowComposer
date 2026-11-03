@@ -7,6 +7,7 @@ namespace CanvasDesktop;
 internal sealed class CanvasPeekHover
 {
     public IntPtr Candidate { get; private set; }
+    public long Since => _since;
     private Point _anchor;
     private long _since;
 

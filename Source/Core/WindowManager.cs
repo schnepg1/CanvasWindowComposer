@@ -125,7 +125,10 @@ internal sealed partial class WindowManager : IDisposable
     }
     public WindowPreviewCache Previews { get; }
     public WindowVisibilitySnapshot? GetRuntimeVisibility(IntPtr hWnd) => _visibility.Get(hWnd);
-    public bool UsesCachedPreview(IntPtr hWnd) => _parking.ContainsKey(hWnd) || _visibility.Get(hWnd)?.AutomaticallyParked == true;
+    // The peeked source is live while it holds the wake lease: never treat
+    // pixels from its paused/restoring cycle as a substitute for the preview.
+    public bool UsesCachedPreview(IntPtr hWnd) => hWnd != _transientPreviewWindow
+        && (_parking.ContainsKey(hWnd) || _visibility.Get(hWnd)?.AutomaticallyParked == true);
     public IntPtr GetCachedPreviewSource(IntPtr hWnd)
         => _visibility.GetToken(hWnd) is { } key ? Previews.GetSource(key) : IntPtr.Zero;
 

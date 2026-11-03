@@ -2,9 +2,15 @@
 
 Hover a running window below 80% canvas zoom for one second to expand a readable
 preview. It works over live thumbnails, detailed cards and simple icon cards,
-including when card tiers are disabled. Use the window/card context menu's
-**Preview window (Canvas Peek)** command for an explicit preview at any zoom.
-Saved launchers with no running window never launch on hover.
+including when card tiers are disabled. While the pointer dwells on a card, a
+bar sweeps around its border once as the preview arms. Use the window/card
+context menu's **Preview window (Canvas Peek)** command for an explicit preview
+at any zoom. Saved launchers with no running window never launch on hover.
+
+Peek activation is independent of the zoom tiers: hovering keeps a running
+source awake and restores one that automatic minimization has parked, so the
+preview loads live at any zoom-out level. User-minimized windows stay minimized;
+their preview falls back to the unavailable status card.
 
 The preview expands from the original tile into the monitor's available work
 area, preserving aspect ratio and leaving canvas context visible. Its source

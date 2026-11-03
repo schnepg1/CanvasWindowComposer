@@ -122,6 +122,7 @@ internal sealed partial class OverviewManager
         // Each card borrows a prefix of one detached frame array. Copying every
         // previous window per card used quadratic memory in dense overviews.
         var occluders = new WorldRect[_windows.Count];
+        long gauge = _gestureClock.TickCount64;
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
@@ -179,12 +180,14 @@ internal sealed partial class OverviewManager
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
                         image, new ArraySegment<WorldRect>(occluders, 0, i),
                         Logo: card.OverviewLogo, LaunchStatus: card.LaunchStatus,
-                        LogoBounds: card.OverviewLogoBounds, ImageIsOverlay: card.OverviewImageIsOverlay),
+                        LogoBounds: card.OverviewLogoBounds, ImageIsOverlay: card.OverviewImageIsOverlay,
+                        PeekProgress: PeekHoverProgress(entry.HWnd, gauge)),
                         simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger,
                         DetailReady: simple || image != null));
                 }
                 else
-                    inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i)),
+                    inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i),
+                        PeekProgress: PeekHoverProgress(entry.HWnd, gauge)),
                         OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd), stagger));
             }
             else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)

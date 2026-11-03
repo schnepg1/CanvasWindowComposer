@@ -47,13 +47,32 @@ internal sealed partial class OverviewManager
         { ResetPeekHover(); return; }
         var world = _camera.WorldFromVirtual(screen.X, screen.Y);
         int index = HitOverviewWindow(pass, screen.X - pass.OriginX, screen.Y - pass.OriginY, world.x, world.y);
-        IntPtr candidate = IntPtr.Zero;
-        if (index >= 0 && TryResolvePeekSource(_windows.Windows[index].HWnd, out _, out _))
+        IntPtr candidate = IntPtr.Zero, source = IntPtr.Zero;
+        if (index >= 0 && TryResolvePeekSource(_windows.Windows[index].HWnd, out source, out _))
             candidate = _windows.Windows[index].HWnd;
+        bool changed = candidate != _peekHover.Candidate;
+        // The dwell itself is the activation: keep this single source awake at
+        // info-card zoom so the coming preview can render live. Nothing else
+        // changes the zoom tier's global resource policy.
+        _wm.SetTransientPreviewWindow(source);
         _peekHover.Observe(candidate, screen, _gestureClock.TickCount64, Math.Max(4, 6 * pass.DeviceDpi / 96));
-        if (candidate == IntPtr.Zero) { ResetPeekHover(); return; }
+        if (candidate == IntPtr.Zero)
+        {
+            if (changed) _visualFrames.Request(); // erase the activation border
+            ResetPeekHover();
+            return;
+        }
         _peekPass = pass;
         EnsurePeekTimer();
+        if (changed) _visualFrames.Request();
+    }
+
+    /// <summary>Dwell progress for one card while its peek is arming; null outside a dwell.</summary>
+    internal double? PeekHoverProgress(IntPtr card, long now)
+    {
+        if (card == IntPtr.Zero || card != _peekHover.Candidate || !PeekToolsReady
+            || _camera.Zoom >= CanvasPeekLayout.MaximumHoverZoom) return null;
+        return Math.Clamp((now - _peekHover.Since) / (double)_appConfig.CanvasPeekDelayMs, 0, 1);
     }
 
     private bool TryResolvePeekSource(IntPtr card, out IntPtr source, out Rectangle origin)
@@ -98,6 +117,7 @@ internal sealed partial class OverviewManager
         CloseWindowPeek();
         _peekSource = _peekRoot = source; _peekCard = card; _peekPass = pass; _peekOrigin = origin;
         _wm.SetTransientPreviewWindow(source);
+        _wm.WakeForTransientPreview(source); // Auto-parked sources become live again for this peek.
         _peekPid = _win32.GetWindowProcessId(source);
         var crop = PeekSourceCrop();
         bool live = !_wm.UsesCachedPreview(source) && _interactionApi.IsAvailable(source);
@@ -196,7 +216,12 @@ internal sealed partial class OverviewManager
         if (pointer == null && PInvoke.WindowFromPoint(point) != (HWND)pass.Handle)
         { ResetPeekHover(); return; }
         ObserveWindowPeek(pass, point);
-        if (_peekHover.Ready(now, _appConfig.CanvasPeekDelayMs)) ShowWindowPeek(pass, _peekHover.Candidate);
+        if (_peekHover.Ready(now, _appConfig.CanvasPeekDelayMs))
+            ShowWindowPeek(pass, _peekHover.Candidate);
+        // Drive the card-border activation bar at the dwell poll rate; explicit
+        // test pointers keep their deterministic frame behavior.
+        else if (_peekHover.Candidate != IntPtr.Zero && pointer == null)
+            _visualFrames.Request();
     }
 
     internal void BeginPeekInteraction()
@@ -305,8 +330,16 @@ internal sealed partial class OverviewManager
 
     private void ResetPeekHover()
     {
+        bool dwellWasActive = _peekHover.Candidate != IntPtr.Zero;
         _peekHover.Reset();
-        if (_peekWindow == null) { _peekTimer?.Stop(); _peekPass = null; }
+        if (_peekWindow == null)
+        {
+            _peekTimer?.Stop();
+            _peekPass = null;
+            // The hover wake ends with the dwell; an open peek renews its own lease.
+            _wm.SetTransientPreviewWindow(IntPtr.Zero);
+            if (dwellWasActive) _visualFrames.Request(); // erase the activation border
+        }
     }
 
     private bool CloseWindowPeek(bool focus = false)

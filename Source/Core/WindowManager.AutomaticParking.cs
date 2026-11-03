@@ -31,6 +31,18 @@ internal sealed partial class WindowManager
     // restores a user-minimized window or changes saved placement/state.
     internal void SetTransientPreviewWindow(IntPtr handle) => _transientPreviewWindow = handle;
 
+    /// <summary>
+    /// Undo an automatic park for the current wake lease before a live preview
+    /// renders. Only automatically parked windows qualify; user-minimized apps
+    /// stay minimized and the peek falls back to its cached/unavailable card.
+    /// </summary>
+    public void WakeForTransientPreview(IntPtr handle)
+    {
+        if (_disposed || _transientPreviewWindow != handle) return;
+        if (_parking.TryGetValue(handle, out var record))
+            RestoreAutomaticWindow(handle, record);
+    }
+
     public void RefreshAutomaticParking() => ProcessAutomaticParking();
 
     private bool IsParkingIdentityCurrent(AutomaticParkingToken key)

@@ -81,7 +81,17 @@ internal sealed class OverviewCardTransitions
             if (input.Mode == OverviewCardMode.Live && !input.LiveReady && e.Live < 1)
                 HasPendingLiveSources = true;
             double cover = 1 - e.Live;
-            if (cover <= 0) { e.Logo = null; continue; }
+            if (cover <= 0)
+            {
+                e.Logo = null;
+                // A fully live card renders natively, but its peek activation
+                // border is a WPF overlay and must stay in the frame.
+                if (input.Card.PeekProgress is { } peek)
+                    result.Add(input.Card with { Title = e.Title, Image = e.Image, Opacity = 1,
+                        ImageOpacity = 1, LabelOpacity = 0, Logo = null, LogoBounds = null,
+                        ImageIsOverlay = false, PeekProgress = peek });
+                continue;
+            }
             double detail = Math.Clamp(e.Detail / cover, 0, 1);
             // Stagger the two title treatments through a plain rectangle so
             // the bitmap's title and the simplified title never overlap.

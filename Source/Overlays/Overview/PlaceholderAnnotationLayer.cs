@@ -22,13 +22,16 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
     {
         DrawPlaceholderCards(dc, context);
         DrawPlaceholderLabels(dc, context);
+        DrawPeekActivation(dc, context);
     }
     private void DrawPlaceholderCards(DrawingContext dc, OverviewAnnotationContext context)
     {
         foreach (var card in context.Frame.Placeholders)
         {
             double imageOpacity = card.ImageOpacity ?? (context.View.Zoom < WindowManager.OverviewLivePreviewZoom ? 0 : 1);
-            if (card.Opacity <= 0 || (imageOpacity >= 1 && card.Image == null)) continue;
+            // A peek activation border is drawn separately in DrawPeekActivation,
+            // so a fully live card without pixels stays out of the fill pass.
+            if (card.Opacity <= 0 || (imageOpacity >= 1 && card.Image == null && card.PeekProgress == null)) continue;
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
             dc.PushClip(VisibleCard(card, context));
@@ -85,6 +88,76 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             dc.Pop();
             dc.Pop();
         }
+    }
+
+    /// <summary>
+    /// Activation hint for a Canvas Peek dwell: a bar sweeps once around the
+    /// card border as the preview is being armed. Draws above live DWM
+    /// thumbnails and placeholder fills alike; occlusion clipping still applies.
+    /// </summary>
+    private void DrawPeekActivation(DrawingContext dc, OverviewAnnotationContext context)
+    {
+        foreach (var card in context.Frame.Placeholders)
+        {
+            if (card.PeekProgress is not { } progress || card.Opacity <= 0) continue;
+            var rect = context.Project(card.Bounds);
+            if (!rect.IntersectsWith(new Rect(context.Size))) continue;
+            dc.PushClip(VisibleCard(card, context));
+            dc.PushOpacity(card.Opacity);
+            double width = Math.Clamp(Math.Min(rect.Width, rect.Height) * .07, 2, 7);
+            dc.DrawGeometry(null, TrackPen(width * .6),
+                new RectangleGeometry(rect) { RadiusX = 6, RadiusY = 6 });
+            Geometry? sweep = BorderSweep(rect, progress);
+            if (sweep != null) dc.DrawGeometry(null, SweepPen(width), sweep);
+            dc.Pop();
+            dc.Pop();
+        }
+    }
+
+    private static Pen TrackPen(double width)
+    {
+        var pen = new Pen(FrozenBrush(Color.FromArgb(80, 158, 198, 255)), width);
+        pen.Freeze(); return pen;
+    }
+
+    private static Pen SweepPen(double width)
+    {
+        var pen = new Pen(FrozenBrush(Color.FromArgb(240, 125, 211, 252)), width);
+        pen.Freeze(); return pen;
+    }
+
+    /// <summary>Partial clockwise border path starting at the top-left corner.</summary>
+    private static Geometry? BorderSweep(Rect rect, double progress)
+    {
+        double remaining = Math.Clamp(progress, 0, 1) * 2 * (rect.Width + rect.Height);
+        if (remaining < .5 || rect.Width < 1 || rect.Height < 1) return null;
+        var corners = new[] { rect.TopRight, rect.BottomRight, rect.BottomLeft, rect.TopLeft, rect.TopRight };
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(rect.TopLeft, false, false);
+            var current = rect.TopLeft;
+            foreach (var corner in corners)
+            {
+                if (remaining <= 0) break;
+                double length = Math.Abs(corner.X - current.X) + Math.Abs(corner.Y - current.Y);
+                if (length <= remaining)
+                {
+                    ctx.LineTo(corner, true, true);
+                    remaining -= length;
+                    current = corner;
+                }
+                else
+                {
+                    double t = remaining / length;
+                    current = new Point(current.X + (corner.X - current.X) * t, current.Y + (corner.Y - current.Y) * t);
+                    ctx.LineTo(current, true, true);
+                    remaining = 0;
+                }
+            }
+        }
+        geometry.Freeze();
+        return geometry;
     }
 
     private void DrawPlaceholderLabels(DrawingContext dc, OverviewAnnotationContext context)
