@@ -11,7 +11,8 @@ namespace CanvasDesktop;
 internal sealed record OverviewAnnotationSnapshot(
     IReadOnlyList<ZoneView> Zones, double CameraX, double CameraY, double Zoom, ScreenRect Screen,
     WorldRect? Preview, bool Drawing, IReadOnlyList<WorldRect> Ghosts,
-    IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null)
+    IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null,
+    bool ReduceMotion = false, long? Timestamp = null)
 {
     public string WindowStats { get; init; } = "Active: 0  ·  Minimized: 0 (auto: 0)";
     public string MinimizationStatus { get; init; } = "Auto-minimize: off";
@@ -19,15 +20,20 @@ internal sealed record OverviewAnnotationSnapshot(
     public static OverviewAnnotationSnapshot Create(IReadOnlyList<ZoneView> zones,
         double x, double y, double zoom, System.Drawing.Rectangle screen, WorldRect? preview, bool drawing,
         IReadOnlyList<WorldRect>? ghosts = null, IReadOnlyList<PlaceholderAnnotation>? placeholders = null,
-        bool showHints = true, StartupIntroFrame? intro = null, bool showIntroTitle = false, string? toolHint = null)
+        bool showHints = true, StartupIntroFrame? intro = null, bool showIntroTitle = false, string? toolHint = null,
+        bool reduceMotion = false, long? timestamp = null)
         => new(zones.ToArray(), x, y, zoom, new(screen.X, screen.Y, screen.Width, screen.Height),
             preview, drawing, ghosts?.ToArray() ?? Array.Empty<WorldRect>(),
-            placeholders?.ToArray() ?? Array.Empty<PlaceholderAnnotation>(), showHints, intro, showIntroTitle, toolHint);
+            placeholders?.ToArray() ?? Array.Empty<PlaceholderAnnotation>(), showHints, intro, showIntroTitle, toolHint,
+            reduceMotion, timestamp);
 }
 
 internal readonly record struct OverviewAnnotationContext(
     OverviewAnnotationSnapshot Frame, CanvasViewTransform View, DpiScale Dpi, Size Size)
 {
+    public long Timestamp { get; init; } = Environment.TickCount64;
+    public bool ReduceMotion => Frame.ReduceMotion;
+
     public Rect Project(WorldRect b)
     {
         var rect = View.WorldToDip(new CanvasRect(b.X, b.Y, b.W, b.H));
@@ -55,6 +61,26 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
     private readonly OverviewHudLayer _hud = new();
     private IReadOnlyList<IOverviewAnnotationLayer> _drawingLayers = Array.Empty<IOverviewAnnotationLayer>();
     private OverviewAnnotationSnapshot? _frame;
+    private readonly System.Windows.Threading.DispatcherTimer _glowTimer;
+    private bool _hasActiveCards;
+
+    public OverviewAnnotationSurface()
+    {
+        _glowTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(33)
+        };
+        _glowTimer.Tick += (_, _) =>
+        {
+            if (!_hasActiveCards || _frame == null || Opacity <= 0)
+            {
+                _glowTimer.Stop();
+                return;
+            }
+            InvalidateVisual();
+        };
+        Unloaded += (_, _) => { _glowTimer.Stop(); _hasActiveCards = false; };
+    }
 
     public void SetDrawingLayers(IReadOnlyList<IOverviewAnnotationLayer> layers)
     {
@@ -67,7 +93,22 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         _frame = frame;
         Opacity = frame.Intro?.RevealOpacity ?? 1;
         _placeholders.Clear();
+        _hasActiveCards = !frame.ReduceMotion && frame.Placeholders.Any(p => p.IsActiveWindow && p.Opacity > 0);
+        if (_hasActiveCards)
+        {
+            if (!_glowTimer.IsEnabled) _glowTimer.Start();
+        }
+        else
+        {
+            _glowTimer.Stop();
+        }
         InvalidateVisual();
+    }
+
+    public void ClearAnimation()
+    {
+        _glowTimer.Stop();
+        _hasActiveCards = false;
     }
 
     public IntPtr HitPlaceholderLabel(int x, int y)
@@ -90,7 +131,7 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         base.OnRender(dc);
         if (_frame == null) return;
         var dpi = VisualTreeHelper.GetDpi(this);
-        var context = new OverviewAnnotationContext(_frame, View(_frame, dpi), dpi, RenderSize);
+        var context = new OverviewAnnotationContext(_frame, View(_frame, dpi), dpi, RenderSize) { Timestamp = _frame.Timestamp ?? Environment.TickCount64 };
         dc.PushClip(new RectangleGeometry(new Rect(RenderSize)));
         _placeholders.Draw(dc, context);
         _zones.Draw(dc, context);

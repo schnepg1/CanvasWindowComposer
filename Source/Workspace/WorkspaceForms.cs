@@ -17,6 +17,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private int _overviewDpi;
     private int _overviewMaxDimension;
     private bool _itemApplied;
+    internal bool IsActiveWindow => _item.State == "Open";
+    internal WorkspaceItemView Item => _item;
     public event Action? PlacementChanged;
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams
@@ -32,7 +34,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         FormBorderStyle = FormBorderStyle.SizableToolWindow;
         ShowInTaskbar = false;
         MinimumSize = new Size(220, 150);
-        BackColor = Color.FromArgb(28, 34, 46);
+        BackColor = item.State == "Open" ? Color.FromArgb(18, 52, 84) : Color.FromArgb(28, 34, 46);
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 11);
         _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40),
@@ -107,7 +109,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         bool launchChanged = _launchState.Text != launch.Text;
         bool appearanceChanged = !_itemApplied || _item.Title != item.Title || _item.Target != item.Target
             || _item.WebResource != item.WebResource
-            || _item.ExecutablePath != item.ExecutablePath || _item.IsFolder != item.IsFolder || launchChanged;
+            || _item.ExecutablePath != item.ExecutablePath || _item.IsFolder != item.IsFolder || launchChanged || _item.State != item.State;
         _item = item;
         _menu.UpdateItem(item);
         // World position, saved bounds and nonvisual metadata do not repaint a
@@ -116,6 +118,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         _itemApplied = true;
         _overviewImage = null;
         Text = "Saved: " + _item.Title;
+        BackColor = _item.State == "Open" ? Color.FromArgb(18, 52, 84) : Color.FromArgb(28, 34, 46);
         _title.UpdateItem(item);
         _title.Parent?.Invalidate(true);
         _pathHeader.Text = item.MissingWebsiteUrl ? "Browser:" : item.WebResource == null ? "Path:" : "Website:";

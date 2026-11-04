@@ -14,6 +14,17 @@ internal sealed partial class OverviewManager
     private IReadOnlyDictionary<IntPtr, string> _placeholderTitles = new Dictionary<IntPtr, string>();
     private IntPtr _hoveredPlaceholder;
 
+    private bool IsActiveWindowCard(IntPtr cardHandle, PlaceholderForm? card)
+    {
+        if (_cardSources.TryGetValue(cardHandle, out var source) && source != IntPtr.Zero)
+        {
+            return !_wm.UsesCachedPreview(source)
+                && (_win32.GetWindowStyle(source) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0
+                && _win32.IsWindowVisible(source);
+        }
+        return card?.IsActiveWindow == true;
+    }
+
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {
         if (_placeholderWorkspace != null)
@@ -152,7 +163,8 @@ internal sealed partial class OverviewManager
                     image, new ArraySegment<WorldRect>(occluders, 0, i), ImageOpacity: image != null || cachedThumbnail ? 1 : 0,
                     LabelOpacity: image != null ? 0 : 1, Logo: logo,
                     LaunchStatus: placeholder?.LaunchStatus, LogoBounds: placeholder?.OverviewLogoBounds,
-                    ImageIsOverlay: image != null && placeholder?.OverviewImageIsOverlay == true));
+                    ImageIsOverlay: image != null && placeholder?.OverviewImageIsOverlay == true,
+                    IsActiveWindow: IsActiveWindowCard(entry.HWnd, placeholder)));
                 hasRestoreFallback |= restoreFallback;
             }
             else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
@@ -181,13 +193,15 @@ internal sealed partial class OverviewManager
                         image, new ArraySegment<WorldRect>(occluders, 0, i),
                         Logo: card.OverviewLogo, LaunchStatus: card.LaunchStatus,
                         LogoBounds: card.OverviewLogoBounds, ImageIsOverlay: card.OverviewImageIsOverlay,
-                        PeekProgress: PeekHoverProgress(entry.HWnd, gauge)),
+                        PeekProgress: PeekHoverProgress(entry.HWnd, gauge),
+                        IsActiveWindow: IsActiveWindowCard(entry.HWnd, card)),
                         simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger,
                         DetailReady: simple || image != null));
                 }
                 else
                     inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i),
-                        PeekProgress: PeekHoverProgress(entry.HWnd, gauge)),
+                        PeekProgress: PeekHoverProgress(entry.HWnd, gauge),
+                        IsActiveWindow: IsActiveWindowCard(entry.HWnd, null)),
                         OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd), stagger));
             }
             else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)
@@ -249,6 +263,7 @@ internal sealed partial class OverviewManager
                 if (zones[i].Id == movingId) zones[i] = zones[i] with { Bounds = moved };
             }
         }
+        bool reduceMotion = _appConfig.ReduceStartupMotion || _appConfig.LowQualityMode || _prefersReducedStartupMotion();
         OverviewAnnotationSnapshot? frame = null;
         OverviewOverlay? firstPass = null;
         foreach (var p in _passes)
@@ -258,7 +273,7 @@ internal sealed partial class OverviewManager
                 frame ??= OverviewAnnotationSnapshot.Create(zones, camera.X, camera.Y, camera.Zoom, p.Screen.Bounds,
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
-                !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError)
+                !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError, reduceMotion: reduceMotion)
                 with { WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
                     ? "Auto-minimize: on" : "Auto-minimize: off" };
                 var b = p.Screen.Bounds;

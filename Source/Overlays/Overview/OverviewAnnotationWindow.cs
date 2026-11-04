@@ -43,6 +43,7 @@ internal sealed class OverviewAnnotationWindow : Window
     public void Clear()
     {
         // Drop both input snapshots and WPF's retained drawing when hidden.
+        _drawing.ClearAnimation();
         Content = null;
         _drawing = new OverviewAnnotationSurface();
         _drawing.SetDrawingLayers(_layers);

@@ -10,7 +10,9 @@ internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldR
     System.Windows.Media.ImageSource? Logo = null, string? LaunchStatus = null,
     Rect? LogoBounds = null, bool ImageIsOverlay = false,
     /// <summary>Canvas Peek hover dwell for this card; 0..1 while arming, null otherwise.</summary>
-    double? PeekProgress = null);
+    double? PeekProgress = null,
+    /// <summary>Whether this placeholder card represents a live/active running window (open application or folder).</summary>
+    bool IsActiveWindow = false);
 internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
 /// <summary>Card-local titles: bounds, padding and type all scale with the camera.</summary>

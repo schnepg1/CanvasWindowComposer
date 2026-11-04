@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -10,11 +11,47 @@ namespace CanvasDesktop;
 internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
 {
     private static readonly Brush CardFill = FrozenBrush(Color.FromRgb(28, 34, 46));
+    private static readonly Brush ActiveCardFill = FrozenLinearGradient(
+        Color.FromRgb(22, 60, 98), Color.FromRgb(14, 42, 72), 90);
     private static readonly Brush LabelFill = FrozenBrush(Color.FromArgb(218, 10, 16, 25));
+    private static readonly Brush ActiveLabelFill = FrozenBrush(Color.FromArgb(222, 10, 24, 42));
     private static readonly Pen Outline = OutlinePen(Color.FromRgb(91, 125, 166), 1);
     private static readonly Typeface LabelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
+    private static readonly Pen[] OuterGlowPens = Enumerable.Range(0, 32).Select(i =>
+    {
+        double t = i / 31.0;
+        byte a = (byte)(26 + 38 * t);
+        var p = new Pen(FrozenBrush(Color.FromArgb(a, 14, 165, 233)), 4.0 + 3.0 * t);
+        p.Freeze();
+        return p;
+    }).ToArray();
+
+    private static readonly Pen[] InnerGlowPens = Enumerable.Range(0, 32).Select(i =>
+    {
+        double t = i / 31.0;
+        byte a = (byte)(55 + 65 * t);
+        var p = new Pen(FrozenBrush(Color.FromArgb(a, 56, 189, 248)), 1.5 + 1.5 * t);
+        p.Freeze();
+        return p;
+    }).ToArray();
+
+    private static readonly Pen[] ActiveOutlinePens = Enumerable.Range(0, 32).Select(i =>
+    {
+        double t = i / 31.0;
+        byte a = (byte)(190 + 65 * t);
+        var p = new Pen(FrozenBrush(Color.FromArgb(a, 125, 211, 252)), 1.5);
+        p.Freeze();
+        return p;
+    }).ToArray();
+
     private static Brush FrozenBrush(Color color) { var brush = new SolidColorBrush(color); brush.Freeze(); return brush; }
+    private static Brush FrozenLinearGradient(Color top, Color bottom, double angle)
+    {
+        var brush = new LinearGradientBrush(top, bottom, angle);
+        brush.Freeze();
+        return brush;
+    }
     private static Pen OutlinePen(Color color, double width) { var pen = new Pen(FrozenBrush(color), width); pen.Freeze(); return pen; }
     public IReadOnlyList<PlaceholderLabel> Labels { get; private set; } = Array.Empty<PlaceholderLabel>();
     public void Clear() => Labels = Array.Empty<PlaceholderLabel>();
@@ -34,11 +71,46 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             if (card.Opacity <= 0 || (imageOpacity >= 1 && card.Image == null && card.PeekProgress == null)) continue;
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
+
+            if (card.IsActiveWindow && card.Opacity > 0 && (imageOpacity < 1 || card.ImageIsOverlay))
+            {
+                double pulse = 0.5;
+                if (!context.ReduceMotion)
+                {
+                    double phase = ((context.Timestamp % 2200) / 2200.0) * 2 * Math.PI;
+                    pulse = 0.5 + 0.5 * Math.Sin(phase);
+                }
+                int glowIdx = Math.Clamp((int)(pulse * 31.99), 0, 31);
+                double spread = Math.Clamp(Math.Min(rect.Width, rect.Height) * 0.03, 3, 8) + 2.0 * pulse;
+                var outerGlowRect = Rect.Inflate(rect, spread, spread);
+                dc.PushClip(VisibleGlow(card, outerGlowRect, context));
+                dc.PushOpacity(card.Opacity);
+                dc.DrawRoundedRectangle(null, OuterGlowPens[glowIdx], outerGlowRect, 6 + spread * 0.5, 6 + spread * 0.5);
+                double innerSpread = spread * 0.5;
+                var innerGlowRect = Rect.Inflate(rect, innerSpread, innerSpread);
+                dc.DrawRoundedRectangle(null, InnerGlowPens[glowIdx], innerGlowRect, 6 + innerSpread * 0.5, 6 + innerSpread * 0.5);
+                dc.Pop();
+                dc.Pop();
+            }
+
             dc.PushClip(VisibleCard(card, context));
             dc.PushOpacity(card.Opacity);
             if (imageOpacity < 1 || card.ImageIsOverlay)
             {
-                dc.DrawRoundedRectangle(CardFill, Outline, rect, 6, 6);
+                var fill = card.IsActiveWindow ? ActiveCardFill : CardFill;
+                int outlineIdx = 16;
+                if (card.IsActiveWindow)
+                {
+                    double pulse = 0.5;
+                    if (!context.ReduceMotion)
+                    {
+                        double phase = ((context.Timestamp % 2200) / 2200.0) * 2 * Math.PI;
+                        pulse = 0.5 + 0.5 * Math.Sin(phase);
+                    }
+                    outlineIdx = Math.Clamp((int)(pulse * 31.99), 0, 31);
+                }
+                var outline = card.IsActiveWindow ? ActiveOutlinePens[outlineIdx] : Outline;
+                dc.DrawRoundedRectangle(fill, outline, rect, 6, 6);
                 if (card.Logo is { Width: > 0, Height: > 0 } logo)
                 {
                     double cardScale = Math.Min(rect.Width / logo.Width, rect.Height / logo.Height);
@@ -188,7 +260,8 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             };
             double textY = rect.Y + (rect.Height - text.Height) / 2;
             double backingWidth = Math.Min(rect.Width, text.Width + label.FontSize * .4);
-            dc.DrawRoundedRectangle(LabelFill, null,
+            var labelFill = label.Card.IsActiveWindow ? ActiveLabelFill : LabelFill;
+            dc.DrawRoundedRectangle(labelFill, null,
                 new Rect(rect.X + (rect.Width - backingWidth) / 2, textY, backingWidth, text.Height), 3, 3);
             dc.DrawText(text, new Point(rect.X, textY));
             dc.Pop();
@@ -211,4 +284,16 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         return visible;
     }
 
+    private static Geometry VisibleGlow(PlaceholderAnnotation card, Rect glowRect, OverviewAnnotationContext context)
+    {
+        Geometry visible = new RectangleGeometry(glowRect);
+        if (card.Occluders != null)
+            foreach (var above in card.Occluders)
+            {
+                var covered = context.Project(above);
+                if (covered.IntersectsWith(glowRect))
+                    visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
+            }
+        return visible;
+    }
 }
