@@ -18,6 +18,7 @@ internal sealed partial class OverviewManager
     {
         _backpack?.SetCanvasOwner(CanvasPanelOwner);
         _temporaryDrawer?.SetCanvasOwner(CanvasPanelOwner);
+        _backgroundEditor?.SetCanvasOwner(CanvasPanelOwner);
     }
 
     private void RaiseCanvasPanels()
@@ -26,5 +27,6 @@ internal sealed partial class OverviewManager
         _peekWindow?.RaiseWithoutActivation();
         _backpack?.RaiseWithoutActivation();
         _temporaryDrawer?.RaiseWithoutActivation();
+        _backgroundEditor?.RaiseWithoutActivation();
     }
 }

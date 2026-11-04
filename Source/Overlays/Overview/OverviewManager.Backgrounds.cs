@@ -11,8 +11,17 @@ internal sealed partial class OverviewManager
     private BackgroundAnnotationLayer? _backgroundLayer;
     private BackgroundEditLayer? _backgroundEditLayer;
     private bool _backgroundsEnabled=true;
+    private BackgroundWindow? _backgroundEditor;
     public event Action? BackgroundsRequested;
     internal bool BackgroundEditorVisible { get; private set; }
+
+    internal void AttachBackgroundEditor(BackgroundWindow? editor)
+    {
+        _backgroundEditor=editor;
+        if(_disposed)return;
+        UpdateCanvasPanelOwners();
+        _backgroundEditor?.RaiseWithoutActivation();
+    }
 
     internal void SetBackgroundEditorVisible(bool visible)
     {

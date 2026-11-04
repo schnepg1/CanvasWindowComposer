@@ -97,7 +97,7 @@ internal sealed class OverviewInputs : IDisposable
 
     private void OnOverviewHotkey()
     {
-        if (_disposed || _overview.CanvasInputSuspended) return;
+        if (_disposed || _overview.OverviewHotkeySuspended) return;
         if (_overview.TrySkipStartupIntro()) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);

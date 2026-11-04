@@ -61,12 +61,12 @@ internal sealed class BackgroundCoordinator : IDisposable
         {
             _editor=new(Service,_assets,_images,()=>_zones.Items,_overview.BackgroundDefaultBounds,_overview.EditBackground,_overview.JumpToBackground);
             _editor.IsVisibleChanged+=(_,_)=>_overview.SetBackgroundEditorVisible(_editor?.IsVisible==true);
-            _editor.Closed+=(_,_)=>{_editor=null;_overview.SetBackgroundEditorVisible(false);};
+            _editor.Closed+=(_,_)=>{_editor=null;_overview.AttachBackgroundEditor(null);_overview.SetBackgroundEditorVisible(false);};
             ElementHost.EnableModelessKeyboardInterop(_editor);
         }
-        _editor.Topmost=_overview.CurrentMode==OverviewMode.Zooming;
+        _overview.AttachBackgroundEditor(_editor);
         _editor.SetRenderingStatus(_renderingStatus);
-        _editor.Show();_editor.Activate();
+        _editor.Show();_editor.Activate();_editor.RaiseWithoutActivation();
     }
     public void SetEnabled(bool enabled) { _enabled=enabled;_overview.SetBackgroundsEnabled(enabled);Refresh(); }
 
@@ -85,7 +85,7 @@ internal sealed class BackgroundCoordinator : IDisposable
     private void OnModeChanging(OverviewMode from,OverviewMode to)
     { if(to!=OverviewMode.Hidden)foreach(var window in _windows)window.Hide(); }
     private void OnModeChanged(OverviewMode from,OverviewMode to)
-    { if(_editor!=null)_editor.Topmost=to==OverviewMode.Zooming;_overview.SetBackgroundEditorVisible(_editor?.IsVisible==true);Refresh(); }
+    { _overview.AttachBackgroundEditor(_editor);_overview.SetBackgroundEditorVisible(_editor?.IsVisible==true);Refresh(); }
     private void OnDisplayChanged(object? sender,EventArgs e)
         => _context.Post(_=>
         {
@@ -140,6 +140,7 @@ internal sealed class BackgroundCoordinator : IDisposable
         var failures=new List<Exception>();
         void Attempt(Action action){try{action();}catch(Exception ex){failures.Add(ex);}}
         Attempt(()=>_overview.DetachBackgrounds(Service));
+        Attempt(()=>_overview.AttachBackgroundEditor(null));
         Attempt(()=>_editor?.Close());foreach(var window in _windows)Attempt(window.Close);_windows.Clear();Attempt(_images.Dispose);
         if(failures.Count>0)throw new AggregateException("Background cleanup failed.",failures);
     }

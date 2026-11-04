@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using System.Windows.Media;
 
 namespace CanvasDesktop;
@@ -46,6 +47,21 @@ internal sealed class BackgroundWindow : Window
     private bool _refreshing, _dirty, _closed, _busy;
     private string? _renderingStatus;
     internal bool HasPendingChanges => _dirty || _busy;
+    internal bool IsChoosingImage { get; private set; }
+
+    internal void SetCanvasOwner(IntPtr owner)
+    {
+        var interop=new WindowInteropHelper(this);
+        if(interop.Owner!=owner)interop.Owner=owner;
+        Topmost=owner!=IntPtr.Zero;
+    }
+
+    internal void RaiseWithoutActivation()
+    {
+        if(!IsVisible || !Topmost)return;
+        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle,(HWND)new IntPtr(-1),0,0,0,0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE|SET_WINDOW_POS_FLAGS.SWP_NOSIZE|SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+    }
     public void SetRenderingStatus(string? status) { _renderingStatus=status;if(status!=null)Report(status); }
 
     public BackgroundWindow(BackgroundService service, BackgroundAssets assets, BackgroundImageCache cache,
@@ -321,7 +337,11 @@ internal sealed class BackgroundWindow : Window
         Guid desktop = _service.DesktopId;
         var dialog = new Microsoft.Win32.OpenFileDialog { Title = replace ? "Locate or replace background image" : "Import background image",
             Filter = "Background images|*.png;*.jpg;*.jpeg;*.bmp|PNG image|*.png|JPEG image|*.jpg;*.jpeg|Bitmap image|*.bmp", CheckFileExists = true };
-        if (dialog.ShowDialog(this) != true) return;
+        bool? chosen;
+        IsChoosingImage=true;
+        try { chosen=dialog.ShowDialog(this); }
+        finally { IsChoosingImage=false; }
+        if (chosen != true) return;
         if (_closed) return;
         if (desktop != _service.DesktopId)
         { Report("The virtual desktop changed while choosing an image. Select the image again on this desktop."); return; }

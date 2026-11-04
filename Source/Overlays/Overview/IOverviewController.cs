@@ -16,6 +16,7 @@ internal interface IOverviewController
     bool NavigateToWindow(IntPtr window);
     void HandleEscape();
     bool CanvasInputSuspended => false;
+    bool OverviewHotkeySuspended => CanvasInputSuspended;
     bool GuidedTutorialActive => false;
     void PanGuidedTutorial(int x,int y) { }
     bool CancelInteraction();

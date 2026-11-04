@@ -257,6 +257,21 @@ public class OverviewInputsTests
     }
 
     [Fact]
+    public void BackgroundPickerCanAllowOverviewTogglingWhileStillBlockingCanvasGestures()
+    {
+        var h=new Harness();
+        h.Overview.CanvasInputSuspended=true;
+        h.Overview.HotkeySuspendedOverride=false;
+        h.Input.RaiseOverviewHotkey();Assert.Equal(OverviewMode.Zooming,h.Overview.CurrentMode);
+        h.Input.RaiseDragStarted();h.Input.QueuePanAndRaise(30,40);
+        h.Input.PendingZoom=true;h.Input.RaiseInputAvailable();
+        Assert.Equal(0,h.Canvas.CamX);Assert.Equal(0,h.Canvas.CamY);
+        h.Input.RaiseOverviewHotkey();Assert.Equal(OverviewMode.Hidden,h.Overview.CurrentMode);
+        h.Overview.HotkeySuspendedOverride=true;
+        h.Input.RaiseOverviewHotkey();Assert.Equal(OverviewMode.Hidden,h.Overview.CurrentMode);
+    }
+
+    [Fact]
     public void DelayedCoalescedInputKeepsOriginalVelocitySamplesAndReleaseTime()
     {
         var h = new Harness();
