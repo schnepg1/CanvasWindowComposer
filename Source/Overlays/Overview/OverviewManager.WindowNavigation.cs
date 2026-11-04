@@ -23,6 +23,7 @@ internal sealed partial class OverviewManager
         if (IsStartupIntroActive) FinishStartupIntro(refresh: false);
         PauseGuidedTutorial();
         CancelInertia();
+        CancelSmoothZoom();
         CancelInteraction();
         CloseActiveMenus();
         _tutorialReading = false;

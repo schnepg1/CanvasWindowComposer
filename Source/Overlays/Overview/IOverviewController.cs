@@ -23,6 +23,7 @@ internal interface IOverviewController
     bool TrySkipStartupIntro() => false;
     void CancelStartupIntro() { }
     void CancelInertia();
+    void CancelSmoothZoom() { }
     void SyncCamera();
     void BeginPan(long? timestamp = null) => CancelInertia();
     void RecordPanDelta(int dx, int dy, long? timestamp = null);

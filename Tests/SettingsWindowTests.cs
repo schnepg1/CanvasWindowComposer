@@ -265,6 +265,36 @@ public class SettingsWindowTests
             finally { Directory.Delete(directory, true); }
         });
 
+    [Theory]
+    [InlineData("Save settings", false)]
+    [InlineData("Cancel", false)]
+    public void SmoothZoomCheckboxTogglesAndSavesOnlyOnRequest(string action, bool smoothZoom)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "canvas-smooth-zoom-settings-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var config = new AppConfig(directory: directory); config.Load();
+                int applied = 0;
+                var original = config.Preferences;
+                var window = new SettingsWindow(config, () => applied++, zoomOnly: true);
+                var toggle = WorkspaceViewTests.Descendants(window).OfType<CheckBox>()
+                    .Single(b => Equals(b.Content, "Smooth canvas zooming"));
+                toggle.IsChecked = smoothZoom;
+                Assert.Equal(original, config.Preferences);
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, action))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expected = action == "Save settings"
+                    ? original with { SmoothZoom = smoothZoom } : original;
+                Assert.Equal(action == "Save settings" ? 1 : 0, applied);
+                Assert.Equal(expected, config.Preferences);
+                using var reopened = new AppConfig(directory: directory); reopened.Load();
+                Assert.Equal(expected, reopened.Preferences);
+                window.Close();
+            }
+            finally { Directory.Delete(directory, true); }
+        });
+
     [Fact]
     public void OpeningEditingAndClosingSettingsDoesNotEnableExperimentalOptions()
         => WorkspaceViewTests.OnSta(() =>
@@ -303,7 +333,7 @@ public class SettingsWindowTests
                 foreach (var name in new[] { "settings-shell-preview.png", "settings-shell-small-150-preview.png" })
                     File.Copy(Path.Combine(AppContext.BaseDirectory, name), Path.Combine(renders, name), true);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(20, boxes.Length);
+                Assert.Equal(21, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Animate navigation to apps selected with Alt+Tab or the taskbar").IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Show Windows taskbar in canvas view").IsChecked = false;

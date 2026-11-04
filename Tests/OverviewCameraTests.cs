@@ -99,6 +99,22 @@ public class OverviewCameraTests
     }
 
     [Fact]
+    public void SetZoomAroundWorldPoint_KeepsWorldPointFixedUnderCursor()
+    {
+        var cam = MakeCamera();
+        cam.SetTo(100, 200, 1.0);
+        var (wx, wy) = cam.WorldFromVirtual(400, 300);
+
+        bool changed = cam.SetZoomAroundWorldPoint(400, 300, wx, wy, 0.5);
+        Assert.True(changed);
+        Assert.Equal(0.5, cam.Zoom);
+
+        var (afterWx, afterWy) = cam.WorldFromVirtual(400, 300);
+        Assert.InRange(Math.Abs(wx - afterWx), 0, 1e-9);
+        Assert.InRange(Math.Abs(wy - afterWy), 0, 1e-9);
+    }
+
+    [Fact]
     public void CenterOnWorld_PutsRectCenterAtScreenCenter()
     {
         var cam = MakeCamera();

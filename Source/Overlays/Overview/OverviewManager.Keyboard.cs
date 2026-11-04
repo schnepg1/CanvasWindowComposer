@@ -33,6 +33,8 @@ internal sealed partial class OverviewManager
             return;
         }
         CancelInertia();
+        if (e.KeyCode is not (Keys.Oemplus or Keys.Add or Keys.OemMinus or Keys.Subtract))
+            CancelSmoothZoom();
         if (HandleCameraBookmarkKey(pass, e)) return;
         if (TrySkipStartupIntro() || StopTutorialTravel()) { RefreshTourUi();e.SuppressKeyPress = true; e.Handled = true; return; }
         if (!_cfg.InputEnabled) return;

@@ -21,6 +21,7 @@ internal sealed partial class OverviewManager
     public void BeginPan(long? timestamp = null)
     {
         CancelInertia();
+        CancelSmoothZoom();
         _inertia.Begin(timestamp);
     }
 

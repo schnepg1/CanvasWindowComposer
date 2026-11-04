@@ -20,6 +20,7 @@ internal interface IAppConfig
     bool AnimateWindowNavigation => true;
     bool DesktopPanMomentum => true;
     bool CanvasPanMomentum => true;
+    bool SmoothZoom => true;
     bool EnableStartupIntro => true;
     bool ReduceStartupMotion => false;
     double SelectionRadius => 1200;
@@ -88,6 +89,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool AnimateWindowNavigation { get; private set; } = true;
     public bool DesktopPanMomentum { get; private set; } = true;
     public bool CanvasPanMomentum { get; private set; } = true;
+    public bool SmoothZoom { get; private set; } = true;
     public bool EnableStartupIntro { get; private set; } = true;
     public bool ReduceStartupMotion { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
@@ -138,6 +140,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             AnimateWindowNavigation = GetBool(values, "AnimateWindowNavigation", defaultValue: true);
             DesktopPanMomentum = GetBool(values, "DesktopPanMomentum", defaultValue: true);
             CanvasPanMomentum = GetBool(values, "CanvasPanMomentum", defaultValue: true);
+            SmoothZoom = GetBool(values, "SmoothZoom", defaultValue: true);
             EnableStartupIntro = GetBool(values, "EnableStartupIntro", defaultValue: true);
             ReduceStartupMotion = GetBool(values, "ReduceStartupMotion", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
@@ -205,7 +208,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
-                EnableCanvasPeek, CanvasPeekDelayMs);
+                EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom);
         }
     }
 
@@ -233,6 +236,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["AnimateWindowNavigation"] = preferences.AnimateWindowNavigation.ToString().ToLowerInvariant(),
                 ["DesktopPanMomentum"] = preferences.DesktopPanMomentum.ToString().ToLowerInvariant(),
                 ["CanvasPanMomentum"] = preferences.CanvasPanMomentum.ToString().ToLowerInvariant(),
+                ["SmoothZoom"] = preferences.SmoothZoom.ToString().ToLowerInvariant(),
                 ["EnableLivePreviewsTier"] = preferences.LivePreviewsTier.ToString().ToLowerInvariant(),
                 ["EnableDetailedCardsTier"] = preferences.DetailedCardsTier.ToString().ToLowerInvariant(),
                 ["EnableSimpleCardsTier"] = preferences.SimpleCardsTier.ToString().ToLowerInvariant(),
@@ -342,6 +346,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; False stops on release while dragging still follows the pointer
 ;DesktopPanMomentum=true
 ;CanvasPanMomentum=true
+
+; Smoothly interpolate canvas zoom when scrolling or using zoom hotkeys
+;SmoothZoom=true
 
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true
@@ -490,4 +497,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool ShowTaskbarInCanvas = true, bool AnimateWindowNavigation = true,
     bool DesktopPanMomentum = true, bool CanvasPanMomentum = true,
     bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount,
-    bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs);
+    bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs,
+    bool SmoothZoom = true);

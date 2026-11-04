@@ -48,19 +48,28 @@ internal sealed class OverviewCamera
     }
 
     /// <summary>
+    /// Sets zoom keeping the specified world point fixed under the virtual screen cursor.
+    /// Returns true if zoom changed.
+    /// </summary>
+    public bool SetZoomAroundWorldPoint(int virtualX, int virtualY, double worldX, double worldY, double targetZoom)
+    {
+        double clamped = Math.Clamp(targetZoom, ZoomMin, ZoomMax);
+        if (Math.Abs(clamped - Zoom) < ZoomEpsilon) return false;
+
+        Zoom = clamped;
+        X = worldX - virtualX / Zoom;
+        Y = worldY - virtualY / Zoom;
+        return true;
+    }
+
+    /// <summary>
     /// Zoom by <paramref name="notches"/> (positive = in) keeping the world
     /// point under the cursor fixed. Returns true if zoom changed.
     /// </summary>
     public bool ZoomToCursor(int virtualX, int virtualY, double notches)
     {
-        double newZoom = Math.Clamp(Zoom + notches * ZoomStep * Zoom, ZoomMin, ZoomMax);
-        if (Math.Abs(newZoom - Zoom) < ZoomEpsilon) return false;
-
         var (wx, wy) = WorldFromVirtual(virtualX, virtualY);
-        Zoom = newZoom;
-        X = wx - virtualX / Zoom;
-        Y = wy - virtualY / Zoom;
-        return true;
+        return SetZoomAroundWorldPoint(virtualX, virtualY, wx, wy, Zoom + notches * ZoomStep * Zoom);
     }
 
     /// <summary>Reduce zoom immediately while preserving the main screen's center.</summary>

@@ -163,6 +163,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _appConfig = appConfig;
         _gestureClock = gestureClock ?? SystemClock.Instance;
         _inertia = new InertiaTracker(_gestureClock);
+        _smoothZoom = new SmoothZoomTracker(_gestureClock);
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
         _input = input;
         _interactionApi = interactionApi ?? new Win32WindowInteractionApi();
@@ -314,7 +315,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         if (IsStartupIntroActive && !_openingStartupIntro)
             FinishStartupIntro(refresh: false);
-        CancelInertia();
+        CancelInertia();
+        CancelSmoothZoom();
 
         OverviewMode from = CurrentMode;
         if (target != OverviewMode.Zooming && _tour?.Active==true)
@@ -663,7 +665,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Attempt(_inputs.Dispose);
         Attempt(ClearDesktopStoppingClick);
         Attempt(RestoreDesktopPanResources);
-        Attempt(CancelInertia);
+        Attempt(CancelInertia);
+        Attempt(CancelSmoothZoom);
+        Attempt(() => { _smoothZoomTimer?.Dispose(); _smoothZoomTimer = null; });
         Attempt(() => { _momentumTimer?.Dispose(); _momentumTimer = null; });
         // HideInternal may have failed after the state changed to Hidden.
         // Retry native ownership cleanup independently of that transition.

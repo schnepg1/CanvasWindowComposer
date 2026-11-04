@@ -33,6 +33,7 @@ internal sealed partial class OverviewManager
         if (save)
         {
             CancelInertia();
+            CancelSmoothZoom();
             bool saved = _cameraBookmarks.Save(_annotationDesktop(), slot, ViewCamera);
             message = saved ? $"Camera {slot} saved ({_camera.Zoom:P0}) · Press {slot} to return"
                 : _cameraBookmarks.Status ?? "Camera bookmark could not be saved.";
@@ -42,6 +43,7 @@ internal sealed partial class OverviewManager
             if (IsStartupIntroActive) FinishStartupIntro(refresh: false);
             PauseGuidedTutorial();
             CancelInertia();
+            CancelSmoothZoom();
             CancelInteraction();
             CloseActiveMenus();
             _tutorialReading = false;

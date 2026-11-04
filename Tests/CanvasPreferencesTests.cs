@@ -151,6 +151,8 @@ public class CanvasPreferencesTests : IDisposable
         Assert.True(config.CanvasPanMomentum);
         Assert.Contains(";DesktopPanMomentum=true", File.ReadAllText(Path.Combine(_directory, "config.ini")));
         Assert.Contains(";CanvasPanMomentum=true", File.ReadAllText(Path.Combine(_directory, "config.ini")));
+        Assert.True(config.SmoothZoom);
+        Assert.Contains(";SmoothZoom=true", File.ReadAllText(Path.Combine(_directory, "config.ini")));
         Assert.Equal(.40, config.OverviewCardEnterZoom);
         Assert.Equal(.45, config.OverviewCardExitZoom);
         Assert.Equal(.10, config.OverviewSimpleCardEnterZoom);
@@ -215,6 +217,16 @@ public class CanvasPreferencesTests : IDisposable
         reopened.Load();
         Assert.False(reopened.LowQualityMode);
         Assert.Equal(original, reopened.Preferences);
+    }
+
+    [Fact]
+    public void SmoothZoomOption_RoundTripsThroughPreferences()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.SmoothZoom);
+        config.SavePreferences(config.Preferences with { SmoothZoom = false });
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.False(reopened.SmoothZoom);
     }
 
     [Fact]

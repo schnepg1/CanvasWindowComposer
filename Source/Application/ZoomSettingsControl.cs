@@ -8,7 +8,7 @@ namespace CanvasDesktop;
 /// <summary>A detached zoom-policy editor shared by Settings and the canvas popup.</summary>
 internal sealed class ZoomSettingsControl : UserControl
 {
-    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek;
+    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek, _smoothZoom;
     private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay;
 
     public ZoomSettingsControl(CanvasPreferences preferences)
@@ -23,6 +23,8 @@ internal sealed class ZoomSettingsControl : UserControl
         _shortcutZoomOut.Checked += (_, _) => _shortcutAmount.IsEnabled = true;
         _shortcutZoomOut.Unchecked += (_, _) => _shortcutAmount.IsEnabled = false;
         Hint("Reduces the current zoom by this percentage, centered on the main screen. For example, 15% changes 100% zoom to 85%. Turn off to keep the zoom when opening. Applies after saving.");
+        _smoothZoom = Option("Smooth canvas zooming", preferences.SmoothZoom);
+        Hint("Smoothly glides zoom levels when scrolling the mouse wheel or using + / -. Turn off for immediate discrete steps.");
         Hint("Choose how windows appear as you zoom. Thresholds are percentages of the canvas zoom level.");
         _live = Option("Live previews", preferences.LivePreviewsTier);
         _detailed = Option("Detailed placeholder cards", preferences.DetailedCardsTier);
@@ -59,6 +61,7 @@ internal sealed class ZoomSettingsControl : UserControl
         {
             _shortcutZoomOut.IsChecked = true;
             _shortcutAmount.Value = OverviewZoomDefaults.ShortcutZoomOutAmount * 100;
+            _smoothZoom.IsChecked = true;
             _live.IsChecked = _detailed.IsChecked = _simple.IsChecked = true;
             _cardEnter.Value = OverviewZoomDefaults.CardEnter * 100;
             _cardExit.Value = OverviewZoomDefaults.CardExit * 100;
@@ -112,7 +115,8 @@ internal sealed class ZoomSettingsControl : UserControl
             SimpleCardsTier = _simple.IsChecked == true, CardEnterZoom = _cardEnter.Value / 100,
             CardExitZoom = _cardExit.Value / 100, SimpleCardEnterZoom = _simpleEnter.Value / 100,
             SimpleCardExitZoom = _simpleExit.Value / 100,
-            EnableCanvasPeek = _peek.IsChecked == true, CanvasPeekDelayMs = (int)Math.Round(_peekDelay.Value) };
+            EnableCanvasPeek = _peek.IsChecked == true, CanvasPeekDelayMs = (int)Math.Round(_peekDelay.Value),
+            SmoothZoom = _smoothZoom.IsChecked == true };
         return true;
     }
 }
