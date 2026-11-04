@@ -33,6 +33,8 @@ internal sealed class OverviewAnnotationWindow : Window
         _taskbarPreviews = previews;
         if (!_bounds.IsEmpty) _taskbarRegion.Apply(_handle, _bounds, workingArea, visible, previews);
     }
+    private IOverviewAnnotationLayer? _backgroundLayer;
+    public void SetBackgroundLayer(IOverviewAnnotationLayer? layer) { _backgroundLayer=layer;_drawing.SetBackgroundLayer(layer); }
     private IReadOnlyList<IOverviewAnnotationLayer> _layers = Array.Empty<IOverviewAnnotationLayer>();
     public void SetDrawingLayers(IReadOnlyList<IOverviewAnnotationLayer> layers)
     {
@@ -47,6 +49,7 @@ internal sealed class OverviewAnnotationWindow : Window
         Content = null;
         _drawing = new OverviewAnnotationSurface();
         _drawing.SetDrawingLayers(_layers);
+        _drawing.SetBackgroundLayer(_backgroundLayer);
         Content = _drawing;
     }
 

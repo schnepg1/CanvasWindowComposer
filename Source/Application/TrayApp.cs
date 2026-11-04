@@ -29,6 +29,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ForegroundCoordinator _foreground;
     private readonly WorkspaceService _workspace;
     private readonly ZoneUi _zoneUi;
+    private readonly BackgroundCoordinator _backgrounds;
     private WorkspaceWindow? _workspaceWindow;
     private readonly ApplicationLifecycle _lifecycle = new(failure => Log($"Shutdown step '{failure.Step}' failed: {failure.Error}"));
     private readonly Control _dispatcher;
@@ -80,6 +81,7 @@ internal sealed class TrayApp : ApplicationContext
 
             _overview.AttachAnnotations(_vds);
             _overview.AttachTutorial();
+            _backgrounds = _lifecycle.Own(new BackgroundCoordinator(_canvas, _overview, _vds, _workspace.Zones, _config), ShutdownPhase.FinalizeLayout, "Background surfaces");
 
             // Constructed last so they can self-subscribe to canvas/input/desktops events.
             _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering, _overview), ShutdownPhase.ReleaseUi, "Minimap");
@@ -133,6 +135,7 @@ internal sealed class TrayApp : ApplicationContext
             _minimap.PinnedChanged += () => minimapItem.Checked = _minimap.Pinned;
             menu.Items.Add(minimapItem);
             menu.Items.Add(refreshItem);
+            menu.Items.Add(new ToolStripMenuItem("Backgrounds…", null, (_, _) => _backgrounds.Show()));
             menu.Items.Add(new ToolStripMenuItem("Export performance diagnostics...", null, (_, _) =>
             {
                 using var dialog = new SaveFileDialog { Filter = "JSON diagnostics|*.json", FileName = "canvas-performance.json" };
@@ -278,12 +281,14 @@ internal sealed class TrayApp : ApplicationContext
         _updates?.CheckAutomatically(_clock.TickCount64);
         _wm.Tick();
         _workspace.Tick();
+        _backgrounds.Tick();
     }
 
     private void OnToggle(object? sender, EventArgs e)
     {
         _enabled = !_enabled;
         _input.Enabled = _enabled;
+        _backgrounds.SetEnabled(_enabled);
         if (!_enabled)
         {
             _overview.CancelStartupIntro();
@@ -336,7 +341,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (_updates?.ApplyAfterExit is not {} apply || _lifecycle.IsStopping) return;
         // Leave the running session intact if the user has unfinished editing or saving fails.
-        if (!_overview.PrepareForUpdate(out var message) || !_workspace.SaveNow())
+        if (!_backgrounds.PrepareForUpdate(out var message) || !_overview.PrepareForUpdate(out message) || !_workspace.SaveNow())
         {
             MessageBox.Show(message ?? _workspace.Status ?? "The workspace could not be saved. The update will wait.", "Canvas update");
             return;

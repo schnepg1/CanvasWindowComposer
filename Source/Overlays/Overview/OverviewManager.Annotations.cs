@@ -24,8 +24,7 @@ internal sealed partial class OverviewManager
     private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
     private string? _annotationError;
-    public bool CanvasInputSuspended => PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
-
+    public bool CanvasInputSuspended => BackgroundEditorVisible || PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
 
 
 
@@ -76,6 +75,7 @@ internal sealed partial class OverviewManager
         if(_annotationTool==null) return;
         if (_annotationEditor is {} activeEditor && !activeEditor.Complete(true, returnFocus: false)) return;
         if (mode == AnnotationMode.Navigate) mode = AnnotationMode.Select;
+        _backgroundTool?.Deselect();
         StopTutorialTravel();
         CancelInteraction(); _zoneTool.Cancel(); _annotationTool.SetMode(mode); _annotationError=null;
         if (mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) Selection.Clear();
@@ -139,6 +139,7 @@ internal sealed partial class OverviewManager
             _annotationToolbar.ModeRequested+=SelectAnnotationMode;
             _annotationToolbar.ComposerRequested+=() => OpenCanvasComposer();
             _annotationToolbar.WebResourceRequested += ShowAddWebResource;
+            _annotationToolbar.BackgroundsRequested += () => BackgroundsRequested?.Invoke();
             _annotationToolbar.NearbyRequested+=radius => SelectNearby(radius);
             _annotationToolbar.SetSelectionRadius(_selectionRadius);
             _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);

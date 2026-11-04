@@ -14,6 +14,7 @@ internal sealed record OverviewAnnotationSnapshot(
     IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null,
     bool ReduceMotion = false, long? Timestamp = null)
 {
+    public IReadOnlyList<WorldRect> BackgroundOccluders { get; init; } = Array.Empty<WorldRect>();
     public string WindowStats { get; init; } = "Active: 0  ·  Minimized: 0 (auto: 0)";
     public string MinimizationStatus { get; init; } = "Auto-minimize: off";
 
@@ -81,6 +82,8 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         };
         Unloaded += (_, _) => { _glowTimer.Stop(); _hasActiveCards = false; };
     }
+    private IOverviewAnnotationLayer? _backgroundLayer;
+    public void SetBackgroundLayer(IOverviewAnnotationLayer? layer) { _backgroundLayer=layer;InvalidateVisual(); }
 
     public void SetDrawingLayers(IReadOnlyList<IOverviewAnnotationLayer> layers)
     {
@@ -133,6 +136,7 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         var dpi = VisualTreeHelper.GetDpi(this);
         var context = new OverviewAnnotationContext(_frame, View(_frame, dpi), dpi, RenderSize) { Timestamp = _frame.Timestamp ?? Environment.TickCount64 };
         dc.PushClip(new RectangleGeometry(new Rect(RenderSize)));
+        _backgroundLayer?.Draw(dc, context);
         _placeholders.Draw(dc, context);
         _zones.Draw(dc, context);
         foreach (var layer in _drawingLayers) layer.Draw(dc, context);

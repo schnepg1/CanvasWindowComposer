@@ -23,6 +23,7 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Off-screen hiding** — Windows hidden when panned out of view
 - **System tray** — Toggle, reset, exit
 - **Low quality mode** — Settings → Rendering offers a simple grid and cached previews or title cards during movement. Live previews return after settling. Applies immediately; normal quality is the default.
+- **Backgrounds**: create freely sized rooms from starter scenes or imported images, optionally linked to project areas. Open **More → Backgrounds…** or the tray menu. See [canvas backgrounds](Docs/canvas-backgrounds.md).
 - **Project areas** — Draw named, colored zones, assign saved places, move groups, resize boundaries, undo/redo layouts, and jump back to projects. Areas save per virtual desktop. See [project areas](Docs/project-areas.md).
 - **Project navigator** — Keep a compact panel beside the canvas: search areas, members, or paths, expand member lists, jump to areas, focus open members, or reopen closed ones. Open it with **P** in the overview or from the tray.
 

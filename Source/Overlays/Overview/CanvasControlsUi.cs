@@ -211,6 +211,12 @@ internal sealed class CanvasControlsPopup : Form
             ("+ / -", "Zoom around the screen center. Range: 2% to 100%.")
         ]);
 
+        AddSection("Backgrounds", [
+            ("More > Backgrounds…", "Create a room from a starter image or import your own. Attach to an area or choose a freely sized frame."),
+            ("Edit on canvas", "Unlock a free background. Drag its frame or corners; Shift keeps proportions. Esc cancels, then finishes editing."),
+            ("Background editor Undo/Redo", "Restore background edits. Project-linked bounds follow area history.")
+        ]);
+
         AddSection("Camera bookmarks", [
             ("Ctrl + 0-9", "Save or replace this camera position and zoom. Number row and numeric keypad supported."),
             ("0-9", "Jump to a saved view. Slots are separate per virtual desktop and survive restarts. Click empty canvas first when using an app.")
