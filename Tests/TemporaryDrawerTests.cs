@@ -111,4 +111,44 @@ public class TemporaryDrawerTests
         Assert.False(rig.Workspace.PlaceFromTemporaryArea(nearby.Id, Landing()));
         rig.Workspace.CollectInInventory(first.Id); Assert.Empty(rig.Workspace.TemporaryAreaItems);
     }
+
+    [Fact]
+    public void BackpackAndTemporaryDrawerExchangeWindowsWithoutLosingTheirLiveBinding()
+    {
+        using var rig = Start(); var temporary = Assert.Single(rig.Workspace.TemporaryAreaItems);
+
+        Assert.True(rig.Workspace.CollectInInventory(temporary.Id));
+        Assert.Empty(rig.Workspace.TemporaryAreaItems);
+        Assert.Equal(temporary.Id, Assert.Single(rig.Workspace.InventoryItems).Id);
+        var carried = Assert.Single(rig.Workspace.Document.Items);
+        Assert.True(carried.Bounds.InInventory);
+        Assert.Equal(WorkspacePlacement.Deliberate, carried.Placement);
+        Assert.Contains((IntPtr)42, rig.Api.ClippedWindows);
+
+        Assert.True(rig.Workspace.MoveInventoryToTemporaryArea(temporary.Id));
+        Assert.Empty(rig.Workspace.InventoryItems);
+        Assert.Equal(temporary.Id, Assert.Single(rig.Workspace.TemporaryAreaItems).Id);
+        carried = Assert.Single(rig.Workspace.Document.Items);
+        Assert.False(carried.Bounds.InInventory);
+        Assert.Equal(WorkspacePlacement.Temporary, carried.Placement);
+        Assert.True(TemporaryAreaLayout.ContainsCenter(rig.Workspace.TemporaryArea!.Bounds, carried.Bounds));
+        Assert.DoesNotContain((IntPtr)42, rig.Api.ClippedWindows);
+        Assert.Empty(rig.Store.Document.Items); // Temporary entries are session state only.
+        Assert.NotEmpty(rig.Api.NativeStateCalls);
+    }
+
+    [Fact]
+    public void ClosedBackpackEntriesStayCarriedWhenTheTemporaryAreaCannotAcceptThem()
+    {
+        using var rig = Start();
+        var closed = new WorkspaceItem { Title = "Closed app", Placement = WorkspacePlacement.Deliberate,
+            DesktopId = rig.Workspace.Zones.DesktopId, Bounds = new() { W = 400, H = 300, InInventory = true } };
+        rig.Workspace.Document.Items.Add(closed);
+
+        Assert.False(rig.Workspace.MoveInventoryToTemporaryArea(closed.Id));
+        Assert.True(closed.Bounds.InInventory);
+        Assert.Equal(WorkspacePlacement.Deliberate, closed.Placement);
+        Assert.Contains("open windows", rig.Workspace.Status, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(rig.Workspace.TemporaryAreaItems, i => i.Id == closed.Id);
+    }
 }

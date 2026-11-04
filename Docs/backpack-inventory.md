@@ -21,9 +21,11 @@ Drag a canvas window onto the open backpack or its folded badge. A selection of
 windows can also be collected together. **Put in backpack** is available in each
 window's context menu. Drag an inventory tile out onto clear canvas, or
 double-click it to find nearby landing space. If there is no clear landing
-space, it stays in the backpack with an explanation. Search filters titles and
-applications. Right-click a tile to place it, open its application, keep a session
-item, or forget a saved entry.
+space, it stays in the backpack with an explanation. Drag a tile onto the
+temporary drawer to return that window to the temporary area; it becomes a
+session entry and is no longer kept in workspace saves. Search filters titles
+and applications. Right-click a tile to place it, open its application, keep a
+session item, or forget a saved entry.
 
 **KEPT** entries were deliberately collected. Their inventory membership survives
 restart, and closed applications remain as entries inside the backpack. **SESSION**
