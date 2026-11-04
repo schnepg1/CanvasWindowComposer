@@ -20,15 +20,11 @@ internal sealed partial class OverviewManager
     private void StartOrUpdateSmoothZoom(int virtualX, int virtualY, double notches)
     {
         var (wx, wy) = _camera.WorldFromVirtual(virtualX, virtualY);
-        _smoothZoom.PushZoom(virtualX, virtualY, wx, wy, _camera.Zoom, notches, _gestureClock.TickCount64);
+        long now = _gestureClock.TickCount64;
+        _smoothZoom.PushZoom(virtualX, virtualY, wx, wy, _camera.Zoom, notches, now);
         if (!_smoothZoom.IsActive) return;
 
-        if (_smoothZoom.IsAccelerating)
-        {
-            MarkFastZoom();
-        }
-
-        SuspendParkingForMotion();
+        MarkZoomActive();
         ObserveGestureMotion();
         _startupIntroLanded = false;
 
@@ -37,7 +33,7 @@ internal sealed partial class OverviewManager
         _smoothZoomTimer.Tick += OnSmoothZoomTick;
         _smoothZoomTimer.Start();
 
-        AdvanceSmoothZoom();
+        AdvanceSmoothZoom(now + 16);
     }
 
     private void OnSmoothZoomTick(object? sender, EventArgs e) => AdvanceSmoothZoom();
@@ -57,7 +53,7 @@ internal sealed partial class OverviewManager
             var world = _smoothZoom.FocalWorld;
             CancelSmoothZoom();
             _camera.SetZoomAroundWorldPoint(focal.X, focal.Y, world.X, world.Y, target);
-            _visualFrames.Request();
+            _visualFrames.RequestAndFlush();
             return;
         }
 
@@ -66,20 +62,16 @@ internal sealed partial class OverviewManager
         var (vx, vy, wx, wy, newZoom, stopped) = _smoothZoom.Tick(_camera.Zoom, time);
         if (_camera.SetZoomAroundWorldPoint(vx, vy, wx, wy, newZoom))
         {
-            if (_smoothZoom.IsAccelerating) MarkFastZoom();
+            MarkZoomActive();
             ObserveGestureMotion();
             if (_tour?.ObserveZoom(before, _camera.Zoom) == true) SaveTourProgress();
             _startupIntroLanded = false;
-            _visualFrames.Request();
+            _visualFrames.RequestAndFlush();
         }
 
         if (stopped)
         {
             _smoothZoomTimer?.Stop();
-            if (!GesturePreviewsActive)
-            {
-                ResumeParkingAfterMotion();
-            }
         }
     }
 
@@ -87,10 +79,9 @@ internal sealed partial class OverviewManager
     {
         _smoothZoomTimer?.Stop();
         _smoothZoom.Cancel();
-        if (!GesturePreviewsActive)
-        {
-            ResumeParkingAfterMotion();
-        }
-        _visualFrames.Request();
+        _zoomSettleTimer?.Stop();
+        _zoomSettleUntil = 0;
+        ResumeParkingAfterMotion();
+        _visualFrames.RequestAndFlush();
     }
 }

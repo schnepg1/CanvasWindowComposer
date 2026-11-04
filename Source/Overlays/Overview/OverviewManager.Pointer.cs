@@ -247,7 +247,6 @@ internal sealed partial class OverviewManager
         _visualFrames.Request();
     }
 
-    private long _lastWheelTime;
     private void ZoomOverview(int virtualX, int virtualY, double notches)
     {
         CloseWindowPeek();
@@ -262,25 +261,18 @@ internal sealed partial class OverviewManager
             return;
         }
         CancelSmoothZoom();
-        long now = _gestureClock.TickCount64;
-        double dt = Math.Max(0, now - _lastWheelTime);
-        _lastWheelTime = now;
-        if (dt > 0 && dt < 250 && Math.Abs(notches) * 1000.0 / Math.Max(dt, 12.0) > SmoothZoomTracker.BaseCadenceNotchesPerSec)
-        {
-            MarkFastZoom();
-        }
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
         ObserveGestureMotion();
         if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
         _startupIntroLanded = false;
-        _visualFrames.Request();
+        _visualFrames.RequestAndFlush();
     }
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
         if (PlacingWebResource) return;
         CancelSmoothZoom();
-        _visualFrames.Flush();
+        _visualFrames.RequestAndFlush();
         if (CloseActiveMenus()) return;
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;

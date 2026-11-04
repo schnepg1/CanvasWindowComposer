@@ -11,7 +11,7 @@ namespace CanvasDesktop.Tests;
 public class FastZoomSimplificationTests
 {
     [Fact]
-    public void SlowZoomRetainsLivePreviewsInNormalQuality()
+    public void ImmediateZoomAdvancesOnFirstWheelEventWithoutStall()
         => WorkspaceViewTests.OnSta(() =>
         {
             using var source = new Form();
@@ -25,18 +25,21 @@ public class FastZoomSimplificationTests
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
 
-            // 1 slow notch (-120 delta) at t=1000
-            pass.OnWheel!(pass, 200, 200, -120, false, false, false);
-            overview.TickGesturePreviews();
+            double initialZoom = overview.ViewCamera.Zoom;
 
-            // In normal quality, a single slow notch does not activate gesture preview simplification
-            Assert.False(overview.FastZoomActive);
-            Assert.False(overview.GesturePreviewsActive);
-            Assert.Contains(source.Handle, dwm.VisibleSources);
+            // 1 single wheel notch (-120 delta) at t=1000
+            pass.OnWheel!(pass, 200, 200, -120, false, false, false);
+
+            // On the exact message of the first wheel notch (0ms elapsed), smooth zoom is active
+            // and the camera has ALREADY advanced immediately toward the target
+            Assert.True(overview.SmoothZoomActive);
+            Assert.True(overview.IsZoomSettling);
+            Assert.NotEqual(initialZoom, overview.ViewCamera.Zoom);
+            Assert.True(overview.ViewCamera.Zoom < initialZoom); // zoomed out
         });
 
     [Fact]
-    public void FastZoomWheelBurstActivatesSimplificationAndSuspendsParkingInNormalQuality()
+    public void LiveWindowsNeverReplacedWithTextCardsDuringFastZoomInNormalQuality()
         => WorkspaceViewTests.OnSta(() =>
         {
             using var source = new Form();
@@ -50,36 +53,34 @@ public class FastZoomSimplificationTests
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
 
-            // Notch 1 at t=1000
+            // Fast scroll burst: multiple notches within 50ms
             pass.OnWheel!(pass, 200, 200, -120, false, false, false);
-
-            // Notch 2 arrives 25ms later (fast scroll flick, cadence = 40 notches/sec)
             clock.Advance(25);
             pass.OnWheel!(pass, 200, 200, -120, false, false, false);
-            overview.TickGesturePreviews();
 
-            // Fast zoom acceleration must activate gesture previews even in normal quality!
-            Assert.True(overview.FastZoomActive);
-            Assert.True(overview.GesturePreviewsActive);
+            // In normal quality, live windows must REMAIN live throughout zooming!
+            // No text-card simplification, no visual flickering.
+            Assert.False(overview.GesturePreviewsActive);
+            Assert.Empty(overview.GesturePreviewCards);
+            Assert.Contains(source.Handle, dwm.VisibleSources);
+
+            // Automatic parking is suspended during zoom motion
             Assert.True(wm.SuspendAutomaticParking);
 
-            // DWM live source is suppressed/simplified into lightweight gesture cards during motion
-            Assert.DoesNotContain(source.Handle, dwm.VisibleSources);
-            var card = Assert.Single(overview.GesturePreviewCards);
-            Assert.Equal("App", card.Title);
-
-            // Advance through smooth zoom animation and wait for the 180ms settle boundary
+            // Finish animation and settle after 180ms
+            clock.Advance(250);
+            overview.AdvanceSmoothZoom(clock.TickCount64);
             clock.Advance(180);
             overview.TickGesturePreviews();
 
-            // Settle restores normal rendering and automatic parking
-            Assert.False(overview.GesturePreviewsActive);
+            // Settle restores normal state and automatic parking
+            Assert.False(overview.IsZoomSettling);
             Assert.False(wm.SuspendAutomaticParking);
             Assert.Contains(source.Handle, dwm.VisibleSources);
         });
 
     [Fact]
-    public void FastZoomOutAcrossCardThresholdDefersCardModeUntilSettled()
+    public void ThresholdCardModeSwitchingIsDeferredWhileZooming()
         => WorkspaceViewTests.OnSta(() =>
         {
             using var source = new Form();
@@ -106,15 +107,14 @@ public class FastZoomSimplificationTests
                 pass.OnWheel!(pass, 200, 200, -120, false, false, false);
                 clock.Advance(25);
             }
-            overview.TickGesturePreviews();
 
-            // Fast zoom is active and target zoom is deep in card territory
-            Assert.True(overview.FastZoomActive);
-            Assert.True(overview.GesturePreviewsActive);
+            // Smooth zoom is active and settling
+            Assert.True(overview.SmoothZoomActive);
+            Assert.True(overview.IsZoomSettling);
             Assert.True(wm.SuspendAutomaticParking);
 
-            // While animating, lightweight gesture cards represent the window
-            Assert.Single(overview.GesturePreviewCards);
+            // Live windows are not replaced by text cards during active motion
+            Assert.False(overview.GesturePreviewsActive);
 
             // Finish animation and settle
             clock.Advance(250);
@@ -123,7 +123,7 @@ public class FastZoomSimplificationTests
             overview.TickGesturePreviews();
 
             // Settled: motion ended, parking resumed
-            Assert.False(overview.GesturePreviewsActive);
+            Assert.False(overview.IsZoomSettling);
             Assert.False(wm.SuspendAutomaticParking);
         });
 }

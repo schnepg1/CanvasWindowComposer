@@ -40,6 +40,12 @@ internal sealed class OverviewFrameScheduler(Action<Action> schedule, Action dra
         finally { _drawing = false; Queue(); }
     }
 
+    public void RequestAndFlush()
+    {
+        _pending = true;
+        Flush();
+    }
+
     public void Cancel()
     {
         _pending = _queued = false;

@@ -12,19 +12,41 @@ internal sealed partial class OverviewManager
     private Timer? _gestureSettleTimer;
     private bool _restoringGesturePreviews;
     private long _gestureRestoreUntil;
-    private long _fastZoomUntil;
     private bool? _parkingBeforeGesture;
+
+    private long _zoomSettleUntil;
+    private Timer? _zoomSettleTimer;
 
     internal bool GesturePreviewsActive => _gesturePreviews.Active;
     internal IReadOnlyList<PlaceholderAnnotation> GesturePreviewCards => _annotationCards;
 
-    internal bool FastZoomActive => _gestureClock.TickCount64 < _fastZoomUntil
-        || (_smoothZoom.IsActive && _smoothZoom.IsAccelerating);
+    internal bool IsZoomSettling => _gestureClock.TickCount64 < _zoomSettleUntil || _smoothZoom.IsActive;
 
-    internal void MarkFastZoom()
+    internal void MarkZoomActive()
     {
-        _fastZoomUntil = _gestureClock.TickCount64 + GesturePreviewPolicy.SettleMs;
+        _zoomSettleUntil = _gestureClock.TickCount64 + GesturePreviewPolicy.SettleMs;
+        _cardTransitions.Clear();
+        _cardAnimationTimer?.Stop();
+        SuspendParkingForMotion();
+
+        _zoomSettleTimer ??= new Timer();
+        _zoomSettleTimer.Stop();
+        _zoomSettleTimer.Interval = GesturePreviewPolicy.SettleMs;
+        _zoomSettleTimer.Tick -= OnZoomSettleTick;
+        _zoomSettleTimer.Tick += OnZoomSettleTick;
+        _zoomSettleTimer.Start();
     }
+
+    internal void SettleZoomMotion()
+    {
+        _zoomSettleTimer?.Stop();
+        _zoomSettleUntil = 0;
+        if (_disposed || CurrentMode == OverviewMode.Hidden) return;
+        ResumeParkingAfterMotion();
+        ReconcileVisuals();
+    }
+
+    private void OnZoomSettleTick(object? sender, EventArgs e) => SettleZoomMotion();
 
     internal void SuspendParkingForMotion()
     {
@@ -55,11 +77,9 @@ internal sealed partial class OverviewManager
     private void UpdateGesturePreviews()
     {
         bool wasActive = GesturePreviewsActive;
-        bool fastZoom = FastZoomActive;
         bool active = _gesturePreviews.Update(_appConfig.LowQualityMode,
             CurrentMode != OverviewMode.Hidden && !IsStartupIntroActive,
-            CurrentMode == OverviewMode.Panning, GesturePointerHeld, _gestureClock.TickCount64,
-            fastZoom: fastZoom);
+            CurrentMode == OverviewMode.Panning, GesturePointerHeld, _gestureClock.TickCount64);
         _thumbnails.SimplifyDuringMotion = active;
         if (wasActive != active)
         {
@@ -116,9 +136,8 @@ internal sealed partial class OverviewManager
     internal void TickGesturePreviews()
     {
         _gestureSettleTimer?.Stop();
-        if (_disposed || CurrentMode == OverviewMode.Hidden) return;
-        // Reconcile registers live sources before replacing the lightweight cards.
-        ReconcileVisuals();
+        if (!IsZoomSettling) SettleZoomMotion();
+        else if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
     }
 
     private string GestureTitle(IntPtr handle)
@@ -137,7 +156,8 @@ internal sealed partial class OverviewManager
         _restoringGesturePreviews = false;
         _gestureTitles.Clear();
         _thumbnails.SimplifyDuringMotion = false;
-        _fastZoomUntil = 0;
+        _zoomSettleTimer?.Stop();
+        _zoomSettleUntil = 0;
         if (_parkingBeforeGesture.HasValue)
         {
             _wm.SuspendAutomaticParking = _parkingBeforeGesture.Value;

@@ -114,7 +114,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             ? _mainCanvas.Camera : camera;
         _wm.SetOverviewViewport(proximityCamera,
             _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
-        bool deferCardMode = GesturePreviewsActive || FastZoomActive || SmoothZoomActive;
+        bool deferCardMode = SmoothZoomActive;
         if (!deferCardMode && _placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
         {
             _placeholderTitles = _placeholderWorkspace.GetPlaceholderTitles();
