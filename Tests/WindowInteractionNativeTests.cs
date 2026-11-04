@@ -43,8 +43,9 @@ public class WindowInteractionNativeTests
                     // The production hook forwards before updating the cursor. A
                     // second hook, installed last, observes its completed return.
                     using var completed = new ManualResetEventSlim();
-                    var tag = new UIntPtr(0x43414E56);
-                    Point target = default;
+                    var tag = NativeMouseInputScope.Tag;
+                    Point target = default, cursorAtCompletion = default;
+                    bool cursorRead = false;
                     nint suppression = 0;
                     int observed = 0;
                     HOOKPROC observer = (code, message, data) =>
@@ -61,6 +62,7 @@ public class WindowInteractionNativeTests
                         if (tagged)
                         {
                             target = point; suppression = result.Value; observed++;
+                            cursorRead = PInvoke.GetCursorPos(out cursorAtCompletion);
                             completed.Set();
                         }
                         return result;
@@ -69,11 +71,12 @@ public class WindowInteractionNativeTests
                         observer, PInvoke.GetModuleHandle((string?)null), 0))
                     {
                         Assert.False(observation.IsInvalid);
+                        using var input = new NativeMouseInputScope();
                         // Positive control: queued setup messages bypass low-level
                         // hooks and must be drained before measuring injected input.
                         int setupMoves = app.Moves.Count;
                         Assert.True(PInvoke.PostMessage((HWND)app.Handle, 0x200, 0, (LPARAM)(50 | (50 << 16))));
-                        PumpMouseQuiet(() => app.Moves.Count + forwarded.Count);
+                        PumpMouseQuiet(() => app.Moves.Count);
                         Assert.True(app.Moves.Count > setupMoves);
                         Assert.True(app.Capture);
                         app.Phase = "injected";
@@ -82,16 +85,19 @@ public class WindowInteractionNativeTests
                         // No clicks or keyboard input are injected into the desktop.
                         mouse_event(1, 4, 0, 0, tag);
                         PumpUntil(() => completed.IsSet);
+                        // A later cursor move must not invalidate the completed
+                        // hook's cursor update. It must still be withheld from the app.
+                        Assert.True(PInvoke.SetCursorPos(start.X, start.Y + 12));
                         // Keep both hooks installed while any delayed native move
                         // would arrive. Never filter measured events by point/tag.
-                        PumpMouseQuiet(() => app.Moves.Count + forwarded.Count);
+                        PumpMouseQuiet(() => app.Moves.Count);
                         string evidence = string.Join(" | ", app.Moves);
                         Assert.Equal(1, observed);
                         Assert.NotEqual((nint)0, suppression);
                         Assert.Contains(forwarded, e => e.Screen == target && e.Button == MouseButtons.None);
-                        Assert.True(PInvoke.GetCursorPos(out var end));
-                        Assert.NotEqual(start, end);
-                        Assert.Equal(target, end);
+                        Assert.True(cursorRead);
+                        Assert.NotEqual(start, cursorAtCompletion);
+                        Assert.Equal(target, cursorAtCompletion);
                         Assert.True(app.Capture);
                         Assert.True(app.Moves.All(move => move.Phase != "injected"), evidence);
                     }
@@ -110,6 +116,7 @@ public class WindowInteractionNativeTests
         => WorkspaceViewTests.OnSta(() =>
         {
             Assert.True(PInvoke.GetCursorPos(out var original));
+            using var input = new NativeMouseInputScope();
             using var target = Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory,
                 "native", architecture, "CanvasInputProbe.exe"))
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!;
@@ -123,28 +130,37 @@ public class WindowInteractionNativeTests
                 Assert.Equal((nint)1, PInvoke.SendMessage((HWND)window, 0x8002, 0, 0).Value);
                 // Positive control proves real native input reaches this separate
                 // process, then clears all setup movement before the protected phase.
-                PInvoke.SetCursorPos(160, 160);
-                Thread.Sleep(40);
-                Assert.True(PInvoke.SendMessage((HWND)window, 0x8001, 0, 0).Value > 0);
+                Assert.True(PInvoke.SetCursorPos(160, 160));
+                mouse_event(1, 4, 0, 0, NativeMouseInputScope.Tag);
+                PumpUntil(() => ReadProbeMoves(window) > 0);
                 using (var protection = new WindowInteractionInputGuard())
                 {
                     Assert.True(protection.Protect(window));
                     Assert.True(protection.IsHealthy);
-                    PInvoke.SetCursorPos(180, 160);
-                    Thread.Sleep(40);
-                    Assert.Equal((nint)0, PInvoke.SendMessage((HWND)window, 0x8001, 0, 0).Value);
+                    // The positive control can leave delayed system-generated
+                    // moves. Finish that setup phase before injecting the input
+                    // whose delivery is measured below.
+                    int setupMoves = 0;
+                    PumpMouseQuiet(() => setupMoves += ReadProbeMoves(window));
+                    Assert.True(PInvoke.SetCursorPos(180, 160));
+                    mouse_event(1, 4, 0, 0, NativeMouseInputScope.Tag);
+                    int leakedMoves = 0;
+                    PumpMouseQuiet(() => leakedMoves += ReadProbeMoves(window));
+                    Assert.Equal(0, leakedMoves);
                     Assert.Equal((nint)1, PInvoke.SendMessage((HWND)window, 0x8003, 0, 0).Value);
-                    Assert.True(PInvoke.GetCursorPos(out var cursor));
-                    Assert.Equal(new Point(180, 160), cursor);
+                    // Exact cursor movement is checked at low-level hook completion
+                    // above. The global position after pumping belongs to later input.
                     // Mapped posts must still be delivered; the native filter must
                     // neither steal capture nor discard the bridge's app messages.
                     Assert.True(PInvoke.PostMessage((HWND)window, 0x200, 0, (LPARAM)(50 | (50 << 16))));
-                    Thread.Sleep(40);
-                    Assert.Equal((nint)1, PInvoke.SendMessage((HWND)window, 0x8001, 0, 0).Value);
+                    int mappedMoves = 0;
+                    PumpUntil(() => (mappedMoves += ReadProbeMoves(window)) > 0);
+                    PumpMouseQuiet(() => mappedMoves += ReadProbeMoves(window));
+                    Assert.Equal(1, mappedMoves);
                 }
-                PInvoke.SetCursorPos(200, 160);
-                Thread.Sleep(40);
-                Assert.True(PInvoke.SendMessage((HWND)window, 0x8001, 0, 0).Value > 0);
+                Assert.True(PInvoke.SetCursorPos(200, 160));
+                mouse_event(1, 4, 0, 0, NativeMouseInputScope.Tag);
+                PumpUntil(() => ReadProbeMoves(window) > 0);
             }
             finally
             {
@@ -249,13 +265,19 @@ public class WindowInteractionNativeTests
             => _native.Post(window, message, flags, point);
     }
 
+    private static int ReadProbeMoves(IntPtr window)
+        => (int)PInvoke.SendMessage((HWND)window, 0x8001, 0, 0).Value;
+
     private static void PumpUntil(Func<bool> condition)
     {
         var timer = Stopwatch.StartNew();
-        while (!condition() && timer.Elapsed < TimeSpan.FromSeconds(2))
-        { Application.DoEvents(); Thread.Yield(); }
-        Assert.True(condition());
-        Application.DoEvents();
+        while (timer.Elapsed < TimeSpan.FromSeconds(2))
+        {
+            Application.DoEvents();
+            if (condition()) { Application.DoEvents(); return; }
+            Thread.Yield();
+        }
+        Assert.Fail("Native input did not reach the expected state within two seconds.");
     }
 
     private sealed record MouseMoveObservation(string Phase, Point Client, int MessageTime, nint ExtraInfo, bool Captured);

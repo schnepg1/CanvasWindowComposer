@@ -20,8 +20,10 @@ the list is empty or Canvas overview is closed. Click it to peek into the
 temporary zone. New arrivals slide the drawer out for five seconds and animate
 into the top of the list, newest first. Notifications do not take focus or move
 the camera. Hovering the drawer or dragging a row holds it open; leaving gives
-another five seconds before it folds back. Click the tab again or press Escape
-to fold it immediately. Reduced-motion settings skip the slide and row motion.
+another five seconds before it folds back. A backpack drag over the drawer also
+holds it open, even while the backpack owns mouse capture. Click the tab again
+or press Escape to fold it immediately. Reduced-motion settings skip the slide
+and row motion.
 
 Click a row to bring that window into view, drag it onto clear canvas to place it
 at the current camera, or double-click to find nearby space. Drag a row onto the
@@ -32,7 +34,9 @@ stay minimized. Placement avoids existing content and visible Canvas panels. If
 there is no room or Windows rejects the move, the entry stays in the temporary
 zone. Closing an app removes its row. The drawer shows only temporary-zone
 members on the current virtual desktop; live overlapping arrivals and the
-backpack have their own existing behavior.
+backpack have their own existing behavior. Single-click navigation waits for the
+double-click interval; a double-click, another drag, a removed row, or folding
+the drawer cancels that pending navigation.
 
 **Show temporary area** in the drawer and **Go to temporary area** in the tray
 also create an empty area before the first arrival, so you can choose its

@@ -128,6 +128,7 @@ public class PresentationFrameTests
     public void ReentrantCameraInputPublishesTheCurrentFrameThenTheNextCamera()
         => WorkspaceViewTests.OnSta(() =>
         {
+            Assert.True(GridRenderer.CompileShaders());
             using var source = new Form();
             var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
             var clock = new FakeClock(); var config = new FakeAppConfig { EnableStartupIntro = false, LowQualityMode = true };
@@ -136,15 +137,25 @@ public class PresentationFrameTests
             using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: new FakeDwmThumbnailApi());
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
-            var layer = new Recorder(); bool once = true;
-            layer.OnDraw = () => { if (once) { once = false; canvas.SetCamera(800, 200); } };
+            var layer = new Recorder();
+            double initialZoom = overview.ViewCamera.Zoom;
+            CanvasCamera? requested = null;
+            layer.OnDraw = () =>
+            {
+                if (requested == null && overview.ViewCamera.Zoom != initialZoom)
+                {
+                    requested = overview.ViewCamera;
+                    canvas.SetCamera(800, 200);
+                }
+            };
             pass.SetDrawingLayers([layer]);
+            // Zoom publishes immediately. Observe its camera during the draw,
+            // after cancellation frames and before reentrant input replaces it.
             pass.OnWheel!(pass, 200, 200, -30, false, false, false);
-            var requested = overview.ViewCamera;
-            overview.TickGesturePreviews();
+            Assert.NotNull(requested);
             var published = pass.Grid!.CaptureSnapshot(new float[64]);
-            Assert.Equal((float)requested.X, published.CamX); Assert.Equal((float)requested.Zoom, published.Zoom);
-            Assert.Equal(requested.X, layer.View!.Value.CameraX);
+            Assert.Equal((float)requested.Value.X, published.CamX); Assert.Equal((float)requested.Value.Zoom, published.Zoom);
+            Assert.Equal(requested.Value.X, layer.View!.Value.CameraX);
             Assert.Equal(800, overview.ViewCamera.X);
             overview.TickGesturePreviews();
             Assert.Equal(800, pass.Grid.CaptureSnapshot(new float[64]).CamX);

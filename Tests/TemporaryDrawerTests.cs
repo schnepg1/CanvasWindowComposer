@@ -112,10 +112,12 @@ public class TemporaryDrawerTests
         rig.Workspace.CollectInInventory(first.Id); Assert.Empty(rig.Workspace.TemporaryAreaItems);
     }
 
-    [Fact]
-    public void BackpackAndTemporaryDrawerExchangeWindowsWithoutLosingTheirLiveBinding()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BackpackAndTemporaryDrawerExchangeWindowsWithoutLosingTheirLiveBinding(bool minimized)
     {
-        using var rig = Start(); var temporary = Assert.Single(rig.Workspace.TemporaryAreaItems);
+        using var rig = Start(minimized); var temporary = Assert.Single(rig.Workspace.TemporaryAreaItems);
 
         Assert.True(rig.Workspace.CollectInInventory(temporary.Id));
         Assert.Empty(rig.Workspace.TemporaryAreaItems);
@@ -131,10 +133,35 @@ public class TemporaryDrawerTests
         carried = Assert.Single(rig.Workspace.Document.Items);
         Assert.False(carried.Bounds.InInventory);
         Assert.Equal(WorkspacePlacement.Temporary, carried.Placement);
+        Assert.Equal(minimized ? WindowState.Minimized : WindowState.Normal, carried.Bounds.State);
         Assert.True(TemporaryAreaLayout.ContainsCenter(rig.Workspace.TemporaryArea!.Bounds, carried.Bounds));
-        Assert.DoesNotContain((IntPtr)42, rig.Api.ClippedWindows);
+        if (!minimized) Assert.DoesNotContain((IntPtr)42, rig.Api.ClippedWindows);
         Assert.Empty(rig.Store.Document.Items); // Temporary entries are session state only.
         Assert.NotEmpty(rig.Api.NativeStateCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RejectedNativeTransferKeepsTheWindowCarriedAndPersisted(bool rejectPlacement)
+    {
+        using var rig = Start();
+        var id = Assert.Single(rig.Workspace.TemporaryAreaItems).Id;
+        Assert.True(rig.Workspace.CollectInInventory(id));
+        var source = Assert.Single(rig.Workspace.InventoryItems).Bounds;
+        int attempts = 0;
+        rig.Api.BeforeSetPosition = handle =>
+        {
+            if (++attempts == (rejectPlacement ? 2 : 1)) rig.Api.FailedMoves.Add(handle);
+        };
+
+        Assert.False(rig.Workspace.MoveInventoryToTemporaryArea(id));
+        Assert.Equal(source, Assert.Single(rig.Workspace.InventoryItems).Bounds);
+        Assert.Equal(source, rig.Canvas.Windows[(IntPtr)42]);
+        Assert.Contains((IntPtr)42, rig.Api.ClippedWindows);
+        Assert.Empty(rig.Workspace.TemporaryAreaItems);
+        rig.Workspace.SaveNow();
+        Assert.True(Assert.Single(rig.Store.Document.Items).Bounds.InInventory);
     }
 
     [Fact]

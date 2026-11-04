@@ -75,7 +75,7 @@ internal sealed class TemporaryDrawerPanel : UserControl
             Background = Ink("#233D50"), Foreground = Ink("#A5EBE0"), BorderBrush = Ink("#426275"), Cursor = Cursors.Hand };
         visit.Click += (_, _) => ShowAreaRequested?.Invoke(); footer.Children.Add(visit);
         Drag = new(this);
-        Drag.HeldChanged += held => { if (!held) Rebuild(); };
+        Drag.HeldChanged += held => { if (held) CancelPendingFocus(); else Rebuild(); };
         Drag.Clicked += QueueFocus;
         _clickTimer.Tick += (_, _) => FlushFocus();
         Unloaded += (_, _) => CancelPendingFocus();
@@ -107,6 +107,7 @@ internal sealed class TemporaryDrawerPanel : UserControl
     }
     public void SetExpanded(bool expanded)
     {
+        if (!expanded) CancelPendingFocus();
         _chevron.Text = expanded ? "\u203a" : "\u2039";
         _rail.ToolTip = expanded ? "Fold temporary windows" : "Peek at temporary windows";
     }

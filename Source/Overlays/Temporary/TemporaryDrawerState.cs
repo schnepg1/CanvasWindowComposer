@@ -10,7 +10,7 @@ internal sealed class TemporaryDrawerState
     internal const long PeekMilliseconds = 5000;
     private Guid? _area;
     private long _until;
-    private bool _hovered, _dragging;
+    private bool _hovered, _dragging, _dropTarget;
     public bool IsOpen { get; private set; }
     public IReadOnlyList<WorkspaceItemView> Items { get; private set; } = Array.Empty<WorkspaceItemView>();
 
@@ -40,6 +40,14 @@ internal sealed class TemporaryDrawerState
     }
     public void Tick(long now)
     {
-        if (IsOpen && !_hovered && !_dragging && now >= _until) Close();
+        if (IsOpen && !_hovered && !_dragging && !_dropTarget && now >= _until) Close();
+    }
+
+    public void SetDropTarget(bool active, long now)
+    {
+        if (_dropTarget == active) return;
+        _dropTarget = active;
+        if (active) Open(now);
+        else _until = now + PeekMilliseconds;
     }
 }

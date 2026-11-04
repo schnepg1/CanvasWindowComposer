@@ -108,6 +108,69 @@ public class TemporaryDrawerViewTests
             drawer.Panel.Drag.Cancel(); drawer.Panel.Drag.Release(new Point(-200, 100)); Assert.Equal(0, drops);
         });
 
+    [Fact]
+    [Trait("Category", "NativePreview")]
+    public void StartingAnotherDragCancelsThePendingSingleClickNavigation()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var work = Forms.Screen.PrimaryScreen!.WorkingArea;
+            var screen = new ScreenRect(work.X, work.Y, work.Width, work.Height);
+            using var drawer = new TemporaryDrawerWindow(screen);
+            var item = TemporaryDrawerTests.Row("Click then drag");
+            drawer.Refresh(screen, new(new() { W = 3000, H = 1200 }, 1, Guid.NewGuid(), "Temporary area", "#94A3B8"), [item], true);
+            PreparePointer(drawer);
+            int focused = 0;
+            drawer.Panel.FocusRequested += _ => focused++;
+            drawer.Panel.Drag.Begin(item.Id, new Point(100, 100));
+            Assert.True(drawer.Panel.Drag.IsHeld);
+            drawer.Panel.Drag.Release(new Point(100, 100));
+            drawer.Panel.Drag.Begin(item.Id, new Point(100, 100));
+            Assert.True(drawer.Panel.Drag.IsHeld);
+            drawer.Panel.Drag.Move(new Point(-100, 100), true);
+            PumpForClick();
+            Assert.Equal(0, focused);
+            Assert.True(drawer.Panel.Drag.IsHeld);
+        });
+
+    [Theory]
+    [InlineData("click")]
+    [InlineData("removed")]
+    [InlineData("folded")]
+    [Trait("Category", "NativePreview")]
+    public void SingleClickNavigatesOnlyWhileTheRowAndDrawerRemainAvailable(string action)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var work = Forms.Screen.PrimaryScreen!.WorkingArea;
+            var screen = new ScreenRect(work.X, work.Y, work.Width, work.Height);
+            using var drawer = new TemporaryDrawerWindow(screen);
+            var item = TemporaryDrawerTests.Row("Single click");
+            drawer.Refresh(screen, new(new() { W = 3000, H = 1200 }, 1, Guid.NewGuid(), "Temporary area", "#94A3B8"), [item], true);
+            PreparePointer(drawer);
+            var focused = new List<Guid>();
+            int placed = 0;
+            drawer.Panel.FocusRequested += focused.Add;
+            drawer.Panel.PlaceRequested += _ => placed++;
+            drawer.Panel.Drag.Begin(item.Id, new Point(100, 100));
+            Assert.True(drawer.Panel.Drag.IsHeld);
+            drawer.Panel.Drag.Release(new Point(100, 100));
+            Assert.Empty(focused);
+            if (action == "removed") drawer.Panel.UpdateItems("Temporary area", [], [], true);
+            if (action == "folded") drawer.ClosePeek();
+            PumpForClick();
+            Assert.Equal(action == "click" ? new[] { item.Id } : Array.Empty<Guid>(), focused);
+            Assert.Equal(0, placed);
+        });
+
+    private static void PumpForClick()
+    {
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        var timer = new System.Windows.Threading.DispatcherTimer
+        { Interval = TimeSpan.FromMilliseconds(Math.Max(200, Forms.SystemInformation.DoubleClickTime) + 100) };
+        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+        timer.Start();
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+    }
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())

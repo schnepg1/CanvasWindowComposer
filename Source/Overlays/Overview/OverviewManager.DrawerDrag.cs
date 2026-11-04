@@ -25,11 +25,7 @@ internal sealed partial class OverviewManager
 
     private void SetOtherDrawerDropTarget(bool inventory, bool active)
     {
-        if (inventory)
-        {
-            if (active) _temporaryDrawer?.OpenPeek();
-            _temporaryDrawer?.Panel.SetDropTarget(active);
-        }
+        if (inventory) _temporaryDrawer?.SetDropTarget(active);
         else _backpack?.Panel.SetDropTarget(active);
     }
 

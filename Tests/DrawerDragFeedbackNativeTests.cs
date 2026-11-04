@@ -145,6 +145,41 @@ public class DrawerDragFeedbackNativeTests
             }
         });
 
+    [Fact]
+    [Trait("Category", "NativePreview")]
+    public void BackpackDragHoldsTheReceivingDrawerOpenUntilItLeaves()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var source = new Forms.Form();
+            var config = new FakeAppConfig { EnableStartupIntro = false, ReduceStartupMotion = true };
+            using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true }, config: config);
+            rig.Api.AddWindow(source.Handle, 100, 100, 400, 300);
+            rig.Workspace.Start();
+            var item = Assert.Single(rig.Workspace.Document.Items);
+            Assert.True(rig.Workspace.CollectInInventory(item.Id));
+            Assert.True(GridRenderer.CompileShaders());
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config, new FakeScreens());
+            overview.AttachPlaceholderWorkspace(rig.Workspace);
+            overview.TransitionTo(OverviewMode.Zooming);
+            overview.ToggleInventory();
+            var drawer = overview.TemporaryDrawer!;
+            drawer.ClosePeek();
+            drawer.State.SetHovered(false, Environment.TickCount64);
+            var bag = overview.InventoryView!;
+            PreparePointer(bag);
+            var drag = bag.Panel.Drag;
+            drag.Begin(item.Id, new Point(80, 60));
+            Assert.True(drag.IsHeld);
+            drag.Move(bag.Panel.PointFromScreen(Center(drawer.ScreenBounds)), true);
+            Assert.True(drawer.State.IsOpen);
+            drawer.Advance(Environment.TickCount64 + TemporaryDrawerState.PeekMilliseconds + 1);
+            Assert.True(drawer.State.IsOpen);
+            Assert.Same(bag.Panel, Mouse.Captured);
+            drag.Cancel();
+            drawer.Advance(Environment.TickCount64 + TemporaryDrawerState.PeekMilliseconds + 1);
+            Assert.False(drawer.State.IsOpen);
+        });
+
     private static Point Center(ScreenRect rect) => new(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0);
 
     private static void PreparePointer(Window window)

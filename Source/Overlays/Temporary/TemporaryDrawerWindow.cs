@@ -55,7 +55,13 @@ internal sealed class TemporaryDrawerWindow : CanvasPanelWindow, IDisposable
     }
 
     public void ClosePeek() { Panel.Drag.Cancel(); State.Close(); Animate(); }
-    public void OpenPeek() { if (State.IsOpen) return; State.Open(Environment.TickCount64); Animate(); }
+    public void SetDropTarget(bool active)
+    {
+        if (_disposing) return;
+        State.SetDropTarget(active, Environment.TickCount64);
+        Panel.SetDropTarget(active);
+        Animate();
+    }
     private void Animate() { Advance(Environment.TickCount64); if (State.IsOpen || _progress > 0) _timer.Start(); }
 
     internal void Advance(long now)
