@@ -37,6 +37,13 @@ internal sealed class TemporaryDrawerWindow : CanvasPanelWindow, IDisposable
 
     public ScreenRect ScreenBounds => _bounds;
 
+    public bool ContainsScreenPoint(double x, double y)
+    {
+        if (_disposing || !IsVisible) return false;
+        var b = _bounds;
+        return x >= b.Left && x < b.Right && y >= b.Top && y < b.Bottom;
+    }
+
     public void Refresh(ScreenRect work, TemporaryAreaView? area, IReadOnlyList<WorkspaceItemView> items, bool reduceMotion)
     {
         if (_disposing) return;
@@ -48,6 +55,7 @@ internal sealed class TemporaryDrawerWindow : CanvasPanelWindow, IDisposable
     }
 
     public void ClosePeek() { Panel.Drag.Cancel(); State.Close(); Animate(); }
+    public void OpenPeek() { if (State.IsOpen) return; State.Open(Environment.TickCount64); Animate(); }
     private void Animate() { Advance(Environment.TickCount64); if (State.IsOpen || _progress > 0) _timer.Start(); }
 
     internal void Advance(long now)

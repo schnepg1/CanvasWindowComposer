@@ -48,4 +48,54 @@ internal sealed partial class WorkspaceService
             || !IsTemporaryAreaMember(item, zone) || _bindings.ForItem(id) is not { } live || !StillCurrent(live)) return false;
         return NearbyWindowPlacement.TryPlace(item.Bounds, viewport, InventoryPlacementObstacles(id), out placed, x, y);
     }
+
+    /// <summary>Move a carried inventory window into the temporary area as a session entry.</summary>
+    public bool MoveInventoryToTemporaryArea(Guid id)
+    {
+        if (_disposed || !_started || _switching || Find(id) is not { } item
+            || !item.Bounds.InInventory || item.DesktopId != _desktop) return false;
+        if (BoundWindow(id) is not { } live || !StillCurrent(live))
+        {
+            _inventoryStatus = _status = "Only open windows can move to the temporary area.";
+            Changed?.Invoke();
+            return false;
+        }
+        var source = item.Bounds;
+        WorldRect placed;
+        try
+        {
+            var world = source; world.InInventory = false; world.PinnedToScreen = false;
+            placed = PlaceTemporary(live, world);
+        }
+        catch (InvalidOperationException)
+        {
+            _inventoryStatus = _status = "The temporary area has no free space for this window.";
+            Changed?.Invoke();
+            return false;
+        }
+        var restored = _api.RestoreNativeState(live.Identity.Handle, _canvas.WorldToScreen(placed), placed.State);
+        if (!restored.Accepted || !StillCurrent(live))
+        {
+            _inventoryStatus = _status = "Windows could not restore this item. It stays in your backpack.";
+            Changed?.Invoke();
+            return false;
+        }
+        if (!_wm.RestorePlacement(live.Identity.Handle, placed))
+        {
+            _wm.TryCarryWindow(live.Identity.Handle, source);
+            _inventoryStatus = _status = "Windows could not finish placing this item. It stays in your backpack.";
+            Changed?.Invoke();
+            return false;
+        }
+        item.Bounds = placed; item.Placement = WorkspacePlacement.Temporary;
+        live.NeedsInitialMatch = false;
+        if (TemporaryZone is { } area)
+        {
+            if (!area.ItemIds.Contains(id)) area.ItemIds.Add(id);
+            _temporaryAreaChanged = true;
+        }
+        _inventoryStatus = _status = null;
+        InvalidateOverviewSnapshot(); RemoveCard(id); EnsureCards(); Save(); PublishTemporaryAreaChange(); Changed?.Invoke();
+        return true;
+    }
 }

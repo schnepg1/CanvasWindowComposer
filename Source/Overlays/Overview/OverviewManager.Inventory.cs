@@ -100,6 +100,7 @@ internal sealed partial class OverviewManager
     private void DropInventory(Guid id, System.Windows.Point? point)
     {
         if (_placeholderWorkspace == null) return;
+        if (point is { } screen && TryCrossDrawerDrop(id, inventory: true, screen)) return;
         if (!TryDrawerDropTarget(id, true, point, out _, out var x, out var y)) return;
         bool dropped = _placeholderWorkspace.DropFromInventory(id, x, y);
         _backpack?.Panel.SetHint(dropped ? "Unpacked. This place is now kept on the canvas." : _placeholderWorkspace.Status);

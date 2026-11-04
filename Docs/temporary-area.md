@@ -23,13 +23,16 @@ the camera. Hovering the drawer or dragging a row holds it open; leaving gives
 another five seconds before it folds back. Click the tab again or press Escape
 to fold it immediately. Reduced-motion settings skip the slide and row motion.
 
-Drag a row onto clear canvas to place that window at the current camera, or
-double-click to find nearby space. Explicit placement keeps its new place;
-minimized windows stay minimized. Placement avoids existing content and visible
-Canvas panels. If there is no room or Windows rejects the move, the entry stays
-in the temporary zone. Closing an app removes its row. The drawer shows only
-temporary-zone members on the current virtual desktop; live overlapping arrivals and
-the backpack have their own existing behavior.
+Click a row to bring that window into view, drag it onto clear canvas to place it
+at the current camera, or double-click to find nearby space. Drag a row onto the
+backpack to carry the window instead, and drag a backpack tile onto the drawer to
+return it to the temporary area. A window moved from the backpack becomes a
+session entry again. Explicit placement keeps its new place; minimized windows
+stay minimized. Placement avoids existing content and visible Canvas panels. If
+there is no room or Windows rejects the move, the entry stays in the temporary
+zone. Closing an app removes its row. The drawer shows only temporary-zone
+members on the current virtual desktop; live overlapping arrivals and the
+backpack have their own existing behavior.
 
 **Show temporary area** in the drawer and **Go to temporary area** in the tray
 also create an empty area before the first arrival, so you can choose its

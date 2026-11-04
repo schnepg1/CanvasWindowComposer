@@ -91,6 +91,62 @@ public class DrawerDragFeedbackNativeTests
             Assert.False(TemporaryAreaLayout.Overlaps(item.Bounds, obstacle, 24 / camera.Zoom));
         });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "NativePreview")]
+    public void DrawerRowsTransferBetweenTheBackpackAndTemporaryArea(bool fromBackpack)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var source = new Forms.Form();
+            var config = new FakeAppConfig { EnableStartupIntro = false, ReduceStartupMotion = true };
+            using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true }, config: config);
+            rig.Api.AddWindow(source.Handle, 100, 100, 400, 300, title: "Transfer this window");
+            rig.Workspace.Start();
+            Assert.True(GridRenderer.CompileShaders());
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config, new FakeScreens());
+            overview.AttachPlaceholderWorkspace(rig.Workspace);
+            overview.TransitionTo(OverviewMode.Zooming);
+            var item = Assert.Single(rig.Workspace.Document.Items);
+            Window host; FrameworkElement panel; DrawerRowDrag drag;
+            if (fromBackpack)
+            {
+                Assert.True(rig.Workspace.CollectInInventory(item.Id));
+                overview.ToggleInventory();
+                host = overview.InventoryView!; panel = overview.InventoryView!.Panel; drag = overview.InventoryView.Panel.Drag;
+            }
+            else
+            {
+                var drawer = overview.TemporaryDrawer!;
+                drawer.State.Open(Environment.TickCount64); drawer.Advance(Environment.TickCount64);
+                host = drawer; panel = drawer.Panel; drag = drawer.Panel.Drag;
+            }
+            host.UpdateLayout(); PreparePointer(host);
+            var target = fromBackpack ? Center(overview.TemporaryDrawer!.ScreenBounds) : Center(overview.InventoryView!.ScreenBounds);
+            Assert.Null(overview.PreviewDrawerLanding(item.Id, fromBackpack, target));
+
+            drag.Begin(item.Id, new Point(80, 60));
+            Assert.True(drag.IsHeld);
+            drag.Move(panel.PointFromScreen(target), true);
+            drag.Release(panel.PointFromScreen(target));
+
+            Assert.False(drag.IsHeld);
+            if (fromBackpack)
+            {
+                Assert.Empty(rig.Workspace.InventoryItems);
+                Assert.Equal(item.Id, Assert.Single(rig.Workspace.TemporaryAreaItems).Id);
+                Assert.Equal(WorkspacePlacement.Temporary, item.Placement);
+            }
+            else
+            {
+                Assert.Empty(rig.Workspace.TemporaryAreaItems);
+                Assert.Equal(item.Id, Assert.Single(rig.Workspace.InventoryItems).Id);
+                Assert.True(item.Bounds.InInventory);
+            }
+        });
+
+    private static Point Center(ScreenRect rect) => new(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0);
+
     private static void PreparePointer(Window window)
     {
         window.Activate(); Forms.Application.DoEvents(); window.UpdateLayout();

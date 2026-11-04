@@ -7,6 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
+using FormsSystemInformation = System.Windows.Forms.SystemInformation;
 
 namespace CanvasDesktop;
 
@@ -17,15 +19,19 @@ internal sealed class TemporaryDrawerPanel : UserControl
     private readonly TextBlock _name = new(), _count = new(), _railCount = new(), _hint = new();
     private readonly TextBlock _chevron = new() { FontSize = 28, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly Button _rail;
+    private readonly Border _shell;
     private readonly StackPanel _rows = new();
     private readonly ScrollViewer _scroll;
     private readonly TextBlock _empty;
+    private readonly DispatcherTimer _clickTimer =
+        new() { Interval = TimeSpan.FromMilliseconds(Math.Max(200, FormsSystemInformation.DoubleClickTime)) };
     private IReadOnlyList<WorkspaceItemView> _items = Array.Empty<WorkspaceItemView>();
     private readonly HashSet<Guid> _arrivals = new();
+    private Guid _pendingClick;
     private bool _reduceMotion;
     public DrawerRowDrag Drag { get; }
     public event Action? ToggleRequested, ShowAreaRequested;
-    public event Action<Guid>? PlaceRequested;
+    public event Action<Guid>? PlaceRequested, FocusRequested;
 
     private static SolidColorBrush Ink(string color) => (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
     public TemporaryDrawerPanel()
@@ -46,10 +52,10 @@ internal sealed class TemporaryDrawerPanel : UserControl
         System.Windows.Automation.AutomationProperties.SetName(_rail, "Toggle temporary windows drawer");
         _rail.Click += (_, _) => ToggleRequested?.Invoke(); root.Children.Add(_rail);
         SetExpanded(false);
-        var shell = new Border { Background = new LinearGradientBrush(Color.FromRgb(23, 38, 52), Color.FromRgb(12, 22, 34), 90),
+        _shell = new Border { Background = new LinearGradientBrush(Color.FromRgb(23, 38, 52), Color.FromRgb(12, 22, 34), 90),
             BorderBrush = Ink("#466577"), BorderThickness = new Thickness(1, 1, 0, 1), Padding = new Thickness(18) };
-        Grid.SetColumn(shell, 1); root.Children.Add(shell);
-        var layout = new Grid(); shell.Child = layout;
+        Grid.SetColumn(_shell, 1); root.Children.Add(_shell);
+        var layout = new Grid(); _shell.Child = layout;
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto }); layout.RowDefinitions.Add(new()); layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var header = new StackPanel { Margin = new Thickness(0, 0, 0, 15) }; layout.Children.Add(header);
         header.Children.Add(new TextBlock { Text = "TEMPORARY WINDOWS", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = Ink("#80DBCD") });
@@ -63,17 +69,42 @@ internal sealed class TemporaryDrawerPanel : UserControl
             TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Foreground = Ink("#94ABBF"),
             FontSize = 13, LineHeight = 23, VerticalAlignment = VerticalAlignment.Center }; list.Children.Add(_empty);
         var footer = new StackPanel { Margin = new Thickness(0, 13, 0, 0) }; Grid.SetRow(footer, 2); layout.Children.Add(footer);
-        _hint.Text = "Drag onto clear canvas to place and keep.\nDouble-click to place near the camera.";
+        _hint.Text = "Click to bring the window into view.\nDrag onto clear canvas to place and keep.\nDrop on the backpack to carry it.\nDouble-click to place near the camera.";
         _hint.TextWrapping = TextWrapping.Wrap; _hint.FontSize = 11; _hint.LineHeight = 17; _hint.Foreground = Ink("#AEC2D1"); footer.Children.Add(_hint);
         var visit = new Button { Content = "Show temporary area  \u2197", Margin = new Thickness(0, 12, 0, 0), Padding = new Thickness(10, 7, 10, 7),
             Background = Ink("#233D50"), Foreground = Ink("#A5EBE0"), BorderBrush = Ink("#426275"), Cursor = Cursors.Hand };
         visit.Click += (_, _) => ShowAreaRequested?.Invoke(); footer.Children.Add(visit);
         Drag = new(this);
         Drag.HeldChanged += held => { if (!held) Rebuild(); };
+        Drag.Clicked += QueueFocus;
+        _clickTimer.Tick += (_, _) => FlushFocus();
+        Unloaded += (_, _) => CancelPendingFocus();
         UpdateItems("Temporary area", Array.Empty<WorkspaceItemView>(), Array.Empty<Guid>(), true);
     }
 
     public void SetHint(string message) => _hint.Text = message;
+    public void SetDropTarget(bool active) => _shell.BorderBrush = Ink(active ? "#72F3D2" : "#466577");
+
+    private void QueueFocus(Guid id)
+    {
+        _pendingClick = id;
+        _clickTimer.Stop();
+        _clickTimer.Start();
+    }
+
+    private void FlushFocus()
+    {
+        _clickTimer.Stop();
+        if (_pendingClick == Guid.Empty) return;
+        var id = _pendingClick; _pendingClick = Guid.Empty;
+        FocusRequested?.Invoke(id);
+    }
+
+    private void CancelPendingFocus()
+    {
+        _clickTimer.Stop();
+        _pendingClick = Guid.Empty;
+    }
     public void SetExpanded(bool expanded)
     {
         _chevron.Text = expanded ? "\u203a" : "\u2039";
@@ -86,6 +117,7 @@ internal sealed class TemporaryDrawerPanel : UserControl
         _arrivals.UnionWith(arrivals); _reduceMotion = reduceMotion;
         bool changed = !_items.SequenceEqual(items); _items = items;
         if (Drag.ItemId is { } held && !items.Any(i => i.Id == held)) Drag.Cancel();
+        if (_pendingClick != Guid.Empty && !items.Any(i => i.Id == _pendingClick)) CancelPendingFocus();
         if (!Drag.IsHeld && (changed || arrivals.Count > 0 || _rows.Children.Count == 0)) Rebuild();
     }
 
@@ -107,7 +139,12 @@ internal sealed class TemporaryDrawerPanel : UserControl
                 FontSize = 10, Foreground = Ink("#A7BFD0"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 5, 0, 0) });
             row.MouseLeftButtonDown += (_, e) =>
             {
-                if (e.ClickCount == 2) { Drag.Cancel(); PlaceRequested?.Invoke(item.Id); }
+                if (e.ClickCount == 2)
+                {
+                    CancelPendingFocus();
+                    Drag.Cancel();
+                    PlaceRequested?.Invoke(item.Id);
+                }
                 else Drag.Begin(item.Id, e.GetPosition(this));
                 e.Handled = true;
             };

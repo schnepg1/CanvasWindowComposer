@@ -18,6 +18,7 @@ internal sealed class DrawerRowDrag
     public bool IsDragging => _moved;
     public event Action<bool>? HeldChanged;
     public event Action<Guid, Point>? Dropped;
+    public event Action<Guid>? Clicked;
     public event Action<DrawerDragPosition>? Moved;
 
     public DrawerRowDrag(FrameworkElement surface)
@@ -53,9 +54,11 @@ internal sealed class DrawerRowDrag
     {
         if (_pressed is not { } id) return;
         bool drop = _moved && IsOutside(point);
+        bool click = !_moved && !IsOutside(point);
         var screen = drop ? _surface.PointToScreen(point) : default;
         Cancel();
         if (drop) Dropped?.Invoke(id, screen);
+        else if (click) Clicked?.Invoke(id);
     }
 
     public void Cancel()
