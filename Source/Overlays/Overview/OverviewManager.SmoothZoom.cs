@@ -23,6 +23,12 @@ internal sealed partial class OverviewManager
         _smoothZoom.PushZoom(virtualX, virtualY, wx, wy, _camera.Zoom, notches, _gestureClock.TickCount64);
         if (!_smoothZoom.IsActive) return;
 
+        if (_smoothZoom.IsAccelerating)
+        {
+            MarkFastZoom();
+        }
+
+        SuspendParkingForMotion();
         ObserveGestureMotion();
         _startupIntroLanded = false;
 
@@ -60,6 +66,7 @@ internal sealed partial class OverviewManager
         var (vx, vy, wx, wy, newZoom, stopped) = _smoothZoom.Tick(_camera.Zoom, time);
         if (_camera.SetZoomAroundWorldPoint(vx, vy, wx, wy, newZoom))
         {
+            if (_smoothZoom.IsAccelerating) MarkFastZoom();
             ObserveGestureMotion();
             if (_tour?.ObserveZoom(before, _camera.Zoom) == true) SaveTourProgress();
             _startupIntroLanded = false;
@@ -69,6 +76,10 @@ internal sealed partial class OverviewManager
         if (stopped)
         {
             _smoothZoomTimer?.Stop();
+            if (!GesturePreviewsActive)
+            {
+                ResumeParkingAfterMotion();
+            }
         }
     }
 
@@ -76,5 +87,10 @@ internal sealed partial class OverviewManager
     {
         _smoothZoomTimer?.Stop();
         _smoothZoom.Cancel();
+        if (!GesturePreviewsActive)
+        {
+            ResumeParkingAfterMotion();
+        }
+        _visualFrames.Request();
     }
 }

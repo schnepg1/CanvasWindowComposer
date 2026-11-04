@@ -41,6 +41,7 @@ internal sealed class SmoothZoomTracker
     public bool IsActive { get; private set; }
     public double TargetZoom => _targetZoom;
     public double CurrentMultiplier { get; private set; } = 1.0;
+    public bool IsAccelerating => CurrentMultiplier > 1.05;
     public bool AccelerationEnabled { get; set; } = true;
     public (int X, int Y) FocalVirtual => (_focalVirtualX, _focalVirtualY);
     public (double X, double Y) FocalWorld => (_focalWorldX, _focalWorldY);

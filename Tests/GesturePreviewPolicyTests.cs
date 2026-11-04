@@ -43,4 +43,17 @@ public class GesturePreviewPolicyTests
         policy.Reset(); Assert.False(policy.Active);
         Assert.False(policy.Update(true, true, false, true, 22));
     }
+
+    [Fact]
+    public void FastZoomEnablesSimplificationEvenInNormalQualityAndSettlesAfterMotionStops()
+    {
+        var policy = new GesturePreviewPolicy();
+        // Normal quality (lowQuality: false), fastZoom: true
+        policy.Motion(100);
+        Assert.True(policy.Update(false, true, false, false, 200, fastZoom: true));
+        Assert.Equal(80, policy.RemainingMs(200));
+
+        // After SettleMs (180ms) without motion, policy settles
+        Assert.False(policy.Update(false, true, false, false, 280, fastZoom: true));
+    }
 }

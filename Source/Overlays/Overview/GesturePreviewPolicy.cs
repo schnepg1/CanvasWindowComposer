@@ -14,10 +14,10 @@ internal sealed class GesturePreviewPolicy
         _lastMotion = now;
     }
 
-    public bool Update(bool lowQuality, bool visible, bool desktopPan, bool pointerHeld, long now)
+    public bool Update(bool lowQuality, bool visible, bool desktopPan, bool pointerHeld, long now, bool fastZoom = false)
     {
-        Active = lowQuality && visible && (desktopPan || (_hasMotion
-            && (pointerHeld || now - _lastMotion < SettleMs)));
+        Active = visible && ((lowQuality || fastZoom) && (desktopPan || (_hasMotion
+            && (pointerHeld || now - _lastMotion < SettleMs))));
         if (!Active) _hasMotion = false;
         return Active;
     }

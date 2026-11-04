@@ -12,8 +12,35 @@ internal sealed partial class OverviewManager
     private Timer? _gestureSettleTimer;
     private bool _restoringGesturePreviews;
     private long _gestureRestoreUntil;
+    private long _fastZoomUntil;
+    private bool? _parkingBeforeGesture;
+
     internal bool GesturePreviewsActive => _gesturePreviews.Active;
     internal IReadOnlyList<PlaceholderAnnotation> GesturePreviewCards => _annotationCards;
+
+    internal bool FastZoomActive => _gestureClock.TickCount64 < _fastZoomUntil
+        || (_smoothZoom.IsActive && _smoothZoom.IsAccelerating);
+
+    internal void MarkFastZoom()
+    {
+        _fastZoomUntil = _gestureClock.TickCount64 + GesturePreviewPolicy.SettleMs;
+    }
+
+    internal void SuspendParkingForMotion()
+    {
+        _parkingBeforeGesture ??= _wm.SuspendAutomaticParking;
+        _wm.SuspendAutomaticParking = true;
+    }
+
+    internal void ResumeParkingAfterMotion()
+    {
+        if (_parkingBeforeGesture.HasValue)
+        {
+            _wm.SuspendAutomaticParking = _parkingBeforeGesture.Value;
+            _parkingBeforeGesture = null;
+            _wm.RefreshAutomaticParking();
+        }
+    }
 
     private bool GesturePointerHeld => _tools.Kind is CanvasInteractionKind.Pan or CanvasInteractionKind.Window;
 
@@ -28,9 +55,11 @@ internal sealed partial class OverviewManager
     private void UpdateGesturePreviews()
     {
         bool wasActive = GesturePreviewsActive;
+        bool fastZoom = FastZoomActive;
         bool active = _gesturePreviews.Update(_appConfig.LowQualityMode,
             CurrentMode != OverviewMode.Hidden && !IsStartupIntroActive,
-            CurrentMode == OverviewMode.Panning, GesturePointerHeld, _gestureClock.TickCount64);
+            CurrentMode == OverviewMode.Panning, GesturePointerHeld, _gestureClock.TickCount64,
+            fastZoom: fastZoom);
         _thumbnails.SimplifyDuringMotion = active;
         if (wasActive != active)
         {
@@ -40,11 +69,13 @@ internal sealed partial class OverviewManager
                 _restoringGesturePreviews = false;
                 _cardAnimationTimer?.Stop();
                 _cardTransitions.Clear();
+                SuspendParkingForMotion();
             }
             else
             {
                 _restoringGesturePreviews = true;
                 _gestureRestoreUntil = _gestureClock.TickCount64 + 1000;
+                ResumeParkingAfterMotion();
             }
         }
 
@@ -106,5 +137,11 @@ internal sealed partial class OverviewManager
         _restoringGesturePreviews = false;
         _gestureTitles.Clear();
         _thumbnails.SimplifyDuringMotion = false;
+        _fastZoomUntil = 0;
+        if (_parkingBeforeGesture.HasValue)
+        {
+            _wm.SuspendAutomaticParking = _parkingBeforeGesture.Value;
+            _parkingBeforeGesture = null;
+        }
     }
 }
