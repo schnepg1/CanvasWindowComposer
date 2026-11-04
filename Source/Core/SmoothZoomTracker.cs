@@ -5,18 +5,33 @@ namespace CanvasDesktop;
 /// <summary>
 /// UI-owned, elapsed-time smooth zoom interpolation, independent of presentation rate.
 /// Smoothly animates zoom from current to target level keeping a focal point anchored.
+/// Features cadence-based scroll acceleration so fast flicking speeds up rather than
+/// capping zoom velocity.
 /// </summary>
 internal sealed class SmoothZoomTracker
 {
-    public const double DefaultLambda = 0.022;
+    public const double DefaultLambda = 0.032;
+    public const double MaxLambda = 0.055;
     public const double StopThreshold = 0.0005;
 
+    public const double BaseCadenceNotchesPerSec = 4.0;
+    public const double MaxAccelerationIntervalMs = 250.0;
+    public const double MinIntervalMs = 12.0;
+    public const double AccelerationSlope = 0.08;
+    public const double StreakSlope = 0.15;
+    public const int MaxStreak = 6;
+    public const double MaxMultiplier = 7.0;
+
     private readonly IClock _clock;
-    private readonly double _lambda;
+    private readonly double _baseLambda;
+    private double _activeLambda;
 
     private double _targetZoom = 1.0;
     private double _currentZoom = 1.0;
     private long _lastTick;
+    private long _lastNotchTime;
+    private int _lastDirection;
+    private int _streak;
 
     private int _focalVirtualX;
     private int _focalVirtualY;
@@ -25,34 +40,72 @@ internal sealed class SmoothZoomTracker
 
     public bool IsActive { get; private set; }
     public double TargetZoom => _targetZoom;
+    public double CurrentMultiplier { get; private set; } = 1.0;
+    public bool AccelerationEnabled { get; set; } = true;
     public (int X, int Y) FocalVirtual => (_focalVirtualX, _focalVirtualY);
     public (double X, double Y) FocalWorld => (_focalWorldX, _focalWorldY);
 
-    public SmoothZoomTracker(IClock? clock = null, double lambda = DefaultLambda)
+    public SmoothZoomTracker(IClock? clock = null, double lambda = DefaultLambda, bool enableAcceleration = true)
     {
         _clock = clock ?? SystemClock.Instance;
-        _lambda = lambda > 0 ? lambda : DefaultLambda;
+        _baseLambda = lambda > 0 ? lambda : DefaultLambda;
+        _activeLambda = _baseLambda;
+        AccelerationEnabled = enableAcceleration;
     }
 
     public void PushZoom(int virtualX, int virtualY, double worldX, double worldY, double currentZoom, double notches, long? timestamp = null)
     {
         if (!double.IsFinite(notches) || notches == 0) return;
 
+        long now = timestamp ?? _clock.TickCount64;
+        double dt = Math.Max(0, now - _lastNotchTime);
+        _lastNotchTime = now;
+
+        int direction = Math.Sign(notches);
+
         if (!IsActive)
         {
             _currentZoom = currentZoom;
             _targetZoom = currentZoom;
+            _streak = 0;
+            _lastDirection = direction;
         }
         else
         {
-            // If direction reversed, pivot from the current intermediate zoom level
-            if ((notches > 0 && _targetZoom < currentZoom) || (notches < 0 && _targetZoom > currentZoom))
+            // If direction reversed, pivot from the current intermediate zoom level and reset acceleration
+            if ((notches > 0 && _targetZoom < currentZoom) || (notches < 0 && _targetZoom > currentZoom) || direction != _lastDirection)
             {
                 _targetZoom = currentZoom;
+                _streak = 0;
             }
         }
 
-        double step = notches * OverviewCamera.ZoomStep * _targetZoom;
+        double multiplier = 1.0;
+        if (AccelerationEnabled && dt > 0 && dt < MaxAccelerationIntervalMs && direction == _lastDirection && _lastDirection != 0)
+        {
+            double notchRate = Math.Abs(notches) * 1000.0 / Math.Max(dt, MinIntervalMs);
+            if (notchRate > BaseCadenceNotchesPerSec)
+            {
+                _streak = Math.Min(MaxStreak, _streak + 1);
+                double rateBonus = (notchRate - BaseCadenceNotchesPerSec) * AccelerationSlope;
+                double streakBonus = 1.0 + (_streak - 1) * StreakSlope;
+                multiplier = Math.Clamp(1.0 + rateBonus * streakBonus, 1.0, MaxMultiplier);
+            }
+            else
+            {
+                _streak = 0;
+            }
+        }
+        else
+        {
+            _streak = 0;
+        }
+
+        CurrentMultiplier = multiplier;
+        _lastDirection = direction;
+
+        double effectiveNotches = notches * multiplier;
+        double step = effectiveNotches * OverviewCamera.ZoomStep * _targetZoom;
         double nextTarget = Math.Clamp(_targetZoom + step, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
 
         if (Math.Abs(nextTarget - currentZoom) < OverviewCamera.ZoomEpsilon)
@@ -66,8 +119,11 @@ internal sealed class SmoothZoomTracker
         _focalVirtualY = virtualY;
         _focalWorldX = worldX;
         _focalWorldY = worldY;
-        _lastTick = timestamp ?? _clock.TickCount64;
+        _lastTick = now;
         IsActive = Math.Abs(_targetZoom - _currentZoom) >= StopThreshold;
+
+        // Dynamically adjust responsiveness so fast scrolling tracks with zero sluggishness
+        _activeLambda = Math.Clamp(_baseLambda * (1.0 + 0.25 * (multiplier - 1.0)), _baseLambda, MaxLambda);
     }
 
     public (int virtualX, int virtualY, double worldX, double worldY, double zoom, bool stopped) Tick(double currentZoom, long? timestamp = null)
@@ -83,7 +139,7 @@ internal sealed class SmoothZoomTracker
             return (_focalVirtualX, _focalVirtualY, _focalWorldX, _focalWorldY, currentZoom, false);
 
         _currentZoom = currentZoom;
-        double decay = Math.Exp(-_lambda * dt);
+        double decay = Math.Exp(-_activeLambda * dt);
         double factor = 1.0 - decay;
         double nextZoom = _currentZoom + (_targetZoom - _currentZoom) * factor;
 
@@ -96,6 +152,9 @@ internal sealed class SmoothZoomTracker
             nextZoom = _targetZoom;
             _currentZoom = nextZoom;
             IsActive = false;
+            CurrentMultiplier = 1.0;
+            _streak = 0;
+            _activeLambda = _baseLambda;
         }
         else
         {
@@ -108,5 +167,8 @@ internal sealed class SmoothZoomTracker
     public void Cancel()
     {
         IsActive = false;
+        CurrentMultiplier = 1.0;
+        _streak = 0;
+        _activeLambda = _baseLambda;
     }
 }

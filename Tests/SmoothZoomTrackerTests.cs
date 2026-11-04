@@ -42,6 +42,7 @@ public class SmoothZoomTrackerTests
         tracker.PushZoom(150, 200, 300, 400, 0.5, 1);
         Assert.True(tracker.IsActive);
         Assert.Equal(0.55, tracker.TargetZoom, 8);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
         Assert.Equal((150, 200), tracker.FocalVirtual);
         Assert.Equal((300, 400), tracker.FocalWorld);
     }
@@ -94,52 +95,96 @@ public class SmoothZoomTrackerTests
     }
 
     [Fact]
-    public void PushZoom_RapidScrolls_CompoundTarget()
+    public void PushZoom_SlowScrolls_RemainUnaccelerated()
     {
         var clock = new FakeClock(1000);
         var tracker = new SmoothZoomTracker(clock);
 
-        // Notch 1: 1.0 -> 0.90
+        // Notch 1 at t=1000
         tracker.PushZoom(0, 0, 0, 0, 1.0, -1);
         Assert.Equal(0.90, tracker.TargetZoom, 6);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
 
-        // Advance a little
-        clock.Advance(20);
-        var (_, _, _, _, intermediate, _) = tracker.Tick(1.0);
+        // Advance 300ms (slow cadence, > 250ms interval)
+        clock.Advance(300);
+        var (_, _, _, _, zoom1, _) = tracker.Tick(1.0);
 
-        // Notch 2: 0.90 -> 0.81
-        tracker.PushZoom(0, 0, 0, 0, intermediate, -1);
+        // Notch 2 at t=1300
+        tracker.PushZoom(0, 0, 0, 0, zoom1, -1);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
         Assert.Equal(0.81, tracker.TargetZoom, 6);
-
-        // Notch 3: 0.81 -> 0.729
-        clock.Advance(20);
-        var (_, _, _, _, intermediate2, _) = tracker.Tick(intermediate);
-        tracker.PushZoom(0, 0, 0, 0, intermediate2, -1);
-        Assert.Equal(0.729, tracker.TargetZoom, 6);
     }
 
     [Fact]
-    public void PushZoom_ReversingDirection_PivotsFromCurrentZoom()
+    public void PushZoom_FastScrolls_AccelerateZoomSpeedLikeMouseAcceleration()
     {
         var clock = new FakeClock(1000);
         var tracker = new SmoothZoomTracker(clock);
 
-        // Zooming out: target is 0.70
-        tracker.PushZoom(0, 0, 0, 0, 1.0, -3);
-        Assert.True(tracker.TargetZoom < 1.0);
+        // Notch 1 at t=1000: base 1.0x
+        tracker.PushZoom(0, 0, 0, 0, 1.0, -1);
+        Assert.Equal(0.90, tracker.TargetZoom, 6);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
 
-        clock.Advance(50);
-        var (_, _, _, _, currentZoom, _) = tracker.Tick(1.0);
+        // Notch 2 arrives 25ms later (fast flick, cadence = 40 clicks/sec)
+        clock.Advance(25);
+        tracker.PushZoom(0, 0, 0, 0, 0.98, -1);
 
-        // Now reverse direction: zoom in (+1 notch)
+        // Multiplier should now be accelerated (> 2.0x)
+        Assert.True(tracker.CurrentMultiplier > 2.0, $"Expected multiplier > 2.0, was {tracker.CurrentMultiplier}");
+        // Target zoom should have dropped significantly faster than standard unaccelerated 0.81
+        Assert.True(tracker.TargetZoom < 0.80, $"Expected target < 0.80 due to acceleration, was {tracker.TargetZoom}");
+
+        // Notch 3 arrives 25ms later: streak builds further acceleration
+        clock.Advance(25);
+        double prevMultiplier = tracker.CurrentMultiplier;
+        tracker.PushZoom(0, 0, 0, 0, 0.85, -1);
+        Assert.True(tracker.CurrentMultiplier > prevMultiplier, "Consecutive fast notches should increase multiplier");
+    }
+
+    [Fact]
+    public void PushZoom_ReversingDirection_ResetsAccelerationAndPivots()
+    {
+        var clock = new FakeClock(1000);
+        var tracker = new SmoothZoomTracker(clock);
+
+        // Fast flick zoom out: builds acceleration
+        tracker.PushZoom(0, 0, 0, 0, 1.0, -1);
+        clock.Advance(25);
+        tracker.PushZoom(0, 0, 0, 0, 0.95, -1);
+        Assert.True(tracker.CurrentMultiplier > 1.0);
+
+        clock.Advance(25);
+        var (_, _, _, _, currentZoom, _) = tracker.Tick(0.95);
+
+        // Reverse direction: zoom in (+1 notch)
         tracker.PushZoom(0, 0, 0, 0, currentZoom, 1);
-        // Target should pivot from currentZoom and increase
-        Assert.True(tracker.TargetZoom > currentZoom, "Target should increase from current zoom");
+
+        // Multiplier should reset to 1.0 on direction reversal
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
+        // Target should pivot from currentZoom without lurching
+        Assert.True(tracker.TargetZoom > currentZoom);
         Assert.Equal(currentZoom * 1.1, tracker.TargetZoom, 5);
     }
 
     [Fact]
-    public void Cancel_ImmediatelyDeactivatesTracker()
+    public void PushZoom_AccelerationCappedAtMaxMultiplier()
+    {
+        var clock = new FakeClock(1000);
+        var tracker = new SmoothZoomTracker(clock);
+
+        // Extreme rapid scrolling (every 12ms)
+        for (int i = 0; i < 20; i++)
+        {
+            clock.Advance(12);
+            tracker.PushZoom(0, 0, 0, 0, 1.0, -1);
+        }
+
+        Assert.Equal(SmoothZoomTracker.MaxMultiplier, tracker.CurrentMultiplier);
+    }
+
+    [Fact]
+    public void Cancel_ImmediatelyDeactivatesTrackerAndResetsMultiplier()
     {
         var clock = new FakeClock();
         var tracker = new SmoothZoomTracker(clock);
@@ -148,6 +193,7 @@ public class SmoothZoomTrackerTests
 
         tracker.Cancel();
         Assert.False(tracker.IsActive);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
     }
 
     [Fact]
