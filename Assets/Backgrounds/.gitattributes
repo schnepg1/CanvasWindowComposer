@@ -1,0 +1,2 @@
+# Small bundled starter scenes are ordinary Git assets for self-contained packaging.
+*.png -filter -diff -merge

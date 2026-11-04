@@ -46,6 +46,7 @@ internal sealed partial class OverviewManager
             return;
         }
 
+        if (HandleBackgroundKey(e)) return;
         if (e.KeyCode == Keys.Escape)
         {
             HandleEscape();

@@ -13,6 +13,7 @@ internal sealed record OverviewAnnotationSnapshot(
     WorldRect? Preview, bool Drawing, IReadOnlyList<WorldRect> Ghosts,
     IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null)
 {
+    public IReadOnlyList<WorldRect> BackgroundOccluders { get; init; } = Array.Empty<WorldRect>();
     public string WindowStats { get; init; } = "Active: 0  ·  Minimized: 0 (auto: 0)";
     public string MinimizationStatus { get; init; } = "Auto-minimize: off";
 
@@ -55,6 +56,8 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
     private readonly OverviewHudLayer _hud = new();
     private IReadOnlyList<IOverviewAnnotationLayer> _drawingLayers = Array.Empty<IOverviewAnnotationLayer>();
     private OverviewAnnotationSnapshot? _frame;
+    private IOverviewAnnotationLayer? _backgroundLayer;
+    public void SetBackgroundLayer(IOverviewAnnotationLayer? layer) { _backgroundLayer=layer;InvalidateVisual(); }
 
     public void SetDrawingLayers(IReadOnlyList<IOverviewAnnotationLayer> layers)
     {
@@ -92,6 +95,7 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         var dpi = VisualTreeHelper.GetDpi(this);
         var context = new OverviewAnnotationContext(_frame, View(_frame, dpi), dpi, RenderSize);
         dc.PushClip(new RectangleGeometry(new Rect(RenderSize)));
+        _backgroundLayer?.Draw(dc, context);
         _placeholders.Draw(dc, context);
         _zones.Draw(dc, context);
         foreach (var layer in _drawingLayers) layer.Draw(dc, context);

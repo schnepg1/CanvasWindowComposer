@@ -18,6 +18,8 @@ internal sealed class OverviewOverlay : Form
 
     public GridRenderer? Grid { get; private set; }
     private OverviewAnnotationWindow? _annotations;
+    private IOverviewAnnotationLayer? _backgroundLayer;
+    public void SetBackgroundLayer(IOverviewAnnotationLayer? layer) { _backgroundLayer=layer;_annotations?.SetBackgroundLayer(layer); }
     private bool _showTaskbar;
     private readonly OverviewTaskbarRegion _taskbarRegion = new();
     private Rectangle[] _taskbarPreviews = Array.Empty<Rectangle>();
@@ -58,6 +60,7 @@ internal sealed class OverviewOverlay : Form
         {
             _annotations = new OverviewAnnotationWindow(Handle);
             _annotations.SetDrawingLayers(_drawingLayers);
+            _annotations.SetBackgroundLayer(_backgroundLayer);
             _annotations.SetTaskbarVisible(Screen.WorkingArea, _showTaskbar, _taskbarPreviews);
         }
         _annotations.StageUpdate(frame);

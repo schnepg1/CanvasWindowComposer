@@ -23,6 +23,7 @@ internal sealed partial class OverviewManager
     {
         if (_disposed) return;
         _interactMode = enabled;
+        EndBackgroundEditing();
         CancelInteraction();
         if (enabled) _annotationTool?.SetMode(AnnotationMode.Select);
         _interactionError = null;

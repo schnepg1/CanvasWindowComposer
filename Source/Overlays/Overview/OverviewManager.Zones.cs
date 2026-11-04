@@ -259,7 +259,7 @@ internal sealed partial class OverviewManager
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
                 !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError)
-                with { WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
+                with { BackgroundOccluders = BackgroundOccluders(camera), WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
                     ? "Auto-minimize: on" : "Auto-minimize: off" };
                 var b = p.Screen.Bounds;
                 p.StageAnnotations(frame with { Screen = new(b.X, b.Y, b.Width, b.Height), ShowIntroTitle = p.Screen.Primary });

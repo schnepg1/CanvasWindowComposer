@@ -14,6 +14,7 @@ internal sealed partial class OverviewManager
     public void SetCanvasTool(ICanvasTool? tool, IReadOnlyList<IOverviewAnnotationLayer>? layers = null)
     {
         CancelInteraction();
+        if (tool != _backgroundTool) _backgroundTool?.Deselect();
         if (tool == null) _annotationTool?.SetMode(AnnotationMode.Select);
         _tools.SetTool(tool ?? _annotationRouter ?? _zoneTool);
         var attached = new List<IOverviewAnnotationLayer>();
@@ -100,6 +101,7 @@ internal sealed partial class OverviewManager
 
     public void HandleEscape()
     {
+        if (BackgroundEditorVisible) return;
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming || PeekWorking) return;
         if (CloseWindowPeek(focus: true)) return;
         if (CancelWebResourcePlacement()) return;
@@ -108,6 +110,12 @@ internal sealed partial class OverviewManager
         if (CloseSettingsPopup()) return;
         if (CloseActiveMenus()) return;
         if (_controlsPopup != null && _controlsPopup.Visible) { _controlsPopup.Hide(); FocusOverview(); return; }
+        if (_backgroundTool?.SelectedId != null)
+        {
+            if (_backgroundTool.HasPendingInteraction) CancelInteraction();
+            else EndBackgroundEditing();
+            return;
+        }
         if (_interactMode) { SetInteractMode(false); return; }
         if (EndWindowInteraction(focus: true)) return;
         if (StopTutorialTravel()) { RefreshTourUi();return; }

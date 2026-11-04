@@ -266,6 +266,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         {
             var pass = new OverviewOverlay(screen);
             pass.SetDrawingLayers(_drawingLayers);
+            pass.SetBackgroundLayer(_backgroundLayer);
             pass.DpiChanged += (_, _) =>
             {
                 if (!_disposed && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
@@ -646,6 +647,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         Attempt(() => _gestureSettleTimer?.Dispose());
         Attempt(() => _visualFrameTimer?.Dispose());
         Attempt(DisposeGuidedTutorial);
+        Attempt(DisposeBackgrounds);
         Attempt(DisposeAnnotations);
         Attempt(() => FinishStartupIntro(refresh: false));
         Attempt(() =>
