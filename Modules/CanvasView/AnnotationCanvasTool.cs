@@ -27,7 +27,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     public void ClearSelection() { Cancel(); SelectedId=null; }
     public void SetStyle(string color, double stroke)
     {
-        if (!AnnotationDocument.ValidColor(color) || !double.IsFinite(stroke) || stroke<1 || stroke>12) throw new ArgumentException("Invalid style.");
+        if (!AnnotationDocument.ValidColor(color) || !double.IsFinite(stroke) || stroke < AnnotationDocument.MinimumStroke || stroke > AnnotationDocument.MaximumStroke) throw new ArgumentException("Invalid style.");
         Cancel(); Color=color; Stroke=stroke;
         if (Selected is {} item) document.Put(item with { Color=color,Stroke=stroke });
     }
@@ -36,7 +36,11 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (!double.IsFinite(fontSize) || fontSize<AnnotationDocument.MinimumFontSize || fontSize>AnnotationDocument.MaximumFontSize)
             throw new ArgumentException("Invalid text size.");
         Cancel(); FontSize=fontSize;
-        if (Selected is { Kind: not AnnotationKind.Arrow } item) document.Put(FitText(item with { FontSize=fontSize }));
+        if (Selected is {} item)
+        {
+            if (item.Kind == AnnotationKind.Arrow) document.Put(item with { FontSize=fontSize });
+            else document.Put(FitText(item with { FontSize=fontSize }));
+        }
     }
     public void SetTextStyle(AnnotationTextAlign? align=null, AnnotationTextEmphasis? emphasis=null, AnnotationCardFill? fill=null)
     {
@@ -47,13 +51,14 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (align is {} newAlign) TextAlign=newAlign;
         if (emphasis is {} newEmphasis) Emphasis=newEmphasis;
         if (fill is {} newFill) CardFill=newFill;
-        if (Selected is { Kind: not AnnotationKind.Arrow } item)
+        if (Selected is {} item)
         {
             var updated=item;
             if (align is {} selectedAlign) updated=updated with { TextAlign=selectedAlign };
             if (emphasis is {} selectedEmphasis) updated=updated with { Emphasis=selectedEmphasis };
-            if (fill is {} selectedFill) updated=updated with { CardFill=selectedFill };
-            document.Put(FitText(updated));
+            if (fill is {} selectedFill && item.Kind != AnnotationKind.Arrow) updated=updated with { CardFill=selectedFill };
+            if (item.Kind == AnnotationKind.Arrow) document.Put(updated);
+            else document.Put(FitText(updated));
         }
     }
     public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop() && AnnotationGeometry.Hit(a,pointer.World,pointer.View));

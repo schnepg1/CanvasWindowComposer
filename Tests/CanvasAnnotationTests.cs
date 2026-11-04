@@ -302,4 +302,103 @@ public class CanvasAnnotationTests
         Assert.True(doc.Undo(Desktop));Assert.Equal(item,Assert.Single(doc.Items));
     }
 
+    [Fact]
+    public void ArrowStrokeAllowsValuesUpTo64AndRejectsOutOfRange()
+    {
+        var item = Item(AnnotationKind.Arrow);
+        var doc = new AnnotationDocument([item]);
+        doc.Put(item with { Stroke = 16 });
+        Assert.Equal(16, Assert.Single(doc.Items).Stroke);
+        doc.Put(item with { Stroke = 32 });
+        Assert.Equal(32, Assert.Single(doc.Items).Stroke);
+        doc.Put(item with { Stroke = 64 });
+        Assert.Equal(64, Assert.Single(doc.Items).Stroke);
+
+        Assert.Throws<ArgumentException>(() => doc.Put(item with { Stroke = 0.5 }));
+        Assert.Throws<ArgumentException>(() => doc.Put(item with { Stroke = 65 }));
+        Assert.Throws<ArgumentException>(() => doc.Put(item with { Stroke = double.NaN }));
+    }
+
+    [Fact]
+    public void ArrowPortAnchorsAndAutoPortsComputeCleanPerimeters()
+    {
+        var source = new CanvasRect(100, 100, 200, 100);
+        var target = new CanvasRect(500, 100, 200, 100);
+
+        var (autoSrc, autoTgt) = AnnotationGeometry.AutoPorts(source, target);
+        Assert.Equal(ConnectionPort.Right, autoSrc);
+        Assert.Equal(ConnectionPort.Left, autoTgt);
+
+        var (a, b) = AnnotationGeometry.ComputePortAnchors(source, ConnectionPort.Auto, target, ConnectionPort.Auto);
+        Assert.Equal(new CanvasPoint(300, 150), a);
+        Assert.Equal(new CanvasPoint(500, 150), b);
+
+        Assert.Equal(new CanvasPoint(200, 100), AnnotationGeometry.PortPosition(source, ConnectionPort.Top));
+        Assert.Equal(new CanvasPoint(300, 150), AnnotationGeometry.PortPosition(source, ConnectionPort.Right));
+        Assert.Equal(new CanvasPoint(200, 200), AnnotationGeometry.PortPosition(source, ConnectionPort.Bottom));
+        Assert.Equal(new CanvasPoint(100, 150), AnnotationGeometry.PortPosition(source, ConnectionPort.Left));
+    }
+
+    [Fact]
+    public void BezierControlPointsAndMidpointEvaluateSmoothCurvature()
+    {
+        var a = new CanvasPoint(100, 100);
+        var b = new CanvasPoint(400, 100);
+
+        var (c1, c2) = AnnotationGeometry.BezierControlPoints(a, ConnectionPort.Right, b, ConnectionPort.Left);
+        Assert.True(c1.X > a.X);
+        Assert.Equal(a.Y, c1.Y);
+        Assert.True(c2.X < b.X);
+        Assert.Equal(b.Y, c2.Y);
+
+        var (mid, tan) = AnnotationGeometry.BezierMidpointAndTangent(a, c1, c2, b);
+        Assert.Equal(250, mid.X, 3);
+        Assert.Equal(100, mid.Y, 3);
+        Assert.True(tan.X > 0);
+    }
+
+    [Fact]
+    public void SmartLabelPlacementAvoidsOcclusionBasedOnArrowOrientation()
+    {
+        double stroke = 16;
+        double labelWidth = 100;
+        double labelHeight = 30;
+
+        var midH = new CanvasPoint(300, 200);
+        var tanH = new CanvasPoint(100, 0);
+        var labelH = AnnotationGeometry.ArrowLabelBounds(midH, tanH, stroke, labelWidth, labelHeight);
+
+        double expectedCenterY = midH.Y - (labelHeight / 2.0 + stroke / 2.0 + 8.0);
+        Assert.Equal(midH.X, labelH.X + labelH.Width / 2.0, 3);
+        Assert.Equal(expectedCenterY, labelH.Y + labelH.Height / 2.0, 3);
+        Assert.True(labelH.Y + labelH.Height <= midH.Y - stroke / 2.0);
+
+        var midV = new CanvasPoint(200, 300);
+        var tanV = new CanvasPoint(0, 100);
+        var labelV = AnnotationGeometry.ArrowLabelBounds(midV, tanV, stroke, labelWidth, labelHeight);
+        Assert.Equal(midV.X, labelV.X + labelV.Width / 2.0, 3);
+        Assert.Equal(midV.Y, labelV.Y + labelV.Height / 2.0, 3);
+    }
+
+    [Fact]
+    public void ArrowWithDescriptionRendersAndHitTestsCorrectly()
+    {
+        var arrow = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new(100, 100), new(500, 100), Stroke: 24, Text: "Funnel Conversion Step", FontSize: 24,
+            Routing: ConnectorRouting.Curved);
+
+        var doc = new AnnotationDocument([arrow]);
+        Assert.Single(doc.Items);
+
+        var transform = new CanvasViewTransform(0, 0, 1, new(0, 0, 1920, 1080));
+        Assert.True(AnnotationGeometry.Hit(arrow, new(300, 100), transform));
+
+        var (mid, tan) = AnnotationGeometry.BezierMidpointAndTangent(arrow.A,
+            AnnotationGeometry.BezierControlPoints(arrow.A, arrow.SourcePort, arrow.B, arrow.TargetPort).C1,
+            AnnotationGeometry.BezierControlPoints(arrow.A, arrow.SourcePort, arrow.B, arrow.TargetPort).C2, arrow.B);
+        var labelWorld = AnnotationGeometry.ArrowLabelBounds(mid, tan, arrow.Stroke, 150, 40);
+        Assert.True(AnnotationGeometry.Hit(arrow, new(labelWorld.X + 20, labelWorld.Y + 10), transform));
+
+        Assert.False(AnnotationGeometry.Hit(arrow, new(300, 400), transform));
+    }
 }

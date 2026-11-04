@@ -89,7 +89,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
             _colors.DropDownItems.Add(item);
         }
         _widths = DropDown("Stroke", "Stroke width");
-        foreach (double width in new[] { 1d, 3d, 6d }) AddValue(_widths, $"{width:0} px", width, () => StrokeRequested?.Invoke(width));
+        foreach (double width in new[] { 1d, 2d, 3d, 4d, 6d, 8d, 12d, 16d, 24d, 32d, 48d, 64d }) AddValue(_widths, $"{width:0} px", width, () => StrokeRequested?.Invoke(width));
         _sizes = DropDown("Size", "Text size");
         foreach (double size in new[] { 12d, 18d, 24d, 32d, 40d, 56d, 72d, 96d, 128d, 160d, 200d, 280d, 400d, 800d, 1600d, 3200d })
             AddValue(_sizes, size.ToString("0"), size, () => FontSizeRequested?.Invoke(size));
@@ -176,7 +176,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _shapesButton.AccessibleDescription = shape ? $"{_lastShape} tool, active" : $"Draw {_lastShape.ToString().ToLowerInvariant()}";
         CheckValues(_shapesButton, mode);
         _undo.Enabled = state.CanUndo; _redo.Enabled = state.CanRedo;
-        _edit.Enabled = state.Selected?.Kind is AnnotationKind.Text or AnnotationKind.Rectangle or AnnotationKind.Ellipse;
+        _edit.Enabled = state.Selected?.Kind is AnnotationKind.Text or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Arrow;
         _delete.Enabled = state.HasSelectedAnnotations || state.Selected != null;
         _save.Text = state.Status == null ? "Save now" : "Retry saving";
         _status.Text = state.Status == null ? $"{state.SelectedCount} selected" : "Not saved";
@@ -186,10 +186,11 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _status.LinkColor = _status.ActiveLinkColor = _status.VisitedLinkColor = _status.ForeColor;
         _status.Available = state.Status != null || state.SelectedCount > 0;
         bool text = mode == AnnotationMode.Text || mode == AnnotationMode.Select && state.Selected?.Kind == AnnotationKind.Text;
+        bool isArrow = mode == AnnotationMode.Arrow || mode == AnnotationMode.Select && state.Selected?.Kind == AnnotationKind.Arrow;
         bool selectedShape = mode == AnnotationMode.Select && state.Selected?.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse;
         _hasProperties = text || shape || state.Selected != null;
         _widths.Available = _hasProperties && !text;
-        _sizes.Available = _textStyle.Available = text; _fills.Available = text || selectedShape;
+        _sizes.Available = _textStyle.Available = text || isArrow; _fills.Available = text || selectedShape;
         var selected = state.Selected;
         string color = selected?.Color ?? state.Color;
         _colorImage.Tag = ColorTranslator.FromHtml(color);

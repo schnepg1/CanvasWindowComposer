@@ -53,6 +53,17 @@ internal static class AnnotationVisual
         var r = new Rect(0,0,item.Bounds.Width,item.Bounds.Height);
         if (item.Kind == AnnotationKind.Ellipse)
             r = new(r.Width*.15,r.Height*.15,r.Width*.7,r.Height*.7);
+        if (item.Kind == AnnotationKind.Arrow)
+        {
+            var bounds = item.Bounds;
+            var (mid, tan) = item.Routing == ConnectorRouting.Curved
+                ? AnnotationGeometry.BezierMidpointAndTangent(item.A, AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C1, AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C2, item.B)
+                : (new CanvasPoint((item.A.X + item.B.X) / 2.0, (item.A.Y + item.B.Y) / 2.0), new CanvasPoint(item.B.X - item.A.X, item.B.Y - item.A.Y));
+            double approxWidth = Math.Max(40, (item.Text?.Length ?? 0) * item.FontSize * 0.6 + 20);
+            double approxHeight = item.FontSize + 12;
+            var label = AnnotationGeometry.ArrowLabelBounds(mid, tan, item.Stroke, approxWidth, approxHeight);
+            return new Rect(label.X - bounds.X, label.Y - bounds.Y, label.Width, label.Height);
+        }
         return new(r.X+TextInset,r.Y+TextInset,Math.Max(1,r.Width-TextInset*2),Math.Max(1,r.Height-TextInset*2));
     }
 
@@ -79,17 +90,95 @@ internal static class AnnotationVisual
         var pen = new Pen(brush,item.Stroke);
         if (item.Kind == AnnotationKind.Arrow)
         {
-            var a = new Point(item.A.X-bounds.X,item.A.Y-bounds.Y);
-            var b = new Point(item.B.X-bounds.X,item.B.Y-bounds.Y);
-            dc.DrawLine(pen,a,b);
-            var delta = a-b;
-            if (delta.Length > 0)
+            var a = new Point(item.A.X - bounds.X, item.A.Y - bounds.Y);
+            var b = new Point(item.B.X - bounds.X, item.B.Y - bounds.Y);
+
+            double headLen = Math.Max(20.0, item.Stroke * 3.2);
+            double headWid = Math.Max(10.0, item.Stroke * 1.8);
+
+            Vector arrivalDir;
+            Point shaftEnd;
+
+            if (item.Routing == ConnectorRouting.Curved)
             {
-                delta.Normalize();
-                var wing = new Vector(-delta.Y,delta.X)*12*.45;
-                dc.DrawLine(pen,b,b+delta*12+wing);
-                dc.DrawLine(pen,b,b+delta*12-wing);
+                var (c1w, c2w) = AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort);
+                var c1 = new Point(c1w.X - bounds.X, c1w.Y - bounds.Y);
+                var c2 = new Point(c2w.X - bounds.X, c2w.Y - bounds.Y);
+
+                var arrVector = b - c2;
+                if (arrVector.Length > 0.0001) arrVector.Normalize();
+                else { arrVector = b - a; if (arrVector.Length > 0.0001) arrVector.Normalize(); else arrVector = new Vector(1, 0); }
+                arrivalDir = arrVector;
+
+                shaftEnd = b - arrivalDir * (headLen - Math.Min(headLen * 0.4, item.Stroke * 0.5));
+
+                var pathGeom = new PathGeometry();
+                var fig = new PathFigure { StartPoint = a, IsFilled = false, IsClosed = false };
+                fig.Segments.Add(new BezierSegment(c1, c2, shaftEnd, true));
+                pathGeom.Figures.Add(fig);
+                dc.DrawGeometry(null, pen, pathGeom);
             }
+            else
+            {
+                var delta = b - a;
+                if (delta.Length > 0.0001) delta.Normalize();
+                else delta = new Vector(1, 0);
+                arrivalDir = delta;
+
+                shaftEnd = b - arrivalDir * (headLen - Math.Min(headLen * 0.4, item.Stroke * 0.5));
+                dc.DrawLine(pen, a, shaftEnd);
+            }
+
+            if (headLen > 0)
+            {
+                var normal = new Vector(-arrivalDir.Y, arrivalDir.X);
+                var basePt = b - arrivalDir * headLen;
+                var left = basePt + normal * headWid;
+                var right = basePt - normal * headWid;
+
+                var headGeom = new StreamGeometry();
+                using (var ctx = headGeom.Open())
+                {
+                    ctx.BeginFigure(b, true, true);
+                    ctx.LineTo(left, true, false);
+                    ctx.LineTo(right, true, false);
+                }
+                headGeom.Freeze();
+                dc.DrawGeometry(brush, null, headGeom);
+            }
+
+            if (drawText && !string.IsNullOrWhiteSpace(item.Text))
+            {
+                var (midw, tanw) = item.Routing == ConnectorRouting.Curved
+                    ? AnnotationGeometry.BezierMidpointAndTangent(item.A, AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C1, AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C2, item.B)
+                    : (new CanvasPoint((item.A.X + item.B.X) / 2.0, (item.A.Y + item.B.Y) / 2.0), new CanvasPoint(item.B.X - item.A.X, item.B.Y - item.A.Y));
+
+                var formattedText = new FormattedText(
+                    item.Text,
+                    CultureInfo.CurrentUICulture,
+                    FlowDirection.LeftToRight,
+                    TypefaceFor(item.Emphasis),
+                    item.FontSize,
+                    brush,
+                    pixelsPerDip);
+
+                double padX = Math.Max(8.0, item.FontSize * 0.35);
+                double padY = Math.Max(4.0, item.FontSize * 0.2);
+                double badgeWidth = formattedText.Width + padX * 2.0;
+                double badgeHeight = formattedText.Height + padY * 2.0;
+
+                var labelWorld = AnnotationGeometry.ArrowLabelBounds(midw, tanw, item.Stroke, badgeWidth, badgeHeight);
+                var badgeRect = new Rect(labelWorld.X - bounds.X, labelWorld.Y - bounds.Y, labelWorld.Width, labelWorld.Height);
+
+                var badgePen = new Pen(brush, Math.Min(2.0, Math.Max(1.0, item.Stroke * 0.15)));
+                badgePen.Freeze();
+                dc.DrawRoundedRectangle(CardBackground, badgePen, badgeRect, 6, 6);
+
+                dc.PushClip(new RectangleGeometry(badgeRect));
+                dc.DrawText(formattedText, new Point(badgeRect.X + padX, badgeRect.Y + padY));
+                dc.Pop();
+            }
+
             return;
         }
         var fillBrush = CardFillBrush(item, brush);

@@ -50,7 +50,7 @@ internal sealed class AnnotationShapeEditor : Form
         ("Slate", "#94A3B8")
     ];
 
-    private static readonly double[] StrokePresets = [1, 2, 3, 6, 8, 12];
+    private static readonly double[] StrokePresets = [1, 2, 4, 8, 16, 24, 32, 48, 64];
 
     public CanvasAnnotation OriginalItem { get; }
     public CanvasAnnotation CurrentItem { get; private set; }

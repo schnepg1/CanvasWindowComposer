@@ -37,12 +37,61 @@ public static class SelectionGeometry
 
     private static IEnumerable<(CanvasPoint A,CanvasPoint B)> ArrowSegments(CanvasAnnotation item)
     {
-        yield return (item.A,item.B);
-        double length=AnnotationGeometry.Distance(item.A,item.B);
-        if(length==0) yield break;
-        double dx=(item.A.X-item.B.X)/length,dy=(item.A.Y-item.B.Y)/length;
-        yield return (item.B,new(item.B.X+dx*12-dy*5.4,item.B.Y+dy*12+dx*5.4));
-        yield return (item.B,new(item.B.X+dx*12+dy*5.4,item.B.Y+dy*12-dx*5.4));
+        double headLen = Math.Max(20.0, item.Stroke * 3.2);
+        double headWid = Math.Max(10.0, item.Stroke * 1.8);
+
+        if (item.Routing == ConnectorRouting.Curved)
+        {
+            var (c1, c2) = AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort);
+            CanvasPoint prev = item.A;
+            for (int i = 1; i <= 10; i++)
+            {
+                double t = i / 10.0;
+                double omt = 1.0 - t;
+                double x = omt * omt * omt * item.A.X + 3 * omt * omt * t * c1.X + 3 * omt * t * t * c2.X + t * t * t * item.B.X;
+                double y = omt * omt * omt * item.A.Y + 3 * omt * omt * t * c1.Y + 3 * omt * t * t * c2.Y + t * t * t * item.B.Y;
+                var curr = new CanvasPoint(x, y);
+                yield return (prev, curr);
+                prev = curr;
+            }
+
+            double arrDx = item.B.X - c2.X, arrDy = item.B.Y - c2.Y;
+            double arrLen = Math.Sqrt(arrDx * arrDx + arrDy * arrDy);
+            if (arrLen > 0.0001)
+            {
+                double ux = arrDx / arrLen, uy = arrDy / arrLen;
+                double nx = -uy, ny = ux;
+                var basePt = new CanvasPoint(item.B.X - ux * headLen, item.B.Y - uy * headLen);
+                yield return (item.B, new(basePt.X + nx * headWid, basePt.Y + ny * headWid));
+                yield return (item.B, new(basePt.X - nx * headWid, basePt.Y - ny * headWid));
+            }
+        }
+        else
+        {
+            yield return (item.A, item.B);
+            double length = AnnotationGeometry.Distance(item.A, item.B);
+            if (length > 0)
+            {
+                double dx = (item.A.X - item.B.X) / length, dy = (item.A.Y - item.B.Y) / length;
+                yield return (item.B, new(item.B.X + dx * headLen - dy * headWid, item.B.Y + dy * headLen + dx * headWid));
+                yield return (item.B, new(item.B.X + dx * headLen + dy * headWid, item.B.Y + dy * headLen - dx * headWid));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.Text))
+        {
+            var (mid, tan) = item.Routing == ConnectorRouting.Curved
+                ? AnnotationGeometry.BezierMidpointAndTangent(item.A, AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C1, AnnotationGeometry.BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C2, item.B)
+                : (new CanvasPoint((item.A.X + item.B.X) / 2.0, (item.A.Y + item.B.Y) / 2.0), new CanvasPoint(item.B.X - item.A.X, item.B.Y - item.A.Y));
+
+            double approxWidth = Math.Max(40, item.Text.Length * item.FontSize * 0.6 + 20);
+            double approxHeight = item.FontSize + 12;
+            var r = AnnotationGeometry.ArrowLabelBounds(mid, tan, item.Stroke, approxWidth, approxHeight);
+            yield return (new(r.X, r.Y), new(r.X + r.Width, r.Y));
+            yield return (new(r.X + r.Width, r.Y), new(r.X + r.Width, r.Y + r.Height));
+            yield return (new(r.X + r.Width, r.Y + r.Height), new(r.X, r.Y + r.Height));
+            yield return (new(r.X, r.Y + r.Height), new(r.X, r.Y));
+        }
     }
     private static double SegmentDistance(CanvasPoint point,CanvasPoint a,CanvasPoint b)
     {
