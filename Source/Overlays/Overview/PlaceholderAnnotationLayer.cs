@@ -41,22 +41,30 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                 dc.DrawRoundedRectangle(CardFill, Outline, rect, 6, 6);
                 if (card.Logo is { Width: > 0, Height: > 0 } logo)
                 {
-                    double scale = Math.Min(rect.Width / logo.Width, rect.Height / logo.Height);
-                    double width = logo.Width * scale, height = logo.Height * scale;
+                    double cardScale = Math.Min(rect.Width / logo.Width, rect.Height / logo.Height);
+                    double width = logo.Width * cardScale, height = logo.Height * cardScale;
                     var logoRect = new Rect(rect.X + (rect.Width - width) / 2,
                         rect.Y + (rect.Height - height) / 2, width, height);
                     if (card.LogoBounds is { Width: > 0, Height: > 0 } near)
                     {
                         var compact = context.Project(new WorldRect { X = card.Bounds.X + near.X,
                             Y = card.Bounds.Y + near.Y, W = near.Width, H = near.Height });
-                        // Smoothly grow from the close-up layout to a full-card
-                        // symbol. This is geometry only, including during gestures.
-                        double t = Math.Clamp((.75 - context.View.Zoom) / .45, 0, 1);
+                        // Keep the logo as small as its initial size relative to the
+                        // desktop monitor until the card shrinks to fit it, then scale down.
+                        double initialScale = Math.Min((near.Width / context.Dpi.DpiScaleX) / logo.Width,
+                            (near.Height / context.Dpi.DpiScaleY) / logo.Height);
+                        double compactScale = Math.Min(compact.Width / logo.Width, compact.Height / logo.Height);
+                        double maxInitialScale = Math.Max(initialScale, compactScale);
+                        double scale = Math.Min(maxInitialScale, cardScale);
+                        width = logo.Width * scale;
+                        height = logo.Height * scale;
+                        double centerX = rect.X + (rect.Width - width) / 2;
+                        double centerY = rect.Y + (rect.Height - height) / 2;
+                        double t = Math.Clamp((1.0 - context.View.Zoom) / 0.70, 0, 1);
                         t = t * t * (3 - 2 * t);
-                        logoRect = new Rect(compact.X + (logoRect.X - compact.X) * t,
-                            compact.Y + (logoRect.Y - compact.Y) * t,
-                            compact.Width + (logoRect.Width - compact.Width) * t,
-                            compact.Height + (logoRect.Height - compact.Height) * t);
+                        double x = Math.Clamp(compact.X + (centerX - compact.X) * t, rect.X, Math.Max(rect.X, rect.Right - width));
+                        double y = Math.Clamp(compact.Y + (centerY - compact.Y) * t, rect.Y, Math.Max(rect.Y, rect.Bottom - height));
+                        logoRect = new Rect(x, y, width, height);
                     }
                     dc.DrawImage(logo, logoRect);
                 }
