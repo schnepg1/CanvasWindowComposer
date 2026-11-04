@@ -28,6 +28,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CanvasDesktop.csproj" />
+    <Content Include="../obj/native/$(Configuration)/x64/bin/CanvasInputProbe.exe">
+      <Link>native/x64/CanvasInputProbe.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../obj/native/$(Configuration)/x86/bin/CanvasInputProbe.exe">
+      <Link>native/x86/CanvasInputProbe.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <PropertyGroup>

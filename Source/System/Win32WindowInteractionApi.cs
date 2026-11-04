@@ -1,18 +1,51 @@
 using System;
 using System.Drawing;
+using System.Threading;
 
 namespace CanvasDesktop;
 
 internal sealed class Win32WindowInteractionApi : IWindowInteractionApi
 {
+    private volatile WindowInteractionInputGuard? _input;
+    public bool PrepareInput(IntPtr window) => (_input ??= new()).Protect(window);
+    public bool InputHealthy => _input?.IsHealthy == true;
+    public void ReleaseInput() { _input?.Dispose(); _input = null; }
+
     public bool IsAvailable(IntPtr window) => window != IntPtr.Zero && PInvoke.IsWindow((HWND)window)
         && PInvoke.IsWindowVisible((HWND)window) && PInvoke.IsWindowEnabled((HWND)window)
         && (PInvoke.GetWindowLong((HWND)window, WINDOW_LONG_PTR_INDEX.GWL_STYLE) & (int)WINDOW_STYLE.WS_MINIMIZE) == 0;
 
     public bool Activate(IntPtr window)
     {
+        if (window == IntPtr.Zero || !PInvoke.IsWindow((HWND)window)) return false;
+        if (PInvoke.GetForegroundWindow() == (HWND)window) return true;
+        PInvoke.SetWindowPos((HWND)window, (HWND)(-1), 0, 0, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
+        PInvoke.SetWindowPos((HWND)window, (HWND)(-2), 0, 0, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
         PInvoke.SetForegroundWindow((HWND)window);
-        return PInvoke.GetForegroundWindow() == (HWND)window;
+        PInvoke.BringWindowToTop((HWND)window);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (PInvoke.GetForegroundWindow() != (HWND)window && clock.ElapsedMilliseconds < 100)
+            Thread.Sleep(10);
+        if (PInvoke.GetForegroundWindow() == (HWND)window) return true;
+        var foreground = PInvoke.GetForegroundWindow();
+        uint foregroundThread = PInvoke.GetWindowThreadProcessId(foreground, out _);
+        uint currentThread = PInvoke.GetCurrentThreadId();
+        bool attached = false;
+        if (foregroundThread != 0 && foregroundThread != currentThread)
+            attached = PInvoke.AttachThreadInput(currentThread, foregroundThread, true);
+        try
+        {
+            PInvoke.BringWindowToTop((HWND)window);
+            PInvoke.SetForegroundWindow((HWND)window);
+            clock.Restart();
+            while (PInvoke.GetForegroundWindow() != (HWND)window && clock.ElapsedMilliseconds < 250)
+                Thread.Sleep(10);
+            return PInvoke.GetForegroundWindow() == (HWND)window;
+        }
+        finally
+        {
+            if (attached) PInvoke.AttachThreadInput(currentThread, foregroundThread, false);
+        }
     }
 
     public bool IsChildOf(IntPtr window, IntPtr child) => child != IntPtr.Zero

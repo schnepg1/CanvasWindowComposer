@@ -274,7 +274,7 @@ public class OverviewWindowInteractionIntegrationTests
             uint message = horizontal ? 0x20Eu : 0x20Au;
             pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
             Assert.True(overview.WindowInteractionActive);
-            Assert.Single(api.Messages.Where(m => m.Id == message));
+            Assert.Single(api.Messages, m => m.Id == message);
             pass.OnWheel!(pass, 650 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
             Assert.Equal(2, api.Messages.Count(m => m.Id == message));
             Assert.Contains(api.Messages, m => m.Id == message && m.Point.X >= 600);

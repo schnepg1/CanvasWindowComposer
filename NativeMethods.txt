@@ -56,6 +56,9 @@ FindWindow
 FindWindowEx
 WindowFromPoint
 SetForegroundWindow
+BringWindowToTop
+AttachThreadInput
+GetCurrentThreadId
 GetParent
 IsChild
 ScreenToClient

@@ -127,7 +127,9 @@ internal sealed partial class OverviewManager
                         if (generation != _interactionGeneration) return;
                         if (PeekWorking) CloseWindowPeek();
                         else EndWindowInteraction();
-                    }), initiallyHeld: _peekConsumeUp ? MouseButtons.Left : MouseButtons.None);
+                    }),
+                    () => _windowInteraction.InputHealthy,
+                    initiallyHeld: _peekConsumeUp ? MouseButtons.Left : MouseButtons.None);
             }
         }
         catch (Exception ex)

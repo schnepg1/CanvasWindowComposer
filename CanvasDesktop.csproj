@@ -64,4 +64,22 @@
     <AdditionalFiles Include="NativeMethods.txt" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="obj/native/$(Configuration)/x64/bin/CanvasInputHost.exe;obj/native/$(Configuration)/x64/bin/CanvasMouseFilter.dll">
+      <Link>native/x64/%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="obj/native/$(Configuration)/x86/bin/CanvasInputHost.exe;obj/native/$(Configuration)/x86/bin/CanvasMouseFilter.dll">
+      <Link>native/x86/%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <Target Name="BuildNativeInteractionInput" BeforeTargets="PrepareForBuild"
+          Inputs="Native/WindowInteraction/CMakeLists.txt;Native/WindowInteraction/MouseFilter.cpp;Native/WindowInteraction/InputHost.cpp;Native/WindowInteraction/InputProbe.cpp;Tools/Build-InteractionInput.ps1"
+          Outputs="obj/native/$(Configuration)/x64/bin/CanvasInputHost.exe;obj/native/$(Configuration)/x64/bin/CanvasMouseFilter.dll;obj/native/$(Configuration)/x86/bin/CanvasInputHost.exe;obj/native/$(Configuration)/x86/bin/CanvasMouseFilter.dll">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/Tools/Build-InteractionInput.ps1&quot; -OutputDirectory &quot;$(MSBuildProjectDirectory)/obj/native/$(Configuration)&quot; -Configuration &quot;$(Configuration)&quot;" />
+  </Target>
+
 </Project>

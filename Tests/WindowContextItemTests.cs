@@ -45,7 +45,7 @@ public sealed class WindowContextItemTests : IDisposable
             Assert.Equal(original.Id, rig.Workspace.GetWindowContextItem((IntPtr)42));
             Assert.Equal(id, rig.Workspace.GetWindowContextItem((IntPtr)43));
             using var menu = new WorkspaceContextMenu(rig.Workspace, item.Id);
-            foreach (string label in new[] { "Rename…", "Chrome profile…", "Web resource settings…", "Exclude from auto-minimize", "Keep this place" })
+            foreach (string label in new[] { "Rename…", "Chrome profile…", "Set website URL…", "Exclude from auto-minimize", "Keep this place" })
                 Assert.True(menu.Items.Cast<ToolStripItem>().Single(i => i.Text == label).Available, label);
             rig.Workspace.SaveNow();
             Assert.Single(rig.Store.Document.Items);

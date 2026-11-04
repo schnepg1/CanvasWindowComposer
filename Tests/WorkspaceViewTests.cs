@@ -473,12 +473,46 @@ public class WorkspaceViewTests
         => typeof(Control).GetMethod("OnDoubleClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(control, [EventArgs.Empty]);
 
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateThread(IntPtr lpThreadAttributes, uint dwStackSize, ThreadProc lpStartAddress, IntPtr lpParameter, uint dwCreationFlags, out uint lpThreadId);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetThreadDesktop(IntPtr hDesktop);
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseDesktop(IntPtr hDesktop);
+    [System.Runtime.InteropServices.DllImport("ole32.dll")]
+    private static extern int OleInitialize(IntPtr pvReserved);
+    [System.Runtime.InteropServices.DllImport("ole32.dll")]
+    private static extern void OleUninitialize();
+    private delegate uint ThreadProc(IntPtr lpParameter);
+
     internal static void OnSta(Action action)
     {
         Exception? failure = null;
-        var thread = new Thread(() => { try { action(); } catch (Exception ex) { failure = ex; } });
-        thread.SetApartmentState(ApartmentState.STA); thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        IntPtr hInput = OpenInputDesktop(0, false, 0x1ff);
+        ThreadProc proc = _ =>
+        {
+            if (hInput != IntPtr.Zero)
+            {
+                SetThreadDesktop(hInput);
+                CloseDesktop(hInput);
+            }
+            OleInitialize(IntPtr.Zero);
+            try { action(); }
+            catch (Exception ex) { failure = ex; }
+            finally { OleUninitialize(); }
+            return 0;
+        };
+        IntPtr hThread = CreateThread(IntPtr.Zero, 0, proc, IntPtr.Zero, 0, out _);
+        Assert.True(hThread != IntPtr.Zero);
+        Assert.Equal(0u, WaitForSingleObject(hThread, 10000));
+        CloseHandle(hThread);
+        GC.KeepAlive(proc);
         if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
