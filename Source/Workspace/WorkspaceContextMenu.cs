@@ -9,7 +9,7 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
 {
     private readonly ToolStripMenuItem _auto, _excludeMinimize, _profile, _web, _file, _folder, _advanced, _keep, _forget;
 
-    public WorkspaceContextMenu(IWorkspaceCommands workspace, Guid id)
+    public WorkspaceContextMenu(IWorkspaceCommands workspace, Guid id, Action<Guid>? exportWorkflow = null)
     {
         IWin32Window Owner() => (IWin32Window?)SourceControl?.FindForm() ?? (IWin32Window?)SourceControl ?? new NativeDialogOwner(IntPtr.Zero);
         Items.Add("Open", null, (_, _) => workspace.Open(id));
@@ -28,6 +28,11 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
         _file = new ToolStripMenuItem("Choose file to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, false)); Items.Add(_file);
         _folder = new ToolStripMenuItem("Choose folder to reopen…", null, (_, _) => WorkspaceDialogs.ChooseTarget(Owner(), workspace, id, true)); Items.Add(_folder);
         _advanced = new ToolStripMenuItem("Advanced launch settings"); Items.Add(_advanced);
+        if (exportWorkflow != null)
+        {
+            Items.Add(new ToolStripSeparator());
+            Items.Add("Export workflow (JSON)", null, (_, _) => exportWorkflow(id));
+        }
         Items.Add(new ToolStripSeparator());
         _forget = new ToolStripMenuItem("Forget this saved place", null, (_, _) => workspace.Forget(id)); Items.Add(_forget);
         Opening += (_, e) =>

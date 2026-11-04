@@ -44,6 +44,7 @@ internal sealed partial class OverviewManager
         RefreshInventory();
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
         RefreshTemporaryDrawer();
+        CleanOrphanedArrows();
         if (CurrentMode != OverviewMode.Hidden)
         {
             RefreshOverviewWindows();

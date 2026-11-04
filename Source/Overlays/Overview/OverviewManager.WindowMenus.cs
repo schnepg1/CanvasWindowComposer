@@ -29,7 +29,7 @@ internal sealed partial class OverviewManager
         else if (_placeholderWorkspace?.GetWindowContextItem(window) is { } id)
         {
             _windowContextMenu?.Dispose();
-            _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id);
+            _windowContextMenu = new WorkspaceContextMenu(_placeholderWorkspace, id, ExportWorkflowFromWindow);
             AddWindowInteractionCommand(_windowContextMenu, pass, window);
             AddWindowPeekCommand(_windowContextMenu, pass, window);
             PInvoke.SetForegroundWindow((HWND)pass.Handle);
@@ -37,6 +37,11 @@ internal sealed partial class OverviewManager
         }
         else ShowWindowInteractionMenu(pass, window, location);
         return true;
+    }
+
+    private void ExportWorkflowFromWindow(Guid windowId)
+    {
+        ExportCurrentWorkflowToClipboard(windowId);
     }
 
     internal void AddWindowInteractionCommand(ContextMenuStrip menu, OverviewOverlay pass, IntPtr window)

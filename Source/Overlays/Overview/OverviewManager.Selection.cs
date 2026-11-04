@@ -134,7 +134,20 @@ internal sealed partial class OverviewManager
                 || i.Key.Kind==CanvasItemKind.Project && !(i.Members??[]).ToHashSet().SetEquals(now.Members??[])))
                 throw new InvalidOperationException("The group changed during the drag. Select it again.");
             var moved = _annotationDocument.Items.Where(a => move.Before.Any(i => i.Key == new CanvasItemId(CanvasItemKind.Annotation,a.Id)))
-                .Select(a => a.Translate(move.Dx,move.Dy)).ToArray();
+                .Select(a => a.Translate(move.Dx,move.Dy)).ToList();
+            var movedIds = move.Before.Select(i => i.Key.Id).ToHashSet();
+            var connectedArrows = _annotationDocument.Items
+                .Where(a => a.DesktopId == desktop && a.Kind == AnnotationKind.Arrow && !moved.Any(m => m.Id == a.Id))
+                .Where(a => (a.SourceId.HasValue && movedIds.Contains(a.SourceId.Value)) || (a.TargetId.HasValue && movedIds.Contains(a.TargetId.Value)))
+                .ToList();
+            foreach (var arrow in connectedArrows)
+            {
+                bool srcMoved = arrow.SourceId.HasValue && movedIds.Contains(arrow.SourceId.Value);
+                bool tgtMoved = arrow.TargetId.HasValue && movedIds.Contains(arrow.TargetId.Value);
+                if (srcMoved && tgtMoved) moved.Add(arrow.Translate(move.Dx, move.Dy));
+                else if (srcMoved) moved.Add(arrow with { A = new(arrow.A.X + move.Dx, arrow.A.Y + move.Dy) });
+                else if (tgtMoved) moved.Add(arrow with { B = new(arrow.B.X + move.Dx, arrow.B.Y + move.Dy) });
+            }
             AnnotationDocument.Validate(moved);
             var savedWindowIds = move.Before.Where(i => i.Key.Kind == CanvasItemKind.Window && _placeholderWorkspace?.Document.Items.Any(w => w.Id == i.Key.Id) == true).Select(i => i.Key.Id).ToArray();
             var areaIds = move.Before.Where(i => i.Key.Kind == CanvasItemKind.Project).Select(i => i.Key.Id).ToArray();

@@ -242,6 +242,7 @@ internal sealed partial class OverviewManager
         {
             _annotationTool?.Delete();
         }
+        CleanOrphanedArrows();
         RefreshToolPreview(); FocusOverview();
     }
     private void AnnotationHistory(bool redo)
@@ -253,6 +254,11 @@ internal sealed partial class OverviewManager
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
         if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null) return true;
+        if (e.Control && e.Shift && e.KeyCode == Keys.E)
+        {
+            ExportCurrentWorkflowToClipboard();
+            e.Handled = true; e.SuppressKeyPress = true; return true;
+        }
         if(_annotationTool==null || _annotationTool.Mode is AnnotationMode.Navigate or AnnotationMode.Select)
         {
             if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) { AnnotationHistory(e.KeyCode==Keys.Y || e.Shift); e.Handled=true; e.SuppressKeyPress=true; return true; }
@@ -386,6 +392,74 @@ internal sealed partial class OverviewManager
         if(_shapeEditor is {} shapeEditor) { _shapeEditor=null; shapeEditor.Dispose(); canceled=true; }
         return canceled;
     }
+    internal void CleanOrphanedArrows()
+    {
+        if (_annotationDocument == null) return;
+        var validIds = SelectionItems().Select(i => i.Key.Id).ToHashSet();
+        var currentDesktop = _annotationDesktop();
+        var arrows = _annotationDocument.Items
+            .Where(a => a.DesktopId == currentDesktop && a.Kind == AnnotationKind.Arrow)
+            .ToList();
+
+        bool anyRemoved = false;
+        foreach (var arrow in arrows)
+        {
+            bool sourceInvalid = arrow.SourceId.HasValue && !validIds.Contains(arrow.SourceId.Value);
+            bool targetInvalid = arrow.TargetId.HasValue && !validIds.Contains(arrow.TargetId.Value);
+            if (sourceInvalid || targetInvalid)
+            {
+                _annotationDocument.Delete(currentDesktop, arrow.Id);
+                anyRemoved = true;
+            }
+        }
+        if (anyRemoved)
+        {
+            _annotationStore?.Save();
+        }
+    }
+
+    internal void ExportCurrentWorkflowToClipboard(Guid? contextEntityId = null)
+    {
+        if (_placeholderWorkspace == null || _annotationDocument == null) return;
+        var desktop = _annotationDesktop();
+        Guid? targetZoneId = null;
+
+        if (contextEntityId.HasValue)
+        {
+            var zone = _placeholderWorkspace.Document.Zones.FirstOrDefault(z => z.DesktopId == desktop && (z.Id == contextEntityId.Value || z.ItemIds.Contains(contextEntityId.Value)));
+            if (zone != null) targetZoneId = zone.Id;
+        }
+        else
+        {
+            var selectedZone = Selection.Ids.FirstOrDefault(id => id.Kind == CanvasItemKind.Project);
+            if (selectedZone != default)
+            {
+                targetZoneId = selectedZone.Id;
+            }
+            else
+            {
+                var selectedWindow = Selection.Ids.FirstOrDefault(id => id.Kind == CanvasItemKind.Window);
+                if (selectedWindow != default)
+                {
+                    var zone = _placeholderWorkspace.Document.Zones.FirstOrDefault(z => z.DesktopId == desktop && z.ItemIds.Contains(selectedWindow.Id));
+                    if (zone != null) targetZoneId = zone.Id;
+                }
+            }
+        }
+
+        var workflowService = new WorkflowService(_placeholderWorkspace, _annotationDocument, _annotationStore);
+        string json = workflowService.ExportWorkflowJson(desktop, targetZoneId);
+        try
+        {
+            Clipboard.SetText(json);
+            _annotationError = null;
+        }
+        catch (Exception ex)
+        {
+            _annotationError = $"Could not copy workflow JSON to clipboard: {ex.Message}";
+        }
+    }
+
     private void DisposeAnnotations()
     {
         CancelCanvasComposer();

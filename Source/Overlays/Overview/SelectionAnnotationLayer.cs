@@ -13,8 +13,30 @@ internal sealed class SelectionAnnotationLayer(CanvasSelection selection, Func<I
         if (!visible()) return;
         Rect Project(CanvasRect r) { var p=context.View.WorldToDip(r); return new(p.X,p.Y,Math.Max(1,p.Width),Math.Max(1,p.Height)); }
         var pen=new Pen(Brushes.DeepSkyBlue,2);
+        var handleFill = new SolidColorBrush(Color.FromArgb(240, 30, 41, 59));
+        handleFill.Freeze();
+        var handleBorder = new Pen(Brushes.DeepSkyBlue, 1.5);
+        handleBorder.Freeze();
+        var dotBrush = Brushes.DeepSkyBlue;
         var selected=selection.Ids;
-        foreach (var item in items()) if (selected.Contains(item.Key)) dc.DrawRectangle(null,pen,Project(item.Bounds));
+        foreach (var item in items())
+        {
+            if (selected.Contains(item.Key))
+            {
+                dc.DrawRectangle(null,pen,Project(item.Bounds));
+                if (item.Key.Kind != CanvasItemKind.Annotation)
+                {
+                    ConnectionPort[] ports = [ConnectionPort.Top, ConnectionPort.Right, ConnectionPort.Bottom, ConnectionPort.Left];
+                    foreach (var port in ports)
+                    {
+                        var portWorld = AnnotationGeometry.PortPosition(item.Bounds, port);
+                        var dip = context.View.LocalToDip(context.View.WorldToLocal(portWorld));
+                        dc.DrawEllipse(handleFill, handleBorder, new Point(dip.X, dip.Y), 6, 6);
+                        dc.DrawEllipse(dotBrush, null, new Point(dip.X, dip.Y), 2.5, 2.5);
+                    }
+                }
+            }
+        }
         if (tool.Marquee is {} marquee)
             dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(35,0,191,255)),new Pen(Brushes.DeepSkyBlue,1),Project(marquee));
         if (tool.Offset != default)
