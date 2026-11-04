@@ -109,6 +109,7 @@ release preparation, signing, migration and support logs.
 - Windows 10/11
 - .NET SDK selected by `global.json` (10.0.401 or a compatible patch in that feature band)
 - Built-in Windows PowerShell 5.1 for `Start-Canvas.cmd`
+- CMake 3.20+ and Visual Studio C++ Build Tools with the Windows SDK and x64/x86 tools (native window-interaction input filters)
 
 ## Build
 

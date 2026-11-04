@@ -6,6 +6,9 @@ namespace CanvasDesktop;
 
 internal interface IWindowInteractionApi
 {
+    bool PrepareInput(IntPtr window) => true;
+    bool InputHealthy => true;
+    void ReleaseInput() { }
     bool IsAvailable(IntPtr window);
     bool Activate(IntPtr window);
     bool TryResolveClient(IntPtr window, Point screen, out IntPtr child, out Point client);
@@ -43,6 +46,7 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
     public IntPtr Window { get; private set; }
     public bool Active => Window != IntPtr.Zero;
     public bool Captured => _buttons != MouseButtons.None;
+    public bool InputHealthy => !Active || api.InputHealthy;
     private IntPtr _child;
     private MouseButtons _buttons;
     private Point _lastScreen;
@@ -52,7 +56,8 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
     public bool Begin(IntPtr window)
     {
         End();
-        if (!api.IsAvailable(window) || !api.Activate(window)) return false;
+        if (!api.IsAvailable(window) || !api.PrepareInput(window) || !api.Activate(window))
+        { api.ReleaseInput(); return false; }
         Window = window;
         return true;
     }
@@ -60,7 +65,7 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
     public bool Pointer(WindowInteractionGeometry geometry, Point pointer, MouseButtons button,
         bool down = false, bool up = false, bool doubleClick = false, uint modifiers = 0)
     {
-        if (!Active || !api.IsAvailable(Window)) { End(); return false; }
+        if (!Active || !api.IsAvailable(Window) || !api.InputHealthy) { End(); return false; }
         if (button is not (MouseButtons.None or MouseButtons.Left or MouseButtons.Right or MouseButtons.Middle or MouseButtons.XButton1 or MouseButtons.XButton2)) return false;
         if (!geometry.TryMap(pointer, Captured, out var screen)) return false;
         IntPtr child;
@@ -72,6 +77,9 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
         }
         else if (!api.TryResolveClient(Window, screen, out child, out client)) return false;
 
+        // A child may belong to a different GUI thread from its top-level app.
+        // Protect that receiver before posting a down that could acquire capture.
+        if (!api.PrepareInput(child)) { End(); return false; }
         _lastScreen = screen;
         uint flag = ButtonFlag(button);
         var buttons = down ? _buttons | button : up ? _buttons & ~button : _buttons;
@@ -108,9 +116,10 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
 
     public bool Wheel(WindowInteractionGeometry geometry, Point pointer, int delta, bool horizontal, uint modifiers)
     {
-        if (!Active || !api.IsAvailable(Window)) { End(); return false; }
+        if (!Active || !api.IsAvailable(Window) || !api.InputHealthy) { End(); return false; }
         if (!geometry.TryMap(pointer, false, out var screen)
             || !api.TryResolveClient(Window, screen, out var child, out _)) return false;
+        if (!api.PrepareInput(child)) { End(); return false; }
         if (!api.Post(child, horizontal ? 0x20Eu : 0x20Au,
                 (unchecked((uint)(ushort)delta) << 16) | modifiers | ButtonFlags(_buttons), screen))
         { End(); return false; }
@@ -139,6 +148,7 @@ internal sealed class OverviewWindowInteraction(IWindowInteractionApi api)
             }
             api.Post(child, 0x2A3, 0, default); // WM_MOUSELEAVE: clear hover controls/tooltips.
         }
+        api.ReleaseInput();
         return active;
     }
 

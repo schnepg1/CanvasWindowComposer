@@ -19,6 +19,7 @@ internal sealed class WindowInteractionMouseHook : IDisposable
     private readonly Func<Point, bool> _isSurface;
     private readonly Action<InteractionMouseEvent> _enqueue;
     private readonly Action _outside;
+    private readonly Func<bool> _inputHealthy;
     private readonly HOOKPROC _callback;
     private UnhookWindowsHookExSafeHandle? _hook;
     private readonly Thread _thread;
@@ -37,10 +38,11 @@ internal sealed class WindowInteractionMouseHook : IDisposable
     };
 
     public WindowInteractionMouseHook(Func<Point, bool> isSurface, Action<InteractionMouseEvent> enqueue, Action outside,
-        MouseButtons initiallyHeld = MouseButtons.None)
+        Func<bool>? inputHealthy = null, MouseButtons initiallyHeld = MouseButtons.None)
     {
         _held = initiallyHeld;
         _isSurface = isSurface; _enqueue = enqueue; _outside = outside;
+        _inputHealthy = inputHealthy ?? (() => true);
         _callback = Callback;
         Exception? failure = null;
         using var ready = new ManualResetEventSlim();
@@ -108,9 +110,14 @@ internal sealed class WindowInteractionMouseHook : IDisposable
             unchecked((short)(data.mouseData >> 16)), message == 0x20E, clicks, ReadModifiers()));
         if (message == 0x200 && !_updatingCursor)
         {
+            // Never synthesize a native move after a target-thread filter dies.
+            // End the session on the UI thread before allowing native interaction.
+            if (!_inputHealthy()) { _outside(); return (LRESULT)1; }
             // Suppressing WM_MOUSEMOVE also suppresses the OS cursor update.
             // Move the cursor explicitly while withholding the unscaled event
-            // from the source app (which may own native capture during a drag).
+            // from the source app. SetCursorPos itself can generate WM_MOUSEMOVE
+            // without re-entering this low-level hook, so the receiving GUI thread
+            // also needs the native filter installed by PrepareInput.
             _updatingCursor = true;
             try
             {

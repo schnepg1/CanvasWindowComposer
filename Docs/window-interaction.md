@@ -83,6 +83,17 @@ thread, coalesces pending mouse movement, and maps positions
 back to the source frame. Unchanged hover positions are skipped. Keyboard input
 goes straight to the real app, without a keyboard hook or keyboard polling loop.
 
+During an app session, a small native helper installs a thread-scoped `WH_MOUSE`
+filter in each receiving GUI thread. This also suppresses the unscaled native
+mouse moves that Windows can generate when Canvas updates the real cursor;
+the bridge's mapped `PostMessage` input still reaches the app and native capture
+stays with its control. Both x64 and x86 targets are supported. Startup verifies
+that the DLL loaded in the target before forwarding input. A rejected filter or
+a stopped helper ends interaction; use the desktop-size view for protected,
+elevated, or unsupported-architecture apps. Ending the session closes the helper's
+ownership pipe and removes its hooks; Canvas exit or a lost target thread also
+releases them. The helper and filter are included in normal published builds.
+
 This adds input-processing work while the pointer is in use. The expectation is
 small overhead relative to video decoding and composition, but no browser FPS,
 CPU, or GPU benchmark has been performed. Foreground focus can make an app stop

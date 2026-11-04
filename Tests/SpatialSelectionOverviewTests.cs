@@ -27,7 +27,7 @@ public class SpatialSelectionOverviewTests
                 overview.Selection.Replace([key]);
                 Assert.True(rig.Workspace.MoveZone(child.Id,-199800,-199800));
                 // The parent was already selected before the child entered it.
-                var view=new CanvasViewTransform(0,0,1,new(0,0,1920,1080));
+                var view=new CanvasViewTransform(0,-100,1,new(0,0,1920,1080));
                 var tool=overview.SelectionTool!;
                 Assert.True(tool.PointerDown(new(0,new(80,76),CanvasPointerButton.Left,CanvasModifiers.None,view)));
                 Assert.Contains(new(CanvasItemKind.Project,child.Id),overview.Selection.Ids);

@@ -151,16 +151,61 @@ public class OverviewWindowInteractionTests
         Assert.Empty(api.Messages); Assert.False(bridge.Captured);
     }
 
+    [Fact]
+    public void MissingNativeFilterRefusesInputBeforeActivatingTheApp()
+    {
+        var api = new PointerApi { Prepared = false };
+        var bridge = new OverviewWindowInteraction(api);
+        Assert.False(bridge.Begin(Root));
+        Assert.False(bridge.Active);
+        Assert.Empty(api.Messages);
+        Assert.Equal(0, api.Activations);
+        Assert.Contains(Root, api.InputWindows);
+    }
+
+    [Fact]
+    public void ChildThreadMustBeProtectedBeforeSendingButtonDown()
+    {
+        var api = new PointerApi(); var bridge = new OverviewWindowInteraction(api);
+        Assert.True(bridge.Begin(Root));
+        api.Prepared = false;
+        Assert.False(bridge.Pointer(Geometry, new(-300, 250), MouseButtons.Left, down: true));
+        Assert.Contains(Child, api.InputWindows);
+        Assert.Empty(api.Messages);
+        Assert.False(bridge.Active);
+        Assert.False(bridge.Captured);
+    }
+
+    [Fact]
+    public void LostNativeFilterEndsDragAndReleasesItsButtons()
+    {
+        var api = new PointerApi(); var bridge = new OverviewWindowInteraction(api);
+        Assert.True(bridge.Begin(Root));
+        Assert.True(bridge.Pointer(Geometry, new(-300, 250), MouseButtons.Left, down: true));
+        api.Healthy = false;
+        Assert.False(bridge.InputHealthy);
+        Assert.False(bridge.Pointer(Geometry, new(-290, 250), MouseButtons.None));
+        Assert.False(bridge.Active); Assert.False(bridge.Captured);
+        Assert.Equal(new uint[] { 0x201, 0x202, 0x2A3 }, api.Messages.Select(m => m.Id));
+        Assert.True(api.Releases > 0);
+    }
+
     internal sealed class PointerApi : IWindowInteractionApi
     {
         public bool Available = true, Activated = true, Related = true, Client = true, Accept = true;
+        public bool Prepared = true, Healthy = true;
+        public int Activations, Releases;
+        public List<IntPtr> InputWindows = [];
         public IntPtr Child = (IntPtr)11;
         public Dictionary<IntPtr, IntPtr> Owners = new();
         public bool AdaptButtons;
         public List<(IntPtr Window, Point Client, bool Invoke)> ButtonReleases = [];
         public List<(IntPtr Window, uint Id, uint Flags, Point Point)> Messages = [];
         public bool IsAvailable(IntPtr window) => Available;
-        public bool Activate(IntPtr window) => Activated;
+        public bool Activate(IntPtr window) { Activations++; return Activated; }
+        public bool PrepareInput(IntPtr window) { InputWindows.Add(window); return Prepared; }
+        public bool InputHealthy => Healthy;
+        public void ReleaseInput() => Releases++;
         public bool TryResolveClient(IntPtr window, Point screen, out IntPtr child, out Point client)
         { child = Child; client = new(screen.X - 100, screen.Y - 50); return Client; }
         public bool TryToClient(IntPtr window, Point screen, out Point client)
