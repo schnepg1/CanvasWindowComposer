@@ -111,6 +111,19 @@
         "resolved": "2.1.0",
         "contentHash": "KK+SjNSuKdP+zbavekubi+vaeb1Jo4k87ZF6CMkVWjr6RjJwc8peVtmgzXXDIMy4ZC3ZISyk3llY3q65ISOkBQ=="
       },
+      "WPF-UI": {
+        "type": "Transitive",
+        "resolved": "4.3.0",
+        "contentHash": "SIHhc8lIrhEQ/1cLFZN6Dtf8cqsLm4myBULj9obnacd9TyDs2vizhKYzRzTlcPEcnzb3L4EstvPN3M6kcXbJCA==",
+        "dependencies": {
+          "WPF-UI.Abstractions": "4.3.0"
+        }
+      },
+      "WPF-UI.Abstractions": {
+        "type": "Transitive",
+        "resolved": "4.3.0",
+        "contentHash": "7Kj9DmCCo4SOCd1jAiw4+EcMFP2nR8rLLvitAYzVtzbWToTsodkbie24+8x9C4LDLxkopWEUGX62szqqNy7oeg=="
+      },
       "canvasdesktop": {
         "type": "Project",
         "dependencies": {
@@ -118,7 +131,8 @@
           "CanvasDesktop.CanvasView": "[1.0.0, )",
           "Velopack": "[1.2.161, )",
           "Vortice.D3DCompiler": "[3.8.3, )",
-          "Vortice.Direct3D11": "[3.8.3, )"
+          "Vortice.Direct3D11": "[3.8.3, )",
+          "WPF-UI": "[4.3.0, )"
         }
       },
       "canvasdesktop.ai": {

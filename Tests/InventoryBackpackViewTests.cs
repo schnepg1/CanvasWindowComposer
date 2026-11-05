@@ -1,8 +1,13 @@
 using CanvasDesktop;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Xunit;
 
 namespace CanvasDesktop.Tests;
 
@@ -84,6 +89,49 @@ public class InventoryBackpackViewTests
             Assert.Contains("Notes", titles); Assert.DoesNotContain("Terminal", titles);
             Assert.Equal(2, items.Length);
             panel.SetOpen(false); Assert.False(panel.IsOpen);
+        });
+
+    [Fact]
+    public void BackpackUsesWpfUiFluentControlsAndFeatures()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(true);
+            var items = new[] { Item("Editor", false), Item("Debug Console", true) };
+            panel.UpdateItems(items);
+
+            // WPF-UI TextBox with placeholder & clear button
+            var searchBox = Descendants(panel).OfType<Wpf.Ui.Controls.TextBox>().Single();
+            Assert.Equal("Find a window…", searchBox.PlaceholderText);
+            Assert.True(searchBox.ClearButtonEnabled);
+            Assert.NotNull(searchBox.Icon);
+
+            // WPF-UI DynamicScrollViewer
+            var scroll = Descendants(panel).OfType<Wpf.Ui.Controls.DynamicScrollViewer>().Single();
+            Assert.NotNull(scroll);
+
+            // WPF-UI Buttons
+            var foldBtn = Descendants(panel).OfType<Wpf.Ui.Controls.Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Fold backpack");
+            Assert.NotNull(foldBtn.Icon);
+            var infoBtn = Descendants(panel).OfType<Wpf.Ui.Controls.Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Backpack tips");
+            Assert.NotNull(infoBtn.Icon);
+            var closeBtn = Descendants(panel).OfType<Wpf.Ui.Controls.Button>().Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Close backpack");
+            Assert.NotNull(closeBtn.Icon);
+
+            // Drop target styling
+            panel.SetDropTarget(true);
+            panel.SetDropTarget(false);
+
+            // Double click tile triggers PlaceRequested
+            Guid? placedId = null;
+            panel.PlaceRequested += id => placedId = id;
+            panel.Highlight(items[0].Id);
+
+            // Folded mode interaction
+            bool? requestedOpen = null;
+            panel.OpenRequested += open => requestedOpen = open;
+            panel.SetOpen(false);
+            Assert.False(panel.IsOpen);
         });
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)

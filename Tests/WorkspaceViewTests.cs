@@ -2,7 +2,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows.Forms;
 using CanvasDesktop;
 using System.Windows;
-using Wpf = System.Windows.Controls;
+using WpfControls = System.Windows.Controls;
 
 namespace CanvasDesktop.Tests;
 
@@ -276,14 +276,14 @@ public class WorkspaceViewTests
             var window = new WorkspaceWindow(commands);
             try
             {
-                var list = Descendants(window).OfType<Wpf.ListBox>().Single();
+                var list = Descendants(window).OfType<WpfControls.ListBox>().Single();
                 list.SelectedIndex = 0;
                 var row = Assert.IsType<WorkspaceItemView>(list.SelectedItem);
-                var check = new Wpf.CheckBox { DataContext = row, IsChecked = true };
-                list.RaiseEvent(new RoutedEventArgs(Wpf.CheckBox.ClickEvent, check));
+                var check = new WpfControls.CheckBox { DataContext = row, IsChecked = true };
+                list.RaiseEvent(new RoutedEventArgs(WpfControls.CheckBox.ClickEvent, check));
                 Assert.Equal((row.Id, true), commands.AutoOpen);
-                Descendants(window).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Open"))
-                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                Descendants(window).OfType<WpfControls.Button>().Single(b => Equals(b.Content, "Open"))
+                    .RaiseEvent(new RoutedEventArgs(WpfControls.Button.ClickEvent));
                 Assert.Equal(row.Id, commands.Opened);
                 commands.RaiseChanged();
                 window.Close(); // A queued refresh must not access a closed view.
@@ -309,16 +309,16 @@ public class WorkspaceViewTests
             {
                 try
                 {
-                    var link = Descendants(window).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Link selected window"));
+                    var link = Descendants(window).OfType<WpfControls.Button>().Single(b => Equals(b.Content, "Link selected window"));
                     Assert.False(link.IsEnabled);
-                    Descendants(window).OfType<Wpf.ListBox>().Single().SelectedIndex = 0;
+                    Descendants(window).OfType<WpfControls.ListBox>().Single().SelectedIndex = 0;
                     Assert.True(link.IsEnabled);
-                    link.RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                    link.RaiseEvent(new RoutedEventArgs(WpfControls.Button.ClickEvent));
                     Assert.Equal((commands.Items[0].Id, candidate.Token), commands.Linked);
                     if (!succeeds)
                     {
                         Assert.False(link.IsEnabled);
-                        Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), l => l.Text.Contains("no longer available"));
+                        Assert.Contains(Descendants(window).OfType<WpfControls.TextBlock>(), l => l.Text.Contains("no longer available"));
                     }
                 }
                 catch (Exception ex) { callbackFailure = ex; }
@@ -339,8 +339,8 @@ public class WorkspaceViewTests
             var window = WorkspaceInteractionDialogs.CreateLinkWindow(IntPtr.Zero, commands, commands.Items[0].Id);
             try
             {
-                Assert.Empty(Descendants(window).OfType<Wpf.ListBox>().Single().Items);
-                Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), l => l.Text.Contains("No eligible windows"));
+                Assert.Empty(Descendants(window).OfType<WpfControls.ListBox>().Single().Items);
+                Assert.Contains(Descendants(window).OfType<WpfControls.TextBlock>(), l => l.Text.Contains("No eligible windows"));
                 Render(window, "workspace-link-preview.png");
             }
             finally { window.Close(); }
@@ -355,12 +355,12 @@ public class WorkspaceViewTests
             var window = WorkspaceInteractionDialogs.CreateLinkWindow(IntPtr.Zero, commands, commands.Items[0].Id);
             try
             {
-                Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), t => t.Text == commands.CandidateHint);
+                Assert.Contains(Descendants(window).OfType<WpfControls.TextBlock>(), t => t.Text == commands.CandidateHint);
                 commands.Candidates = [new(Guid.NewGuid(), "New browser window")];
-                Descendants(window).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Refresh windows"))
-                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
-                Assert.Single(Descendants(window).OfType<Wpf.ListBox>().Single().Items);
-                Assert.DoesNotContain(Descendants(window).OfType<Wpf.TextBlock>(), t => t.Text == commands.CandidateHint);
+                Descendants(window).OfType<WpfControls.Button>().Single(b => Equals(b.Content, "Refresh windows"))
+                    .RaiseEvent(new RoutedEventArgs(WpfControls.Button.ClickEvent));
+                Assert.Single(Descendants(window).OfType<WpfControls.ListBox>().Single().Items);
+                Assert.DoesNotContain(Descendants(window).OfType<WpfControls.TextBlock>(), t => t.Text == commands.CandidateHint);
                 Assert.Null(commands.Linked);
             }
             finally { window.Close(); }
@@ -375,14 +375,14 @@ public class WorkspaceViewTests
             var window = new WorkspaceWindow(commands);
             try
             {
-                var list = Descendants(window).OfType<Wpf.ListBox>().Single();
-                var filter = Descendants(window).OfType<Wpf.TextBox>().Single();
+                var list = Descendants(window).OfType<WpfControls.ListBox>().Single();
+                var filter = Descendants(window).OfType<WpfControls.TextBox>().Single();
                 list.SelectedIndex = 0;
                 filter.Text = "notes.txt";
                 Assert.Equal(commands.Items[0].Id, Assert.IsType<WorkspaceItemView>(list.SelectedItem).Id);
                 filter.Text = "no matches";
                 Assert.Empty(list.Items);
-                Assert.Contains(Descendants(window).OfType<Wpf.TextBlock>(), l => l.Text.Contains("No saved places"));
+                Assert.Contains(Descendants(window).OfType<WpfControls.TextBlock>(), l => l.Text.Contains("No saved places"));
                 filter.Clear();
                 Render(window, "workspace-shell-preview.png");
             }
@@ -422,15 +422,15 @@ public class WorkspaceViewTests
             var rename = WorkspaceInteractionDialogs.CreateNamePlace(IntPtr.Zero, commands, item.Id);
             rename.Loaded += (_, _) =>
             {
-                Descendants(rename).OfType<Wpf.TextBox>().Single().Text = "Work browser";
-                Descendants(rename).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Save"))
-                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                Descendants(rename).OfType<WpfControls.TextBox>().Single().Text = "Work browser";
+                Descendants(rename).OfType<WpfControls.Button>().Single(b => Equals(b.Content, "Save"))
+                    .RaiseEvent(new RoutedEventArgs(WpfControls.Button.ClickEvent));
             };
             Assert.True(rename.ShowDialog()); Assert.Equal((item.Id, "Work browser"), commands.Renamed);
             var cancel = WorkspaceInteractionDialogs.CreateNamePlace(IntPtr.Zero, commands, item.Id);
             cancel.Loaded += (_, _) =>
             {
-                Descendants(cancel).OfType<Wpf.TextBox>().Single().Text = "Discard";
+                Descendants(cancel).OfType<WpfControls.TextBox>().Single().Text = "Discard";
                 cancel.DialogResult = false;
             };
             Assert.False(cancel.ShowDialog()); Assert.Equal((item.Id, "Work browser"), commands.Renamed);
@@ -438,9 +438,9 @@ public class WorkspaceViewTests
             var profile = WorkspaceInteractionDialogs.CreateChromeProfile(IntPtr.Zero, commands, item.Id, choices);
             profile.Loaded += (_, _) =>
             {
-                Descendants(profile).OfType<Wpf.ComboBox>().Single().SelectedItem = choices[0];
-                Descendants(profile).OfType<Wpf.Button>().Single(b => Equals(b.Content, "Save"))
-                    .RaiseEvent(new RoutedEventArgs(Wpf.Button.ClickEvent));
+                Descendants(profile).OfType<WpfControls.ComboBox>().Single().SelectedItem = choices[0];
+                Descendants(profile).OfType<WpfControls.Button>().Single(b => Equals(b.Content, "Save"))
+                    .RaiseEvent(new RoutedEventArgs(WpfControls.Button.ClickEvent));
             };
             Assert.True(profile.ShowDialog()); Assert.Equal((item.Id, choices[0].Path), commands.Profile);
         });
