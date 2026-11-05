@@ -284,7 +284,7 @@ internal sealed partial class OverviewManager
         // Every annotation window is owned by this UI thread/Dispatcher. Prepare
         // all viewports, then service render-priority work once for the whole frame.
         foreach (var p in _passes) if (p.Visible) p.PrepareAnnotations();
-        firstPass?.FlushAnnotations();
+        if (!MotionActive) firstPass?.FlushAnnotations();
         RefreshAnnotationUi();
         RefreshTourUi();
     }

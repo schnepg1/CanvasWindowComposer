@@ -123,7 +123,7 @@ internal sealed partial class OverviewManager
             {
                 PanOverview(dx, dy);
                 RecordPanDelta(dx, dy);
-                _visualFrames.RequestAndFlush();
+                _visualFrames.Request();
             }
             return;
         }

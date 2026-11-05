@@ -197,4 +197,18 @@ public class PanMomentumIntegrationTests
             Assert.Equal(16, rig.Workspace.GetPlaceholderTitles().Count);
         });
 
+    [Fact]
+    public void MiddleMousePanMovesCameraAndMarksMotionActive()
+        => Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            pass.OnMouseButtonDown!(pass, new(MouseButtons.Middle, 1, 500, 500, 0));
+            Assert.True(overview.MotionActive);
+            var initialCamera = overview.ViewCamera;
+            pass.OnMouseMoved!(pass, new(MouseButtons.Middle, 0, 530, 520, 0));
+            Assert.True(overview.MotionActive);
+            Assert.NotEqual(initialCamera.X, overview.ViewCamera.X);
+            Assert.NotEqual(initialCamera.Y, overview.ViewCamera.Y);
+            pass.OnMouseButtonUp!(pass, new(MouseButtons.Middle, 1, 530, 520, 0));
+        });
+
 }

@@ -133,7 +133,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         if (_windowInteraction.Active && !PeekWorking && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
         RefreshZoneAnnotations();
-        RaiseCanvasPanels();
+        if (!isMoving) RaiseCanvasPanels();
         // Publish the GPU background camera after DWM properties and the staged
         // annotation scene. This avoids waking it with a partially submitted view.
         if (!_disposed && CurrentMode != OverviewMode.Hidden) UpdateGridCamera(camera, panX, panY);

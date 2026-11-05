@@ -8,10 +8,34 @@ internal sealed partial class OverviewManager
     private readonly OverviewFrameScheduler _visualFrames;
     private Timer? _visualFrameTimer;
     private Action? _scheduledVisualFrame;
+    private bool _visualFramePosted;
     private double _visualPanX, _visualPanY;
 
     private void ScheduleVisualFrame(Action frame)
     {
+        _scheduledVisualFrame = frame;
+        if (_visualFramePosted) return;
+
+        if (_passes.Count > 0 && _passes[0].IsHandleCreated && !_passes[0].IsDisposed)
+        {
+            _visualFramePosted = true;
+            try
+            {
+                _passes[0].BeginInvoke((Action)(() =>
+                {
+                    _visualFramePosted = false;
+                    var scheduled = _scheduledVisualFrame;
+                    _scheduledVisualFrame = null;
+                    if (!_disposed && CurrentMode != OverviewMode.Hidden) scheduled?.Invoke();
+                }));
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                _visualFramePosted = false;
+            }
+        }
+
         if (_visualFrameTimer == null)
         {
             // One UI clock for all monitor passes; do not reconcile once per input
@@ -25,7 +49,6 @@ internal sealed partial class OverviewManager
                 if (!_disposed && CurrentMode != OverviewMode.Hidden) scheduled?.Invoke();
             };
         }
-        _scheduledVisualFrame = frame;
         _visualFrameTimer.Start();
     }
 
@@ -60,6 +83,7 @@ internal sealed partial class OverviewManager
     {
         _visualFrames.Cancel();
         _visualFrameTimer?.Stop();
+        _visualFramePosted = false;
         _scheduledVisualFrame = null;
         _visualPanX = _visualPanY = 0;
     }
