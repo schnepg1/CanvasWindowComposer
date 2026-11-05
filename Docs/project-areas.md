@@ -14,7 +14,7 @@ alongside the canvas for navigation and focus/reopen actions.
    press **N**, then drag normally. The drag can start over a window thumbnail.
 3. The **Project areas** manager opens with the new area selected. Enter a name,
    choose a color or enter `#RRGGBB`, then select **Save changes**.
-4. Press **Z** in the overview, or choose **Project Areas…** in the system tray,
+4. Press **Z** in the overview, choose **More → Project areas…**, or choose **Project Areas…** in the system tray,
    to reopen the manager. Select an area and choose **Jump to area**, double-click
    it, or press Enter while its list row has focus.
 5. **Draw an area** opens the overview and arms the next left-drag. **Esc** cancels
@@ -33,7 +33,7 @@ alongside the canvas for navigation and focus/reopen actions.
    units per side (or the original size for smaller existing areas).
 9. In the overview, **Ctrl+Z** undoes an area move or resize. **Ctrl+Y** or
    **Ctrl+Shift+Z** redoes it. The manager also has **Undo** and **Redo** buttons.
-10. Press **P** in the overview, choose **Project Navigator…** from the tray, or
+10. Press **P** in the overview, choose **More → Project Navigator…**, choose **Project Navigator…** from the tray, or
     select **Navigator** in the area manager to open the compact project panel.
 
 ## Project navigator

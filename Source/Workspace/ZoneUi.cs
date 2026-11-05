@@ -9,17 +9,19 @@ internal sealed class ZoneUi : IDisposable
 {
     private readonly WorkspaceService _workspace;
     private readonly OverviewManager _overview;
-    private readonly System.Windows.Application? _application;
+
     private ZoneWindow? _window;
     private ZoneNavigatorWindow? _navigator;
+    internal ZoneWindow? Window => _window;
+    internal ZoneNavigatorWindow? Navigator => _navigator;
     private readonly ZoneNavigation _navigation;
     private bool _disposed;
 
     public ZoneUi(WorkspaceService workspace, OverviewManager overview)
     {
         _workspace = workspace; _overview = overview;
-        if (System.Windows.Application.Current == null)
-            _application = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+
+
         _navigation = new ZoneNavigation(workspace.Zones, workspace, overview.JumpToZone,
             () => overview.TransitionTo(OverviewMode.Hidden));
         _overview.AttachZones(workspace.Zones);
@@ -40,18 +42,18 @@ internal sealed class ZoneUi : IDisposable
         {
             _window = new ZoneWindow(_workspace.Zones, _overview.BeginZone, _overview.JumpToZone,
                 () => _workspace.Status, _workspace, OnZoneHistoryRequested, ShowNavigator);
-            _window.Closed += (_, _) => _window = null;
+            _window.Closed += (_, _) => { _window = null; _overview.AttachZoneWindow(null); };
             ElementHost.EnableModelessKeyboardInterop(_window);
         }
-        _window.Topmost = _overview.CurrentMode == OverviewMode.Zooming;
+        _overview.AttachZoneWindow(_window);
         _window.Show();
-        _window.Activate();
+        _window.Activate(); _window.RaiseWithoutActivation();
     }
 
     private void OnModeChanged(OverviewMode from, OverviewMode to)
     {
-        if (_window != null) _window.Topmost = to == OverviewMode.Zooming;
-        if (_navigator != null) _navigator.Topmost = to == OverviewMode.Zooming;
+        _overview.AttachZoneWindow(_window);
+        _overview.AttachZoneNavigator(_navigator);
     }
 
     public void ShowNavigator()
@@ -64,11 +66,11 @@ internal sealed class ZoneUi : IDisposable
                 Show();
                 if (id is { } areaId) _window!.Select(areaId);
             });
-            _navigator.Closed += (_, _) => _navigator = null;
+            _navigator.Closed += (_, _) => { _navigator = null; _overview.AttachZoneNavigator(null); };
             ElementHost.EnableModelessKeyboardInterop(_navigator);
         }
-        _navigator.Topmost = _overview.CurrentMode == OverviewMode.Zooming;
-        _navigator.Show(); _navigator.Activate(); _navigator.FocusSearch();
+        _overview.AttachZoneNavigator(_navigator);
+        _navigator.Show(); _navigator.Activate(); _navigator.FocusSearch(); _navigator.RaiseWithoutActivation();
     }
 
     private void OnZoneMoveRequested(Guid id, double dx, double dy)
@@ -110,10 +112,10 @@ internal sealed class ZoneUi : IDisposable
         _overview.ZoneMoveRequested -= OnZoneMoveRequested;
         _overview.ZoneResizeRequested -= OnZoneResizeRequested;
         _overview.ZoneHistoryRequested -= OnZoneHistoryRequested;
-        _overview.AfterModeChanged -= OnModeChanged;
+        _overview.AfterModeChanged -= OnModeChanged; _overview.AttachZoneWindow(null); _overview.AttachZoneNavigator(null);
         _window?.Close();
         _navigator?.Close();
         _navigation.Dispose();
-        _application?.Shutdown();
+
     }
 }

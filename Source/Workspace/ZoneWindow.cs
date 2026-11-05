@@ -3,6 +3,9 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Interop;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace CanvasDesktop;
 
@@ -38,6 +41,7 @@ internal sealed class ZoneWindow : Window
         Width = 440; Height = 750; MinWidth = 360; MinHeight = 640;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ZoneTheme.Apply(this);
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) { Close(); e.Handled = true; } };
         var root = new Grid { Margin = new Thickness(24) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -202,5 +206,19 @@ internal sealed class ZoneWindow : Window
     }
 
     public void Report(string message) => _message.Text = message;
+
+    internal void SetCanvasOwner(IntPtr owner)
+    {
+        var interop = new WindowInteropHelper(this);
+        if (interop.Owner != owner) interop.Owner = owner;
+        Topmost = owner != IntPtr.Zero;
+    }
+
+    internal void RaiseWithoutActivation()
+    {
+        if (!IsVisible || !Topmost) return;
+        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+    }
 
 }

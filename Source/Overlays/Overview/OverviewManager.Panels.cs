@@ -19,6 +19,8 @@ internal sealed partial class OverviewManager
         _backpack?.SetCanvasOwner(CanvasPanelOwner);
         _temporaryDrawer?.SetCanvasOwner(CanvasPanelOwner);
         _backgroundEditor?.SetCanvasOwner(CanvasPanelOwner);
+        _zoneWindow?.SetCanvasOwner(CanvasPanelOwner);
+        _zoneNavigator?.SetCanvasOwner(CanvasPanelOwner);
     }
 
     private void RaiseCanvasPanels()
@@ -28,5 +30,26 @@ internal sealed partial class OverviewManager
         _backpack?.RaiseWithoutActivation();
         _temporaryDrawer?.RaiseWithoutActivation();
         _backgroundEditor?.RaiseWithoutActivation();
+        _zoneWindow?.RaiseWithoutActivation();
+        _zoneNavigator?.RaiseWithoutActivation();
+    }
+
+    private ZoneWindow? _zoneWindow;
+    private ZoneNavigatorWindow? _zoneNavigator;
+
+    internal void AttachZoneWindow(ZoneWindow? window)
+    {
+        _zoneWindow = window;
+        if (_disposed) return;
+        UpdateCanvasPanelOwners();
+        _zoneWindow?.RaiseWithoutActivation();
+    }
+
+    internal void AttachZoneNavigator(ZoneNavigatorWindow? navigator)
+    {
+        _zoneNavigator = navigator;
+        if (_disposed) return;
+        UpdateCanvasPanelOwners();
+        _zoneNavigator?.RaiseWithoutActivation();
     }
 }

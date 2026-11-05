@@ -42,6 +42,8 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
     public event Action? WebResourceRequested;
     public event Action? BackgroundsRequested;
+    public event Action? ProjectNavigatorRequested;
+    public event Action? ProjectAreasRequested;
     internal CanvasDockSurface PropertiesSurface => _properties;
 
     public AnnotationToolbar()
@@ -77,6 +79,12 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _more.DropDownItems.Add(MenuItem("AI Compose", () => ComposerRequested?.Invoke(), DockGlyph.Compose));
         _more.DropDownItems.Add(MenuItem("Add web resource…", () => WebResourceRequested?.Invoke()));
         _more.DropDownItems.Add(MenuItem("Backgrounds…", () => BackgroundsRequested?.Invoke()));
+        var projectNav = MenuItem("Project Navigator…", () => ProjectNavigatorRequested?.Invoke());
+        projectNav.ShortcutKeyDisplayString = "P";
+        _more.DropDownItems.Add(projectNav);
+        var projectAreas = MenuItem("Project areas…", () => ProjectAreasRequested?.Invoke());
+        projectAreas.ShortcutKeyDisplayString = "Z";
+        _more.DropDownItems.Add(projectAreas);
         _status.Click += (_, _) => { if (_state?.Status != null) RetrySaveRequested?.Invoke(); };
         Strip.Items.AddRange([_selectButton, _shapesButton, _textButton, new ToolStripSeparator(), _undo, _redo, _more, _status]);
 

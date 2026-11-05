@@ -28,7 +28,8 @@ internal sealed partial class OverviewManager
     public bool OverviewHotkeySuspended => CanvasEditorInputSuspended || _backgroundEditor?.IsChoosingImage == true;
     private bool CanvasEditorInputSuspended => PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true);
 
-    internal AnnotationDocument? Annotations => _annotationDocument;
+    internal AnnotationDocument? Annotations => _annotationDocument;
+    internal AnnotationToolbar? AnnotationToolbar => _annotationToolbar;
     internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
     internal AnnotationShapeEditor? ShapeEditor => _shapeEditor;
@@ -140,6 +141,8 @@ internal sealed partial class OverviewManager
             _annotationToolbar.ComposerRequested+=() => OpenCanvasComposer();
             _annotationToolbar.WebResourceRequested += ShowAddWebResource;
             _annotationToolbar.BackgroundsRequested += () => BackgroundsRequested?.Invoke();
+            _annotationToolbar.ProjectNavigatorRequested += () => ZoneNavigatorRequested?.Invoke();
+            _annotationToolbar.ProjectAreasRequested += () => ZonePanelRequested?.Invoke();
             _annotationToolbar.NearbyRequested+=radius => SelectNearby(radius);
             _annotationToolbar.SetSelectionRadius(_selectionRadius);
             _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);

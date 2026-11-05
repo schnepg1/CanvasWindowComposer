@@ -5,6 +5,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Interop;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace CanvasDesktop;
 
@@ -191,5 +194,19 @@ internal sealed class ZoneNavigatorWindow : Window
             Refresh();
             if (!accepted) _status.Text = "That member is no longer available to open. Select it again after refresh.";
         }
+    }
+
+    internal void SetCanvasOwner(IntPtr owner)
+    {
+        var interop = new WindowInteropHelper(this);
+        if (interop.Owner != owner) interop.Owner = owner;
+        Topmost = owner != IntPtr.Zero;
+    }
+
+    internal void RaiseWithoutActivation()
+    {
+        if (!IsVisible || !Topmost) return;
+        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
     }
 }
