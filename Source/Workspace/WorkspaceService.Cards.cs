@@ -106,8 +106,8 @@ internal sealed partial class WorkspaceService
                 ? _wm.UsesCachedPreview(live.Identity.Handle) ? "Sleeping" : "Minimized" : "Open"
         : _ambiguous.Contains(item.Id) ? "Needs linking" : "Placeholder";
 
-    private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, item.Name.Length > 0 ? item.Name : item.Title, item.ExecutablePath,
-        item.Target, item.OpenOnStartup, item.Bounds, ItemState(item), item.Name, item.IsFolder, item.ChromeProfilePath,
+    private WorkspaceItemView View(WorkspaceItem item) => new(item.Id, (item.Name?.Length ?? 0) > 0 ? item.Name! : (item.Title ?? ""), item.ExecutablePath ?? "",
+        item.Target ?? "", item.OpenOnStartup, item.Bounds, ItemState(item), item.Name ?? "", item.IsFolder, item.ChromeProfilePath ?? "",
         _launchMessages.GetValueOrDefault(item.Id), item.WebResource, item.ExcludeFromAutomaticMinimization,
         item.Placement == WorkspacePlacement.Temporary);
 }

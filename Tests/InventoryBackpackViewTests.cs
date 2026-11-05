@@ -134,6 +134,82 @@ public class InventoryBackpackViewTests
             Assert.False(panel.IsOpen);
         });
 
+    [Fact]
+    public void ContextMenuOpenPreventsFlickerAndDefersRebuild()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(true);
+            var item1 = Item("First Item", false);
+            var item2 = Item("Second Item", true);
+            panel.UpdateItems([item1, item2]);
+
+            var border1 = Descendants(panel).OfType<Border>().First(b => b.ContextMenu != null);
+            var menu = border1.ContextMenu;
+            Assert.NotNull(menu);
+
+            // Open the context menu
+            menu.IsOpen = true;
+            Assert.True(panel.IsContextMenuOpen);
+
+            // While open, UpdateItems with modified title or item
+            var modifiedItem1 = Item("First Item Renamed", false) with { Id = item1.Id };
+            panel.UpdateItems([modifiedItem1, item2]);
+
+            // The tile must NOT have been destroyed / rebuilt while menu was open!
+            Assert.Same(border1, Descendants(panel).OfType<Border>().First(b => b.ContextMenu != null));
+            Assert.True(menu.IsOpen);
+
+            // Now close the menu and raise Closed event
+            menu.IsOpen = false;
+            menu.RaiseEvent(new RoutedEventArgs(ContextMenu.ClosedEvent));
+
+            // Now the deferred rebuild should have executed
+            var updatedTile = Descendants(panel).OfType<Border>().First(b => b.ContextMenu != null);
+            var title = Descendants(updatedTile).OfType<TextBlock>().First(t => t.Text == "First Item Renamed");
+            Assert.NotNull(title);
+        });
+
+    [Fact]
+    public void SearchBoxFocusAndKeyHandlingPreservesTyping()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            var window = new Window { Content = panel, Width = 500, Height = 700 };
+            window.Show();
+            try
+            {
+                panel.SetOpen(true);
+                panel.FocusSearch();
+
+                var searchBox = Descendants(panel).OfType<Wpf.Ui.Controls.TextBox>().Single();
+                Assert.NotNull(searchBox);
+
+                // PreviewKeyDown with 'I' when search is focused must not request close
+                bool requestedClose = false;
+                panel.OpenRequested += open => { if (!open) requestedClose = true; };
+
+                searchBox.Focus();
+                var source = PresentationSource.FromVisual(searchBox) ?? new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "", IntPtr.Zero);
+                var keyEventArgs = new System.Windows.Input.KeyEventArgs(
+                    System.Windows.Input.Keyboard.PrimaryDevice,
+                    source,
+                    0,
+                    System.Windows.Input.Key.I)
+                {
+                    RoutedEvent = System.Windows.UIElement.PreviewKeyDownEvent
+                };
+                panel.RaiseEvent(keyEventArgs);
+
+                // Backpack must NOT close when typing 'I' in search box
+                Assert.False(requestedClose);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())

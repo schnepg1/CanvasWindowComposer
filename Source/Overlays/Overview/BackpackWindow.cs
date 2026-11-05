@@ -10,7 +10,7 @@ namespace CanvasDesktop;
 internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
 {
     public BackpackPanel Panel { get; } = new();
-    private ScreenRect _work;
+    private ScreenRect _work, _lastPosition;
     private readonly FormsTimer _timer = new() { Interval = 25 };
     private long _arrivalUntil, _pulseStarted;
     private bool _canvasVisible, _disposing;
@@ -34,6 +34,30 @@ internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
             ApplyVisibility();
             if (elapsed > 1 && Environment.TickCount64 > _arrivalUntil) _timer.Stop();
         };
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var handle = (HWND)new WindowInteropHelper(this).Handle;
+        int style = PInvoke.GetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        // Clear WS_EX_NOACTIVATE (0x08000000) so mouse clicks activate and grant keyboard focus for search typing.
+        PInvoke.SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, style & ~0x08000000);
+
+        var source = HwndSource.FromHwnd((IntPtr)handle);
+        source?.AddHook(WndProc);
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_MOUSEACTIVATE = 0x0021;
+        const int MA_ACTIVATE = 1;
+        if (msg == WM_MOUSEACTIVATE)
+        {
+            handled = true;
+            return (IntPtr)MA_ACTIVATE;
+        }
+        return IntPtr.Zero;
     }
 
     public event Action? CloseRequested;
@@ -62,7 +86,7 @@ internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
         Height = open ? Math.Min(650, Math.Max(340, work.Height / Math.Max(1, VisualTreeHelper.GetDpi(this).DpiScaleY) - 150)) : 78;
         Panel.SetAvailableHeight(Height - 6);
         ApplyVisibility(); Position();
-        if (open && activate) { Activate(); Panel.Focus(); }
+        if (open && activate) { Activate(); Panel.FocusSearch(); }
     }
 
     public void NotifyArrival()
@@ -90,10 +114,14 @@ internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
     private void Position()
     {
         var handle = new WindowInteropHelper(this).Handle;
-        if (handle == IntPtr.Zero) return;
+        if (handle == IntPtr.Zero || _disposing) return;
         var dpi = VisualTreeHelper.GetDpi(this);
         int width = (int)Math.Ceiling(Width * dpi.DpiScaleX), height = (int)Math.Ceiling(Height * dpi.DpiScaleY);
         int left = _work.Left + (_work.Width - width) / 2;
+        var newPosition = new ScreenRect(left, _work.Top, width, height);
+        if (_lastPosition == newPosition) return;
+        if (Panel.IsContextMenuOpen) return;
+        _lastPosition = newPosition;
         PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), left, _work.Top, width, height,
             SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
     }

@@ -44,6 +44,8 @@ internal sealed class BackpackPanel : UserControl
     private Guid? _selected;
     public DrawerRowDrag Drag { get; }
     private readonly Dictionary<Guid, Border> _tileBorders = new();
+    private bool _pendingRebuild;
+    public bool IsContextMenuOpen => _tileBorders.Values.Any(b => b.ContextMenu?.IsOpen == true);
     public bool IsOpen { get; private set; }
     public bool Dragging => Drag.IsDragging;
     public event Action<bool>? OpenRequested;
@@ -224,7 +226,7 @@ internal sealed class BackpackPanel : UserControl
         var badge = new Border
         {
             Background = Ink("#1E2D3B"),
-            BorderBrush = Ink("#3A4D5E"),
+            BorderBrush = Ink("#3A5063"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(5),
             Padding = new Thickness(6, 2, 6, 2),
@@ -254,6 +256,14 @@ internal sealed class BackpackPanel : UserControl
         };
         System.Windows.Automation.AutomationProperties.SetName(_search, "Find a backpack item");
         _search.TextChanged += (_, _) => RebuildTiles();
+        _search.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            if (!_search.IsKeyboardFocusWithin)
+            {
+                _search.Focus();
+                Keyboard.Focus(_search);
+            }
+        };
         AddRow(_search, 3);
 
         // --- Items & Empty State ---
@@ -368,7 +378,24 @@ internal sealed class BackpackPanel : UserControl
         PreviewKeyDown += (_, e) =>
         {
             if (e.Handled) return;
-            if (e.Key == Key.Escape || e.Key == Key.I && Keyboard.FocusedElement is not TextBox && Keyboard.Modifiers == ModifierKeys.None)
+            if (_search.IsKeyboardFocusWithin || _search.IsFocused)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    if (_search.Text.Length > 0)
+                    {
+                        _search.Text = "";
+                        e.Handled = true;
+                        return;
+                    }
+                    OpenRequested?.Invoke(false);
+                    e.Handled = true;
+                    return;
+                }
+                return;
+            }
+
+            if (e.Key == Key.Escape || (e.Key == Key.I && Keyboard.Modifiers == ModifierKeys.None))
             {
                 if (Drag.IsHeld) Drag.Cancel();
                 else OpenRequested?.Invoke(false);
@@ -382,10 +409,22 @@ internal sealed class BackpackPanel : UserControl
 
     public void SetOpen(bool open)
     {
+        if (IsOpen == open) return;
         if (!open) Drag.Cancel();
         IsOpen = open;
         _expanded.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         _folded.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public void FocusSearch()
+    {
+        _search.Focus();
+        Keyboard.Focus(_search);
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, (Action)(() =>
+        {
+            _search.Focus();
+            Keyboard.Focus(_search);
+        }));
     }
 
     public void SetAvailableHeight(double height) => _shell.MaxHeight = Math.Max(100, height);
@@ -423,7 +462,13 @@ internal sealed class BackpackPanel : UserControl
         if (Drag.ItemId is { } held && !items.Any(i => i.Id == held)) Drag.Cancel();
         _foldedCount.Text = items.Count == 1 ? "1 window ready to travel" : $"{items.Count} windows ready to travel";
         _count.Text = $"{items.Count} ITEMS  /  {items.Count(i => !i.Temporary)} KEPT";
-        if (changed && !Drag.IsHeld) RebuildTiles();
+        if (changed && !Drag.IsHeld)
+        {
+            if (IsContextMenuOpen)
+                _pendingRebuild = true;
+            else
+                RebuildTiles();
+        }
     }
 
     public void Highlight(Guid? id)
@@ -574,6 +619,14 @@ internal sealed class BackpackPanel : UserControl
                 BorderBrush = Ink("#3A5063"),
                 BorderThickness = new Thickness(1),
                 Foreground = Ink("#EAF0F4")
+            };
+            menu.Closed += (_, _) =>
+            {
+                if (_pendingRebuild)
+                {
+                    _pendingRebuild = false;
+                    RebuildTiles();
+                }
             };
             void Entry(string title, SymbolRegular symbol, Action action)
             {
