@@ -83,6 +83,7 @@ internal sealed partial class OverviewManager
     private Keys? _dispatchInteractionKeys;
     private string? _interactionError;
     internal bool WindowInteractionActive => _windowInteraction.Active;
+    internal IntPtr InteractingWindow => _windowInteraction.Window;
 
     private bool CanInteract(OverviewOverlay pass, IntPtr window) => CurrentMode == OverviewMode.Zooming
         && !GuidedTutorialActive && !IsStartupIntroActive && !_placeholderTitles.ContainsKey(window)
@@ -263,19 +264,8 @@ internal sealed partial class OverviewManager
         var point = new Point(x + pass.OriginX, y + pass.OriginY);
         var world = _camera.WorldFromVirtual(point.X, point.Y);
         int hit = HitOverviewWindow(pass, x, y, world.x, world.y);
-        if (InteractionRoutingEnabled && InteractionToolReady && !_windowInteraction.Captured)
-        {
-            // Scrolling is an interaction gesture too: it must not require a
-            // preceding click or silently disappear over a different thumbnail.
-            if (hit < 0 || !CanInteract(pass, _windows.Windows[hit].HWnd)
-                || !_thumbnails.TryGetInteractionGeometry(pass, _windows.Windows[hit].HWnd, out var hovered)
-                || !hovered.Destination.Contains(point)
-                || InteractionHeader(hovered.Destination, pass.DeviceDpi).Contains(point)) return false;
-            var target = _windows.Windows[hit].HWnd;
-            if (_windowInteraction.Window != target && !BeginWindowInteraction(pass, target)) return true;
-        }
         if (!_windowInteraction.Active) return false;
-        if (hit < 0 || _windows.Windows[hit].HWnd != _windowInteraction.Window) return true;
+        if (hit < 0 || _windows.Windows[hit].HWnd != _windowInteraction.Window) return false;
         if (_thumbnails.TryGetInteractionGeometry(pass, _windowInteraction.Window, out var geometry))
             _windowInteraction.Wheel(geometry, new(x + pass.OriginX, y + pass.OriginY), delta, horizontal, InteractionModifiers);
         if (!_windowInteraction.Active)
