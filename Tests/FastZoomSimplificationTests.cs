@@ -126,4 +126,41 @@ public class FastZoomSimplificationTests
             Assert.False(overview.IsZoomSettling);
             Assert.False(wm.SuspendAutomaticParking);
         });
+
+    [Fact]
+    public void MiddleMousePanTracksInstantlyAndReconcilesOnRelease()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var source = new Form();
+            var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+            var clock = new FakeClock(1000); var dwm = new FakeDwmThumbnailApi();
+            var config = new FakeAppConfig { EnableStartupIntro = false, LowQualityMode = false };
+            api.AddWindow(source.Handle, 100, 100, 400, 300, title: "App");
+            canvas.SetWindow(source.Handle, 100, 100, 400, 300);
+            using var wm = new WindowManager(canvas, api, config, input, clock);
+            using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: dwm);
+            overview.TransitionTo(OverviewMode.Zooming);
+            var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+
+            double initialCamX = overview.ViewCamera.X;
+            double initialCamY = overview.ViewCamera.Y;
+
+            // Begin middle mouse pan at (200, 200)
+            pass.OnMouseButtonDown!(pass, new MouseEventArgs(MouseButtons.Middle, 1, 200, 200, 0));
+            Assert.True(overview.MotionActive);
+
+            // Move by (50, 30) - camera should pan immediately
+            pass.OnMouseMoved!(pass, new MouseEventArgs(MouseButtons.Middle, 0, 250, 230, 0));
+            Assert.NotEqual(initialCamX, overview.ViewCamera.X);
+            Assert.NotEqual(initialCamY, overview.ViewCamera.Y);
+            Assert.True(overview.MotionActive);
+
+            // Mouse stops moving for 50ms before releasing middle button
+            clock.Advance(50);
+            pass.OnMouseButtonUp!(pass, new MouseEventArgs(MouseButtons.Middle, 1, 250, 230, 0));
+
+            // Pan ended: motion is no longer active, no phantom inertia coasting
+            Assert.False(overview.MotionActive);
+            Assert.False(overview.MomentumActive);
+        });
 }

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CanvasDesktop;
+using CanvasDesktop.CanvasView;
 using Xunit;
 
 namespace CanvasDesktop.Tests;
@@ -174,5 +175,58 @@ public class ActiveWindowPlaceholderGlowTests
 
         var output = Assert.Single(result);
         Assert.True(output.IsActiveWindow, "OverviewCardTransitions must preserve IsActiveWindow property");
+    }
+
+    [Fact]
+    public void ActiveCardGlowSuppressedWhileMotionIsActive()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var card = new PlaceholderAnnotation((IntPtr)1, "Live Window",
+                new WorldRect { X = 100, Y = 100, W = 200, H = 100 }, ImageOpacity: 0, IsActiveWindow: true);
+
+            var surface = new OverviewAnnotationSurface();
+            var snapshot = OverviewAnnotationSnapshot.Create([], 0, 0, 1, new(0, 0, 400, 300),
+                null, false, placeholders: [card], showHints: false, motionActive: true, timestamp: 550);
+            surface.Update(snapshot);
+            surface.Measure(new System.Windows.Size(400, 300));
+            surface.Arrange(new Rect(0, 0, 400, 300));
+            var bitmap = new RenderTargetBitmap(400, 300, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(surface);
+            var pixels = new byte[400 * 300 * 4];
+            bitmap.CopyPixels(pixels, 1600, 0);
+            surface.ClearAnimation();
+
+            int glowIdx = (97 * 400 + 200) * 4;
+            Assert.Equal(0, pixels[glowIdx + 3]); // No glow rendered during motion
+        });
+
+    [Fact]
+    public void ActiveCardGlowSuppressedWhileCardFadingIn()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            // During card transition, opacity is between 0 and 1 (e.g. 0.5)
+            var fadingCard = new PlaceholderAnnotation((IntPtr)1, "Live Window",
+                new WorldRect { X = 100, Y = 100, W = 200, H = 100 }, ImageOpacity: 0, IsActiveWindow: true, Opacity: 0.5);
+
+            var pixels = Render(fadingCard, zoom: 1, timestamp: 550);
+
+            int glowIdx = (97 * 400 + 200) * 4;
+            Assert.Equal(0, pixels[glowIdx + 3]); // Glow suppressed while card is fading in
+        });
+
+    [Fact]
+    public void VisibleGlowAndVisibleCardReturnFrozenGeometries()
+    {
+        var card = new PlaceholderAnnotation((IntPtr)1, "Live Window",
+            new WorldRect { X = 100, Y = 100, W = 200, H = 100 },
+            Occluders: [new WorldRect { X = 50, Y = 50, W = 300, H = 60 }]);
+        var snapshot = OverviewAnnotationSnapshot.Create([], 0, 0, 1, new(0, 0, 400, 300), null, false);
+        var context = new OverviewAnnotationContext(snapshot, new CanvasViewTransform(0, 0, 1, new CanvasRect(0, 0, 1920, 1080)), new DpiScale(1, 1), new System.Windows.Size(400, 300));
+
+        var cardGeom = PlaceholderAnnotationLayer.VisibleCard(card, context);
+        var glowGeom = PlaceholderAnnotationLayer.VisibleGlow(card, new Rect(90, 90, 220, 120), context);
+
+        Assert.True(cardGeom.IsFrozen, "VisibleCard geometry must be frozen for WPF hardware performance");
+        Assert.True(glowGeom.IsFrozen, "VisibleGlow geometry must be frozen for WPF hardware performance");
     }
 }

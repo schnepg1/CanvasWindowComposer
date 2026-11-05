@@ -45,7 +45,12 @@ internal sealed class InertiaTracker
         IsActive = false;
         _vx = _vy = 0;
         long released = timestamp ?? _clock.TickCount64;
-        long start = _samples.Count == 0 ? released : Math.Max(released - VelocityWindowMs, _samples[0].time);
+        if (_samples.Count < 2 || (_samples.Count > 0 && released - _samples[^1].time > 40))
+        {
+            _samples.Clear();
+            return false;
+        }
+        long start = Math.Max(released - VelocityWindowMs, _samples[0].time);
         double dx = 0, dy = 0;
         for (int i = 1; i < _samples.Count; i++)
         {

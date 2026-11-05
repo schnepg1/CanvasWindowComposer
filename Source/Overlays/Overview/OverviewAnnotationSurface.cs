@@ -12,7 +12,7 @@ internal sealed record OverviewAnnotationSnapshot(
     IReadOnlyList<ZoneView> Zones, double CameraX, double CameraY, double Zoom, ScreenRect Screen,
     WorldRect? Preview, bool Drawing, IReadOnlyList<WorldRect> Ghosts,
     IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null,
-    bool ReduceMotion = false, long? Timestamp = null)
+    bool ReduceMotion = false, long? Timestamp = null, bool MotionActive = false)
 {
     public IReadOnlyList<WorldRect> BackgroundOccluders { get; init; } = Array.Empty<WorldRect>();
     public string WindowStats { get; init; } = "Active: 0  ·  Minimized: 0 (auto: 0)";
@@ -22,11 +22,11 @@ internal sealed record OverviewAnnotationSnapshot(
         double x, double y, double zoom, System.Drawing.Rectangle screen, WorldRect? preview, bool drawing,
         IReadOnlyList<WorldRect>? ghosts = null, IReadOnlyList<PlaceholderAnnotation>? placeholders = null,
         bool showHints = true, StartupIntroFrame? intro = null, bool showIntroTitle = false, string? toolHint = null,
-        bool reduceMotion = false, long? timestamp = null)
+        bool reduceMotion = false, long? timestamp = null, bool motionActive = false)
         => new(zones.ToArray(), x, y, zoom, new(screen.X, screen.Y, screen.Width, screen.Height),
             preview, drawing, ghosts?.ToArray() ?? Array.Empty<WorldRect>(),
             placeholders?.ToArray() ?? Array.Empty<PlaceholderAnnotation>(), showHints, intro, showIntroTitle, toolHint,
-            reduceMotion, timestamp);
+            reduceMotion, timestamp, motionActive);
 }
 
 internal readonly record struct OverviewAnnotationContext(
@@ -34,6 +34,7 @@ internal readonly record struct OverviewAnnotationContext(
 {
     public long Timestamp { get; init; } = Environment.TickCount64;
     public bool ReduceMotion => Frame.ReduceMotion;
+    public bool MotionActive => Frame.MotionActive;
 
     public Rect Project(WorldRect b)
     {
@@ -96,7 +97,7 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         _frame = frame;
         Opacity = frame.Intro?.RevealOpacity ?? 1;
         _placeholders.Clear();
-        _hasActiveCards = !frame.ReduceMotion && frame.Placeholders.Any(p => p.IsActiveWindow && p.Opacity > 0);
+        _hasActiveCards = !frame.ReduceMotion && !frame.MotionActive && frame.Placeholders.Any(p => p.IsActiveWindow && p.Opacity >= 0.99);
         if (_hasActiveCards)
         {
             if (!_glowTimer.IsEnabled) _glowTimer.Start();

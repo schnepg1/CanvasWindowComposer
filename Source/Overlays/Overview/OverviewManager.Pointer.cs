@@ -108,13 +108,29 @@ internal sealed partial class OverviewManager
             _webResourcePlacement!.Move(new(e.X + pass.OriginX, e.Y + pass.OriginY), "New web resource");
             return;
         }
-        UpdateInventoryDropHover(pass, e);
-        if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
-        ObserveWindowPeek(pass, new(e.X + pass.OriginX, e.Y + pass.OriginY));
-        if (RouteCanvasWindowPointer(pass, e)) return;
 
         int vx = e.X + pass.OriginX;
         int vy = e.Y + pass.OriginY;
+
+        if (_tools.Kind == CanvasInteractionKind.Pan)
+        {
+            int dx = vx - _panStartVx;
+            int dy = vy - _panStartVy;
+            _panStartVx = vx;
+            _panStartVy = vy;
+
+            if (dx != 0 || dy != 0)
+            {
+                PanOverview(dx, dy);
+                RecordPanDelta(dx, dy);
+                _visualFrames.RequestAndFlush();
+            }
+            return;
+        }
+        UpdateInventoryDropHover(pass, e);
+        if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
+        ObserveWindowPeek(pass, new(vx, vy));
+        if (RouteCanvasWindowPointer(pass, e)) return;
 
         var pointer = Pointer(pass, e);
         if (_tools.MoveTool(pointer)) { RefreshToolPreview(); return; }
@@ -157,16 +173,7 @@ internal sealed partial class OverviewManager
             if(dx!=0 || dy!=0)ObserveTourWindow();
             _visualFrames.Request();
         }
-        else if (_tools.Kind == CanvasInteractionKind.Pan)
-        {
-            int dx = vx - _panStartVx;
-            int dy = vy - _panStartVy;
-            _panStartVx = vx;
-            _panStartVy = vy;
 
-            PanOverview(dx, dy);
-            RecordPanDelta(dx, dy);
-        }
     }
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
@@ -195,7 +202,7 @@ internal sealed partial class OverviewManager
         }
         var ended = _tools.EndNavigation(pointer);
         ApplyPointerCapture();
-        if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.Pan) _visualFrames.Request();
+        if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.Pan) _visualFrames.RequestAndFlush();
         if (ended == CanvasInteractionKind.Pan && !GuidedTutorialActive) ReleaseInertia();
         if (ended == CanvasInteractionKind.Window)
         {
@@ -221,7 +228,7 @@ internal sealed partial class OverviewManager
         if (_windowInteraction.Active && _windowInteraction.Captured) return;
         var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, control, shift);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
-        else PanOverview(panX, panY);
+        else { PanOverview(panX, panY); _visualFrames.RequestAndFlush(); }
         if (PlacingWebResource)
         {
             _visualFrames.Flush();

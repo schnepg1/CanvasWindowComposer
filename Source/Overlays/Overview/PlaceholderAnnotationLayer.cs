@@ -72,7 +72,7 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
 
-            if (card.IsActiveWindow && card.Opacity > 0 && (imageOpacity < 1 || card.ImageIsOverlay))
+            if (card.IsActiveWindow && card.Opacity >= 0.99 && !context.MotionActive && (imageOpacity < 1 || card.ImageIsOverlay))
             {
                 double pulse = 0.5;
                 if (!context.ReduceMotion)
@@ -269,31 +269,50 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         }
     }
 
-    private static Geometry VisibleCard(PlaceholderAnnotation card, OverviewAnnotationContext context)
+    internal static Geometry VisibleCard(PlaceholderAnnotation card, OverviewAnnotationContext context)
     {
         var rect = context.Project(card.Bounds);
+        if (card.Occluders == null || card.Occluders.Count == 0)
+        {
+            var r = new RectangleGeometry(rect);
+            r.Freeze();
+            return r;
+        }
         Geometry visible = new RectangleGeometry(rect);
-        // Apply the same native z-order clipping to both the card and its title.
-        if (card.Occluders != null)
-            foreach (var above in card.Occluders)
+        foreach (var above in card.Occluders)
+        {
+            var covered = context.Project(above);
+            if (covered.IntersectsWith(rect))
             {
-                var covered = context.Project(above);
-                if (covered.IntersectsWith(rect))
-                    visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
+                var coverGeom = new RectangleGeometry(covered);
+                coverGeom.Freeze();
+                visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, coverGeom);
             }
+        }
+        visible.Freeze();
         return visible;
     }
 
-    private static Geometry VisibleGlow(PlaceholderAnnotation card, Rect glowRect, OverviewAnnotationContext context)
+    internal static Geometry VisibleGlow(PlaceholderAnnotation card, Rect glowRect, OverviewAnnotationContext context)
     {
+        if (card.Occluders == null || card.Occluders.Count == 0)
+        {
+            var r = new RectangleGeometry(glowRect);
+            r.Freeze();
+            return r;
+        }
         Geometry visible = new RectangleGeometry(glowRect);
-        if (card.Occluders != null)
-            foreach (var above in card.Occluders)
+        foreach (var above in card.Occluders)
+        {
+            var covered = context.Project(above);
+            if (covered.IntersectsWith(glowRect))
             {
-                var covered = context.Project(above);
-                if (covered.IntersectsWith(glowRect))
-                    visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, new RectangleGeometry(covered));
+                var coverGeom = new RectangleGeometry(covered);
+                coverGeom.Freeze();
+                visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, coverGeom);
             }
+        }
+        visible.Freeze();
         return visible;
     }
 }

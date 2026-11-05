@@ -273,7 +273,8 @@ internal sealed partial class OverviewManager
                 frame ??= OverviewAnnotationSnapshot.Create(zones, camera.X, camera.Y, camera.Zoom, p.Screen.Bounds,
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
-                !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError, reduceMotion: reduceMotion)
+                !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError, reduceMotion: reduceMotion,
+                motionActive: MotionActive)
                 with { BackgroundOccluders = BackgroundOccluders(camera), WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
                     ? "Auto-minimize: on" : "Auto-minimize: off" };
                 var b = p.Screen.Bounds;

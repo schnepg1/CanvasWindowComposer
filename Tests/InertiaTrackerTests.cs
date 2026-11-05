@@ -237,4 +237,23 @@ public class InertiaTrackerTests
         Assert.Equal(FirstStep(1), FirstStep(20), 8);
     }
 
+    [Fact]
+    public void Release_AfterStationaryPause_CancelsInertiaImmediately()
+    {
+        var clock = new FakeClock();
+        var tracker = new InertiaTracker(clock);
+
+        // Rapid movement: 20px every 10ms
+        for (int i = 0; i < 5; i++)
+        {
+            tracker.RecordDelta(20, 0);
+            clock.Advance(10);
+        }
+
+        // Mouse stops for 45ms before button is released
+        clock.Advance(45);
+
+        Assert.False(tracker.Release());
+        Assert.False(tracker.IsActive);
+    }
 }

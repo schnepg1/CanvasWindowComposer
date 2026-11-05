@@ -21,6 +21,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private readonly OverviewCamera _camera;
 
     public OverviewMode CurrentMode { get { return _state.CurrentMode; } }
+    internal bool MotionActive => (SmoothZoomAllowed && IsZoomSettling)
+        || _tools.Kind == CanvasInteractionKind.Pan
+        || CurrentMode == OverviewMode.Panning
+        || MomentumActive;
     private OverviewModeConfig _cfg { get { return _state.CurrentConfig; } }
 
     public event Action<OverviewMode, OverviewMode>? BeforeModeChanged;
@@ -112,15 +116,19 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
         var proximityCamera = _tutorialReading && (_startupIntroLanded || GuidedTutorialActive)
             ? _mainCanvas.Camera : camera;
-        _wm.SetOverviewViewport(proximityCamera,
-            _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
-        bool deferCardMode = SmoothZoomActive;
-        if (!deferCardMode && _placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
+
+        bool isMoving = MotionActive;
+        if (!isMoving)
         {
-            _placeholderTitles = _placeholderWorkspace.GetPlaceholderTitles();
-            RefreshOverviewWindows();
+            _wm.SetOverviewViewport(proximityCamera,
+                _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
+            if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
+            {
+                _placeholderTitles = _placeholderWorkspace.GetPlaceholderTitles();
+                RefreshOverviewWindows();
+            }
+            RefreshCardIdentities();
         }
-        RefreshCardIdentities();
         _thumbnails.Reconcile(camera);
         if (_windowInteraction.Active && !PeekWorking && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
