@@ -194,8 +194,8 @@ internal sealed class BackpackPanel : UserControl
             System.Windows.Automation.AutomationProperties.SetName(tile, item.Title);
             var body = new StackPanel(); tile.Child = body;
             var glyph = new Border { Width = 34, Height = 30, CornerRadius = new CornerRadius(5), Background = Ink(item.Temporary ? "#284E54" : "#51452E"),
-                HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 7), Child = new TextBlock
-                { Text = "▣", Foreground = Ink(item.Temporary ? "#78E2CB" : "#F0CB8D"), FontSize = 21, HorizontalAlignment = HorizontalAlignment.Center } };
+                HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 7),
+                Child = DrawerAppIcon.Create(item, 24, Ink(item.Temporary ? "#78E2CB" : "#F0CB8D")) };
             body.Children.Add(glyph);
             body.Children.Add(new TextBlock { Text = item.Title, FontSize = 11, FontWeight = FontWeights.SemiBold, Height = 31,
                 TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis });

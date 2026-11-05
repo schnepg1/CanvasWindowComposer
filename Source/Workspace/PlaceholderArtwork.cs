@@ -33,32 +33,8 @@ internal sealed class PlaceholderArtwork : Control
         {
             _symbolKey = key;
             _symbol?.Dispose();
-            _symbol = null;
+            _symbol = LoadSymbol(item);
             _overviewLogo = null;
-            if (item.IsFolder)
-            {
-                _symbol = new Bitmap(256, 256, PixelFormat.Format32bppPArgb);
-                using var graphics = Graphics.FromImage(_symbol);
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                DrawFolder(graphics, new RectangleF(0, 0, 256, 256));
-            }
-            else
-            {
-                try
-                {
-                    if (File.Exists(item.ExecutablePath))
-                    {
-                        // Request the large resource instead of magnifying the
-                        // tiny taskbar-sized associated icon into a watermark.
-                        using var icon = Icon.ExtractIcon(item.ExecutablePath, 0, 256);
-                        _symbol = icon?.ToBitmap();
-                    }
-                }
-                catch (Exception ex) when (ex is ArgumentException or IOException or
-                    UnauthorizedAccessException or System.ComponentModel.Win32Exception or
-                    System.Runtime.InteropServices.ExternalException)
-                { /* Missing/unreadable icons must never prevent a saved place opening. */ }
-            }
             if (_symbol != null) _overviewLogo = CreateOverviewLogo(_symbol);
         }
         Invalidate();
@@ -66,6 +42,33 @@ internal sealed class PlaceholderArtwork : Control
 
     /// <summary>One immutable icon reused at every distant-card size; null means extraction failed.</summary>
     internal BitmapSource? OverviewLogo => _overviewLogo;
+
+    /// <summary>Shared artwork for canvas cards and drawer entries. The caller owns the bitmap.</summary>
+    internal static Bitmap? LoadSymbol(WorkspaceItemView item)
+    {
+        if (item.IsFolder)
+        {
+            var symbol = new Bitmap(256, 256, PixelFormat.Format32bppPArgb);
+            using var graphics = Graphics.FromImage(symbol);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            DrawFolder(graphics, new RectangleF(0, 0, 256, 256));
+            return symbol;
+        }
+        try
+        {
+            if (File.Exists(item.ExecutablePath))
+            {
+                // Keep the large resource for crisp artwork at every canvas scale.
+                using var icon = Icon.ExtractIcon(item.ExecutablePath, 0, 256);
+                return icon?.ToBitmap();
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or
+            UnauthorizedAccessException or System.ComponentModel.Win32Exception or
+            System.Runtime.InteropServices.ExternalException)
+        { /* Missing/unreadable icons must never prevent a saved place opening. */ }
+        return null;
+    }
 
     // The close-up icon and its title form one centred group. All dimensions
     // are native pixels here; the overview projects these same bounds to DIPs.
@@ -84,7 +87,7 @@ internal sealed class PlaceholderArtwork : Control
             new RectangleF(area.X, top + edge + gap, area.Width, titleHeight));
     }
 
-    private static BitmapSource CreateOverviewLogo(Bitmap source)
+    internal static BitmapSource CreateOverviewLogo(Bitmap source)
     {
         const int size = 128;
         using var thumbnail = new Bitmap(size, size, PixelFormat.Format32bppPArgb);

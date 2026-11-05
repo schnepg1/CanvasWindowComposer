@@ -133,7 +133,12 @@ internal sealed class TemporaryDrawerPanel : UserControl
                 BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Padding = new Thickness(12, 10, 12, 10),
                 Margin = new Thickness(0, 0, 0, 7), Cursor = Cursors.Hand, ToolTip = item.Title + "\n" + item.ExecutablePath };
             System.Windows.Automation.AutomationProperties.SetName(row, item.Title);
-            var body = new StackPanel(); row.Child = body;
+            var content = new Grid(); row.Child = content;
+            content.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            content.ColumnDefinitions.Add(new());
+            var icon = DrawerAppIcon.Create(item, 24, Ink("#80DBCD"));
+            icon.Margin = new Thickness(0, 0, 10, 0); content.Children.Add(icon);
+            var body = new StackPanel(); Grid.SetColumn(body, 1); content.Children.Add(body);
             body.Children.Add(new TextBlock { Text = item.Title, FontSize = 13, FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis });
             body.Children.Add(new TextBlock { Text = Path.GetFileNameWithoutExtension(item.ExecutablePath) + "  \u00b7  " + item.State,
