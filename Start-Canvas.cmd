@@ -7,6 +7,10 @@ set "canvas_args=%canvas_args:--build=-Build%"
 set "canvas_args=%canvas_args:--diagnose=-Diagnose%"
 set "canvas_args=%canvas_args:--no-launch=-NoLaunch%"
 set "canvas_args=%canvas_args:--no-dialog=-NoDialog%"
+set "canvas_args=%canvas_args:--branch=-Branch%"
+set "canvas_args=%canvas_args:--worktree=-Branch%"
+set "canvas_args=%canvas_args:--select=-Select%"
+set "canvas_args=%canvas_args:--no-select=-NoSelect%"
 :launch
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0Tools\Start-Canvas.ps1" %canvas_args%
 set "canvas_exit=%errorlevel%"
