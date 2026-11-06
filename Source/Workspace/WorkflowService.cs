@@ -10,6 +10,8 @@ internal interface IWorkflowService
     WorkflowGraph GetWorkflow(Guid desktopId, Guid? zoneId = null);
     string ExportWorkflowJson(Guid desktopId, Guid? zoneId = null);
     bool ApplyWorkflow(Guid desktopId, WorkflowPlan plan, CanvasPoint origin);
+    bool ImportWorkflowJson(Guid desktopId, string json, CanvasPoint origin);
+    bool ApplyGraph(Guid desktopId, WorkflowGraph graph, CanvasPoint origin);
 }
 
 internal sealed class WorkflowService : IWorkflowService
@@ -149,6 +151,150 @@ internal sealed class WorkflowService : IWorkflowService
 
         foreach (var arrow in generated.Arrows)
         {
+            _annotations.Put(arrow);
+        }
+
+        _workspace.SaveNow();
+        _annotationStore?.Save();
+
+        return true;
+    }
+
+    public bool ImportWorkflowJson(Guid desktopId, string json, CanvasPoint origin)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        // Try WorkflowPlan first
+        try
+        {
+            var plan = System.Text.Json.JsonSerializer.Deserialize<WorkflowPlan>(json, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            if (plan != null && plan.Windows != null && plan.Windows.Count > 0)
+            {
+                return ApplyWorkflow(desktopId, plan, origin);
+            }
+        }
+        catch { }
+
+        // Try WorkflowGraph
+        try
+        {
+            var graph = WorkflowExport.FromJson(json);
+            if (graph != null && graph.Nodes != null && graph.Nodes.Count > 0)
+            {
+                return ApplyGraph(desktopId, graph, origin);
+            }
+        }
+        catch { }
+
+        return false;
+    }
+
+    public bool ApplyGraph(Guid desktopId, WorkflowGraph graph, CanvasPoint origin)
+    {
+        var idMap = new Dictionary<Guid, Guid>();
+        var windowNodes = graph.Nodes.Where(n => n.Kind == "window").ToList();
+        var projectNodes = graph.Nodes.Where(n => n.Kind == "project").ToList();
+
+        double minX = graph.Nodes.Min(n => n.Bounds.X);
+        double minY = graph.Nodes.Min(n => n.Bounds.Y);
+        double dx = origin.X - minX;
+        double dy = origin.Y - minY;
+
+        foreach (var pNode in projectNodes)
+        {
+            var newId = Guid.NewGuid();
+            idMap[pNode.Id] = newId;
+
+            var zone = new WorkspaceZone
+            {
+                Id = newId,
+                DesktopId = desktopId,
+                Name = pNode.CustomName,
+                Color = "#60A5FA",
+                Bounds = new WorldRect
+                {
+                    X = pNode.Bounds.X + dx,
+                    Y = pNode.Bounds.Y + dy,
+                    W = pNode.Bounds.Width,
+                    H = pNode.Bounds.Height
+                },
+                ItemIds = new List<Guid>()
+            };
+            _workspace.Document.Zones.Add(zone);
+        }
+
+        foreach (var wNode in windowNodes)
+        {
+            var newId = Guid.NewGuid();
+            idMap[wNode.Id] = newId;
+
+            string url = wNode.TargetUrl ?? "";
+            string profile = wNode.ChromeProfile ?? "";
+            var item = new WorkspaceItem
+            {
+                Id = newId,
+                DesktopId = desktopId,
+                Placement = WorkspacePlacement.Deliberate,
+                Title = wNode.Title,
+                Name = wNode.CustomName,
+                ExecutablePath = string.IsNullOrWhiteSpace(wNode.AppExecutable) ? "chrome.exe" : wNode.AppExecutable,
+                Target = url,
+                ChromeProfilePath = profile,
+                WebResource = !string.IsNullOrEmpty(url) ? new WebResource(url, profile) : null,
+                Bounds = new WorldRect
+                {
+                    X = wNode.Bounds.X + dx,
+                    Y = wNode.Bounds.Y + dy,
+                    W = wNode.Bounds.Width,
+                    H = wNode.Bounds.Height
+                }
+            };
+            _workspace.Document.Items.Add(item);
+
+            if (!string.IsNullOrEmpty(wNode.Zone))
+            {
+                var zone = _workspace.Document.Zones.FirstOrDefault(z => z.DesktopId == desktopId && z.Name == wNode.Zone);
+                zone?.ItemIds.Add(newId);
+            }
+        }
+
+        foreach (var edge in graph.Edges ?? [])
+        {
+            if (!idMap.TryGetValue(edge.SourceId, out var newSrcId) || !idMap.TryGetValue(edge.TargetId, out var newTgtId))
+                continue;
+
+            var srcNode = windowNodes.FirstOrDefault(n => n.Id == edge.SourceId);
+            var tgtNode = windowNodes.FirstOrDefault(n => n.Id == edge.TargetId);
+            if (srcNode == null || tgtNode == null) continue;
+
+            var srcBounds = new CanvasRect(srcNode.Bounds.X + dx, srcNode.Bounds.Y + dy, srcNode.Bounds.Width, srcNode.Bounds.Height);
+            var tgtBounds = new CanvasRect(tgtNode.Bounds.X + dx, tgtNode.Bounds.Y + dy, tgtNode.Bounds.Width, tgtNode.Bounds.Height);
+
+            var (a, b) = AnnotationGeometry.ComputePortAnchors(srcBounds, ConnectionPort.Auto, tgtBounds, ConnectionPort.Auto);
+
+            var routing = string.Equals(edge.Routing, "orthogonal", StringComparison.OrdinalIgnoreCase)
+                ? ConnectorRouting.Orthogonal
+                : string.Equals(edge.Routing, "straight", StringComparison.OrdinalIgnoreCase)
+                    ? ConnectorRouting.Straight
+                    : ConnectorRouting.Curved;
+
+            var arrow = new CanvasAnnotation(
+                Id: Guid.NewGuid(),
+                DesktopId: desktopId,
+                Kind: AnnotationKind.Arrow,
+                A: a,
+                B: b,
+                Color: string.IsNullOrEmpty(edge.Color) ? "#60A5FA" : edge.Color,
+                Stroke: edge.Stroke > 0 ? edge.Stroke : 16.0,
+                Text: edge.Description ?? "",
+                FontSize: 20,
+                Routing: routing,
+                SourceId: newSrcId,
+                TargetId: newTgtId);
+
             _annotations.Put(arrow);
         }
 
