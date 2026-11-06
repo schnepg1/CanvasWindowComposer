@@ -67,89 +67,61 @@ public class StartupIntroFlightTests
     [InlineData(0, 0)]
     [InlineData(-1920, -1080)]
     [InlineData(-3000, 700)]
-    public void EmptyCanvasesGetAWideRollingMinimumSweepRelativeToTheirMonitor(int originX, int originY)
+    public void EmptyCanvasSpiralStaysNearTheRestoredViewOnAnyMonitor(int originX, int originY)
     {
         var screen = new ScreenRect(originX, originY, 1920, 1080);
         var flight = new StartupIntroFlight(Saved, screen, []);
         Assert.Equal(StartupIntroFlight.MinimumDurationSeconds, flight.DurationSeconds, 10);
         var origin = Center(flight.Sample(0), screen);
         var centers = Enumerable.Range(0, 1201).Select(i => Center(flight.Sample(i / 100.0), screen)).ToArray();
-        Assert.True(centers.Min(p => p.X) < origin.X - 3000);
-        Assert.True(centers.Max(p => p.X) > origin.X + 3000);
+        Assert.All(centers, center =>
+        {
+            Assert.InRange(Math.Abs(center.X - origin.X), 0, 2400);
+            Assert.InRange(Math.Abs(center.Y - origin.Y), 0, 1400);
+        });
+        Assert.True(centers.Max(p => p.X) - centers.Min(p => p.X) > 2000);
         Assert.True(centers.Max(p => p.Y) - centers.Min(p => p.Y) > 1000);
-        int reversals = 0, previousDirection = 0;
-        for (int i = 1; i < centers.Length; i++)
+    }
+
+    [Fact]
+    public void SpiralTurnsOutwardThenInward()
+    {
+        var origin = new StartupIntroRoute.Point(0, 0);
+        var route = new StartupIntroRoute(origin, origin, [], null, 1920, 1080, 11.4);
+        var previous = origin;
+        double previousRadius = 0, totalTurn = 0;
+        for (int i = 1; i < 100; i++)
         {
-            double dy = centers[i].Y - centers[i - 1].Y;
-            int direction = Math.Abs(dy) < 0.001 ? 0 : Math.Sign(dy);
-            if (direction == 0) continue;
-            if (previousDirection != 0 && direction != previousDirection) reversals++;
-            previousDirection = direction;
+            var point = route.Sample(route.Duration * i / 100, 1, 0);
+            var normalized = new StartupIntroRoute.Point(point.X / 1920, point.Y / 1080);
+            double radius = Math.Sqrt(normalized.X * normalized.X + normalized.Y * normalized.Y);
+            Assert.True(i <= 50 ? radius > previousRadius : radius < previousRadius);
+            double cross = previous.X * normalized.Y - previous.Y * normalized.X;
+            double dot = previous.X * normalized.X + previous.Y * normalized.Y;
+            totalTurn += Math.Atan2(cross, dot);
+            previous = normalized;
+            previousRadius = radius;
         }
-        Assert.InRange(reversals, 2, 3); // Broad arcs rather than rapid bobbing on each route leg.
+        Assert.InRange(totalTurn, 1.9 * Math.Tau, 2 * Math.Tau);
     }
 
     [Fact]
-    public void TourVisitsEveryProjectRegionAndUnzonedClusterIncludingDistantContent()
+    public void NearbyContentStaysInViewDuringCruiseEvenWithDistantWindowsAndRegions()
     {
-        WorldRect[] regions = [new() { X = -15000, Y = -4000, W = 2000, H = 1400 },
-            new() { X = 14000, Y = 3000, W = 2200, H = 1600 }];
-        WorldRect[] windows = [new() { X = -14000, Y = -3600, W = 800, H = 600 },
-            new() { X = -5000, Y = 2000, W = 800, H = 600 },
-            new() { X = 4000, Y = -3000, W = 800, H = 600 },
-            new() { X = 25000, Y = 0, W = 800, H = 600 }];
-        var flight = new StartupIntroFlight(Saved, Screen, windows, projectRegions: regions);
-        var targets = regions.Concat(windows.Skip(1)).ToArray();
-        foreach (var target in targets)
+        WorldRect nearby = new() { X = 5300, Y = 800, W = 500, H = 400 };
+        WorldRect farWindow = new() { X = 100000, W = 800, H = 600 };
+        WorldRect farRegion = new() { X = -100000, W = 50000, H = 50000 };
+        var local = new StartupIntroFlight(Saved, Screen, [nearby]);
+        var spreadOut = new StartupIntroFlight(Saved, Screen, [nearby, farWindow], projectRegions: [farRegion]);
+        Assert.Equal(local.DurationSeconds, spreadOut.DurationSeconds);
+        for (double t = 0; t <= local.DurationSeconds; t += .01)
         {
-            double closest = double.MaxValue, crossing = 0;
-            for (double t = 0; t < flight.DurationSeconds; t += 0.01)
-            {
-                var p = Center(flight.Sample(t));
-                double distance = Math.Sqrt(Math.Pow(p.X - target.X - target.W / 2, 2)
-                    + Math.Pow(p.Y - target.Y - target.H / 2, 2));
-                if (distance < closest) { closest = distance; crossing = t; }
-            }
-            Assert.True(closest < Math.Min(target.W, target.H) / 4,
-                $"Missed the central part of the region at {target.X}, {target.Y}: {closest}");
-            var a = Center(flight.Sample(crossing - .001));
-            var b = Center(flight.Sample(crossing + .001));
-            Assert.True(Math.Abs(b.X - a.X) + Math.Abs(b.Y - a.Y) > .01, "Stopped at a region crossing.");
+            var frame = spreadOut.Sample(t);
+            Assert.Equal(local.Sample(t), frame);
+            if (t < 3.8 || t > 8.8) continue;
+            Assert.InRange((nearby.X + nearby.W / 2 - frame.X) * frame.Zoom, 0, Screen.Width);
+            Assert.InRange((nearby.Y + nearby.H / 2 - frame.Y) * frame.Zoom, 0, Screen.Height);
         }
-        Assert.True(flight.DurationSeconds > StartupIntroFlight.MinimumDurationSeconds);
-    }
-
-    [Fact]
-    public void DurationGrowsWithBothTheNumberOfAreasAndTravelDistance()
-    {
-        var empty = new StartupIntroFlight(Saved, Screen, []);
-        var local = new StartupIntroFlight(Saved, Screen, [], projectRegions: Nearby);
-        var several = new StartupIntroFlight(Saved, Screen, [], projectRegions:
-            Enumerable.Range(0, 8).Select(i => new WorldRect { X = i * 3000, W = 1000, H = 800 }).ToArray());
-        var distant = new StartupIntroFlight(Saved, Screen, [], projectRegions:
-            [new() { X = 100000, W = 1000, H = 800 }]);
-        Assert.True(local.DurationSeconds >= empty.DurationSeconds);
-        Assert.True(several.DurationSeconds > local.DurationSeconds);
-        Assert.True(distant.DurationSeconds > local.DurationSeconds);
-    }
-
-    [Fact]
-    public void WindowClustersAndProjectRegionsAreCombinedWithoutDuplicateVisits()
-    {
-        WorldRect zone = new() { X = 0, Y = 0, W = 3000, H = 2000 };
-        WorldRect[] windows = [new() { X = 100, Y = 100, W = 800, H = 600 },
-            new() { X = 6000, Y = 100, W = 800, H = 600 },
-            new() { X = 7200, Y = 100, W = 800, H = 600 },
-            new() { X = 8400, Y = 100, W = 800, H = 600 },
-            new() { X = 18000, Y = -5000, W = 800, H = 600 }];
-        var destinations = StartupIntroRoute.Destinations(windows, [zone], 1920, 1080);
-        Assert.Equal(3, destinations.Count);
-        Assert.Contains(zone, destinations);
-        Assert.Contains(destinations, b => b.X == 6000 && b.W == 3200);
-        var regionOnly = new StartupIntroFlight(Saved, Screen, [], projectRegions: [zone]);
-        var withMembers = new StartupIntroFlight(Saved, Screen, [windows[0]], projectRegions: [zone]);
-        Assert.Equal(regionOnly.DurationSeconds, withMembers.DurationSeconds);
-        Assert.Equal(regionOnly.Sample(5), withMembers.Sample(5));
     }
 
     [Fact]
@@ -162,28 +134,6 @@ public class StartupIntroFlightTests
             projectRegions: regions.Reverse().ToArray());
         Assert.Equal(a.DurationSeconds, b.DurationSeconds);
         for (double t = 0; t < a.DurationSeconds; t += .13) Assert.Equal(a.Sample(t), b.Sample(t));
-    }
-
-    [Fact]
-    public void RowsAreTouredSidewaysBeforeBankingIntoTheNextRow()
-    {
-        WorldRect[] regions = [new() { X = 0, Y = 0, W = 800, H = 600 },
-            new() { X = 8000, Y = 0, W = 800, H = 600 },
-            new() { X = 0, Y = 8000, W = 800, H = 600 },
-            new() { X = 8000, Y = 8000, W = 800, H = 600 }];
-        var flight = new StartupIntroFlight(new(0, 0, 1), Screen, [], projectRegions: regions);
-        var crossings = regions.Select(region =>
-        {
-            double distance = double.MaxValue, crossing = 0;
-            for (double t = 0; t < flight.DurationSeconds; t += .01)
-            {
-                var center = Center(flight.Sample(t));
-                double d = Math.Pow(center.X - region.X - region.W / 2, 2) + Math.Pow(center.Y - region.Y - region.H / 2, 2);
-                if (d < distance) { distance = d; crossing = t; }
-            }
-            return crossing;
-        }).ToArray();
-        Assert.True(crossings[0] < crossings[1] && crossings[1] < crossings[3] && crossings[3] < crossings[2]);
     }
 
     [Theory]
@@ -202,16 +152,12 @@ public class StartupIntroFlightTests
     }
 
     [Fact]
-    public void DenseTourKeepsCruiseZoomAndVerticalSwellSmallAndSlow()
+    public void SpiralKeepsCruiseZoomAndBreathingSmallAndSlow()
     {
-        var regions = Enumerable.Range(0, 12).Select(i =>
-            new WorldRect { X = i * 2000, W = 800, H = 600 }).ToArray();
-        var flight = new StartupIntroFlight(Saved, Screen, [], projectRegions: regions);
+        var flight = new StartupIntroFlight(Saved, Screen, Nearby);
         const double h = .01;
-        double previousCrossing = double.NaN;
         int crossings = 0;
-        // Sample the middle of the long row, clear of takeoff and the return to the saved view.
-        for (double t = 8; t < 22; t += h)
+        for (double t = 3.8 + h; t < 8.8 - h; t += h)
         {
             var before = flight.Sample(t - h);
             var frame = flight.Sample(t);
@@ -221,15 +167,13 @@ public class StartupIntroFlightTests
             Assert.InRange(Math.Abs(logZoom), 0, .00601); // Less than 0.61% in either direction.
             Assert.InRange(Math.Abs((logAfter - logBefore) / (2 * h)), 0, .003);
             Assert.InRange(Math.Abs((logAfter - 2 * logZoom + logBefore) / (h * h)), 0, .0015);
-            Assert.InRange(Math.Abs(Center(frame).Y - 300), 0, 90);
             if (logBefore * logZoom < 0)
             {
-                if (!double.IsNaN(previousCrossing)) Assert.InRange(t - previousCrossing, 6.9, 7.1);
-                previousCrossing = t;
+                Assert.InRange(t, 7.6, 7.6 + h);
                 crossings++;
             }
         }
-        Assert.True(crossings >= 2, "The long tour should retain a gentle, slow swell.");
+        Assert.Equal(1, crossings);
     }
 
     [Fact]
@@ -326,8 +270,9 @@ public class StartupIntroFlightTests
         Assert.Equal(1, flight.Sample(.6).RevealOpacity);
         Assert.Equal(0, flight.Sample(.6).TitleOpacity);
         Assert.Equal(1, flight.Sample(1.1).TitleOpacity);
-        Assert.Equal(0, flight.Sample(2.4).TitleOpacity, 12);
-        for (double t = 2.4; t <= flight.DurationSeconds; t += .1)
+        Assert.Equal(1, flight.Sample(3.6).TitleOpacity);
+        Assert.InRange(flight.Sample(3.9).TitleOpacity, .49, .51);
+        for (double t = 4.2; t <= flight.DurationSeconds; t += .1)
         {
             Assert.Equal(0, flight.Sample(t).TitleOpacity, 12);
             Assert.Equal(1, flight.Sample(t).RevealOpacity);

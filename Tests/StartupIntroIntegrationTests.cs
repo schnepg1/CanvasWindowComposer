@@ -72,7 +72,7 @@ public class StartupIntroIntegrationTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ProjectZonesWithoutLiveWindowsExtendTheTourAndKeepTheSavedCamera()
+    public void DistantProjectZonesDoNotExtendTheIntroOrChangeTheSavedCamera()
         => WorkspaceViewTests.OnSta(() =>
         {
             Assert.True(GridRenderer.CompileShaders());
@@ -90,7 +90,7 @@ public class StartupIntroIntegrationTests
             overview.AttachZones(new ZoneService(document, () => Guid.Empty, () => true));
             Assert.True(overview.TryStartStartupIntro());
             double duration = overview.StartupIntroDurationSeconds;
-            Assert.True(duration > StartupIntroFlight.MinimumDurationSeconds);
+            Assert.Equal(StartupIntroFlight.MinimumDurationSeconds, duration, 10);
             overview.AdvanceStartupIntro(duration / 2);
             Assert.True(overview.IsStartupIntroActive);
             Assert.Equal(saved, canvas.Camera);
