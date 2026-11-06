@@ -12,6 +12,7 @@ internal sealed class ZoomSettingsControl : UserControl
     private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek, _smoothZoom;
     private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay, _maximumZoom;
     private readonly ZoomSpectrumControl _spectrum;
+    private readonly ZoomPreviewPlaygroundControl _playground;
     private bool _syncing;
 
     public ZoomSettingsControl(CanvasPreferences preferences)
@@ -90,7 +91,17 @@ internal sealed class ZoomSettingsControl : UserControl
             Margin = new Thickness(0, 0, 0, 8)
         });
 
-        // Link stage toggles to spectrum track
+        // Preview Playground
+        _playground = new ZoomPreviewPlaygroundControl();
+        _playground.UpdateConfiguration(
+            preferences.LivePreviewsTier,
+            preferences.DetailedCardsTier,
+            preferences.SimpleCardsTier,
+            preferences.CardEnterZoom,
+            preferences.SimpleCardEnterZoom);
+        body.Children.Add(_playground);
+
+        // Link stage toggles to spectrum track and playground
         void OnTierToggled()
         {
             if (_live.IsChecked != true && _detailed.IsChecked != true && _simple.IsChecked != true)
@@ -98,7 +109,9 @@ internal sealed class ZoomSettingsControl : UserControl
                 // Enforce at least one active stage
                 _detailed.IsChecked = true;
             }
-            _spectrum.SetTiers(_live.IsChecked == true, _detailed.IsChecked == true, _simple.IsChecked == true);
+            bool l = _live.IsChecked == true, d = _detailed.IsChecked == true, s = _simple.IsChecked == true;
+            _spectrum.SetTiers(l, d, s);
+            _playground.UpdateConfiguration(l, d, s, _spectrum.CardEnterZoom, _spectrum.SimpleCardEnterZoom);
         }
         _live.Checked += (_, _) => OnTierToggled();
         _live.Unchecked += (_, _) => OnTierToggled();
@@ -107,7 +120,7 @@ internal sealed class ZoomSettingsControl : UserControl
         _simple.Checked += (_, _) => OnTierToggled();
         _simple.Unchecked += (_, _) => OnTierToggled();
 
-        // Spectrum thumb movement updates threshold sliders
+        // Spectrum thumb movement updates threshold sliders and playground
         _spectrum.ThresholdsChanged += (cEnter, cExit, sEnter, sExit) =>
         {
             _syncing = true;
@@ -117,6 +130,12 @@ internal sealed class ZoomSettingsControl : UserControl
                 _cardExit.Value = Math.Round(cExit * 100);
                 _simpleEnter.Value = Math.Round(sEnter * 100);
                 _simpleExit.Value = Math.Round(sExit * 100);
+                _playground.UpdateConfiguration(
+                    _live.IsChecked == true,
+                    _detailed.IsChecked == true,
+                    _simple.IsChecked == true,
+                    cEnter,
+                    sEnter);
             }
             finally
             {
@@ -124,11 +143,21 @@ internal sealed class ZoomSettingsControl : UserControl
             }
         };
 
-        // Fine-tune sliders update spectrum track
+        // Fine-tune sliders update spectrum track and playground
         void OnSliderValueChanged()
         {
             if (_syncing) return;
-            _spectrum.SetValues(_cardEnter.Value / 100.0, _cardExit.Value / 100.0, _simpleEnter.Value / 100.0, _simpleExit.Value / 100.0);
+            double cEnter = _cardEnter.Value / 100.0;
+            double cExit = _cardExit.Value / 100.0;
+            double sEnter = _simpleEnter.Value / 100.0;
+            double sExit = _simpleExit.Value / 100.0;
+            _spectrum.SetValues(cEnter, cExit, sEnter, sExit);
+            _playground.UpdateConfiguration(
+                _live.IsChecked == true,
+                _detailed.IsChecked == true,
+                _simple.IsChecked == true,
+                cEnter,
+                sEnter);
         }
         _cardEnter.ValueChanged += (_, _) => OnSliderValueChanged();
         _cardExit.ValueChanged += (_, _) => OnSliderValueChanged();
@@ -174,6 +203,7 @@ internal sealed class ZoomSettingsControl : UserControl
             _simpleExit.Value = OverviewZoomDefaults.SimpleCardExit * 100;
             _spectrum.SetTiers(true, true, true);
             _spectrum.SetValues(OverviewZoomDefaults.CardEnter, OverviewZoomDefaults.CardExit, OverviewZoomDefaults.SimpleCardEnter, OverviewZoomDefaults.SimpleCardExit);
+            _playground.UpdateConfiguration(true, true, true, OverviewZoomDefaults.CardEnter, OverviewZoomDefaults.SimpleCardEnter);
             _peek.IsChecked = true;
             _peekDelay.Value = AppConfig.DefaultCanvasPeekDelayMs;
             _maximumZoom.Value = OverviewZoomDefaults.MaximumZoom * 100;

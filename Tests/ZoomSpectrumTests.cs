@@ -133,4 +133,48 @@ public class ZoomSpectrumTests
             Assert.Equal(10, sliders[2].Value);
             Assert.Equal(13, sliders[3].Value);
         });
+
+    [Fact]
+    public void PlaygroundScrubberAndPresetsTransformVisualTiers()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var playground = new ZoomPreviewPlaygroundControl();
+            Assert.Equal(35, playground.CurrentZoomPercent);
+
+            playground.SetZoom(8);
+            Assert.Equal(8, playground.CurrentZoomPercent);
+
+            // DetermineTier checks with all stages enabled
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Simple,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.08, live: true, detailed: true, simple: true, cardEnter: 0.40, simpleEnter: 0.10));
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Detailed,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.30, live: true, detailed: true, simple: true, cardEnter: 0.40, simpleEnter: 0.10));
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Live,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.85, live: true, detailed: true, simple: true, cardEnter: 0.40, simpleEnter: 0.10));
+
+            // With Detailed disabled: flips directly between Simple and Live
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Simple,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.20, live: true, detailed: false, simple: true, cardEnter: 0.40, simpleEnter: 0.25));
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Live,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.60, live: true, detailed: false, simple: true, cardEnter: 0.40, simpleEnter: 0.25));
+
+            // With Simple disabled: Detailed extends to 0
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Detailed,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.05, live: true, detailed: true, simple: false, cardEnter: 0.40, simpleEnter: 0.10));
+
+            // With Live disabled: Detailed extends to max zoom
+            Assert.Equal(ZoomPreviewPlaygroundControl.ZoomTier.Detailed,
+                ZoomPreviewPlaygroundControl.DetermineTier(0.95, live: false, detailed: true, simple: true, cardEnter: 0.40, simpleEnter: 0.10));
+
+            // Quick preset buttons work
+            var buttons = WorkspaceViewTests.Descendants(playground).OfType<Button>().ToArray();
+            var btn8 = buttons.Single(b => Equals(b.Content, "8% (Simple)"));
+            var btn80 = buttons.Single(b => Equals(b.Content, "80% (Live)"));
+
+            btn8.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(8, playground.CurrentZoomPercent);
+
+            btn80.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(80, playground.CurrentZoomPercent);
+        });
 }
