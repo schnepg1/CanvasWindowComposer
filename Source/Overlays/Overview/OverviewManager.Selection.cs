@@ -24,7 +24,7 @@ internal sealed partial class OverviewManager
         _selectionTool = new(Selection, SelectionItems, HitSelectionItem, () => _annotationTool?.Mode == AnnotationMode.Select);
         _selectionTool.MoveRequested += MoveSelection;
         _selectionLayer = new(Selection, () => _selectionRenderItems, _selectionTool, () => _proximityCircle,
-            () => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive && _annotationEditor == null);
+            () => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive && _annotationEditor == null, _connectionTool);
         Selection.Changed += () =>
         {
             _proximityCircle=null;

@@ -6,7 +6,7 @@ using System.Windows.Media;
 
 namespace CanvasDesktop;
 
-internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null) : IOverviewAnnotationLayer
+internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null, Func<CanvasAnnotation?>? connectionPreview = null) : IOverviewAnnotationLayer
 {
     private readonly Dictionary<Guid,(CanvasAnnotation Item,double Dpi,DrawingGroup Drawing)> _artwork = [];
     private long _revision = -1;
@@ -26,8 +26,10 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
         // Camera movement only changes transforms; keep expensive text layout out of that path.
         if (_revision != document.Revision) { _artwork.Clear(); _revision=document.Revision; }
         var preview = tool.Preview;
+        var conn = connectionPreview?.Invoke();
         var items = document.Items.Where(a => a.DesktopId == desktop() && a.Id != preview?.Id && hidden?.Invoke(a.Id) != true).ToList();
         if (preview != null && preview.DesktopId == desktop()) items.Add(preview);
+        if (conn != null && conn.DesktopId == desktop()) items.Add(conn);
         foreach (var item in items)
         {
             var projected = context.View.WorldToDip(item.Bounds);

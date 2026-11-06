@@ -288,10 +288,10 @@ internal sealed partial class OverviewManager
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
-                && annotationTool.Hit(Pointer(pass,e)) is { } note && note.Kind != AnnotationKind.Arrow)
+                && annotationTool.Hit(Pointer(pass,e)) is { } note)
             {
                 CancelInteraction(); annotationTool.Select(note.Id);
-                if (note.Kind == AnnotationKind.Text)
+                if (note.Kind == AnnotationKind.Text || note.Kind == AnnotationKind.Arrow)
                     QueueAnnotationTextEdit(note,new Point(e.X+pass.OriginX,e.Y+pass.OriginY));
                 else
                     QueueAnnotationShapeEdit(note);
