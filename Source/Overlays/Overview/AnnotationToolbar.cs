@@ -41,6 +41,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     public event Action<AnnotationCardFill>? CardFillRequested;
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
     public event Action? WebResourceRequested;
+    public event Action? ExportAllWorkflowsRequested, ImportWorkflowRequested;
     internal CanvasDockSurface PropertiesSurface => _properties;
 
     public AnnotationToolbar()
@@ -75,6 +76,11 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _more.DropDownItems.Add(new ToolStripSeparator());
         _more.DropDownItems.Add(MenuItem("AI Compose", () => ComposerRequested?.Invoke(), DockGlyph.Compose));
         _more.DropDownItems.Add(MenuItem("Add web resource…", () => WebResourceRequested?.Invoke()));
+        _more.DropDownItems.Add(new ToolStripSeparator());
+        var workflows = new ToolStripMenuItem("Workflows") { Name = "Workflows", ForeColor = CanvasDockTheme.Ink };
+        workflows.DropDownItems.Add(MenuItem("Export all workflows (JSON)", () => ExportAllWorkflowsRequested?.Invoke()));
+        workflows.DropDownItems.Add(MenuItem("Import workflow (JSON)…", () => ImportWorkflowRequested?.Invoke()));
+        _more.DropDownItems.Add(workflows);
         _status.Click += (_, _) => { if (_state?.Status != null) RetrySaveRequested?.Invoke(); };
         Strip.Items.AddRange([_selectButton, _shapesButton, _textButton, new ToolStripSeparator(), _undo, _redo, _more, _status]);
 

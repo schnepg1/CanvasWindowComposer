@@ -165,6 +165,8 @@ internal sealed partial class OverviewManager
             _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
             _annotationToolbar.RedoRequested+=()=>AnnotationHistory(true);
             _annotationToolbar.DeleteRequested+=DeleteAnnotation;
+            _annotationToolbar.ExportAllWorkflowsRequested += () => ExportCurrentWorkflowToClipboard(null);
+            _annotationToolbar.ImportWorkflowRequested += ShowImportWorkflowDialog;
             _annotationToolbar.RetrySaveRequested+=()=>
             {
                 _annotationStore?.Save(); RefreshAnnotationUi();
@@ -268,11 +270,6 @@ internal sealed partial class OverviewManager
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
         if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null) return true;
-        if (e.Control && e.Shift && e.KeyCode == Keys.E)
-        {
-            ExportCurrentWorkflowToClipboard();
-            e.Handled = true; e.SuppressKeyPress = true; return true;
-        }
         if(_annotationTool==null || _annotationTool.Mode is AnnotationMode.Navigate or AnnotationMode.Select)
         {
             if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) { AnnotationHistory(e.KeyCode==Keys.Y || e.Shift); e.Handled=true; e.SuppressKeyPress=true; return true; }
@@ -479,6 +476,70 @@ internal sealed partial class OverviewManager
         catch (Exception ex)
         {
             _annotationError = $"Could not copy workflow JSON to clipboard: {ex.Message}";
+        }
+    }
+
+    internal void ShowImportWorkflowDialog()
+    {
+        if (_placeholderWorkspace == null || _annotationDocument == null) return;
+        var desktop = _annotationDesktop();
+        var center = _camera.WorldFromVirtual(_screens.PrimaryWorkingArea.X + _screens.PrimaryWorkingArea.Width / 2, _screens.PrimaryWorkingArea.Y + _screens.PrimaryWorkingArea.Height / 2);
+        var origin = new CanvasPoint(center.x - 400, center.y - 300);
+
+        string? jsonToImport = null;
+
+        try
+        {
+            if (Clipboard.ContainsText())
+            {
+                string clip = Clipboard.GetText();
+                if (clip.Contains("nodes", StringComparison.OrdinalIgnoreCase) || clip.Contains("windows", StringComparison.OrdinalIgnoreCase))
+                {
+                    var choice = MessageBox.Show(
+                        "Found workflow data on the clipboard. Do you want to import from clipboard?\n\n(Choose 'No' to pick a .json file instead)",
+                        "Import Workflow",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+
+                    if (choice == DialogResult.Yes) jsonToImport = clip;
+                    else if (choice == DialogResult.Cancel) return;
+                }
+            }
+        }
+        catch { }
+
+        if (jsonToImport == null)
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Import Canvas Workflow",
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                RestoreDirectory = true
+            };
+            if (dialog.ShowDialog() != DialogResult.OK) return;
+            try
+            {
+                jsonToImport = File.ReadAllText(dialog.FileName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not read workflow file: {ex.Message}", "Import Workflow", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+        }
+
+        var workflowService = new WorkflowService(_placeholderWorkspace, _annotationDocument, _annotationStore);
+        bool success = workflowService.ImportWorkflowJson(desktop, jsonToImport, origin);
+        if (success)
+        {
+            RefreshZoneLayout();
+            RefreshOverviewWindows();
+            ReconcileVisuals();
+            MessageBox.Show("Workflow imported successfully.", "Canvas Workflows", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        else
+        {
+            MessageBox.Show("The provided data is not a valid Canvas workflow JSON.", "Import Workflow", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

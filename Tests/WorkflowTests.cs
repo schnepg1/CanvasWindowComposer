@@ -308,4 +308,114 @@ public class WorkflowTests
         }
         Assert.Empty(annotationDoc.Items);
     }
+
+    [Fact]
+    public void WorkflowService_ImportWorkflowJson_PlanFormat_SuccessfullyApplies()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotationDoc = new AnnotationDocument();
+        var workflowService = new WorkflowService(harness.Workspace, annotationDoc);
+
+        var plan = new WorkflowPlan(
+            ProjectName: "Imported Funnel",
+            Windows:
+            [
+                new WorkflowPlanWindow("w1", "IG Profile", "chrome.exe", "https://instagram.com/mygirlfriend", "Profile 2"),
+                new WorkflowPlanWindow("w2", "ManyChat", "chrome.exe", "https://manychat.com", "Profile 2")
+            ],
+            Links:
+            [
+                new WorkflowPlanLink("w1", "w2", "Lead Trigger", 16.0, "#38BDF8")
+            ]);
+
+        string json = System.Text.Json.JsonSerializer.Serialize(plan);
+        bool imported = workflowService.ImportWorkflowJson(Desktop, json, new CanvasPoint(200, 200));
+
+        Assert.True(imported);
+        var zone = Assert.Single(harness.Workspace.Document.Zones);
+        Assert.Equal("Imported Funnel", zone.Name);
+        Assert.Equal(2, harness.Workspace.Document.Items.Count);
+        var arrow = Assert.Single(annotationDoc.Items);
+        Assert.Equal("Lead Trigger", arrow.Text);
+        Assert.Equal(16.0, arrow.Stroke);
+    }
+
+    [Fact]
+    public void WorkflowService_ImportWorkflowJson_GraphFormat_SuccessfullyAppliesAndRemapsIds()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotationDoc = new AnnotationDocument();
+        var workflowService = new WorkflowService(harness.Workspace, annotationDoc);
+
+        var node1 = new WorkflowNode(
+            Id: Guid.NewGuid(),
+            Kind: "window",
+            Title: "IG Chrome",
+            CustomName: "IG Chrome",
+            AppExecutable: "chrome.exe",
+            TargetUrl: "https://instagram.com",
+            ChromeProfile: "Profile 1",
+            Zone: "Marketing Zone",
+            Bounds: new CanvasRect(100, 100, 400, 300));
+
+        var node2 = new WorkflowNode(
+            Id: Guid.NewGuid(),
+            Kind: "window",
+            Title: "ManyChat",
+            CustomName: "ManyChat Flow",
+            AppExecutable: "chrome.exe",
+            TargetUrl: "https://manychat.com",
+            ChromeProfile: "Profile 1",
+            Zone: "Marketing Zone",
+            Bounds: new CanvasRect(600, 100, 400, 300));
+
+        var projectNode = new WorkflowNode(
+            Id: Guid.NewGuid(),
+            Kind: "project",
+            Title: "Marketing Zone",
+            CustomName: "Marketing Zone",
+            AppExecutable: "",
+            TargetUrl: null,
+            ChromeProfile: null,
+            Zone: null,
+            Bounds: new CanvasRect(50, 50, 1000, 450));
+
+        var edge = new WorkflowEdge(
+            Id: Guid.NewGuid(),
+            SourceId: node1.Id,
+            TargetId: node2.Id,
+            Description: "Bio Link",
+            Color: "#60A5FA",
+            Stroke: 16.0,
+            Routing: "curved");
+
+        var graph = new WorkflowGraph("Marketing Zone", Desktop, [node1, node2, projectNode], [edge]);
+        string json = WorkflowExport.ToJson(graph);
+
+        bool imported = workflowService.ImportWorkflowJson(Desktop, json, new CanvasPoint(500, 500));
+        Assert.True(imported);
+
+        var zone = Assert.Single(harness.Workspace.Document.Zones);
+        Assert.Equal("Marketing Zone", zone.Name);
+        Assert.Equal(2, harness.Workspace.Document.Items.Count);
+
+        var arrow = Assert.Single(annotationDoc.Items);
+        Assert.Equal("Bio Link", arrow.Text);
+        Assert.NotEqual(node1.Id, arrow.SourceId); // Verify remapped ID
+        Assert.NotEqual(node2.Id, arrow.TargetId);
+        Assert.Contains(harness.Workspace.Document.Items, i => i.Id == arrow.SourceId);
+        Assert.Contains(harness.Workspace.Document.Items, i => i.Id == arrow.TargetId);
+    }
+
+    [Fact]
+    public void WorkflowService_ImportWorkflowJson_InvalidData_ReturnsFalse()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotationDoc = new AnnotationDocument();
+        var workflowService = new WorkflowService(harness.Workspace, annotationDoc);
+
+        Assert.False(workflowService.ImportWorkflowJson(Desktop, "", new CanvasPoint(0, 0)));
+        Assert.False(workflowService.ImportWorkflowJson(Desktop, "not json", new CanvasPoint(0, 0)));
+        Assert.False(workflowService.ImportWorkflowJson(Desktop, "{}", new CanvasPoint(0, 0)));
+    }
 }
