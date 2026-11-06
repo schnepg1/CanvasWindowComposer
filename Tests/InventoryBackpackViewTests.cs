@@ -18,6 +18,20 @@ public class InventoryBackpackViewTests
         => new(Guid.NewGuid(), title, @"C:\Apps\Editor.exe", "", false,
             new() { W = 800, H = 600, InInventory = true }, state, Temporary: temporary);
 
+    [Fact]
+    public void OnlyTheFoldedBadgeIsVisibleOnFirstPresentation()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(false);
+            var shell = Assert.IsType<Border>(panel.Content);
+            var layout = Assert.IsType<Grid>(shell.Child);
+            var expanded = Assert.IsType<Grid>(Descendants(panel).OfType<TextBox>().Single().Parent);
+            var folded = Assert.Single(layout.Children.OfType<Grid>(), child => child != expanded);
+            Assert.Equal(Visibility.Visible, folded.Visibility);
+            Assert.Equal(Visibility.Collapsed, expanded.Visibility);
+        });
+
     [Theory]
     [InlineData(1, false, 650)]
     [InlineData(2, false, 650)]

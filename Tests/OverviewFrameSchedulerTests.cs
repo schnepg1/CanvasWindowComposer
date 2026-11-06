@@ -37,8 +37,10 @@ public class OverviewFrameSchedulerTests
         Assert.Equal(2, draws);
     }
 
-    [Fact]
-    public void InvalidationDuringDrawingIsDeferredAndNeverLostOrReentrant()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InvalidationDuringDrawingIsDeferredAndNeverLostOrReentrant(bool synchronous)
     {
         var callbacks = new Queue<Action>();
         int draws = 0;
@@ -47,7 +49,8 @@ public class OverviewFrameSchedulerTests
         {
             if (++draws == 1) { frames.Request(); frames.Flush(); Assert.Empty(callbacks); }
         });
-        frames.Request(); callbacks.Dequeue()();
+        if (synchronous) frames.RequestAndFlush();
+        else { frames.Request(); callbacks.Dequeue()(); }
         Assert.Equal(1, draws); Assert.Single(callbacks);
         callbacks.Dequeue()();
         Assert.Equal(2, draws); Assert.Empty(callbacks);

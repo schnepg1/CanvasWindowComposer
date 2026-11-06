@@ -91,22 +91,20 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private int _dragIndex = -1;
     private bool _windowDragMoved;
     private int _dragStartVx, _dragStartVy;
-    private bool _reconcilingVisuals;
     private CanvasCamera? _sceneCamera;
     private CanvasCamera SceneCamera => _sceneCamera ?? ViewCamera;
-    private void ReconcileVisuals()
+    private void ReconcileVisuals() => _visualFrames.RequestAndFlush();
+
+    private void DrawVisualFrame()
     {
-        // Native/WPF calls may reenter the UI thread. Complete this immutable
-        // camera frame before servicing a newer invalidation.
-        if (_reconcilingVisuals) { _visualFrames.Request(); return; }
-        _reconcilingVisuals = true;
+        // A synchronous frame can pump messages too. The scheduler defers
+        // reentrant invalidations until this frame returns.
         try { ReconcileVisualFrame(); }
-        finally { _sceneCamera = null; _reconcilingVisuals = false; }
+        finally { _sceneCamera = null; }
     }
 
     private void ReconcileVisualFrame()
     {
-        _visualFrames.Cancel();
         UpdateGesturePreviews();
         RefreshTutorialScale();
         var camera = ViewCamera;
@@ -183,7 +181,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         input.WindowFocused += OnInteractionForegroundChanged;
         _screens = screens ?? WinFormsScreens.Instance;
         _camera = new OverviewCamera(_screens);
-        _visualFrames = new OverviewFrameScheduler(ScheduleVisualFrame, ReconcileVisuals);
+        _visualFrames = new OverviewFrameScheduler(ScheduleVisualFrame, DrawVisualFrame);
         _zoneTool = new ZoneCanvasTool(() => _zones != null,
             () => _zones?.Items ?? Array.Empty<ZoneView>(), ZoneMoveMembers);
         _zoneTool.Completed += OnZoneToolCompleted;
