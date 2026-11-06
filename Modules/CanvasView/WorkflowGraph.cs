@@ -69,3 +69,31 @@ public static class WorkflowExport
 
     public static WorkflowGraph? FromJson(string json) => JsonSerializer.Deserialize<WorkflowGraph>(json, Options);
 }
+
+public static class WorkflowPlanExtensions
+{
+    public static ComposerPlan ToComposerPlan(this WorkflowPlan plan)
+    {
+        var zones = new[] { new ComposerZone("zone_1", plan.ProjectName, "#38BDF8") };
+        var nodes = (plan.Windows ?? []).Select(w => new ComposerNode(
+            Id: w.Key,
+            Kind: "web",
+            Text: w.CustomName,
+            Color: "#38BDF8",
+            Title: w.CustomName,
+            App: w.App,
+            Url: w.Url,
+            ChromeProfile: w.ChromeProfile,
+            Zone: "zone_1")).ToArray();
+
+        var edges = (plan.Links ?? []).Select(l => new ComposerEdge(
+            From: l.From,
+            To: l.To,
+            Color: l.Color,
+            Label: l.Label,
+            Stroke: l.Stroke,
+            Routing: "curved")).ToArray();
+
+        return new ComposerPlan(plan.ProjectName, nodes, edges, [], zones, plan.LayoutDirection);
+    }
+}
