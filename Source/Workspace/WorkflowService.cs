@@ -12,6 +12,7 @@ internal interface IWorkflowService
     bool ApplyWorkflow(Guid desktopId, WorkflowPlan plan, CanvasPoint origin);
     bool ImportWorkflowJson(Guid desktopId, string json, CanvasPoint origin);
     bool ApplyGraph(Guid desktopId, WorkflowGraph graph, CanvasPoint origin);
+    bool ApplyComposerPlan(Guid desktopId, ComposerPlan plan, ComposerPreview preview);
 }
 
 internal sealed class WorkflowService : IWorkflowService
@@ -160,11 +161,138 @@ internal sealed class WorkflowService : IWorkflowService
         return true;
     }
 
+    public bool ApplyComposerPlan(Guid desktopId, ComposerPlan plan, ComposerPreview preview)
+    {
+        if (plan is null || preview is null) return false;
+
+        var idMap = new Dictionary<string, Guid>();
+        var zoneMap = new Dictionary<string, WorkspaceZone>();
+
+        // 1. Create WorkspaceZones
+        if (plan.Zones != null)
+        {
+            foreach (var z in plan.Zones)
+            {
+                var zoneNodes = plan.Nodes.Where(n => string.Equals(n.Zone, z.Id, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(n.Zone, z.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                var memberAnnotations = zoneNodes
+                    .Select(n => preview.NodeIdMap != null && preview.NodeIdMap.TryGetValue(n.Id, out var id) ? preview.Items.FirstOrDefault(a => a.Id == id) : null)
+                    .Where(a => a != null)
+                    .ToList();
+
+                double minX, minY, maxX, maxY;
+                if (memberAnnotations.Count > 0)
+                {
+                    minX = memberAnnotations.Min(a => a!.Bounds.X) - 40;
+                    minY = memberAnnotations.Min(a => a!.Bounds.Y) - 60;
+                    maxX = memberAnnotations.Max(a => a!.Bounds.X + a!.Bounds.Width) + 40;
+                    maxY = memberAnnotations.Max(a => a!.Bounds.Y + a!.Bounds.Height) + 40;
+                }
+                else
+                {
+                    minX = 0; minY = 0; maxX = 600; maxY = 400;
+                }
+
+                var zone = new WorkspaceZone
+                {
+                    Id = Guid.NewGuid(),
+                    DesktopId = desktopId,
+                    Name = z.Name,
+                    Color = z.Color,
+                    Bounds = new WorldRect { X = minX, Y = minY, W = maxX - minX, H = maxY - minY },
+                    ItemIds = new List<Guid>()
+                };
+                _workspace.Document.Zones.Add(zone);
+                zoneMap[z.Id] = zone;
+                zoneMap[z.Name] = zone;
+            }
+        }
+
+        // 2. Create WorkspaceItems for windows/web, or add annotations for cards/notes
+        foreach (var node in plan.Nodes)
+        {
+            Guid annotId = preview.NodeIdMap != null && preview.NodeIdMap.TryGetValue(node.Id, out var g) ? g : Guid.NewGuid();
+            idMap[node.Id] = annotId;
+
+            var previewAnnot = preview.Items.FirstOrDefault(a => a.Id == annotId);
+            if (previewAnnot == null) continue;
+
+            bool isRealWindow = node.Kind is "web" or "window" || !string.IsNullOrEmpty(node.Url) || !string.IsNullOrEmpty(node.App);
+
+            if (isRealWindow)
+            {
+                string title = !string.IsNullOrWhiteSpace(node.Title) ? node.Title : node.Text;
+                string url = node.Url ?? "";
+                string profile = node.ChromeProfile ?? "";
+                string app = !string.IsNullOrWhiteSpace(node.App) ? node.App : "chrome.exe";
+
+                var item = new WorkspaceItem
+                {
+                    Id = annotId,
+                    DesktopId = desktopId,
+                    Placement = WorkspacePlacement.Deliberate,
+                    Title = title,
+                    Name = title,
+                    ExecutablePath = app,
+                    Target = url,
+                    ChromeProfilePath = profile,
+                    WebResource = !string.IsNullOrEmpty(url) ? new WebResource(url, profile) : null,
+                    Bounds = new WorldRect
+                    {
+                        X = previewAnnot.Bounds.X,
+                        Y = previewAnnot.Bounds.Y,
+                        W = previewAnnot.Bounds.Width,
+                        H = previewAnnot.Bounds.Height
+                    }
+                };
+                _workspace.Document.Items.Add(item);
+
+                if (!string.IsNullOrEmpty(node.Zone) && zoneMap.TryGetValue(node.Zone, out var targetZone))
+                {
+                    targetZone.ItemIds.Add(annotId);
+                }
+            }
+            else
+            {
+                // Architecture card, service, database, step, note, rectangle, ellipse
+                _annotations.Put(previewAnnot);
+            }
+        }
+
+        // 3. Put Arrows
+        foreach (var arrow in preview.Items.Where(a => a.Kind == AnnotationKind.Arrow))
+        {
+            _annotations.Put(arrow);
+        }
+
+        _workspace.SaveNow();
+        _annotationStore?.Save();
+
+        return true;
+    }
+
     public bool ImportWorkflowJson(Guid desktopId, string json, CanvasPoint origin)
     {
         if (string.IsNullOrWhiteSpace(json)) return false;
 
-        // Try WorkflowPlan first
+        // Try ComposerPlan
+        try
+        {
+            var composerPlan = System.Text.Json.JsonSerializer.Deserialize<ComposerPlan>(json, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            if (composerPlan != null && composerPlan.Nodes != null && composerPlan.Nodes.Length > 0)
+            {
+                var context = new ComposerContext(desktopId, _annotations.Revision, origin, [], []);
+                var preview = CanvasComposer.Prepare(context, composerPlan);
+                return ApplyComposerPlan(desktopId, composerPlan, preview);
+            }
+        }
+        catch { }
+
+        // Try WorkflowPlan
         try
         {
             var plan = System.Text.Json.JsonSerializer.Deserialize<WorkflowPlan>(json, new System.Text.Json.JsonSerializerOptions
