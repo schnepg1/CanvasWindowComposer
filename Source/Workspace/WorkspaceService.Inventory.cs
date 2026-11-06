@@ -12,7 +12,7 @@ internal sealed partial class WorkspaceService
     public string? InventoryStatus => _persistence.LastError ?? _inventoryStatus;
     internal Func<ArrivalViewport>? ArrivalViewportProvider { get; set; }
     public IReadOnlyList<WorkspaceItemView> InventoryItems => Document.Items
-        .Where(i => i.DesktopId == _desktop && i.Bounds.InInventory).Select(View).ToArray();
+        .Where(i => i.DesktopId == _desktop && i.Bounds.InInventory).ToArray().Select(View).ToArray();
     public event Action<InventoryCollection>? InventoryCollected;
     public event Action<Guid?>? InventoryRequested;
 

@@ -148,6 +148,7 @@ public class UiBugsAndShapesTests
         public bool OpenCalled { get; set; }
         public Guid LastOpenedId { get; set; }
         public IReadOnlyList<WorkspaceItemView> Items => Array.Empty<WorkspaceItemView>();
+        public WorkspaceItemView? GetItemView(Guid id) => null;
         public string? Status => null;
         public event Action? Changed { add { } remove { } }
         public void Open(Guid id) { OpenCalled = true; LastOpenedId = id; }

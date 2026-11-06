@@ -29,7 +29,9 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private string? _status;
     public WorkspaceDocument Document => _persistence.Document;
     public ZoneService Zones { get; }
-    public IReadOnlyList<WorkspaceItemView> Items => Document.Items.Select(View).ToArray();
+    // Native window inspection can dispatch removal callbacks while building views.
+    public IReadOnlyList<WorkspaceItemView> Items => Document.Items.ToArray().Select(View).ToArray();
+    public WorkspaceItemView? GetItemView(Guid id) => Find(id) is { } item ? View(item) : null;
     public string? Status => _persistence.LastError ?? _status ?? _persistence.LoadWarning
         ?? (_ambiguous.Count > 0 ? "Some saved places need linking. Use 'Link window…' to choose the correct open window." : null);
     public event Action? Changed;
