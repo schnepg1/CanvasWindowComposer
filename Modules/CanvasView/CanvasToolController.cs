@@ -4,7 +4,7 @@ public enum CanvasPointerButton { None, Left, Middle, Right }
 [Flags]
 public enum CanvasModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
 public enum CanvasCursor { Default, Crosshair, ResizeNorthWestSouthEast, ResizeNorthEastSouthWest, ResizeNorthSouth, ResizeEastWest, Move }
-public enum CanvasInteractionKind { None, Tool, Pan, Window }
+public enum CanvasInteractionKind { None, Tool, Pan, Window, WindowResize }
 
 public readonly record struct CanvasPointer(int SurfaceId, CanvasPoint Position,
     CanvasPointerButton Button, CanvasModifiers Modifiers, CanvasViewTransform View)
@@ -55,7 +55,7 @@ public sealed class CanvasToolController
 
     public bool TryBeginNavigation(CanvasInteractionKind kind, CanvasPointer pointer)
     {
-        if (kind is not (CanvasInteractionKind.Pan or CanvasInteractionKind.Window))
+        if (kind is not (CanvasInteractionKind.Pan or CanvasInteractionKind.Window or CanvasInteractionKind.WindowResize))
             throw new ArgumentOutOfRangeException(nameof(kind));
         if (Active || pointer.Button == CanvasPointerButton.None) return false;
         Begin(kind, pointer);
@@ -90,7 +90,7 @@ public sealed class CanvasToolController
 
     public CanvasInteractionKind EndNavigation(CanvasPointer pointer)
     {
-        if (Kind is not (CanvasInteractionKind.Pan or CanvasInteractionKind.Window) || !MatchesRelease(pointer))
+        if (Kind is not (CanvasInteractionKind.Pan or CanvasInteractionKind.Window or CanvasInteractionKind.WindowResize) || !MatchesRelease(pointer))
             return CanvasInteractionKind.None;
         var kind = Kind;
         ResetOwner();

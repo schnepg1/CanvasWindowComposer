@@ -82,6 +82,7 @@ internal sealed partial class OverviewManager
         StopWindowNavigation();
         StopTutorialTravel();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
+        bool windowResize = _tools.Kind == CanvasInteractionKind.WindowResize;
         bool cancelled = CloseWindowPeek();
         cancelled |= EndWindowInteraction();
         cancelled |= CancelWebResourcePlacement();
@@ -89,8 +90,12 @@ internal sealed partial class OverviewManager
         cancelled |= CancelAnnotationEdit();
         cancelled |= _tools.Cancel(); // Clear owner before releasing native capture.
         _dragIndex = -1;
+        _resizeIndex = -1;
+        _resizeEdge = WindowResizeEdge.None;
+        _hoveredResizeWindow = IntPtr.Zero;
+        _hoveredResizeEdge = WindowResizeEdge.None;
         ApplyPointerCapture();
-        if (windowDrag && !_disposed) _wm.Reproject(true);
+        if ((windowDrag || windowResize) && !_disposed) _wm.Reproject(true);
         if (cancelled && !_disposed)
         {
             RefreshToolPreview();

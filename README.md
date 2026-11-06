@@ -19,6 +19,8 @@ Turns your Windows desktop into an infinite, pannable, zoomable canvas. Middle-c
 - **Minimap** — Click or drag to navigate; right-click the minimap or use the tray menu to keep it visible
 - **Virtual desktops** — Independent canvas per desktop
 - **Auto-focus** — Camera follows focused windows
+- **Free window resizing** — Resize any window directly in canvas overview mode by dragging its borders or corners; windows can be expanded freely beyond standard fullscreen monitor dimensions.
+- **Magnifier zoom** — Configurable maximum zoom up to 500% in Zoom Settings for close-up inspection.
 - **App switching** — Alt+Tab and taskbar selections center the selected app while keeping Canvas view and its zoom. Fly-to animation defaults on; disable it in Settings → Interaction for immediate navigation. Outside Canvas view, Alt+Tab jumps to the app at desktop size. Automatic proximity restores never request navigation.
 - **Off-screen hiding** — Windows hidden when panned out of view
 - **System tray** — Toggle, reset, exit
@@ -54,6 +56,7 @@ Choose **Arrange** to move items or **Interact** to use a live app on the canvas
 | Esc while interacting | Return to canvas navigation, keeping the overview open |
 | Scroll, Alt + scroll, or + / - in overview | Zoom around the pointer |
 | Alt + S | Fuzzy window search |
+| Drag a window border or corner in overview | Resize the window freely on the canvas (can exceed screen bounds) |
 | Drag an area corner in overview | Resize its boundary without moving members |
 | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) in overview | Undo / redo an area move or resize |
 | N in overview | Draw the next project area with a normal left-drag |
@@ -88,6 +91,7 @@ Right-click a saved window or its overview card and choose **Exclude from auto-m
 | `DisableZoomHotkey` | `false` | Don't register Alt+Q for the overview. The overview is still reachable by starting a pan |
 | `EnableShortcutZoomOut` | `true` | Zoom out immediately when Alt+Q opens canvas view; toggle in the zoom settings popup |
 | `ShortcutZoomOutAmount` | `0.15` | Fraction to reduce the current zoom by (0–0.80); adjust with the zoom popup slider. 0.15 changes 100% zoom to 85% |
+| `MaximumZoom` | `1.00` | Maximum zoom level in canvas overview (1.0 = 100%, up to 5.0 = 500% magnifier); adjust in Zoom settings |
 | `EnableCanvasPeek` | `true` | Enable readable hover previews of zoomed-out running windows, including detailed/simple cards |
 | `CanvasPeekDelayMs` | `1000` | Stationary hover delay in milliseconds (300–3000), adjustable in Zoom settings |
 | `LowQualityMode` | `false` | Simple grid without nebula/decorations; cached previews or title cards during pan/zoom/window dragging. Change through Settings → Rendering for immediate application |

@@ -170,4 +170,11 @@ internal sealed class OverviewWindowList
         w.Y += worldDy;
         _windows[index] = entry with { World = w };
     }
+
+    /// <summary>Set the full world bounds of the entry at <paramref name="index"/>.</summary>
+    public void SetBoundsAt(int index, WorldRect world)
+    {
+        if (index < 0 || index >= _windows.Count) return;
+        _windows[index] = _windows[index] with { World = world };
+    }
 }

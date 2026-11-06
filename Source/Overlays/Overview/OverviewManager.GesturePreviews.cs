@@ -64,7 +64,7 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private bool GesturePointerHeld => _tools.Kind is CanvasInteractionKind.Pan or CanvasInteractionKind.Window;
+    private bool GesturePointerHeld => _tools.Kind is CanvasInteractionKind.Pan or CanvasInteractionKind.Window or CanvasInteractionKind.WindowResize;
 
     private bool UseCachedOverviewSource(IntPtr handle)
         => _wm.UsesCachedPreview(handle) || (GesturePreviewsActive

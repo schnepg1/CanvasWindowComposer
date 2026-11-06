@@ -53,6 +53,7 @@ internal interface IAppConfig
     double OverviewCardExitZoom => OverviewZoomDefaults.CardExit;
     double OverviewSimpleCardEnterZoom => OverviewZoomDefaults.SimpleCardEnter;
     double OverviewSimpleCardExitZoom => OverviewZoomDefaults.SimpleCardExit;
+    double MaximumZoom => OverviewZoomDefaults.MaximumZoom;
 }
 
 /// <summary>
@@ -109,6 +110,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public double OverviewCardExitZoom { get; private set; } = OverviewZoomDefaults.CardExit;
     public double OverviewSimpleCardEnterZoom { get; private set; } = OverviewZoomDefaults.SimpleCardEnter;
     public double OverviewSimpleCardExitZoom { get; private set; } = OverviewZoomDefaults.SimpleCardExit;
+    public double MaximumZoom { get; private set; } = OverviewZoomDefaults.MaximumZoom;
 
     public AppConfig(IClock? clock = null, string? directory = null)
     {
@@ -164,6 +166,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             OverviewCardExitZoom = GetDouble(values, "OverviewCardExitZoom", defaultValue: OverviewZoomDefaults.CardExit, min: 0.05, max: 2.0);
             OverviewSimpleCardEnterZoom = GetDouble(values, "OverviewSimpleCardEnterZoom", defaultValue: OverviewZoomDefaults.SimpleCardEnter, min: 0.01, max: 1.0);
             OverviewSimpleCardExitZoom = GetDouble(values, "OverviewSimpleCardExitZoom", defaultValue: OverviewZoomDefaults.SimpleCardExit, min: 0.01, max: 1.0);
+            MaximumZoom = GetDouble(values, "MaximumZoom", defaultValue: OverviewZoomDefaults.MaximumZoom, min: OverviewZoomDefaults.MagnifierMin, max: OverviewZoomDefaults.MagnifierMax);
         }
     }
 
@@ -208,7 +211,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
-                EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom);
+                EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom);
         }
     }
 
@@ -247,6 +250,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["OverviewCardExitZoom"] = preferences.CardExitZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["OverviewSimpleCardEnterZoom"] = preferences.SimpleCardEnterZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["OverviewSimpleCardExitZoom"] = preferences.SimpleCardExitZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["MaximumZoom"] = preferences.MaximumZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
             });
             Load();
         }
@@ -379,6 +383,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ;EnableShortcutZoomOut=true
 ;ShortcutZoomOutAmount=0.15
 
+; Maximum zoom level in canvas overview (1.0 = 100%, 2.0 = 200%, up to 5.0 = 500% magnifier)
+;MaximumZoom=1.00
+
 ; Overview tiers (optionally disable any tier)
 ;EnableLivePreviewsTier=true
 ;EnableDetailedCardsTier=true
@@ -498,4 +505,4 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool DesktopPanMomentum = true, bool CanvasPanMomentum = true,
     bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount,
     bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs,
-    bool SmoothZoom = true);
+    bool SmoothZoom = true, double MaximumZoom = OverviewZoomDefaults.MaximumZoom);

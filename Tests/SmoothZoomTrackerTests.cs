@@ -25,6 +25,17 @@ public class SmoothZoomTrackerTests
     }
 
     [Fact]
+    public void PushZoom_AllowsMagnificationWhenMaxZoomIsIncreased()
+    {
+        var clock = new FakeClock();
+        var tracker = new SmoothZoomTracker(clock) { MaxZoom = 2.5 };
+        tracker.PushZoom(100, 100, 500, 500, 1.0, 2);
+        Assert.True(tracker.IsActive);
+        Assert.True(tracker.TargetZoom > 1.0);
+        Assert.True(tracker.TargetZoom <= 2.5);
+    }
+
+    [Fact]
     public void PushZoom_AtMinZoom_ZoomOutDoesNotActivate()
     {
         var clock = new FakeClock();

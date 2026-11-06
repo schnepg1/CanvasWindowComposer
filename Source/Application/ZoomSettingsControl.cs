@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 internal sealed class ZoomSettingsControl : UserControl
 {
     private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek, _smoothZoom;
-    private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay;
+    private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay, _maximumZoom;
 
     public ZoomSettingsControl(CanvasPreferences preferences)
     {
@@ -57,6 +57,8 @@ internal sealed class ZoomSettingsControl : UserControl
         _peek.Unchecked += (_, _) => _peekDelay.IsEnabled = false;
         body.Children.Add(_peekDelay);
         Hint("Peek works independently of card styles, including small live windows. Work here keeps the preview open for input; Return leaves your camera unchanged.");
+        _maximumZoom = Threshold("Maximum zoom (magnifier)", preferences.MaximumZoom, 100, 500);
+        Hint("Allows zooming in beyond 100% (up to 500%) for a magnifying glass view of windows and text. Default is 100%.");
         body.Children.Add(ZoneTheme.Button("Reset zoom defaults", () =>
         {
             _shortcutZoomOut.IsChecked = true;
@@ -69,6 +71,7 @@ internal sealed class ZoomSettingsControl : UserControl
             _simpleExit.Value = OverviewZoomDefaults.SimpleCardExit * 100;
             _peek.IsChecked = true;
             _peekDelay.Value = AppConfig.DefaultCanvasPeekDelayMs;
+            _maximumZoom.Value = OverviewZoomDefaults.MaximumZoom * 100;
         }));
 
         void Hint(string text) => body.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap,
@@ -116,7 +119,8 @@ internal sealed class ZoomSettingsControl : UserControl
             CardExitZoom = _cardExit.Value / 100, SimpleCardEnterZoom = _simpleEnter.Value / 100,
             SimpleCardExitZoom = _simpleExit.Value / 100,
             EnableCanvasPeek = _peek.IsChecked == true, CanvasPeekDelayMs = (int)Math.Round(_peekDelay.Value),
-            SmoothZoom = _smoothZoom.IsChecked == true };
+            SmoothZoom = _smoothZoom.IsChecked == true,
+            MaximumZoom = _maximumZoom.Value / 100 };
         return true;
     }
 }

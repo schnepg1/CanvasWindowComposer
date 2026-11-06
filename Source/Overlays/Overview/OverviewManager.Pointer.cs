@@ -69,6 +69,25 @@ internal sealed partial class OverviewManager
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
         if (e.Button == MouseButtons.Left)
         {
+            var resizeHit = HitWindowResizeEdge(pass, e.X, e.Y);
+            if (resizeHit.Index >= 0)
+            {
+                BringWindowToFront(resizeHit.Index);
+                _resizeIndex = 0;
+                _resizeEdge = resizeHit.Edge;
+                _resizeInitialWorld = _windows.Windows[0].World;
+                _resizeOriginVx = vx;
+                _resizeOriginVy = vy;
+                _resizeMoved = false;
+                _hoveredResizeWindow = _windows.Windows[0].HWnd;
+                _hoveredResizeEdge = resizeHit.Edge;
+
+                _tools.TryBeginNavigation(CanvasInteractionKind.WindowResize, pointer);
+                ApplyPointerCapture();
+                _visualFrames.Request();
+                return;
+            }
+
             var (wx, wy) = _camera.WorldFromVirtual(vx, vy);
             int hit = HitOverviewWindow(pass, e.X, e.Y, wx, wy);
             if (hit >= 0)
@@ -127,6 +146,23 @@ internal sealed partial class OverviewManager
             }
             return;
         }
+        if (_tools.Kind == CanvasInteractionKind.WindowResize && _resizeIndex >= 0 && _resizeIndex < _windows.Count)
+        {
+            double totalDx = (vx - _resizeOriginVx) / _camera.Zoom;
+            double totalDy = (vy - _resizeOriginVy) / _camera.Zoom;
+
+            if (WindowResizeLayout.TryResize(_resizeInitialWorld, _resizeEdge, totalDx, totalDy, out var newWorld))
+            {
+                _windows.SetBoundsAt(_resizeIndex, newWorld);
+                var entry = _windows.Windows[_resizeIndex];
+                _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
+                _mainCanvas.SetWindow(entry.HWnd, entry.World.X, entry.World.Y, entry.World.W, entry.World.H);
+                _resizeMoved = true;
+                _visualFrames.Request();
+            }
+            pass.Cursor = WindowResizeLayout.CursorForEdge(_resizeEdge);
+            return;
+        }
         UpdateInventoryDropHover(pass, e);
         if (!_cfg.InputEnabled || _annotationEditor != null || _shapeEditor != null) return;
         ObserveWindowPeek(pass, new(vx, vy));
@@ -157,6 +193,33 @@ internal sealed partial class OverviewManager
                 CanvasCursor.Move => Cursors.SizeAll,
                 _ => Cursors.Default
             };
+        if (!_tools.Active && !isSpaceDown && _annotationEditor == null && _shapeEditor == null)
+        {
+            var resizeHit = HitWindowResizeEdge(pass, e.X, e.Y);
+            if (resizeHit.Index >= 0)
+            {
+                var hitHwnd = _windows.Windows[resizeHit.Index].HWnd;
+                if (_hoveredResizeWindow != hitHwnd || _hoveredResizeEdge != resizeHit.Edge)
+                {
+                    _hoveredResizeWindow = hitHwnd;
+                    _hoveredResizeEdge = resizeHit.Edge;
+                    _visualFrames.Request();
+                }
+                pass.Cursor = WindowResizeLayout.CursorForEdge(resizeHit.Edge);
+            }
+            else if (_hoveredResizeWindow != IntPtr.Zero)
+            {
+                _hoveredResizeWindow = IntPtr.Zero;
+                _hoveredResizeEdge = WindowResizeEdge.None;
+                _visualFrames.Request();
+            }
+        }
+        else if (_hoveredResizeWindow != IntPtr.Zero && _tools.Kind != CanvasInteractionKind.WindowResize)
+        {
+            _hoveredResizeWindow = IntPtr.Zero;
+            _hoveredResizeEdge = WindowResizeEdge.None;
+            _visualFrames.Request();
+        }
         if (_tools.Kind == CanvasInteractionKind.Window && _dragIndex >= 0 && _dragIndex < _windows.Count)
         {
             double dx = (vx - _dragStartVx) / _camera.Zoom;
@@ -202,7 +265,7 @@ internal sealed partial class OverviewManager
         }
         var ended = _tools.EndNavigation(pointer);
         ApplyPointerCapture();
-        if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.Pan) _visualFrames.RequestAndFlush();
+        if (ended is CanvasInteractionKind.Window or CanvasInteractionKind.WindowResize or CanvasInteractionKind.Pan) _visualFrames.RequestAndFlush();
         if (ended == CanvasInteractionKind.Pan && !GuidedTutorialActive) ReleaseInertia();
         if (ended == CanvasInteractionKind.Window)
         {
@@ -210,6 +273,20 @@ internal sealed partial class OverviewManager
                 _placeholderWorkspace?.CommitWindowPlacement(_windows.Windows[_dragIndex].HWnd);
             _wm.Reproject(true);
             _dragIndex = -1;
+        }
+        if (ended == CanvasInteractionKind.WindowResize)
+        {
+            if (_resizeMoved && _resizeIndex >= 0 && _resizeIndex < _windows.Count)
+            {
+                var hwnd = _windows.Windows[_resizeIndex].HWnd;
+                _placeholderWorkspace?.CommitWindowPlacement(hwnd);
+                _wm.ReprojectWindow(hwnd);
+            }
+            _wm.Reproject(true);
+            _resizeIndex = -1;
+            _resizeEdge = WindowResizeEdge.None;
+            _hoveredResizeWindow = IntPtr.Zero;
+            _hoveredResizeEdge = WindowResizeEdge.None;
         }
     }
 
@@ -284,6 +361,11 @@ internal sealed partial class OverviewManager
         if (TrySkipStartupIntro()) return;
         if (!_cfg.InputEnabled) return;
         if (_windowInteraction.Active) return;
+        if (_resizeMoved)
+        {
+            _resizeMoved = false;
+            return;
+        }
         if (_composerWindow is { WaitingForBrowser: true })
         {
             if (e.Button != MouseButtons.Left || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & (Keys.Shift | Keys.Control)) != 0) return;
@@ -354,5 +436,33 @@ internal sealed partial class OverviewManager
             _mainCanvas.CenterOn(world.X, world.Y, world.W, world.H, vs.Width, vs.Height);
         }
         PInvoke.SetForegroundWindow((HWND)hWnd);
+    }
+
+    private (int Index, WindowResizeEdge Edge) HitWindowResizeEdge(OverviewOverlay pass, int x, int y)
+    {
+        if (CurrentMode != OverviewMode.Zooming || IsStartupIntroActive)
+            return (-1, WindowResizeEdge.None);
+
+        var b = pass.Screen.Bounds;
+        double dpi = pass.DeviceDpi / 96.0;
+        var view = new CanvasViewTransform(_camera.X, _camera.Y, _camera.Zoom,
+            new(b.X, b.Y, b.Width, b.Height), dpi, dpi);
+
+        for (int i = 0; i < _windows.Count; i++)
+        {
+            var entry = _windows.Windows[i];
+            if (entry.ScreenFixed || entry.World.InInventory) continue;
+            var localRect = view.WorldToLocal(new CanvasRect(entry.World.X, entry.World.Y, entry.World.W, entry.World.H));
+            var edge = WindowResizeLayout.HitTest(localRect, x, y);
+            if (edge != WindowResizeEdge.None)
+                return (i, edge);
+
+            if (x >= localRect.X && x <= localRect.X + localRect.Width &&
+                y >= localRect.Y && y <= localRect.Y + localRect.Height)
+            {
+                break;
+            }
+        }
+        return (-1, WindowResizeEdge.None);
     }
 }

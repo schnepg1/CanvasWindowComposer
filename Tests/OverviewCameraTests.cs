@@ -152,6 +152,32 @@ public class OverviewCameraTests
     }
 
     [Fact]
+    public void ZoomToCursor_AllowsMagnificationWhenMaxZoomIsIncreased()
+    {
+        var cam = MakeCamera();
+        cam.MaxZoom = 3.0;
+        cam.SetTo(0, 0, 1.0);
+        bool changed = cam.ZoomToCursor(100, 100, 2);
+        Assert.True(changed);
+        Assert.True(cam.Zoom > 1.0);
+
+        cam.SetTo(0, 0, 3.0);
+        bool clamped = cam.ZoomToCursor(100, 100, 10);
+        Assert.False(clamped);
+        Assert.Equal(3.0, cam.Zoom);
+    }
+
+    [Fact]
+    public void ViewportCamera_AtZoomTwo_OffsetsByNegativeQuarterVirtualScreen()
+    {
+        var cam = MakeCamera();
+        cam.SetTo(0, 0, 2.0);
+        var (vx, vy) = cam.ViewportCamera;
+        Assert.Equal(-480, vx);
+        Assert.Equal(-270, vy);
+    }
+
+    [Fact]
     public void ViewportCamera_AtZoomHalf_OffsetsByHalfVirtualScreen()
     {
         var cam = MakeCamera();

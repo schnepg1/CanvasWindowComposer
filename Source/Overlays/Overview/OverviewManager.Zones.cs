@@ -146,7 +146,8 @@ internal sealed partial class OverviewManager
                     && (entry.World.Y + entry.World.H - camera.Y) * camera.Zoom > b.Top;
             });
             bool priority = i == _windows.SelectedIndex || entry.HWnd == _hoveredPlaceholder
-                || (_tools.Kind == CanvasInteractionKind.Window && i == _dragIndex);
+                || (_tools.Kind == CanvasInteractionKind.Window && i == _dragIndex)
+                || (_tools.Kind == CanvasInteractionKind.WindowResize && i == _resizeIndex);
             bool restoreFallback = visible && _restoringGesturePreviews
                 && !_placeholderTitles.ContainsKey(entry.HWnd) && !_thumbnails.HasVisibleSource(entry.HWnd);
             if (visible && (GesturePreviewsActive || restoreFallback))

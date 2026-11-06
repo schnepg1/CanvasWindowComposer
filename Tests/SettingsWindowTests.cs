@@ -295,6 +295,36 @@ public class SettingsWindowTests
             finally { Directory.Delete(directory, true); }
         });
 
+    [Theory]
+    [InlineData("Save settings", 250)]
+    [InlineData("Cancel", 300)]
+    public void MaximumZoomSliderSavesOnlyOnRequest(string action, double value)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "canvas-max-zoom-settings-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var config = new AppConfig(directory: directory); config.Load();
+                int applied = 0;
+                var original = config.Preferences;
+                var window = new SettingsWindow(config, () => applied++, zoomOnly: true);
+                var slider = WorkspaceViewTests.Descendants(window).OfType<Slider>()
+                    .Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "Maximum zoom (magnifier) (percent)");
+                slider.Value = value;
+                Assert.Equal(original, config.Preferences);
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, action))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var expected = action == "Save settings"
+                    ? original with { MaximumZoom = value / 100 } : original;
+                Assert.Equal(action == "Save settings" ? 1 : 0, applied);
+                Assert.Equal(expected, config.Preferences);
+                using var reopened = new AppConfig(directory: directory); reopened.Load();
+                Assert.Equal(expected, reopened.Preferences);
+                window.Close();
+            }
+            finally { Directory.Delete(directory, true); }
+        });
+
     [Fact]
     public void OpeningEditingAndClosingSettingsDoesNotEnableExperimentalOptions()
         => WorkspaceViewTests.OnSta(() =>

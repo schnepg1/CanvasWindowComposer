@@ -261,5 +261,27 @@ public class CanvasPreferencesTests : IDisposable
         using var config=new AppConfig(directory:_directory);config.Load();Assert.Equal(1200,config.SelectionRadius);
     }
 
+    [Fact]
+    public void MaximumZoomRoundTripsAndClampsToRange()
+    {
+        Directory.CreateDirectory(_directory);
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.Equal(1.0, config.MaximumZoom);
+
+        var wanted = config.Preferences with { MaximumZoom = 2.5 };
+        config.SavePreferences(wanted);
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.Equal(2.5, reopened.MaximumZoom);
+        Assert.Equal(2.5, reopened.Preferences.MaximumZoom);
+
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "MaximumZoom=10.0\n");
+        using var clampedHigh = new AppConfig(directory: _directory); clampedHigh.Load();
+        Assert.Equal(OverviewZoomDefaults.MaximumZoom, clampedHigh.MaximumZoom);
+
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "MaximumZoom=0.5\n");
+        using var clampedLow = new AppConfig(directory: _directory); clampedLow.Load();
+        Assert.Equal(OverviewZoomDefaults.MaximumZoom, clampedLow.MaximumZoom);
+    }
+
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
 }

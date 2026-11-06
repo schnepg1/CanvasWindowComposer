@@ -7,4 +7,7 @@ internal static class OverviewZoomDefaults
     public const double CardExit = 0.45;
     public const double SimpleCardEnter = 0.10;
     public const double SimpleCardExit = 0.13;
+    public const double MaximumZoom = 1.0;
+    public const double MagnifierMin = 1.0;
+    public const double MagnifierMax = 5.0;
 }

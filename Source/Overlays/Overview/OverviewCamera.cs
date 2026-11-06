@@ -11,6 +11,7 @@ internal sealed class OverviewCamera
 {
     public const double ZoomMin = 0.02;
     public const double ZoomMax = 1.0;
+    public const double AbsoluteZoomMax = 10.0;
     public const double ZoomStep = 0.1;
     public const double ZoomEpsilon = 0.0001;
 
@@ -19,6 +20,7 @@ internal sealed class OverviewCamera
     public double X { get; private set; }
     public double Y { get; private set; }
     public double Zoom { get; private set; } = 1.0;
+    public double MaxZoom { get; set; } = ZoomMax;
 
     public OverviewCamera(IScreens screens)
     {
@@ -53,7 +55,7 @@ internal sealed class OverviewCamera
     /// </summary>
     public bool SetZoomAroundWorldPoint(int virtualX, int virtualY, double worldX, double worldY, double targetZoom)
     {
-        double clamped = Math.Clamp(targetZoom, ZoomMin, ZoomMax);
+        double clamped = Math.Clamp(targetZoom, ZoomMin, MaxZoom);
         if (Math.Abs(clamped - Zoom) < ZoomEpsilon) return false;
 
         Zoom = clamped;

@@ -43,6 +43,7 @@ internal sealed class SmoothZoomTracker
     public double CurrentMultiplier { get; private set; } = 1.0;
     public bool IsAccelerating => CurrentMultiplier > 1.05;
     public bool AccelerationEnabled { get; set; } = true;
+    public double MaxZoom { get; set; } = OverviewCamera.ZoomMax;
     public (int X, int Y) FocalVirtual => (_focalVirtualX, _focalVirtualY);
     public (double X, double Y) FocalWorld => (_focalWorldX, _focalWorldY);
 
@@ -107,7 +108,7 @@ internal sealed class SmoothZoomTracker
 
         double effectiveNotches = notches * multiplier;
         double step = effectiveNotches * OverviewCamera.ZoomStep * _targetZoom;
-        double nextTarget = Math.Clamp(_targetZoom + step, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
+        double nextTarget = Math.Clamp(_targetZoom + step, OverviewCamera.ZoomMin, MaxZoom);
 
         if (Math.Abs(nextTarget - currentZoom) < OverviewCamera.ZoomEpsilon)
         {
