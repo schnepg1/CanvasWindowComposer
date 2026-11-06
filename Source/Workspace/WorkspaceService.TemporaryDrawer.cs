@@ -8,7 +8,7 @@ namespace CanvasDesktop;
 internal sealed partial class WorkspaceService
 {
     public IReadOnlyList<WorkspaceItemView> TemporaryAreaItems => TemporaryZone is { } zone
-        ? Document.Items.Where(i => IsTemporaryAreaMember(i, zone) && BoundWindow(i.Id) != null).Select(View).ToArray()
+        ? Document.Items.ToArray().Where(i => IsTemporaryAreaMember(i, zone) && BoundWindow(i.Id) != null).Select(View).ToArray()
         : Array.Empty<WorkspaceItemView>();
 
     private bool IsTemporaryAreaMember(WorkspaceItem item, WorkspaceZone zone)

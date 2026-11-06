@@ -78,10 +78,9 @@ Run through before each release. Test on the installed version, not debug.
 ### Startup intro
 
 - Launch with several saved app/folder cards and open windows. Check the initial
-  reveal, gradual takeoff, crisp title, broad sideways flight with repeated rises
-  and dips, and soft landing. Add several project areas and separate unzoned window
-  clusters, including distant ones: every area/cluster should get a pass, with
-  longer routes taking longer. Rows should be swept sideways before changing rows.
+  reveal, gradual takeoff, lingering title, outward and inward spiral, and soft
+  landing. Add project areas and windows both near and far from the restored view.
+  The camera should stay around the nearby content with gentle rises and dips.
   Saved positions and native app sizes should not change during the flight.
 - Enable automatic minimization; launch with both manually minimized and closed
   apps. The flight must not restore or launch them, or park other apps along its route.
@@ -93,7 +92,7 @@ Run through before each release. Test on the installed version, not debug.
 - Open on a saved zoom below 100%; finish or skip, then close the untouched
   overview. Saved camera must be unchanged. After intentional navigation,
   normal overview-to-desktop synchronization must still work.
-- Test an empty layout: it should still get a wide, rolling 12-second sweep.
+- Test an empty layout: it should get a compact 12-second spiral.
   Test multiple monitors/negative origins/mixed DPI, and both
   presentation backends. Verify DWM thumbnails stay visible while layered alpha
   changes and all monitors reveal together. Cancel during display/desktop change,

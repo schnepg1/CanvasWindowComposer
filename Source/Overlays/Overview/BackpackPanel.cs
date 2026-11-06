@@ -26,7 +26,7 @@ internal sealed class BackpackPanel : UserControl
 {
     internal static SolidColorBrush Ink(string value) => (SolidColorBrush)new BrushConverter().ConvertFromString(value)!;
     private readonly Border _shell;
-    private readonly Grid _expanded = new();
+    private readonly Grid _expanded = new() { Visibility = Visibility.Collapsed };
     private readonly Grid _folded = new();
     private readonly WrapPanel _tiles = new() { Margin = new Thickness(10, 8, 8, 8) };
     private readonly Wpf.Ui.Controls.TextBox _search;
@@ -403,7 +403,6 @@ internal sealed class BackpackPanel : UserControl
             }
         };
 
-        SetOpen(false);
         RebuildTiles();
     }
 

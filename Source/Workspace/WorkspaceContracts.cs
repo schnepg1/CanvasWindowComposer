@@ -28,6 +28,7 @@ internal interface IWorkspaceNavigationCommands
 
 internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
 {
+    WorkspaceItemView? GetItemView(Guid id);
     bool CollectInInventory(Guid id);
     void KeepPlace(Guid id);
     void FocusItem(Guid id);

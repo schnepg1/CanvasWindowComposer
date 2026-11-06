@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
@@ -32,10 +31,10 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
         _forget = new ToolStripMenuItem("Forget this saved place", null, (_, _) => workspace.Forget(id)); Items.Add(_forget);
         Opening += (_, e) =>
         {
-            if (workspace.Items.FirstOrDefault(i => i.Id == id) is not { } item) { e.Cancel = true; return; }
+            if (workspace.GetItemView(id) is not { } item) { e.Cancel = true; return; }
             UpdateItem(item);
         };
-        if (workspace.Items.FirstOrDefault(i => i.Id == id) is { } initial) UpdateItem(initial);
+        if (workspace.GetItemView(id) is { } initial) UpdateItem(initial);
     }
 
     public void UpdateItem(WorkspaceItemView item)

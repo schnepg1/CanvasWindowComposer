@@ -193,11 +193,10 @@ Install\build-installer.bat 1.13.0-preview.1 preview
 
 ### Startup reveal
 
-On launch, Canvas reveals the restored workspace with a smooth camera tour:
-a gradual takeoff to lightweight cards, a softly tracked app title, wide sideways
-sweeps over project areas and window clusters, and rolling rises and dips before
-landing. The duration grows with the number of areas and the distance between them.
-Empty canvases still get a 12-second sweep.
+On launch, Canvas reveals the restored workspace with a gradual takeoff to
+lightweight cards and a lingering app title. The camera spirals outward and back
+in around nearby canvas content, with gentle rises and dips before landing.
+The intro typically lasts 12 seconds, including on an empty canvas.
 The overview remains interactive afterward. The flight never updates the saved
 camera or uses its temporary view to automatically minimize or restore apps.
 

@@ -223,6 +223,33 @@ public class WorkspaceTests : IDisposable
     }
 
     [Fact]
+    public void ItemViewsSurviveWindowRemovalDuringLiveStateInspection()
+    {
+        var saved = Item();
+        var doc = new WorkspaceDocument { Items = [saved], PlacementPolicyInitialized = true };
+        new WorkspaceStore(SavePath).Save(doc);
+        using var rig = new WorkspaceHarness(store: new WorkspaceStore(SavePath));
+        var editor = (IntPtr)91;
+        var arrival = (IntPtr)92;
+        rig.Identity.Executables[2] = @"C:\Apps\Other.exe";
+        rig.Api.AddWindow(editor, 100, 100, 800, 600, title: saved.Title);
+        rig.Api.AddWindow(arrival, 200, 200, 800, 600, pid: 2, title: "New arrival");
+        rig.Workspace.Start();
+        var temporary = Assert.Single(rig.Workspace.Document.Items, i => i.Placement == WorkspacePlacement.Temporary);
+
+        rig.Identity.OnInspectProcess = _ =>
+        {
+            rig.Identity.OnInspectProcess = null;
+            rig.Wm.RemoveWindow(arrival);
+        };
+        var views = rig.Workspace.Items;
+
+        Assert.Equal(saved.Id, views[0].Id);
+        Assert.DoesNotContain(temporary, rig.Workspace.Document.Items);
+        Assert.Equal(saved.Id, Assert.Single(rig.Workspace.Items).Id);
+    }
+
+    [Fact]
     public void PlaceholderRendersItsTitleAndTarget()
     {
         OnSta(() =>

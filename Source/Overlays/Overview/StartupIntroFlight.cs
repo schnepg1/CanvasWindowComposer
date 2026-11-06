@@ -7,7 +7,7 @@ internal readonly record struct StartupIntroFrame(
     double X, double Y, double Zoom, double TitleOpacity,
     double TitleSpacing, double RevealOpacity, bool Complete);
 
-/// <summary>A deterministic tour of project areas and window clusters. Owns no clocks or canvas state.</summary>
+/// <summary>A deterministic spiral around the restored view. Owns no clocks or canvas state.</summary>
 internal sealed class StartupIntroFlight
 {
     public const double MinimumDurationSeconds = 12;
@@ -35,18 +35,13 @@ internal sealed class StartupIntroFlight
         _screenCenterX = primaryScreen.X + width / 2;
         _screenCenterY = primaryScreen.Y + height / 2;
 
-        var destinations = StartupIntroRoute.Destinations(nearbyWindows, projectRegions,
-            width / savedCamera.Zoom, height / savedCamera.Zoom);
         _cruiseZoom = Math.Min(savedCamera.Zoom, 0.2);
-        foreach (var area in destinations)
-            _cruiseZoom = Math.Min(_cruiseZoom, Math.Min(width * 0.8 / area.W, height * 0.65 / area.H));
-        _cruiseZoom = Math.Clamp(_cruiseZoom, OverviewCamera.ZoomMin, OverviewCamera.ZoomMax);
         _worldWidth = width / _cruiseZoom;
         _worldHeight = height / _cruiseZoom;
         _route = new StartupIntroRoute(
             new(_saved.X + _screenCenterX / _saved.Zoom, _saved.Y + _screenCenterY / _saved.Zoom),
             new(_landing.X + _screenCenterX / _landing.Zoom, _landing.Y + _screenCenterY / _landing.Zoom),
-            destinations, _worldWidth, _worldHeight, MinimumDurationSeconds - RevealSeconds);
+            nearbyWindows, projectRegions, _worldWidth, _worldHeight, MinimumDurationSeconds - RevealSeconds);
         DurationSeconds = reducedMotion ? ReducedMotionDurationSeconds : RevealSeconds + _route.Duration;
     }
 
@@ -57,7 +52,7 @@ internal sealed class StartupIntroFlight
         double reveal = StartupIntroMotion.Ease(t / (_reducedMotion ? 0.12 : RevealSeconds));
         double title = _reducedMotion
             ? StartupIntroMotion.Ease(t / 0.12) * (1 - StartupIntroMotion.Ease((t - 0.2) / 0.25))
-            : StartupIntroMotion.Ease((t - 0.6) / 0.5) * (1 - StartupIntroMotion.Ease((t - 1.8) / 0.6));
+            : StartupIntroMotion.Ease((t - RevealSeconds) / 0.5) * (1 - StartupIntroMotion.Ease((t - 3.6) / 0.6));
         double spacing = _reducedMotion ? 1 : 1 + 3 * StartupIntroMotion.Ease(t / 3.6);
         if (_reducedMotion || complete)
             return new(_landing.X, _landing.Y, _landing.Zoom, title, spacing, reveal, complete);
@@ -65,21 +60,19 @@ internal sealed class StartupIntroFlight
             return new(_saved.X, _saved.Y, _saved.Zoom, title, spacing, reveal, false);
 
         double travelTime = t - RevealSeconds;
-        var (center, leg, progress) = _route.Sample(travelTime);
-        double envelope = StartupIntroMotion.Ease(travelTime / _route.TakeoffDuration)
-            * (1 - StartupIntroMotion.Ease((travelTime - _route.LandingStart) / _route.LandingDuration));
-        // A subtle, slow swell follows elapsed time rather than restarting at every
-        // region. Short route legs must not accelerate the camera's breathing.
+        double takeoff = StartupIntroMotion.Ease(travelTime / _route.TakeoffDuration);
+        double landing = StartupIntroMotion.Ease((travelTime - _route.LandingStart) / _route.LandingDuration);
+        var center = _route.Sample(travelTime, takeoff, landing);
+        double envelope = takeoff * (1 - landing);
+        // A subtle, slow swell follows elapsed time throughout the spiral.
         // The smooth envelope joins takeoff and landing with no added velocity or acceleration.
         double phase = 2 * Math.PI * travelTime / CruiseSwellPeriodSeconds;
         double wave = Math.Sin(phase);
         double lift = _worldHeight * 0.015 * wave * envelope;
         double bank = _worldWidth * 0.003 * Math.Sin(phase / 2) * envelope;
-        double zoom = leg == 0
-            ? StartupIntroMotion.Geometric(_saved.Zoom, _cruiseZoom, StartupIntroMotion.Ease(progress))
-            : travelTime >= _route.LandingStart
-                ? StartupIntroMotion.Geometric(_cruiseZoom, _landing.Zoom, StartupIntroMotion.Ease(progress))
-                : _cruiseZoom;
+        double zoom = travelTime < _route.TakeoffDuration
+            ? StartupIntroMotion.Geometric(_saved.Zoom, _cruiseZoom, takeoff)
+            : StartupIntroMotion.Geometric(_cruiseZoom, _landing.Zoom, landing);
         double breathing = Math.Max(0, Math.Min(0.006, Math.Min(Math.Log(zoom / OverviewCamera.ZoomMin),
             Math.Log(Math.Max(_saved.Zoom, _landing.Zoom) / zoom))));
         zoom *= Math.Exp(breathing * wave * envelope);

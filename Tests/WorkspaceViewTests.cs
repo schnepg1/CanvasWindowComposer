@@ -518,6 +518,7 @@ public class WorkspaceViewTests
 
     private sealed class TestCommands : IWorkspaceCommands
     {
+        public WorkspaceItemView? GetItemView(Guid id) => Items.FirstOrDefault(i => i.Id == id);
         private Action? _changed;
         public int Subscribers => _changed?.GetInvocationList().Length ?? 0;
         public Guid? Opened;

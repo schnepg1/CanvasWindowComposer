@@ -187,84 +187,45 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     private IntPtr _hoveredResizeWindow;
     private WindowResizeEdge _hoveredResizeEdge;
 
-    private bool _reconcilingVisuals;
-
     private CanvasCamera? _sceneCamera;
 
     private CanvasCamera SceneCamera => _sceneCamera ?? ViewCamera;
 
-    private void ReconcileVisuals()
+    private void ReconcileVisuals() => _visualFrames.RequestAndFlush();
 
+    private void DrawVisualFrame()
     {
-
-        // Native/WPF calls may reenter the UI thread. Complete this immutable
-
-        // camera frame before servicing a newer invalidation.
-
-        if (_reconcilingVisuals) { _visualFrames.Request(); return; }
-
-        _reconcilingVisuals = true;
-
+        // A synchronous frame can pump messages too. The scheduler defers
+        // reentrant invalidations until this frame returns.
         try { ReconcileVisualFrame(); }
-
-        finally { _sceneCamera = null; _reconcilingVisuals = false; }
-
+        finally { _sceneCamera = null; }
     }
 
-
-
     private void ReconcileVisualFrame()
-
     {
-
-        _visualFrames.Cancel();
-
         UpdateGesturePreviews();
-
         RefreshTutorialScale();
-
         var camera = ViewCamera;
-
         _sceneCamera = camera;
-
         double panX = _visualPanX, panY = _visualPanY;
-
         _visualPanX = _visualPanY = 0;
-
         // A stationary tutorial landing is a help view, not a request to park the user's apps.
-
         var proximityCamera = _tutorialReading && (_startupIntroLanded || GuidedTutorialActive)
-
             ? _mainCanvas.Camera : camera;
 
-
-
         bool isMoving = MotionActive;
-
         if (!isMoving)
-
         {
-
             _wm.SetOverviewViewport(proximityCamera,
-
                 _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
-
             if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
-
             {
-
                 _placeholderTitles = _placeholderWorkspace.GetPlaceholderTitles();
-
                 RefreshOverviewWindows();
-
             }
-
             RefreshCardIdentities();
-
         }
-
         _thumbnails.Reconcile(camera);
-
         if (_windowInteraction.Active && !PeekWorking && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
 
@@ -351,30 +312,21 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _windowInteraction = new(_interactionApi);
         _peekDwm = dwm ?? new DwmThumbnailApi();
         input.WindowDestroyed += OnInteractionWindowLost;
-
         input.WindowMinimized += OnInteractionWindowLost;
-
         input.WindowFocused += OnInteractionForegroundChanged;
 
         _screens = screens ?? WinFormsScreens.Instance;
-
         _camera = new OverviewCamera(_screens);
         _camera.MaxZoom = _appConfig.MaximumZoom;
 
-        _visualFrames = new OverviewFrameScheduler(ScheduleVisualFrame, ReconcileVisuals);
-
+        _visualFrames = new OverviewFrameScheduler(ScheduleVisualFrame, DrawVisualFrame);
         _zoneTool = new ZoneCanvasTool(() => _zones != null,
-
             () => _zones?.Items ?? Array.Empty<ZoneView>(), ZoneMoveMembers);
-
         _zoneTool.Completed += OnZoneToolCompleted;
-
         _tools.SetTool(_zoneTool);
 
         _windows = new OverviewWindowList(mainCanvas, win32);
-
         _thumbnails = new OverviewThumbnails(_passes, _windows, _camera, _state, _win32, _screens,
-
             UseCachedOverviewSource, _wm.GetCachedPreviewSource, dwm: dwm, prepareLiveSources: PrepareOverviewLiveSources,
             useNativeSource: handle => !_placeholderTitles.ContainsKey(handle),
 
