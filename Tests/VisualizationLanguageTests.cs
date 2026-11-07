@@ -241,4 +241,51 @@ public class VisualizationLanguageTests
         Assert.Equal("DM Automation", composerPlan.Edges[0].Label);
         Assert.Equal(16.0, composerPlan.Edges[0].Stroke);
     }
+
+    [Fact]
+    public void SpaceshipBridge_TeamArchitecture_MaterializesOnCanvasViaCVL()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotationDoc = new AnnotationDocument();
+        var workflowService = new WorkflowService(harness.Workspace, annotationDoc);
+
+        string repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
+        string jsonPath = Path.Combine(repoRoot, ".agents", "teams", "team_architecture_cvl.json");
+        if (!File.Exists(jsonPath))
+        {
+            jsonPath = Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "team_architecture_cvl.json");
+        }
+        string json = File.ReadAllText(jsonPath);
+
+        bool imported = workflowService.ImportWorkflowJson(Desktop, json, new CanvasPoint(100, 100));
+        Assert.True(imported);
+
+        // 1. Verify 3 pods / zones were created in Workspace
+        Assert.Equal(3, harness.Workspace.Document.Zones.Count);
+        Assert.Contains(harness.Workspace.Document.Zones, z => z.Name == "Spaceship Bridge: Mission Command");
+        Assert.Contains(harness.Workspace.Document.Zones, z => z.Name == "Engineering Pod: Build & Quality Loop");
+        Assert.Contains(harness.Workspace.Document.Zones, z => z.Name == "Release Pod: Integration & Recovery");
+
+        // 2. Verify all 7 role cards were materialized as annotations
+        var roleCards = annotationDoc.Items.Where(i => i.Kind == AnnotationKind.Rectangle && !i.InBackground).ToList();
+        Assert.Equal(7, roleCards.Count);
+        Assert.Contains(roleCards, c => c.Text.Contains("Mission Orchestrator"));
+        Assert.Contains(roleCards, c => c.Text.Contains("System Architect"));
+        Assert.Contains(roleCards, c => c.Text.Contains("Worktree Programmer"));
+        Assert.Contains(roleCards, c => c.Text.Contains("Quality Reviewer"));
+        Assert.Contains(roleCards, c => c.Text.Contains("Branch Merger"));
+        Assert.Contains(roleCards, c => c.Text.Contains("Conflict Resolver"));
+        Assert.Contains(roleCards, c => c.Text.Contains("Branch Cleaner"));
+
+        // 3. Verify all 9 labeled curved arrows were materialized
+        var arrows = annotationDoc.Items.Where(i => i.Kind == AnnotationKind.Arrow).ToList();
+        Assert.Equal(9, arrows.Count);
+        Assert.All(arrows, a => Assert.Equal(ConnectorRouting.Curved, a.Routing));
+        Assert.Contains(arrows, a => a.Text == "1. Dispatch Task Request" && a.Stroke == 16.0);
+        Assert.Contains(arrows, a => a.Text == "3. Submit Diff for Review" && a.Stroke == 16.0);
+        Assert.Contains(arrows, a => a.Text == "3b. Feedback Loop (CHANGES_REQUESTED)" && a.Stroke == 12.0);
+        Assert.Contains(arrows, a => a.Text == "4. Verdict: APPROVED" && a.Stroke == 16.0);
+        Assert.Contains(arrows, a => a.Text == "4b. On Merge Conflict" && a.Stroke == 12.0);
+        Assert.Contains(arrows, a => a.Text == "6. Task Finished & Cleaned" && a.Stroke == 16.0);
+    }
 }
