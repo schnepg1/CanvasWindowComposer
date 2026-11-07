@@ -267,22 +267,34 @@ public class OverviewWindowInteractionIntegrationTests
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "NativeRendering")]
-    public void InteractScrollStartsWithoutClickAndSwitchesHoveredWindow(bool horizontal)
+    public void InteractRequiresClickToActivateAndScrollDoesNotActivate(bool horizontal)
         => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>
         {
             overview.SetInteractMode(true);
             uint message = horizontal ? 0x20Eu : 0x20Au;
+            var beforeZoom = overview.ViewCamera.Zoom;
+
+            // 1. Scrolling over window before clicking does NOT activate interaction; it zooms the canvas
             pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
-            Assert.True(overview.WindowInteractionActive);
-            Assert.Single(api.Messages, m => m.Id == message);
-            pass.OnWheel!(pass, 650 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
-            Assert.Equal(2, api.Messages.Count(m => m.Id == message));
-            Assert.Contains(api.Messages, m => m.Id == message && m.Point.X >= 600);
-            input.RaiseWindowFocused((IntPtr)900);
             Assert.False(overview.WindowInteractionActive);
-            pass.OnWheel!(pass, 150 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
-            Assert.Equal(3, api.Messages.Count(m => m.Id == message));
-            Assert.DoesNotContain(api.Messages, m => m.Id == 0x201);
+            Assert.Empty(api.Messages);
+            if (!horizontal) Assert.NotEqual(beforeZoom, overview.ViewCamera.Zoom);
+
+            // 2. Only mouse click activates window interaction
+            int x = 150 - pass.OriginX, y = 180 - pass.OriginY;
+            pass.OnMouseButtonDown!(pass, new(MouseButtons.Left, 1, x, y, 0));
+            pass.OnMouseButtonUp!(pass, new(MouseButtons.Left, 1, x, y, 0));
+            Assert.True(overview.WindowInteractionActive);
+
+            // 3. Now scrolling over the active window forwards wheel messages
+            pass.OnWheel!(pass, x, y, -120, horizontal, false, false);
+            Assert.Contains(api.Messages, m => m.Id == message);
+
+            // 4. Scrolling over another window does NOT activate interaction on the second window
+            int count = api.Messages.Count;
+            pass.OnWheel!(pass, 650 - pass.OriginX, 180 - pass.OriginY, -120, horizontal, false, false);
+            Assert.Equal(count, api.Messages.Count);
+            Assert.Equal(source.Handle, overview.InteractingWindow);
         }));
 
     [Fact]

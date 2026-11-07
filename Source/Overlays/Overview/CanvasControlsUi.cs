@@ -204,7 +204,7 @@ internal sealed class CanvasControlsPopup : Form
             ("Space + left-drag", "Pan the canvas from anywhere."),
             ("Middle-drag", "Pan the canvas from anywhere."),
             ("Right-drag empty space", "Pan from empty canvas; right-click a card for its menu."),
-            ("Wheel / touchpad scroll", "Zoom around the pointer. In Interact, scrolling over a live app scrolls that app."),
+            ("Wheel / touchpad scroll", "Zoom around the pointer. In Interact, scrolling over an active live app scrolls that app."),
             ("Shift + wheel", "Pan horizontally over the canvas."),
             ("Ctrl + wheel", "Pan vertically over the canvas, including over a live app."),
             ("Alt + wheel", "Zoom around the pointer, including over a live app."),

@@ -86,6 +86,30 @@ public class ForegroundCoordinatorTests
         Assert.Empty(h.Overview.NavigatedWindows);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeliberateSelectionOfInventoryWindowNavigatesWithoutMovingCamera(bool canvasOpen)
+    {
+        var h = new Harness();
+        using var foreground = h.Foreground;
+        IntPtr selected = (IntPtr)2;
+        h.Canvas.RestoreWindow(selected, new WorldRect { X = 5000, Y = 5000, W = 400, H = 300, InInventory = true });
+        h.Clock.Now = 10000;
+        if (canvasOpen) h.Overview.TransitionTo(OverviewMode.Zooming);
+        else h.Overview.TransitionTo(OverviewMode.Hidden);
+
+        h.Input.RaiseWindowSelected(selected);
+
+        Assert.Equal(selected, Assert.Single(h.Overview.NavigatedWindows));
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.Equal(0, h.Canvas.CamY);
+
+        h.Input.RaiseWindowFocused(selected);
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.Equal(0, h.Canvas.CamY);
+    }
+
     private sealed class Harness
     {
         public Canvas Canvas = new();

@@ -45,17 +45,18 @@ internal sealed partial class OverviewManager
     public void ToggleInventory()
         => SetInventoryVisible(!(_placeholderWorkspace?.Document.InventoryOpen ?? false), activate: true);
 
-    private void SetInventoryVisible(bool open, Guid? selected = null, bool activate = false)
+    private void SetInventoryVisible(bool open, Guid? selected = null, bool activate = false, bool warn = false)
     {
         if (_disposed || _placeholderWorkspace == null) return;
         if (open) CancelInteraction();
         _placeholderWorkspace.SetInventoryOpen(open);
         EnsureBackpack(); RefreshInventory(); _backpack!.Panel.Highlight(selected);
         _backpack.Present(open, CurrentMode != OverviewMode.Hidden, _screens.PrimaryWorkingArea, activate && open);
+        if (open && warn && selected is { } targetId) _backpack.Panel.WarnUnplacedItem(targetId);
         if (!open && CurrentMode == OverviewMode.Zooming) FocusOverview();
     }
 
-    private void OnInventoryRequested(Guid? id) => SetInventoryVisible(true, id, activate: true);
+    private void OnInventoryRequested(Guid? id) => SetInventoryVisible(true, id, activate: true, warn: id != null);
     private void OnInventoryModeChanged(OverviewMode from, OverviewMode to) => RefreshInventory();
 
     private void RefreshInventory()

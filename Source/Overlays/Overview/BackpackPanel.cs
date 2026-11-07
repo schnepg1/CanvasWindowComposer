@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 using Wpf.Ui.Markup;
@@ -46,6 +49,19 @@ internal sealed class BackpackPanel : UserControl
     private readonly Dictionary<Guid, Border> _tileBorders = new();
     private bool _pendingRebuild;
     public bool IsContextMenuOpen => _tileBorders.Values.Any(b => b.ContextMenu?.IsOpen == true);
+    private readonly UiCanvas _warningOverlay = new() { ClipToBounds = true, Visibility = Visibility.Collapsed };
+    private readonly Border _warningCard;
+    private readonly Polygon _warningArrow;
+    private readonly TextBlock _warningMessage;
+    private DispatcherTimer? _warningTimer;
+    private Guid? _warningTargetId;
+    private long _lastWarnTick;
+    private Guid? _lastWarnId;
+
+    internal bool IsWarningPopupOpen => _warningOverlay.Visibility == Visibility.Visible;
+    internal Guid? WarningTargetId => _warningTargetId;
+    internal Border WarningCard => _warningCard;
+    internal string WarningMessage => _warningMessage.Text;
     public bool IsOpen { get; private set; }
     public bool Dragging => Drag.IsDragging;
     public event Action<bool>? OpenRequested;
@@ -97,12 +113,11 @@ internal sealed class BackpackPanel : UserControl
             }
         };
         Content = _shell;
-
         var content = new Grid();
         _shell.Child = content;
         content.Children.Add(_folded);
         content.Children.Add(_expanded);
-
+        content.Children.Add(_warningOverlay);
         for (int row = 0; row < 8; row++)
             _expanded.RowDefinitions.Add(new() { Height = row == 4 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
         void AddRow(UIElement element, int row) { Grid.SetRow(element, row); _expanded.Children.Add(element); }
@@ -364,10 +379,114 @@ internal sealed class BackpackPanel : UserControl
         AddRow(fold, 7);
 
         SetHelpDismissed(false);
+        _warningCard = new Border
+        {
+            Width = 280,
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1.2),
+            BorderBrush = Ink("#EAC487"),
+            Background = Ink("#152433"),
+            Padding = new Thickness(12, 10, 12, 10),
+            Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 14, ShadowDepth = 3, Opacity = 0.65 }
+        };
+        AutomationProperties.SetName(_warningCard, "Unplaced window explanation");
+
+        var cardStack = new StackPanel();
+        _warningCard.Child = cardStack;
+
+        var cardHeader = new DockPanel();
+        cardStack.Children.Add(cardHeader);
+
+        var closeWarning = ActionButton("×", DismissWarningPopup);
+        closeWarning.Width = 20; closeWarning.Height = 20; closeWarning.FontSize = 13;
+        closeWarning.Padding = new Thickness(0);
+        closeWarning.Background = Brushes.Transparent;
+        closeWarning.BorderThickness = new Thickness(0);
+        closeWarning.Foreground = Ink("#8FA6BA");
+        closeWarning.ToolTip = "Dismiss explanation";
+        AutomationProperties.SetName(closeWarning, "Dismiss unplaced window warning");
+        DockPanel.SetDock(closeWarning, Dock.Right);
+        cardHeader.Children.Add(closeWarning);
+
+        var titleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        cardHeader.Children.Add(titleStack);
+
+        var alertIcon = new Border
+        {
+            Width = 18, Height = 18, CornerRadius = new CornerRadius(9),
+            Background = Ink("#43341E"), Margin = new Thickness(0, 0, 7, 0),
+            Child = new TextBlock
+            {
+                Text = "!", FontSize = 11, FontWeight = FontWeights.Bold,
+                Foreground = Ink("#EAC487"), HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+        titleStack.Children.Add(alertIcon);
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "Window Not Placed", FontSize = 12, FontWeight = FontWeights.Bold,
+            Foreground = Ink("#EAC487"), VerticalAlignment = VerticalAlignment.Center
+        });
+
+        _warningMessage = new TextBlock
+        {
+            Text = "This window is in your backpack and not placed anywhere on the canvas, so it can't be opened.",
+            FontSize = 11, Foreground = Ink("#EAF0F4"), TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 7, 0, 6)
+        };
+        cardStack.Children.Add(_warningMessage);
+
+        var actionHelp = new TextBlock
+        {
+            Text = "Drag and drop it onto the canvas to place and open it.",
+            FontSize = 10.5, Foreground = Ink("#73D8C3"), FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8)
+        };
+        cardStack.Children.Add(actionHelp);
+
+        var gotIt = ActionButton("Got it", DismissWarningPopup);
+        gotIt.FontSize = 11; gotIt.Padding = new Thickness(14, 3, 14, 3);
+        gotIt.HorizontalAlignment = HorizontalAlignment.Right;
+        gotIt.Background = Ink("#203545"); gotIt.Foreground = Ink("#EAC487"); gotIt.BorderBrush = Ink("#465E70");
+        AutomationProperties.SetName(gotIt, "Acknowledge unplaced window warning");
+        cardStack.Children.Add(gotIt);
+
+        _warningArrow = new Polygon { Fill = Ink("#152433"), Stroke = Ink("#EAC487"), StrokeThickness = 1.2 };
+        _warningOverlay.Children.Add(_warningArrow);
+        _warningOverlay.Children.Add(_warningCard);
+
+        _scroll.ScrollChanged += (_, _) =>
+        {
+            if (_warningOverlay.Visibility == Visibility.Visible && _warningTargetId is { } id
+                && _tileBorders.TryGetValue(id, out var tile))
+            {
+                var posInScroll = tile.TranslatePoint(new Point(0, 0), _scroll);
+                if (posInScroll.Y + tile.ActualHeight < 0 || posInScroll.Y > _scroll.ActualHeight)
+                    DismissWarningPopup();
+                else
+                    PositionWarningPopup(tile);
+            }
+        };
+
+        PreviewMouseDown += (_, e) =>
+        {
+            if (_warningOverlay.Visibility == Visibility.Visible)
+            {
+                var pos = e.GetPosition(_warningCard);
+                bool inside = pos.X >= 0 && pos.X <= _warningCard.ActualWidth
+                           && pos.Y >= 0 && pos.Y <= _warningCard.ActualHeight;
+                if (!inside) DismissWarningPopup();
+            }
+        };
+
         Drag = new(this);
         Drag.Dropped += (id, screen) => DropRequested?.Invoke(id, screen);
-        Drag.HeldChanged += held => { if (!held) RebuildTiles(); };
-
+        Drag.HeldChanged += held =>
+        {
+            if (held) DismissWarningPopup();
+            else RebuildTiles();
+        };
         PreviewMouseMove += (_, _) =>
         {
             if (!Drag.IsDragging) return;
@@ -378,6 +497,13 @@ internal sealed class BackpackPanel : UserControl
         PreviewKeyDown += (_, e) =>
         {
             if (e.Handled) return;
+            if (_warningOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+            {
+                DismissWarningPopup();
+                e.Handled = true;
+                return;
+            }
+
             if (_search.IsKeyboardFocusWithin || _search.IsFocused)
             {
                 if (e.Key == Key.Escape)
@@ -395,8 +521,9 @@ internal sealed class BackpackPanel : UserControl
                 return;
             }
 
-            if (e.Key == Key.Escape || (e.Key == Key.I && Keyboard.Modifiers == ModifierKeys.None))
+            if (e.Key == Key.Escape || (e.Key == Key.I && Keyboard.FocusedElement is not TextBox && Keyboard.Modifiers == ModifierKeys.None))
             {
+                DismissWarningPopup();
                 if (Drag.IsHeld) Drag.Cancel();
                 else OpenRequested?.Invoke(false);
                 e.Handled = true;
@@ -409,7 +536,11 @@ internal sealed class BackpackPanel : UserControl
     public void SetOpen(bool open)
     {
         if (IsOpen == open) return;
-        if (!open) Drag.Cancel();
+        if (!open)
+        {
+            Drag.Cancel();
+            DismissWarningPopup();
+        }
         IsOpen = open;
         _expanded.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         _folded.Visibility = open ? Visibility.Collapsed : Visibility.Visible;
@@ -459,6 +590,7 @@ internal sealed class BackpackPanel : UserControl
         bool changed = !_items.Select(Key).SequenceEqual(items.Select(Key));
         _items = items;
         if (Drag.ItemId is { } held && !items.Any(i => i.Id == held)) Drag.Cancel();
+        if (_warningTargetId is { } warned && !items.Any(i => i.Id == warned)) DismissWarningPopup();
         _foldedCount.Text = items.Count == 1 ? "1 window ready to travel" : $"{items.Count} windows ready to travel";
         _count.Text = $"{items.Count} ITEMS  /  {items.Count(i => !i.Temporary)} KEPT";
         if (changed && !Drag.IsHeld)
@@ -485,6 +617,7 @@ internal sealed class BackpackPanel : UserControl
 
     private void RebuildTiles()
     {
+        DismissWarningPopup();
         if (Drag.IsHeld) return;
         _tiles.Children.Clear();
         _tileBorders.Clear();
@@ -646,6 +779,156 @@ internal sealed class BackpackPanel : UserControl
 
             _tiles.Children.Add(tile);
             _tileBorders[item.Id] = tile;
+        }
+    }
+
+    public void WarnUnplacedItem(Guid id, bool immediate = false)
+    {
+        long now = Environment.TickCount64;
+        if (_lastWarnId == id && now - _lastWarnTick < 600 && (_warningTimer != null || _warningOverlay.Visibility == Visibility.Visible))
+            return;
+        _lastWarnId = id;
+        _lastWarnTick = now;
+
+        DismissWarningPopup();
+        _warningTimer?.Stop();
+        _warningTimer = null;
+
+        if (_search.Text.Length > 0) _search.Text = "";
+        Highlight(id);
+
+        if (!_tileBorders.TryGetValue(id, out var tile)) return;
+        tile.BringIntoView();
+        UpdateLayout();
+
+        if (immediate)
+        {
+            ShowWarningPopup(id);
+            return;
+        }
+
+        ShakeTile(id, onCompleted: () =>
+        {
+            _warningTimer?.Stop();
+            _warningTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+            _warningTimer.Tick += (_, _) =>
+            {
+                _warningTimer?.Stop();
+                _warningTimer = null;
+                ShowWarningPopup(id);
+            };
+            _warningTimer.Start();
+        });
+    }
+
+    public void ShakeTile(Guid id, Action? onCompleted = null)
+    {
+        if (!_tileBorders.TryGetValue(id, out var tile))
+        {
+            onCompleted?.Invoke();
+            return;
+        }
+
+        var transform = new TranslateTransform();
+        tile.RenderTransform = transform;
+
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(450),
+            FillBehavior = FillBehavior.Stop
+        };
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(-8, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(8, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(410))));
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(450))));
+
+        if (onCompleted != null)
+        {
+            animation.Completed += (_, _) => onCompleted();
+        }
+
+        transform.BeginAnimation(TranslateTransform.XProperty, animation);
+    }
+
+    public void ShowWarningPopup(Guid id)
+    {
+        if (!IsOpen || !_tileBorders.TryGetValue(id, out var tile)) return;
+        _warningTargetId = id;
+        tile.BringIntoView();
+        UpdateLayout();
+
+        PositionWarningPopup(tile);
+        _warningOverlay.Visibility = Visibility.Visible;
+
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180));
+        _warningOverlay.BeginAnimation(OpacityProperty, fadeIn);
+    }
+
+    public void DismissWarningPopup()
+    {
+        _warningTimer?.Stop();
+        _warningTimer = null;
+        _warningTargetId = null;
+        if (_warningOverlay.Visibility != Visibility.Collapsed)
+        {
+            _warningOverlay.BeginAnimation(OpacityProperty, null);
+            _warningOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void PositionWarningPopup(Border tile)
+    {
+        var tilePos = tile.TranslatePoint(new Point(0, 0), _warningOverlay);
+        double tileW = tile.ActualWidth > 0 ? tile.ActualWidth : 126;
+        double tileH = tile.ActualHeight > 0 ? tile.ActualHeight : 140;
+        double tileCenterX = tilePos.X + tileW / 2;
+
+        double overlayW = _warningOverlay.ActualWidth > 0 ? _warningOverlay.ActualWidth : 442;
+        double overlayH = _warningOverlay.ActualHeight > 0 ? _warningOverlay.ActualHeight : 500;
+
+        double cardW = 280;
+        double popupLeft = Math.Max(10, Math.Min(overlayW - cardW - 10, tileCenterX - cardW / 2));
+
+        _warningCard.Measure(new Size(cardW, double.PositiveInfinity));
+        double cardH = _warningCard.DesiredSize.Height > 0 ? _warningCard.DesiredSize.Height : 130;
+
+        double spaceBelow = overlayH - (tilePos.Y + tileH);
+        bool placeBelow = spaceBelow >= cardH + 16 || tilePos.Y < cardH + 16;
+
+        double arrowX = Math.Max(popupLeft + 20, Math.Min(popupLeft + cardW - 20, tileCenterX));
+        double arrowW = 14;
+        double arrowH = 7;
+
+        if (placeBelow)
+        {
+            double popupTop = Math.Min(overlayH - cardH - 10, tilePos.Y + tileH + 8);
+            UiCanvas.SetLeft(_warningCard, popupLeft);
+            UiCanvas.SetTop(_warningCard, popupTop);
+
+            _warningArrow.Points = new PointCollection
+            {
+                new Point(arrowX - arrowW / 2, popupTop),
+                new Point(arrowX, popupTop - arrowH),
+                new Point(arrowX + arrowW / 2, popupTop)
+            };
+        }
+        else
+        {
+            double popupTop = Math.Max(10, tilePos.Y - cardH - 8);
+            UiCanvas.SetLeft(_warningCard, popupLeft);
+            UiCanvas.SetTop(_warningCard, popupTop);
+
+            _warningArrow.Points = new PointCollection
+            {
+                new Point(arrowX - arrowW / 2, popupTop + cardH),
+                new Point(arrowX, popupTop + cardH + arrowH),
+                new Point(arrowX + arrowW / 2, popupTop + cardH)
+            };
         }
     }
 

@@ -150,6 +150,7 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
                 CornerRadius = new CornerRadius(8), Padding = new Thickness(10), Child = panel
             }
         };
+        try { _toolbar.Owner = this; } catch { }
         _toolbar.Deactivated += (_, _) => QueueFinishOnFocusLeave();
         _toolbar.DpiChanged += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
         {
@@ -343,7 +344,17 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     public new void Show()
     {
         base.Show();
-        _toolbar.Owner = this; _toolbar.Show(); _toolbar.UpdateLayout();
+        if (_toolbar.Owner != this)
+        {
+            try { _toolbar.Owner = this; }
+            catch (InvalidOperationException)
+            {
+                var ownerHwnd = new WindowInteropHelper(this).Handle;
+                if (ownerHwnd != IntPtr.Zero)
+                    new WindowInteropHelper(_toolbar).Owner = ownerHwnd;
+            }
+        }
+        _toolbar.Show(); _toolbar.UpdateLayout();
         UpdateProjection(); Editor.Focus();
         // Initialize before returning control to the caller. ContentRendered is
         // deferred and can otherwise overwrite a click/Home made before the

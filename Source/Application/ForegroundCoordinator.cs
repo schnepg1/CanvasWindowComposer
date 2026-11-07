@@ -79,7 +79,7 @@ internal sealed class ForegroundCoordinator : IDisposable
         if (_canvas.HasWindow(hwnd))
         {
             var world = _canvas.Windows[hwnd];
-            if (world.PinnedToScreen)
+            if (world.PinnedToScreen || world.InInventory)
                 return;
 
             var r = _canvas.WorldToScreen(world);
@@ -98,7 +98,7 @@ internal sealed class ForegroundCoordinator : IDisposable
             || world.PinnedToScreen) return;
         // A deliberate Alt+Tab/taskbar choice must survive the short suppression
         // interval used for incidental focus after minimize, close, or overlay exit.
-        if (_overview.CurrentMode != OverviewMode.Hidden)
+        if (_overview.CurrentMode != OverviewMode.Hidden || world.InInventory)
         {
             _overview.NavigateToWindow(window);
             return;

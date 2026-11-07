@@ -224,6 +224,81 @@ public class InventoryBackpackViewTests
             }
         });
 
+    [Fact]
+    public void UnplacedItemWarningAnimatesShakeAndShowsConnectedExplanationPopup()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(true);
+            var item = Item("Editor Window", false);
+            panel.UpdateItems([item]);
+            panel.Measure(new Size(450, 650));
+            panel.Arrange(new Rect(0, 0, 450, 650));
+            panel.UpdateLayout();
+
+            // Test shaking initiation
+            panel.ShakeTile(item.Id);
+            var borders = Descendants(panel).OfType<Border>().Where(b => b.Width == 126 && b.Height == 140).ToArray();
+            var tile = Assert.Single(borders);
+            Assert.IsType<TranslateTransform>(tile.RenderTransform);
+
+            // Trigger warning with immediate popup
+            panel.WarnUnplacedItem(item.Id, immediate: true);
+            panel.UpdateLayout();
+
+            Assert.True(panel.IsWarningPopupOpen);
+            Assert.Equal(item.Id, panel.WarningTargetId);
+            Assert.Contains("not placed anywhere on the canvas", panel.WarningMessage);
+
+            var texts = Descendants(panel).OfType<TextBlock>().Select(t => t.Text).ToArray();
+            Assert.Contains("Window Not Placed", texts);
+            Assert.Contains("Drag and drop it onto the canvas to place and open it.", texts);
+
+            // Acknowledge button dismisses
+            var gotIt = ButtonNamed(panel, "Acknowledge unplaced window warning");
+            gotIt.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.False(panel.IsWarningPopupOpen);
+            Assert.Null(panel.WarningTargetId);
+        });
+
+    [Fact]
+    public void UnplacedWarningDismissesOnCloseButtonAndEscapeAndFold()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(true);
+            var item = Item("Code", false);
+            panel.UpdateItems([item]);
+            panel.Measure(new Size(450, 650));
+            panel.Arrange(new Rect(0, 0, 450, 650));
+            panel.UpdateLayout();
+
+            // 1. Dismiss via close "×" button
+            panel.WarnUnplacedItem(item.Id, immediate: true);
+            Assert.True(panel.IsWarningPopupOpen);
+            var close = ButtonNamed(panel, "Dismiss unplaced window warning");
+            close.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.False(panel.IsWarningPopupOpen);
+
+            // 2. Dismiss via Escape key
+            panel.WarnUnplacedItem(item.Id, immediate: true);
+            Assert.True(panel.IsWarningPopupOpen);
+            using var source = new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "test", IntPtr.Zero);
+            panel.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+                source, 0, System.Windows.Input.Key.Escape)
+            {
+                RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent
+            });
+            Assert.False(panel.IsWarningPopupOpen);
+            Assert.True(panel.IsOpen); // Backpack itself stayed open
+
+            // 3. Dismiss on folding backpack
+            panel.WarnUnplacedItem(item.Id, immediate: true);
+            Assert.True(panel.IsWarningPopupOpen);
+            panel.SetOpen(false);
+            Assert.False(panel.IsWarningPopupOpen);
+        });
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
