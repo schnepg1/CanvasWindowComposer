@@ -1,0 +1,382 @@
+# ==============================================================================
+# Agent Workflow & State-Machine Specification (workflow.yaml)
+# ==============================================================================
+# Schema Version: 1.0.0
+# Description:
+#   State-machine and execution sequence definitions for multi-agent workflows.
+#   Implements the feature lifecycle (Architect -> Programmer <-> Reviewer ->
+#   Merger -> Conflict Resolver -> Branch Cleaner) as well as alternative flows.
+# ==============================================================================
+
+version: "1.0.0"
+
+# ------------------------------------------------------------------------------
+# 1. State Machine Definitions
+# ------------------------------------------------------------------------------
+workflows:
+  # ============================================================================
+  # Workflow 1: Feature Lifecycle (Default Multi-Agent Workflow)
+  # ============================================================================
+  feature-lifecycle:
+    id: "feature-lifecycle"
+    name: "Full Feature Lifecycle Workflow"
+    description: >-
+      End-to-end multi-agent pipeline spanning architectural design, worktree-isolated
+      development with iterative review loops, automated test-verified merge,
+      graceful conflict resolution fallback, and process-safe cleanup.
+    team_constellation: "feature-lifecycle-team"
+    initial_stage: "stage_1_planning"
+    variables:
+      task_id: ""                   # e.g., "window-linking-01"
+      target_branch: "window_linking_workflows"
+      agent_branch: "agent/${task_id}"
+      worktree_path: "..\\CanvasWindowComposer-${task_id}"
+      review_iteration: 0
+      max_review_iterations: 5
+      review_verdict: "PENDING"     # "APPROVED" | "CHANGES_REQUESTED"
+      merge_status: "NOT_STARTED"   # "SUCCESS" | "CONFLICT" | "TEST_FAILED"
+
+    stages:
+      # ------------------------------------------------------------------------
+      # Stage 1: Planning (Architect)
+      # ------------------------------------------------------------------------
+      stage_1_planning:
+        id: "stage_1_planning"
+        title: "Architecture & Implementation Planning"
+        role: "architect"
+        type: "linear"
+        description: >-
+          The Architect inspects codebase patterns, reviews existing interfaces,
+          evaluates native/WPF threading implications, and creates ARCHITECTURE_PLAN.md.
+        actions:
+          - "Analyze incoming user request and requirements."
+          - "Inspect existing code in Source/, Modules/, and Native/."
+          - "Draft ARCHITECTURE_PLAN.md with problem analysis, file changes, and atomic checklist."
+          - "Define test strategy identifying unit vs native desktop tests."
+        transitions:
+          - trigger: "PLAN_COMPLETE"
+            condition: "artifact_exists('ARCHITECTURE_PLAN.md') and has_task_breakdown()"
+            target_stage: "stage_2a_worktree_setup"
+          - trigger: "ABORT_FEASIBILITY"
+            condition: "feasibility_blocked == true"
+            target_stage: "aborted"
+
+      # ------------------------------------------------------------------------
+      # Stage 2a: Worktree Setup & Coding (Programmer)
+      # ------------------------------------------------------------------------
+      stage_2a_worktree_setup:
+        id: "stage_2a_worktree_setup"
+        title: "Worktree Creation & Coding"
+        role: "programmer"
+        type: "action"
+        description: >-
+          Programmer spins up isolated worktree, implements the planned changes,
+          writes unit/integration tests, and compiles the solution.
+        commands:
+          - "git worktree list"
+          - "git worktree add ${worktree_path} -b ${agent_branch} HEAD"
+          - "cd ${worktree_path}"
+          - "dotnet restore CanvasDesktop.slnx --locked-mode"
+          - "dotnet build CanvasDesktop.slnx -c Release --no-restore"
+        transitions:
+          - trigger: "BUILD_SUCCESS"
+            condition: "exit_code == 0"
+            target_stage: "stage_2b_test_execution"
+          - trigger: "BUILD_FAILED"
+            condition: "exit_code != 0"
+            target_stage: "stage_2a_worktree_setup" # Self-heal build error within programmer
+
+      # ------------------------------------------------------------------------
+      # Stage 2b: Test Execution (Programmer)
+      # ------------------------------------------------------------------------
+      stage_2b_test_execution:
+        id: "stage_2b_test_execution"
+        title: "Serialized Test Run Under Mutex"
+        role: "programmer"
+        type: "action"
+        description: >-
+          Programmer verifies preflight and executes serialized test runner
+          using Tools\\Run-Tests.ps1 -Configuration Release.
+        commands:
+          - "powershell -NoProfile -ExecutionPolicy Bypass -File Tools\\Run-Tests.ps1 -Configuration Release -NoPrompt"
+        transitions:
+          - trigger: "TESTS_PASSED"
+            condition: "tests_failed == 0"
+            target_stage: "stage_2c_request_review"
+          - trigger: "TESTS_FAILED"
+            condition: "tests_failed > 0"
+            target_stage: "stage_2a_worktree_setup" # Iterate to fix failing tests
+
+      # ------------------------------------------------------------------------
+      # Stage 2c: Commit & Request Review (Programmer)
+      # ------------------------------------------------------------------------
+      stage_2c_request_review:
+        id: "stage_2c_request_review"
+        title: "Commit and Submit to Reviewer"
+        role: "programmer"
+        type: "action"
+        description: >-
+          Programmer commits clean changes to agent branch and invokes Reviewer.
+        commands:
+          - "git status"
+          - "git commit -m '${commit_message}'"
+        actions:
+          - "increment(review_iteration)"
+          - "send_message(recipient='reviewer', task_id='${task_id}', iteration='${review_iteration}')"
+        transitions:
+          - trigger: "SUBMITTED_FOR_REVIEW"
+            condition: "review_iteration <= max_review_iterations"
+            target_stage: "stage_2d_code_review"
+
+      # ------------------------------------------------------------------------
+      # Stage 2d: Code Review (Reviewer)
+      # ------------------------------------------------------------------------
+      stage_2d_code_review:
+        id: "stage_2d_code_review"
+        title: "Independent Code Review"
+        role: "reviewer"
+        type: "decision"
+        description: >-
+          Reviewer audits git diff, checks plan conformance, examines edge cases,
+          checks unmanaged resources/threading, and renders verdict.
+        commands:
+          - "git diff ${target_branch}...${agent_branch}"
+        artifacts:
+          - "REVIEW_REPORT.md"
+        transitions:
+          # Case A: Approved -> Proceed to Merge
+          - trigger: "VERDICT_APPROVED"
+            condition: "review_verdict == 'APPROVED'"
+            target_stage: "stage_3_merge"
+
+          # Case B: Changes Requested & iteration within limits -> Loop back to Programmer
+          - trigger: "VERDICT_CHANGES_REQUESTED"
+            condition: "review_verdict == 'CHANGES_REQUESTED' and review_iteration < max_review_iterations"
+            target_stage: "stage_2e_iterate_fixes"
+
+          # Case C: Max iterations reached without approval -> Escalate
+          - trigger: "REVIEW_DEADLOCK"
+            condition: "review_verdict == 'CHANGES_REQUESTED' and review_iteration >= max_review_iterations"
+            target_stage: "escalate_to_human"
+
+      # ------------------------------------------------------------------------
+      # Stage 2e: Iterate Fixes (Programmer Feedback Loop)
+      # ------------------------------------------------------------------------
+      stage_2e_iterate_fixes:
+        id: "stage_2e_iterate_fixes"
+        title: "Address Review Feedback"
+        role: "programmer"
+        type: "action"
+        description: >-
+          Programmer reads REVIEW_REPORT.md, resolves blockers and comments,
+          runs tests again, and re-submits.
+        actions:
+          - "Read REVIEW_REPORT.md findings."
+          - "Apply corrective edits to worktree files."
+        transitions:
+          - trigger: "FIXES_APPLIED"
+            condition: "true"
+            target_stage: "stage_2b_test_execution"
+
+      # ------------------------------------------------------------------------
+      # Stage 3: Merge Phase (Merger)
+      # ------------------------------------------------------------------------
+      stage_3_merge:
+        id: "stage_3_merge"
+        title: "Automated Branch Merge"
+        role: "merger"
+        type: "decision"
+        description: >-
+          Merger switches to target branch, verifies test runner under mutex,
+          and attempts a clean merge of the approved agent branch.
+        commands:
+          - "git checkout ${target_branch}"
+          - "git pull --ff-only"
+          - "git merge --no-ff ${agent_branch} -m 'Merge branch ${agent_branch} into ${target_branch}'"
+        transitions:
+          # Clean merge -> Proceed to Stage 4 (Cleanup)
+          - trigger: "MERGE_CLEAN_SUCCESS"
+            condition: "exit_code == 0 and has_conflicts == false"
+            target_stage: "stage_3c_post_merge_verification"
+
+          # Merge conflict detected -> Abort git merge and route to Stage 3b (Conflict Resolver)
+          - trigger: "MERGE_CONFLICT_DETECTED"
+            condition: "exit_code != 0 or has_conflicts == true"
+            actions:
+              - "git merge --abort"
+            target_stage: "stage_3b_conflict_resolution"
+
+      # ------------------------------------------------------------------------
+      # Stage 3b: Conflict Resolution (Merge Conflict Resolving Programmer)
+      # ------------------------------------------------------------------------
+      stage_3b_conflict_resolution:
+        id: "stage_3b_conflict_resolution"
+        title: "Intelligent Merge Conflict Resolution"
+        role: "conflict-resolver"
+        type: "action"
+        description: >-
+          Resolves three-way merge markers intelligently, preserves both upstream
+          changes and feature additions, rebuilds, and runs serialized tests.
+        commands:
+          - "git merge --no-ff --no-commit ${agent_branch}"
+          # Inspect and resolve conflicting files
+          - "dotnet restore CanvasDesktop.slnx --locked-mode"
+          - "dotnet build CanvasDesktop.slnx -c Release --no-restore"
+          - "powershell -NoProfile -ExecutionPolicy Bypass -File Tools\\Run-Tests.ps1 -Configuration Release -NoPrompt"
+          - "git commit -m 'Merge branch ${agent_branch} into ${target_branch} (resolved conflicts)'"
+        transitions:
+          - trigger: "CONFLICTS_RESOLVED_AND_TESTED"
+            condition: "tests_passed == true and exit_code == 0"
+            target_stage: "stage_4_cleanup"
+          - trigger: "CONFLICT_UNRESOLVABLE"
+            condition: "exit_code != 0"
+            actions:
+              - "git merge --abort"
+            target_stage: "escalate_to_human"
+
+      # ------------------------------------------------------------------------
+      # Stage 3c: Post-Merge Verification (Merger)
+      # ------------------------------------------------------------------------
+      stage_3c_post_merge_verification:
+        id: "stage_3c_post_merge_verification"
+        title: "Post-Merge Test Verification"
+        role: "merger"
+        type: "action"
+        description: >-
+          Runs Tools\\Run-Tests.ps1 under named mutex on target branch to confirm
+          no integration regressions.
+        commands:
+          - "powershell -NoProfile -ExecutionPolicy Bypass -File Tools\\Run-Tests.ps1 -Configuration Release -NoPrompt"
+        transitions:
+          - trigger: "POST_MERGE_TESTS_PASS"
+            condition: "exit_code == 0"
+            target_stage: "stage_4_cleanup"
+          - trigger: "POST_MERGE_TESTS_FAIL"
+            condition: "exit_code != 0"
+            target_stage: "escalate_to_human"
+
+      # ------------------------------------------------------------------------
+      # Stage 4: Cleanup (Branch Cleaner)
+      # ------------------------------------------------------------------------
+      stage_4_cleanup:
+        id: "stage_4_cleanup"
+        title: "Safe Worktree & Branch Pruning"
+        role: "branch-cleaner"
+        type: "terminal_cleanup"
+        description: >-
+          Verifies no running processes or locks remain on the worktree folder,
+          removes the temporary git worktree, and deletes the merged branch.
+        actions:
+          - "Verify CanvasDesktop is not running (CanvasDesktop.exe --exit if active)."
+          - "Ensure no dotnet or testhost processes are bound to ${worktree_path}."
+        commands:
+          - "git worktree remove ${worktree_path}"
+          - "git branch -d ${agent_branch}"
+          - "git worktree prune"
+        transitions:
+          - trigger: "CLEANUP_DONE"
+            condition: "worktree_removed == true and branch_deleted == true"
+            target_stage: "completed"
+
+      # ------------------------------------------------------------------------
+      # Terminal States
+      # ------------------------------------------------------------------------
+      completed:
+        id: "completed"
+        title: "Workflow Successfully Completed"
+        type: "end_state"
+        description: "Feature merged, tests passing, worktree cleaned."
+
+      escalate_to_human:
+        id: "escalate_to_human"
+        title: "Escalated for Human Intervention"
+        type: "end_state"
+        description: "Review deadlock or unresolvable conflict requires human attention."
+
+      aborted:
+        id: "aborted"
+        title: "Workflow Aborted"
+        type: "end_state"
+        description: "Task abandoned during planning or setup."
+
+  # ============================================================================
+  # Workflow 2: Quick Bugfix (Streamlined Fast-Track)
+  # ============================================================================
+  quick-bugfix:
+    id: "quick-bugfix"
+    name: "Quick Bugfix Workflow"
+    description: >-
+      Fast-track 4-stage workflow for bug fixes with existing test reproductions.
+      Bypasses heavy architectural design and jumps directly to worktree isolation.
+    team_constellation: "quick-bugfix-team"
+    initial_stage: "stage_1_fix_implementation"
+    stages:
+      stage_1_fix_implementation:
+        title: "Isolated Bugfix & Regression Test"
+        role: "programmer"
+        target_stage: "stage_2_review"
+      stage_2_review:
+        title: "Targeted Regression Review"
+        role: "reviewer"
+        transitions:
+          - trigger: "APPROVED"
+            target_stage: "stage_3_merge"
+          - trigger: "CHANGES_REQUESTED"
+            target_stage: "stage_1_fix_implementation"
+      stage_3_merge:
+        title: "Target Branch Merge"
+        role: "merger"
+        target_stage: "stage_4_cleanup"
+      stage_4_cleanup:
+        title: "Worktree & Branch Cleanup"
+        role: "branch-cleaner"
+        target_stage: "completed"
+
+  # ============================================================================
+  # Workflow 3: Research & Spike (Exploratory / Non-Merging)
+  # ============================================================================
+  research-spike:
+    id: "research-spike"
+    name: "Research & Prototyping Spike"
+    description: >-
+      Exploratory workflow for benchmarking, POCs, or API spikes.
+      Retains experimental branch for inspection; no production merge.
+    team_constellation: "research-spike-team"
+    initial_stage: "stage_1_spike_planning"
+    stages:
+      stage_1_spike_planning:
+        title: "Spike Problem Definition"
+        role: "architect"
+        target_stage: "stage_2_spike_prototype"
+      stage_2_spike_prototype:
+        title: "Prototype Implementation & Benchmarking"
+        role: "programmer"
+        target_stage: "stage_3_findings_summary"
+      stage_3_findings_summary:
+        title: "Findings Documentation & Presentation"
+        role: "architect"
+        target_stage: "completed"
+
+  # ============================================================================
+  # Workflow 4: Conflict Rescue (Branch Reconciliation)
+  # ============================================================================
+  conflict-rescue:
+    id: "conflict-rescue"
+    name: "Conflict Rescue & Integration Workflow"
+    description: >-
+      Intervention workflow called when a branch has fallen behind or is in conflict.
+    team_constellation: "conflict-rescue-team"
+    initial_stage: "stage_1_resolve_conflicts"
+    stages:
+      stage_1_resolve_conflicts:
+        title: "Semantic Three-Way Conflict Resolution"
+        role: "conflict-resolver"
+        target_stage: "stage_2_verify_and_merge"
+      stage_2_verify_and_merge:
+        title: "Test Suite Verification & Final Merge"
+        role: "merger"
+        target_stage: "stage_3_cleanup"
+      stage_3_cleanup:
+        title: "Safe Worktree Cleanup"
+        role: "branch-cleaner"
+        target_stage: "completed"
