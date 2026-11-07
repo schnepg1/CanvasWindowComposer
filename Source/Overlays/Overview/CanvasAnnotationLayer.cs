@@ -6,7 +6,9 @@ using System.Windows.Media;
 
 namespace CanvasDesktop;
 
-internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null, Func<CanvasAnnotation?>? connectionPreview = null) : IOverviewAnnotationLayer
+using CanvasDesktop.CanvasView;
+
+internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null, Func<CanvasAnnotation?>? connectionPreview = null, Func<CanvasAnnotation, AgentExecutionState?>? telemetryState = null) : IOverviewAnnotationLayer
 {
     private readonly Dictionary<Guid,(CanvasAnnotation Item,double Dpi,DrawingGroup Drawing)> _artwork = [];
     private long _revision = -1;
@@ -70,6 +72,13 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
             dc.DrawDrawing(Artwork(item,context.Dpi.PixelsPerDip,item.Id==preview?.Id));
             dc.Pop(); dc.Pop();
             if (pushedClip) dc.Pop();
+
+            // Telemetry Glow HUD
+            if (item.Kind != AnnotationKind.Arrow && !item.InBackground && telemetryState?.Invoke(item) is { } state && state != AgentExecutionState.Idle)
+            {
+                DrawTelemetryGlow(dc, rect, state);
+            }
+
             if (tool.Mode == AnnotationMode.Select && item.Id == tool.SelectedId)
             {
                 dc.DrawRectangle(null,new Pen(Brushes.DeepSkyBlue,2),rect);
@@ -81,5 +90,45 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
                 }
             }
         }
+    }
+
+    private static void DrawTelemetryGlow(DrawingContext dc, Rect rect, AgentExecutionState state)
+    {
+        Color glowColor = state switch
+        {
+            AgentExecutionState.Working => Color.FromRgb(56, 189, 248),   // Cyan / Blue (#38BDF8)
+            AgentExecutionState.Testing => Color.FromRgb(245, 158, 11),   // Amber (#F59E0B)
+            AgentExecutionState.Blocked => Color.FromRgb(251, 146, 60),   // Orange (#FB923C)
+            AgentExecutionState.Done => Color.FromRgb(16, 185, 129),      // Emerald Green (#10B981)
+            AgentExecutionState.Error => Color.FromRgb(239, 68, 68),      // Red (#EF4444)
+            _ => Colors.Transparent
+        };
+
+        if (glowColor == Colors.Transparent) return;
+
+        double pulse = 0.7 + 0.3 * Math.Sin(Environment.TickCount64 / 220.0);
+
+        byte outerAlpha = (byte)(35 * pulse);
+        byte midAlpha = (byte)(80 * pulse);
+        byte innerAlpha = (byte)(180 * pulse);
+
+        var outerPen = new Pen(new SolidColorBrush(Color.FromArgb(outerAlpha, glowColor.R, glowColor.G, glowColor.B)), 8) { LineJoin = PenLineJoin.Round };
+        var midPen = new Pen(new SolidColorBrush(Color.FromArgb(midAlpha, glowColor.R, glowColor.G, glowColor.B)), 4) { LineJoin = PenLineJoin.Round };
+        var innerPen = new Pen(new SolidColorBrush(Color.FromArgb(innerAlpha, glowColor.R, glowColor.G, glowColor.B)), 1.5) { LineJoin = PenLineJoin.Round };
+        outerPen.Freeze(); midPen.Freeze(); innerPen.Freeze();
+
+        dc.DrawRoundedRectangle(null, outerPen, new Rect(rect.X - 3, rect.Y - 3, rect.Width + 6, rect.Height + 6), 8, 8);
+        dc.DrawRoundedRectangle(null, midPen, new Rect(rect.X - 1.5, rect.Y - 1.5, rect.Width + 3, rect.Height + 3), 7, 7);
+        dc.DrawRoundedRectangle(null, innerPen, rect, 6, 6);
+
+        // Corner Status Indicator Badge
+        double badgeRadius = 6.0;
+        Point badgeCenter = new Point(rect.Right - 14, rect.Top + 14);
+
+        var badgeFill = new SolidColorBrush(Color.FromArgb(220, glowColor.R, glowColor.G, glowColor.B));
+        badgeFill.Freeze();
+        var badgeBorder = new Pen(Brushes.White, 1.2);
+        badgeBorder.Freeze();
+        dc.DrawEllipse(badgeFill, badgeBorder, badgeCenter, badgeRadius, badgeRadius);
     }
 }
