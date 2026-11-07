@@ -19,13 +19,13 @@ Detach to keep the current bounds; deleting the area also detaches the backgroun
 Removing an image surface leaves the project, apps and source image intact.
 
 The editor provides world X/Y/width/height, Fill/Fit/Tile, crop alignment, opacity,
-darkening, stacking order and locking. **Fill** preserves proportions and crops;
+darkening, layer/stacking order (with **Send to back**, **Send backward**, **Bring forward**, and **Bring to front** controls) and locking. **Fill** preserves proportions and crops;
 **Fit** shows the whole image; **Tile** repeats at the source's native pixel size.
 Stacking order applies only among backgrounds, always below apps and annotations.
 
 Backgrounds start locked. **Edit on canvas** unlocks a free background and shows
-its frame and corner handles. Drag its frame to move it or a corner to resize it;
-hold **Shift** to preserve its aspect ratio. The interior does not intercept apps.
+its frame and corner handles. Drag anywhere on the background image or its frame to move it, or drag a corner to resize it;
+hold **Shift** to preserve its aspect ratio. The cursor displays a move indicator over the background.
 Middle-drag or Space-drag still pans. **Esc** cancels an active drag; a second Esc
 leaves background editing. Lock it again in the editor when finished.
 Project-linked frames are edited by moving/resizing their project area instead.

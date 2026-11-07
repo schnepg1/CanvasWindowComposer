@@ -15,12 +15,30 @@ public class BackgroundCanvasToolTests : IDisposable
         =>new(monitor,new(x,y),CanvasPointerButton.Left,modifiers,new CanvasViewTransform(0,0,1,default));
 
     [Fact]
-    public void LockedAndInteriorBackgroundsNeverInterceptNormalContent()
+    public void LockedBackgroundCannotBeSelectedAndUnlockedBackgroundMovesFromInterior()
     {
         var service=Service();var item=Item(true);service.Add(item);var tool=new BackgroundCanvasTool(service);
         Assert.False(tool.Select(item.Id));Assert.False(tool.PointerDown(Pointer(100,100)));
         service.Update(item with{Locked=false});Assert.True(tool.Select(item.Id));
-        Assert.False(tool.PointerDown(Pointer(300,300)));Assert.True(tool.PointerDown(Pointer(400,100)));
+        Assert.True(tool.PointerDown(Pointer(300,300)));
+        Assert.Equal(CanvasCursor.Move, tool.CursorAt(Pointer(300,300)));
+        Assert.True(tool.PointerDown(Pointer(400,100)));
+        Assert.False(tool.PointerDown(Pointer(10000,10000)));
+        Assert.Equal(CanvasCursor.Default, tool.CursorAt(Pointer(10000,10000)));
+    }
+
+    [Fact]
+    public void DragInteriorMovesBackgroundPosition()
+    {
+        var service=Service();var item=Item();service.Add(item);var tool=new BackgroundCanvasTool(service);tool.Select(item.Id);
+        tool.Completed+=b=>service.Update(b);
+        Assert.True(tool.PointerDown(Pointer(500,500)));
+        tool.PointerMove(Pointer(700,800));
+        Assert.Equal(300,tool.Preview!.Bounds.X);
+        Assert.Equal(400,tool.Preview!.Bounds.Y);
+        tool.PointerUp(Pointer(700,800));
+        Assert.Equal(300,service.Items[0].Bounds.X);
+        Assert.Equal(400,service.Items[0].Bounds.Y);
     }
     [Fact]
     public void DragPreviewsWithoutMutatingDocumentAndCancelsWithoutHistory()

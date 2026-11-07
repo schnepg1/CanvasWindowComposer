@@ -173,4 +173,42 @@ public sealed class BackgroundServiceTests : IDisposable
         Assert.True(service.Save()); Assert.Null(service.Status);
         Assert.Equal("Unsaved", Assert.Single(Service().Items).Name);
     }
+
+    [Fact]
+    public void StackingOrderCommandsReorderItemsAndSupportUndoRedo()
+    {
+        var service = Service();
+        var a = Surface("Bottom", 0);
+        var b = Surface("Middle", 1);
+        var c = Surface("Top", 2);
+        Assert.True(service.Add(a));
+        Assert.True(service.Add(b));
+        Assert.True(service.Add(c));
+        Assert.Equal(new[] { a.Id, b.Id, c.Id }, service.Items.Select(x => x.Id));
+
+        Assert.True(service.SendToBack(c.Id));
+        Assert.Equal(new[] { c.Id, a.Id, b.Id }, service.Items.Select(x => x.Id));
+        Assert.Equal(0, service.Items[0].ZIndex);
+        Assert.Equal(1, service.Items[1].ZIndex);
+        Assert.Equal(2, service.Items[2].ZIndex);
+
+        Assert.False(service.SendToBack(c.Id));
+
+        Assert.True(service.BringForward(c.Id));
+        Assert.Equal(new[] { a.Id, c.Id, b.Id }, service.Items.Select(x => x.Id));
+
+        Assert.True(service.BringToFront(c.Id));
+        Assert.Equal(new[] { a.Id, b.Id, c.Id }, service.Items.Select(x => x.Id));
+
+        Assert.False(service.BringToFront(c.Id));
+
+        Assert.True(service.SendBackward(c.Id));
+        Assert.Equal(new[] { a.Id, c.Id, b.Id }, service.Items.Select(x => x.Id));
+
+        Assert.True(service.Undo());
+        Assert.Equal(new[] { a.Id, b.Id, c.Id }, service.Items.Select(x => x.Id));
+
+        Assert.True(service.Redo());
+        Assert.Equal(new[] { a.Id, c.Id, b.Id }, service.Items.Select(x => x.Id));
+    }
 }

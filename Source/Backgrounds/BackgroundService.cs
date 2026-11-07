@@ -74,6 +74,67 @@ internal sealed class BackgroundService
         return Record(before);
     }
 
+    public bool SendToBack(Guid id)
+    {
+        var items = Items.ToList();
+        int idx = items.FindIndex(b => b.Id == id);
+        if (idx <= 0) return false;
+        var before = Snapshot();
+        var item = items[idx];
+        items.RemoveAt(idx);
+        items.Insert(0, item);
+        ApplyOrder(items);
+        return Record(before);
+    }
+
+    public bool BringToFront(Guid id)
+    {
+        var items = Items.ToList();
+        int idx = items.FindIndex(b => b.Id == id);
+        if (idx < 0 || idx == items.Count - 1) return false;
+        var before = Snapshot();
+        var item = items[idx];
+        items.RemoveAt(idx);
+        items.Add(item);
+        ApplyOrder(items);
+        return Record(before);
+    }
+
+    public bool SendBackward(Guid id)
+    {
+        var items = Items.ToList();
+        int idx = items.FindIndex(b => b.Id == id);
+        if (idx <= 0) return false;
+        var before = Snapshot();
+        (items[idx], items[idx - 1]) = (items[idx - 1], items[idx]);
+        ApplyOrder(items);
+        return Record(before);
+    }
+
+    public bool BringForward(Guid id)
+    {
+        var items = Items.ToList();
+        int idx = items.FindIndex(b => b.Id == id);
+        if (idx < 0 || idx >= items.Count - 1) return false;
+        var before = Snapshot();
+        (items[idx], items[idx + 1]) = (items[idx + 1], items[idx]);
+        ApplyOrder(items);
+        return Record(before);
+    }
+
+    private void ApplyOrder(List<BackgroundSurface> ordered)
+    {
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var item = ordered[i];
+            int pIndex = _persistence.Items.FindIndex(existing => existing.Id == item.Id && existing.DesktopId == DesktopId);
+            if (pIndex >= 0)
+            {
+                _persistence.Items[pIndex] = item with { ZIndex = i };
+            }
+        }
+    }
+
     public bool Undo() => Replay(redo: false);
     public bool Redo() => Replay(redo: true);
 

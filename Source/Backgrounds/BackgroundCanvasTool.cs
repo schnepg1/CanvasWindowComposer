@@ -33,11 +33,9 @@ internal sealed class BackgroundCanvasTool(BackgroundService service) : ICanvasT
         _corner = HitCorner(item, p);
         var w = p.World;
         var b = item.Bounds;
-        // Only a thin frame and its handles intercept input; apps inside remain usable.
-        double edge = 10 / p.View.Zoom;
-        bool frame = w.X >= b.X-edge && w.X <= b.X+b.W+edge && w.Y >= b.Y-edge && w.Y <= b.Y+b.H+edge
-            && (Math.Abs(w.X-b.X)<edge || Math.Abs(w.X-b.X-b.W)<edge || Math.Abs(w.Y-b.Y)<edge || Math.Abs(w.Y-b.Y-b.H)<edge);
-        if (_corner < 0 && !frame) return false;
+        double edge = 14 / p.View.Zoom;
+        bool inside = w.X >= b.X - edge && w.X <= b.X + b.W + edge && w.Y >= b.Y - edge && w.Y <= b.Y + b.H + edge;
+        if (_corner < 0 && !inside) return false;
         _start = w; _original = item; Preview = item; return true;
     }
 
@@ -76,10 +74,26 @@ internal sealed class BackgroundCanvasTool(BackgroundService service) : ICanvasT
     public void Cancel() { _original=null; Preview=null; Changed?.Invoke(); }
     public CanvasCursor CursorAt(CanvasPointer p)
     {
-        var item=service.Items.FirstOrDefault(b=>b.Id==SelectedId);
-        if (item==null) return CanvasCursor.Default;
-        return HitCorner(item,p) switch
-        { 0 or 3=>CanvasCursor.ResizeNorthWestSouthEast, 1 or 2=>CanvasCursor.ResizeNorthEastSouthWest, _=>CanvasCursor.Default };
+        var item = service.Items.FirstOrDefault(b => b.Id == SelectedId);
+        if (item == null) return CanvasCursor.Default;
+        int corner = HitCorner(item, p);
+        if (corner >= 0)
+        {
+            return corner switch
+            {
+                0 or 3 => CanvasCursor.ResizeNorthWestSouthEast,
+                1 or 2 => CanvasCursor.ResizeNorthEastSouthWest,
+                _ => CanvasCursor.Default
+            };
+        }
+        var w = p.World;
+        var b = item.Bounds;
+        double edge = 14 / p.View.Zoom;
+        if (w.X >= b.X - edge && w.X <= b.X + b.W + edge && w.Y >= b.Y - edge && w.Y <= b.Y + b.H + edge)
+        {
+            return CanvasCursor.Move;
+        }
+        return CanvasCursor.Default;
     }
 
     private static int HitCorner(BackgroundSurface item,CanvasPointer p)

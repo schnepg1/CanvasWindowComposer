@@ -147,15 +147,65 @@ internal sealed class BackgroundWindow : Window
         var appearance = new UniformGrid { Columns = 2 };
         AddSlider(appearance, "Opacity", _opacity); AddSlider(appearance, "Darken", _dim);
         _editor.Children.Add(appearance);
-        Label(_editor, "Stacking order · larger values appear above other backgrounds", _z);
+        var layerHeader = new TextBlock
+        {
+            Text = "Layer / Stacking order",
+            Margin = new Thickness(0, 12, 0, 4),
+            FontWeight = FontWeights.SemiBold
+        };
+        _editor.Children.Add(layerHeader);
+        var layerHelp = Muted();
+        layerHelp.Text = "Control whether this background appears behind or in front of other backgrounds. Lower layers stay behind.";
+        layerHelp.FontSize = 11;
+        layerHelp.Margin = new Thickness(0, 0, 0, 6);
+        _editor.Children.Add(layerHelp);
+
+        var layerControls = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        layerControls.ColumnDefinitions.Add(new() { Width = new GridLength(80) });
+        layerControls.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+
+        var zStack = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
+        Label(zStack, "Z-index", _z);
+        Grid.SetColumn(zStack, 0);
+        layerControls.Children.Add(zStack);
+
+        var orderButtons = new UniformGrid { Columns = 4, Margin = new Thickness(0, 14, 0, 0) };
+        var toBackBtn = Button("Send to back", SendSelectedToBack);
+        toBackBtn.ToolTip = "Send behind all other backgrounds (bottom-most layer)";
+        toBackBtn.Margin = new Thickness(0, 0, 4, 0);
+
+        var backwardBtn = Button("Send backward", SendSelectedBackward);
+        backwardBtn.ToolTip = "Move one layer backward";
+        backwardBtn.Margin = new Thickness(2, 0, 2, 0);
+
+        var forwardBtn = Button("Bring forward", BringSelectedForward);
+        forwardBtn.ToolTip = "Move one layer forward";
+        forwardBtn.Margin = new Thickness(2, 0, 2, 0);
+
+        var toFrontBtn = Button("Bring to front", BringSelectedToFront);
+        toFrontBtn.ToolTip = "Bring in front of all other backgrounds (top-most layer)";
+        toFrontBtn.Margin = new Thickness(4, 0, 0, 0);
+
+        orderButtons.Children.Add(toBackBtn);
+        orderButtons.Children.Add(backwardBtn);
+        orderButtons.Children.Add(forwardBtn);
+        orderButtons.Children.Add(toFrontBtn);
+        Grid.SetColumn(orderButtons, 1);
+        layerControls.Children.Add(orderButtons);
+        _editor.Children.Add(layerControls);
+
         _editor.Children.Add(_locked);
         var actions = _actions;
         var save = Button("Save changes", SaveDraft); save.Background = ZoneTheme.Brush("#2563EB");
         save.Name = "SaveBackground";
         _editCanvas = Button("Edit on canvas (unlocks)", EditOnCanvas);
         actions.Children.Add(save); actions.Children.Add(_editCanvas);
-        actions.Children.Add(Button("Go to background", () => { if (Selected is { } item) { Hide(); _navigate(item); } }));
+        var focusBtn = Button("Focus on canvas", () => { if (Selected is { } item) { Hide(); _navigate(item); } });
+        focusBtn.ToolTip = "Center the camera on this background on the canvas";
+        actions.Children.Add(focusBtn);
         actions.Children.Add(Button("Locate / replace image…", () => _ = ImportAsync(replace: true)));
+        actions.Children.Add(Button("Send to back", SendSelectedToBack));
+        actions.Children.Add(Button("Bring to front", BringSelectedToFront));
         actions.Children.Add(Button("Reload saved values", LoadSelection));
         actions.Children.Add(Button("Remove background", Remove));
         foreach (FrameworkElement element in actions.Children) element.Margin = new Thickness(0, 4, 8, 0);
@@ -219,7 +269,7 @@ internal sealed class BackgroundWindow : Window
             var content = new StackPanel { Margin = new Thickness(6, 9, 6, 9) };
             content.Children.Add(new TextBlock { Text = item.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             var detail = Muted(); detail.FontSize = 11; detail.Margin = new Thickness(0, 4, 0, 0);
-            detail.Text = $"{(item.ZoneId == null ? "Free background" : "Project background")} · {item.Bounds.W:N0} × {item.Bounds.H:N0}";
+            detail.Text = $"{(item.ZoneId == null ? "Free background" : "Project background")} · Layer {item.ZIndex} · {item.Bounds.W:N0} × {item.Bounds.H:N0}";
             content.Children.Add(detail);
             _list.Items.Add(new ListBoxItem { Content = content, Tag = item, HorizontalContentAlignment = HorizontalAlignment.Stretch });
         }
@@ -395,6 +445,46 @@ internal sealed class BackgroundWindow : Window
         _dirty = false;
         bool saved = _service.Remove(item.Id);
         Report(saved ? "Background removed. Your project area, apps and image file are unchanged." : _service.Status ?? "The removal could not be saved.");
+    }
+
+    private void SendSelectedToBack()
+    {
+        if (Selected is not { } item) return;
+        if (_dirty && TryDraft(out var draft) && draft != null) _service.Update(draft);
+        _dirty = false;
+        bool saved = _service.SendToBack(item.Id);
+        Select(item.Id);
+        Report(saved ? "Background moved to the back (bottom layer)." : _service.Status ?? "The background is already at the bottom layer.");
+    }
+
+    private void BringSelectedToFront()
+    {
+        if (Selected is not { } item) return;
+        if (_dirty && TryDraft(out var draft) && draft != null) _service.Update(draft);
+        _dirty = false;
+        bool saved = _service.BringToFront(item.Id);
+        Select(item.Id);
+        Report(saved ? "Background moved to the front (top layer)." : _service.Status ?? "The background is already at the top layer.");
+    }
+
+    private void SendSelectedBackward()
+    {
+        if (Selected is not { } item) return;
+        if (_dirty && TryDraft(out var draft) && draft != null) _service.Update(draft);
+        _dirty = false;
+        bool saved = _service.SendBackward(item.Id);
+        Select(item.Id);
+        Report(saved ? "Background moved one layer backward." : _service.Status ?? "The background is already at the bottom layer.");
+    }
+
+    private void BringSelectedForward()
+    {
+        if (Selected is not { } item) return;
+        if (_dirty && TryDraft(out var draft) && draft != null) _service.Update(draft);
+        _dirty = false;
+        bool saved = _service.BringForward(item.Id);
+        Select(item.Id);
+        Report(saved ? "Background moved one layer forward." : _service.Status ?? "The background is already at the top layer.");
     }
 
     private void Replay(bool redo)
