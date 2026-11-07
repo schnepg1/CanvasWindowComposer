@@ -16,6 +16,20 @@ internal sealed class ZoneCanvasTool : ICanvasTool
     public bool HasPendingInteraction => Gesture.Active || Gesture.Armed;
     public event Action<ZoneGestureResult>? Completed;
 
+    public Guid? SelectedZoneId { get; private set; }
+    public event Action? SelectionChanged;
+
+    public void SelectZone(Guid? zoneId)
+    {
+        if (SelectedZoneId != zoneId)
+        {
+            SelectedZoneId = zoneId;
+            SelectionChanged?.Invoke();
+        }
+    }
+
+    public void Deselect() => SelectZone(null);
+
     public ZoneCanvasTool(Func<bool> enabled, Func<IReadOnlyList<ZoneView>> zones,
         Func<Guid, IReadOnlyList<WorldRect>> members)
     {
@@ -31,12 +45,22 @@ internal sealed class ZoneCanvasTool : ICanvasTool
         if (!_enabled() || pointer.Button != CanvasPointerButton.Left) return false;
         var world = pointer.World;
         if (Gesture.Armed || pointer.Modifiers.HasFlag(CanvasModifiers.Shift))
+        {
+            SelectZone(null);
             Gesture.BeginDraw(world.X, world.Y);
+        }
         else if (HitCorner(pointer) is { } resize)
             Gesture.BeginResize(resize.Zone, resize.Corner, world.X, world.Y);
         else if (HitHeader(pointer) is { } zone)
+        {
+            SelectZone(zone.Id);
             Gesture.BeginMove(zone, world.X, world.Y, _members(zone.Id));
-        else return false;
+        }
+        else
+        {
+            SelectZone(null);
+            return false;
+        }
         return true;
     }
 
@@ -75,10 +99,14 @@ internal sealed class ZoneCanvasTool : ICanvasTool
 
     private (ZoneView Zone, ZoneResizeCorner Corner)? HitCorner(CanvasPointer pointer)
     {
+        if (SelectedZoneId is not { } selectedId) return null;
         var zones = _zones();
         for (int i = zones.Count - 1; i >= 0; i--)
+        {
+            if (zones[i].Id != selectedId) continue;
             foreach (var handle in ZoneResizeLayout.Get(zones[i].Bounds, pointer.View, hitTarget: true))
                 if (handle.Rect.Contains(pointer.Position.X, pointer.Position.Y)) return (zones[i], handle.Corner);
+        }
         return null;
     }
 }

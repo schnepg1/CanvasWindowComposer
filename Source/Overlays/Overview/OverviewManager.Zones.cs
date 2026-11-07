@@ -109,6 +109,7 @@ internal sealed partial class OverviewManager
     public void JumpToZone(ZoneView zone)
     {
         CancelInteraction();
+        Selection.Replace([new(CanvasItemKind.Project, zone.Id)]);
         TransitionTo(OverviewMode.Zooming);
         var fit = ZoneGeometry.Fit(zone.Bounds, _screens.PrimaryWorkingArea);
         _startupIntroLanded = false;
@@ -275,7 +276,7 @@ internal sealed partial class OverviewManager
                 _zoneTool.Gesture.Kind == ZoneGestureKind.Draw ? _zoneTool.Gesture.Preview : null,
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
                 !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError, reduceMotion: reduceMotion,
-                motionActive: MotionActive)
+                motionActive: MotionActive, selectedZoneId: _zoneTool.SelectedZoneId)
                 with { BackgroundOccluders = BackgroundOccluders(camera), WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
                     ? "Auto-minimize: on" : "Auto-minimize: off" };
                 var b = p.Screen.Bounds;

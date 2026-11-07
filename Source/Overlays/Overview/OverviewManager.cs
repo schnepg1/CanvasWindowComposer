@@ -323,6 +323,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _zoneTool = new ZoneCanvasTool(() => _zones != null,
             () => _zones?.Items ?? Array.Empty<ZoneView>(), ZoneMoveMembers);
         _zoneTool.Completed += OnZoneToolCompleted;
+        _zoneTool.SelectionChanged += RefreshToolPreview;
         _tools.SetTool(_zoneTool);
 
         _windows = new OverviewWindowList(mainCanvas, win32);
@@ -1229,6 +1230,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
 
         _zoneTool.Completed -= OnZoneToolCompleted;
+        _zoneTool.SelectionChanged -= RefreshToolPreview;
 
         Attempt(ClearCardTransitions);
 

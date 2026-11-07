@@ -31,6 +31,8 @@ internal sealed partial class OverviewManager
             var ids = Selection.Ids;
             if (ids.Count == 1 && ids.First().Kind == CanvasItemKind.Annotation) _annotationTool?.Select(ids.First().Id);
             else _annotationTool?.ClearSelection();
+            if (ids.Count == 1 && ids.First().Kind == CanvasItemKind.Project) _zoneTool.SelectZone(ids.First().Id);
+            else _zoneTool.Deselect();
             _composerWindow?.Discard("Selection changed. Reopen the composer to share the new selection.");
         };
     }

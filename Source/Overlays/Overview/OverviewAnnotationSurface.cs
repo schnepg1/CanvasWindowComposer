@@ -12,7 +12,7 @@ internal sealed record OverviewAnnotationSnapshot(
     IReadOnlyList<ZoneView> Zones, double CameraX, double CameraY, double Zoom, ScreenRect Screen,
     WorldRect? Preview, bool Drawing, IReadOnlyList<WorldRect> Ghosts,
     IReadOnlyList<PlaceholderAnnotation> Placeholders, bool ShowHints, StartupIntroFrame? Intro, bool ShowIntroTitle, string? ToolHint = null,
-    bool ReduceMotion = false, long? Timestamp = null, bool MotionActive = false)
+    bool ReduceMotion = false, long? Timestamp = null, bool MotionActive = false, Guid? SelectedZoneId = null)
 {
     public IReadOnlyList<WorldRect> BackgroundOccluders { get; init; } = Array.Empty<WorldRect>();
     public string WindowStats { get; init; } = "Active: 0  ·  Minimized: 0 (auto: 0)";
@@ -22,11 +22,11 @@ internal sealed record OverviewAnnotationSnapshot(
         double x, double y, double zoom, System.Drawing.Rectangle screen, WorldRect? preview, bool drawing,
         IReadOnlyList<WorldRect>? ghosts = null, IReadOnlyList<PlaceholderAnnotation>? placeholders = null,
         bool showHints = true, StartupIntroFrame? intro = null, bool showIntroTitle = false, string? toolHint = null,
-        bool reduceMotion = false, long? timestamp = null, bool motionActive = false)
+        bool reduceMotion = false, long? timestamp = null, bool motionActive = false, Guid? selectedZoneId = null)
         => new(zones.ToArray(), x, y, zoom, new(screen.X, screen.Y, screen.Width, screen.Height),
             preview, drawing, ghosts?.ToArray() ?? Array.Empty<WorldRect>(),
             placeholders?.ToArray() ?? Array.Empty<PlaceholderAnnotation>(), showHints, intro, showIntroTitle, toolHint,
-            reduceMotion, timestamp, motionActive);
+            reduceMotion, timestamp, motionActive, selectedZoneId);
 }
 
 internal readonly record struct OverviewAnnotationContext(

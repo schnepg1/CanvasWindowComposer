@@ -130,6 +130,7 @@ internal sealed partial class OverviewManager
         if (_annotationEditor != null || _shapeEditor != null) { CancelAnnotationEdit(); RefreshToolPreview(); FocusOverview(); return; }
         if (CancelInteraction()) return;
         if (Selection.Ids.Count > 0) { Selection.Clear(); _proximityCircle=null; RefreshToolPreview(); return; }
+        if (_zoneTool.SelectedZoneId != null) { _zoneTool.Deselect(); RefreshToolPreview(); return; }
         if (_annotationTool is { Mode: not (AnnotationMode.Select or AnnotationMode.Navigate) }) { SelectAnnotationMode(AnnotationMode.Select); return; }
         TransitionTo(OverviewMode.Hidden);
     }
