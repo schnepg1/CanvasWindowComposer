@@ -49,21 +49,16 @@ internal sealed class WindowNavigationFlight
         if (u <= 0) return _from;
         if (u >= 1) return _to;
 
-        // --- Horizontal Progress P_xy(u) ---
-        // Helicopter lateral motion:
-        // u in [0, 0.12]: Vertical takeoff only; lateral shift is 0.
-        // u in [0.12, 0.88]: Smooth lateral acceleration, cruise, and deceleration.
-        // u in [0.88, 1.0]: Vertical landing only; lateral shift is 100% complete.
-        // Symmetric around u = 0.50 so P_xy(0.50) == 0.50 exactly.
-        const double u1 = 0.12;
-        const double u2 = 0.88;
-        double tH = Math.Clamp((u - u1) / (u2 - u1), 0.0, 1.0);
-        double easedH = SmoothQuintic(tH);
-
+        // --- Continuous Horizontal Progress P_xy(u) across full [0, 1] ---
+        // Uses SmoothQuintic across the entire journey:
+        // Starts with zero velocity/acceleration (liftoff is predominantly vertical),
+        // smoothly accelerates horizontally, cruises, and decelerates to a stop
+        // at the destination right as vertical descent completes.
+        double easedH = SmoothQuintic(u);
         double curX = _from.X + (_to.X - _from.X) * easedH;
         double curY = _from.Y + (_to.Y - _from.Y) * easedH;
 
-        // --- Vertical Zoom / Altitude Profile Z(u) ---
+        // --- Continuous Vertical Altitude / Zoom Curve Z(u) across full [0, 1] ---
         double curZoom;
         if (_hasClimb)
         {
@@ -71,20 +66,29 @@ internal sealed class WindowNavigationFlight
             {
                 curZoom = _from.Zoom;
             }
-            // Rapid vertical climb during takeoff: u in [0, 0.35]
-            // Cruising altitude plateau: u in [0.35, 0.65]
-            // Emphasized vertical descent during landing: u in [0.65, 1.0]
-            else if (u <= 0.65)
-            {
-                double tClimb = Math.Clamp(u / 0.35, 0.0, 1.0);
-                double easedClimb = SmoothQuintic(tClimb);
-                curZoom = Math.Exp(Math.Log(_from.Zoom) + (Math.Log(_cruisingZoom) - Math.Log(_from.Zoom)) * easedClimb);
-            }
             else
             {
-                double tDesc = Math.Clamp((u - 0.65) / 0.35, 0.0, 1.0);
-                double easedDesc = SmoothQuintic(tDesc);
-                curZoom = Math.Exp(Math.Log(_cruisingZoom) + (Math.Log(_to.Zoom) - Math.Log(_cruisingZoom)) * easedDesc);
+                double logFrom = Math.Log(_from.Zoom);
+                double logTo = Math.Log(_to.Zoom);
+                double logCruise = Math.Log(_cruisingZoom);
+
+                // Smooth continuous curve:
+                // First half (u in [0, 0.5]): climbs smoothly from logFrom to logCruise,
+                //   starting with zero vertical speed, accelerating upward, and slowing down upward speed near apex.
+                // Second half (u in [0.5, 1.0]): crests at logCruise, initiates decline,
+                //   and eases vertical descent to stop simultaneously when the horizontal arrival stops at u = 1.0.
+                if (u <= 0.5)
+                {
+                    double tAscent = u * 2.0;
+                    double easedAscent = SmoothQuintic(tAscent);
+                    curZoom = Math.Exp(logFrom + (logCruise - logFrom) * easedAscent);
+                }
+                else
+                {
+                    double tDescent = (u - 0.5) * 2.0;
+                    double easedDescent = SmoothQuintic(tDescent);
+                    curZoom = Math.Exp(logCruise + (logTo - logCruise) * easedDescent);
+                }
             }
         }
         else
