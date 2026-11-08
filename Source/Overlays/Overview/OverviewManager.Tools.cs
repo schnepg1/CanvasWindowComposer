@@ -104,7 +104,6 @@ internal sealed partial class OverviewManager
         bool cancelled = CloseWindowPeek();
         cancelled |= EndWindowInteraction();
         cancelled |= CancelWebResourcePlacement();
-        cancelled |= CancelCanvasComposer();
         cancelled |= CancelAnnotationEdit();
         cancelled |= _tools.Cancel(); // Clear owner before releasing native capture.
         _dragIndex = -1;
