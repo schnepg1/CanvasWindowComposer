@@ -201,6 +201,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         finally { _sceneCamera = null; }
     }
 
+    private bool _wasMoving;
+
     private void ReconcileVisualFrame()
     {
         UpdateGesturePreviews();
@@ -216,6 +218,16 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         bool isMoving = MotionActive;
         if (!isMoving)
         {
+            if (_wasMoving)
+            {
+                var focal = GetTransitionFocalPoint(camera);
+                _thumbnails.BeginSettle(focal, camera);
+            }
+            else if (_thumbnails.IsSettling)
+            {
+                _thumbnails.AdvanceSettle();
+            }
+
             _wm.SetOverviewViewport(proximityCamera,
                 _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
             if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
@@ -225,7 +237,17 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             }
             RefreshCardIdentities();
         }
+        else
+        {
+            _thumbnails.CancelSettle();
+        }
+        _wasMoving = isMoving;
+
         _thumbnails.Reconcile(camera);
+        if (!isMoving && _thumbnails.IsSettling)
+        {
+            _visualFrames.Request();
+        }
         if (_windowInteraction.Active && !PeekWorking && (!_thumbnails.HasLiveSource(_windowInteraction.Window)
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
 

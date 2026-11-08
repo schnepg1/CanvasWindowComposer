@@ -239,6 +239,24 @@ In [`PlaceholderAnnotationLayer.cs`](file:///Source/Overlays/Overview/Placeholde
 
 ---
 
+### 3.9. Post-Motion Settle Staggering for DWM Thumbnails
+
+#### The Problem
+During camera navigation (`OverviewManager.MotionActive == true`), live DWM thumbnails are suppressed to prevent out-of-process DWM IPC thrashing and UI thread stalls.
+However, when navigation stopped, `MotionActive` transitioned from `true` to `false`. On the very first stationary frame, all live DWM window thumbnails unsuppressed simultaneously.
+In dense workspaces with 20–40+ windows, this triggered 20–40+ synchronous cross-process DWM Win32 API calls (`DwmRegisterThumbnail`, `DwmUpdateThumbnailProperties`) within a single frame callback, generating a 10–25 ms CPU/DWM IPC spike. This spike manifested as a noticeable 1-frame hitch right as the camera came to a halt.
+
+#### The Architecture & Solution
+In [`OverviewThumbnails.cs`](file:///Source/Overlays/Overview/OverviewThumbnails.cs) and [`OverviewManager.cs`](file:///Source/Overlays/Overview/OverviewManager.cs):
+- **Concentric Distance-Based Batching:** When motion halts (`_wasMoving && !isMoving`), `_thumbnails.BeginSettle(focal, camera)` calculates the squared Euclidean distance from the camera's transition focal point (`GetTransitionFocalPoint(camera)` under the cursor) to each visible window's center. Windows are sorted by distance into concentric batches of up to 8 windows (`SettleBatchSize = 8`).
+- **Frame 0 Immediate Awakening:** The closest batch (Batch 0: up to 8 windows directly under the user's focus) awakens immediately on Frame 0 with 0 ms delay.
+- **Paced Subsequent Frames:** Outward concentric batches awaken over Frame 1 (+16 ms) and Frame 2 (+32 ms) via `_thumbnails.AdvanceSettle()` and `_visualFrames.Request()`. Total settle time remains <= 32 ms, imperceptible to the eye and well within the 150 ms placeholder card fade transition.
+- **Small Workspace Fast-Path:** If total visible uncached windows <= 8, settle staggering is completely bypassed and all windows awaken immediately on Frame 0.
+- **Screen-Fixed & Cached Immunity:** Pinned/screen-fixed windows (`entry.ScreenFixed`) and cached preview images (`_useCached(entry.HWnd)`) bypass staggering and remain visible at all times.
+- **Instant Interruption Recovery:** If camera motion resumes while a stagger is in progress (`isMoving == true`), `_thumbnails.CancelSettle()` instantly aborts the stagger without orphaned state.
+
+---
+
 ## 4. Troubleshooting Guide
 
 Use this table if regressions occur in future changes:
@@ -251,6 +269,7 @@ Use this table if regressions occur in future changes:
 | **Flinging/inertia happens when releasing after a stop** | Missing stationary pause check in `InertiaTracker` | `InertiaTracker.cs` (check 40 ms threshold) |
 | **Zoom feels laggy on the first mouse wheel tick** | Frame 0 immediate step missing from smooth zoom tracker | `SmoothZoomTracker.cs`<br>`OverviewManager.SmoothZoom.cs` |
 | **Frame drops during camera drag with multiple tool windows open** | Redundant Win32 `SetWindowPos` calls per motion frame | `OverviewManager.cs` (`!isMoving` guard on `RaiseCanvasPanels`) |
+| **1-frame hitch right when camera stops moving in dense workspaces** | Settle staggering bypassed or failing to partition DWM unsuppression | `OverviewThumbnails.cs` (`BeginSettle`, `AdvanceSettle`)<br>`OverviewManager.cs` (`ReconcileVisualFrame`) |
 
 ---
 
