@@ -11,6 +11,7 @@ internal sealed class SearchOverlay : Form
     private readonly Canvas _canvas;
     private readonly WindowManager _wm;
     private readonly IScreens _screens;
+    private readonly IOverviewController? _overview;
     private readonly IInputRouter _input;
     private readonly WindowSearchService _searchService;
     private readonly TextBox _searchBox;
@@ -70,8 +71,9 @@ internal sealed class SearchOverlay : Form
     private readonly int _pinCheckMarginLeft;
     private readonly int _pinCheckTextGap;
 
-    public SearchOverlay(Canvas canvas, WindowManager wm, IWindowApi positioner, IInputRouter input, IScreens? screens = null)
+    public SearchOverlay(Canvas canvas, WindowManager wm, IWindowApi positioner, IInputRouter input, IScreens? screens = null, IOverviewController? overview = null)
     {
+        _overview = overview;
         _canvas = canvas;
         _wm = wm;
         _screens = screens ?? WinFormsScreens.Instance;
@@ -328,10 +330,11 @@ internal sealed class SearchOverlay : Form
             return;
         }
 
+        HideOverlay();
+        if (_overview != null && _overview.NavigateToWindow(hWnd)) return;
         var screen = _screens.PrimaryWorkingArea;
         _canvas.CenterOn(world.X, world.Y, world.W, world.H, screen.Width, screen.Height);
         _canvas.Commit();
-        HideOverlay();
     }
 
     private void TogglePinnedAt(int idx)

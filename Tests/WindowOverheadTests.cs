@@ -92,7 +92,7 @@ public class WindowOverheadTests
     {
         var api = new FakeWindowApi(); var canvas = new Canvas(); var input = new FakeInputRouter();
         using var manager = new WindowManager(canvas, api, new FakeAppConfig(), input);
-        using var foreground = new ForegroundCoordinator(canvas, new FakeOverviewController(), input, new FakeClock(10000), new FakeScreens());
+        using var foreground = new ForegroundCoordinator(canvas, new FakeOverviewController { NavigateToWindowResult = false }, input, new FakeClock(10000), new FakeScreens());
         api.AddWindow((IntPtr)1, 0, 0, 400, 300);
         canvas.SetWindow((IntPtr)1, 5000, 5000, 400, 300);
         manager.ReprojectSync();

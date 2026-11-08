@@ -85,7 +85,7 @@ internal sealed class TrayApp : ApplicationContext
 
             // Constructed last so they can self-subscribe to canvas/input/desktops events.
             _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering, _overview), ShutdownPhase.ReleaseUi, "Minimap");
-            _search = _lifecycle.Own(new SearchOverlay(_canvas, _wm, winApi, _input, _screens), ShutdownPhase.ReleaseUi, "Search overlay");
+            _search = _lifecycle.Own(new SearchOverlay(_canvas, _wm, winApi, _input, _screens, _overview), ShutdownPhase.ReleaseUi, "Search overlay");
             _ = _dispatcher.Handle;
 
             _bgTimer = _lifecycle.Own(new Timer { Interval = ReconcileTimerIntervalMs }, ShutdownPhase.Quiesce, "Background timer");

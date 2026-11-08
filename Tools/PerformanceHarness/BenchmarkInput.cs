@@ -9,6 +9,7 @@ internal sealed class BenchmarkInput : IInputRouter
     public event Action? ButtonDown { add { } remove { } }
     public event Action? SearchHotkey { add { } remove { } }
     public event Action? OverviewHotkey { add { } remove { } }
+    public event Action<int>? CameraBookmarkHotkey { add { } remove { } }
     public event Action? EscPressed { add { } remove { } }
     public event Action<IntPtr>? WindowMinimized { add { } remove { } }
     public event Action<IntPtr>? WindowDestroyed { add { } remove { } }

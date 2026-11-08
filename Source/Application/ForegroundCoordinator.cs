@@ -98,11 +98,7 @@ internal sealed class ForegroundCoordinator : IDisposable
             || world.PinnedToScreen) return;
         // A deliberate Alt+Tab/taskbar choice must survive the short suppression
         // interval used for incidental focus after minimize, close, or overlay exit.
-        if (_overview.CurrentMode != OverviewMode.Hidden || world.InInventory)
-        {
-            _overview.NavigateToWindow(window);
-            return;
-        }
+        if (_overview.NavigateToWindow(window)) return;
         _overview.CancelInertia();
         var target = WindowNavigationFlight.Target(world, 1, _screens.PrimaryWorkingArea);
         _canvas.LoadState(new CanvasState { CamX = target.X, CamY = target.Y, Zoom = 1,

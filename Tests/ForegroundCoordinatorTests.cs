@@ -19,18 +19,11 @@ public class ForegroundCoordinatorTests
         h.Input.RaiseWindowMinimized((IntPtr)1);
         if (canvasOpen) h.Overview.TransitionTo(OverviewMode.Zooming);
         h.Input.RaiseWindowSelected(selected);
+        Assert.Equal(selected, Assert.Single(h.Overview.NavigatedWindows));
+        Assert.Equal(0, h.Canvas.CamX);
         if (canvasOpen)
         {
-            Assert.Equal(selected, Assert.Single(h.Overview.NavigatedWindows));
             Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
-            Assert.Equal(0, h.Canvas.CamX);
-        }
-        else
-        {
-            Assert.Empty(h.Overview.NavigatedWindows);
-            var center = h.Canvas.WorldToScreen(5200, 5150);
-            Assert.Equal((960d, 520d), center);
-            Assert.Equal(1, h.Canvas.Zoom);
         }
     }
 
@@ -47,8 +40,7 @@ public class ForegroundCoordinatorTests
         Assert.False(h.Input.WindowSelectionTarget!((IntPtr)999));
         h.Overview.TransitionTo(OverviewMode.Hidden);
         h.Input.RaiseWindowSelected((IntPtr)2);
-        Assert.Equal(1, h.Canvas.Zoom);
-        Assert.Equal((960d, 520d), h.Canvas.WorldToScreen(5200, 5150));
+        Assert.Equal((IntPtr)2, Assert.Single(h.Overview.NavigatedWindows));
     }
 
     [Fact]
