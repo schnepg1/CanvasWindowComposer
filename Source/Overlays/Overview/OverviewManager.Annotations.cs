@@ -733,19 +733,39 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private static string? LoadTeamArchitectureCvl()
+    private static string? LoadTeamArchitectureCvl(string? templatePath = null)
     {
         try
         {
+            if (string.IsNullOrEmpty(templatePath))
+            {
+                var config = TeamTelemetryConfig.Load();
+                templatePath = !string.IsNullOrEmpty(config.CvlTemplate)
+                    ? config.CvlTemplate
+                    : TeamTelemetryConfig.DefaultCvlTemplate;
+            }
+
+            if (Path.IsPathRooted(templatePath) && File.Exists(templatePath))
+            {
+                return File.ReadAllText(templatePath);
+            }
+
             var candidates = new[]
             {
-                Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "team_architecture_cvl.json"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".agents", "teams", "team_architecture_cvl.json"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".agents", "teams", "team_architecture_cvl.json")
+                templatePath,
+                Path.Combine(Environment.CurrentDirectory, templatePath),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, templatePath),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", templatePath),
+                // Fallbacks to default template
+                Path.Combine(Environment.CurrentDirectory, TeamTelemetryConfig.DefaultCvlTemplate),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, TeamTelemetryConfig.DefaultCvlTemplate),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", TeamTelemetryConfig.DefaultCvlTemplate)
             };
+
             foreach (var c in candidates)
             {
-                if (File.Exists(c)) return File.ReadAllText(c);
+                if (!string.IsNullOrEmpty(c) && File.Exists(c))
+                    return File.ReadAllText(c);
             }
         }
         catch { }

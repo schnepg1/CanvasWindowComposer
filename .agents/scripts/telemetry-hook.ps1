@@ -17,6 +17,54 @@ if (Test-Path (Join-Path $agentsDir "teams")) {
     $stateFile = Join-Path $repoRoot ".agents\teams\state.json"
 }
 
+# Parse telemetry block from teams.yaml
+function Get-TelemetryConfigFromYaml([string]$yamlPath) {
+    $config = @{
+        MutexName = $null
+        TestCommandPattern = $null
+        CvlTemplate = $null
+    }
+    if (Test-Path $yamlPath) {
+        $content = Get-Content $yamlPath -Raw -ErrorAction SilentlyContinue
+        if ($content -match '(?ms)^telemetry:\s*\r?\n(?<block>.*?(?=^[a-zA-Z0-9_\-]+:|\z))') {
+            $block = $Matches['block']
+            if ($block -match '(?m)^[ \t]+mutex_name:\s*(.+)$') {
+                $val = $Matches[1].Trim()
+                if ($val.StartsWith('"') -and $val.EndsWith('"')) {
+                    $val = $val.Substring(1, $val.Length - 2).Replace('\\', '\')
+                } elseif ($val.StartsWith("'") -and $val.EndsWith("'")) {
+                    $val = $val.Substring(1, $val.Length - 2)
+                }
+                $config.MutexName = $val
+            }
+            if ($block -match '(?m)^[ \t]+test_command_pattern:\s*(.+)$') {
+                $val = $Matches[1].Trim()
+                if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+                    $val = $val.Substring(1, $val.Length - 2)
+                }
+                $config.TestCommandPattern = $val
+            }
+            if ($block -match '(?m)^[ \t]+cvl_template:\s*(.+)$') {
+                $val = $Matches[1].Trim()
+                if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+                    $val = $val.Substring(1, $val.Length - 2)
+                }
+                $config.CvlTemplate = $val
+            }
+        }
+    }
+    return $config
+}
+
+$yamlCandidate = Join-Path (Split-Path -Parent $stateFile) "teams.yaml"
+if (-not (Test-Path $yamlCandidate)) {
+    $yamlCandidate = Join-Path $agentsDir "teams\teams.yaml"
+}
+$telemetryConfig = Get-TelemetryConfigFromYaml $yamlCandidate
+
+$universalTestPattern = "Run-Tests|dotnet test|pytest|python -m unittest|npm test|yarn test|pnpm test|cargo test|go test|mvn test|gradlew? test"
+$testPattern = if ($telemetryConfig.TestCommandPattern) { $telemetryConfig.TestCommandPattern } else { $universalTestPattern }
+
 function Read-JsonWithRetry([string]$path, [int]$maxRetries = 3) {
     for ($i = 0; $i -lt $maxRetries; $i++) {
         try {
@@ -155,8 +203,9 @@ try {
 
     if ($Event -eq "PreToolUse" -or $Event -eq "PostToolUse") {
         if ($toolName -eq "run_command") {
-            if ($command -match "Run-Tests|dotnet test") {
-                Set-TeamRoleState "programmer" "Testing" "Running test suite under mutex"
+            if ($command -match $testPattern) {
+                $testDetail = if ($telemetryConfig.MutexName) { "Running test suite under named mutex" } else { "Running test suite" }
+                Set-TeamRoleState "programmer" "Testing" $testDetail
                 Set-TeamRoleState "reviewer" "Testing" "Validating test results"
             } elseif ($command -match "git merge") {
                 Set-TeamRoleState "merger" "Working" "Executing branch merge"

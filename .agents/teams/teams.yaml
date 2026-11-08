@@ -17,6 +17,24 @@ metadata:
   concurrency_model: "Git Worktree Isolation + OS-level Named Mutex"
 
 # ------------------------------------------------------------------------------
+# Telemetry & Runtime Coordination Configuration
+# ------------------------------------------------------------------------------
+telemetry:
+  # Win32 named mutex for desktop test serialization.
+  # For non-desktop projects (Python, Node.js, Rust, Go), set to "" or omit to completely
+  # disable the hardware mutex polling loop and eliminate background thread overhead.
+  mutex_name: "Global\\CanvasWindowComposer.Tests"
+
+  # Optional regex override for detecting test execution commands.
+  # If omitted, defaults to universal multi-language pattern:
+  #   Run-Tests|dotnet test|pytest|python -m unittest|npm test|yarn test|pnpm test|cargo test|go test|mvn test|gradle test
+  test_command_pattern: "Run-Tests|dotnet test"
+
+  # Active Canvas Visualization Language (CVL) template path.
+  # Relative to workspace root or absolute path. Defaults to .agents/teams/team_architecture_cvl.json
+  cvl_template: ".agents/teams/team_architecture_cvl.json"
+
+# ------------------------------------------------------------------------------
 # 1. Modular Role Definitions
 # ------------------------------------------------------------------------------
 roles:

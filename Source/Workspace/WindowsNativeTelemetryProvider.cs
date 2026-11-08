@@ -11,11 +11,13 @@ namespace CanvasDesktop;
 
 internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
 {
-    public const string NamedMutexName = @"Global\CanvasWindowComposer.Tests";
+    public const string DefaultNamedMutexName = TeamTelemetryConfig.DefaultNamedMutexName;
+    public const string NamedMutexName = DefaultNamedMutexName;
     private static readonly Regex TaskIdRegex = new(@"\[(?<taskId>[a-zA-Z0-9_\-]+)\]", RegexOptions.Compiled);
 
     private readonly string _stateFilePath;
     private readonly Func<bool>? _mutexProbe;
+    private readonly string? _mutexName;
     private readonly FileSystemWatcher? _watcher;
     private readonly System.Threading.Timer? _pollTimer;
     private readonly object _syncLock = new();
@@ -24,6 +26,8 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
     private bool _disposed;
 
     public TeamTelemetrySnapshot Current => _current;
+    public string? MutexName => _mutexName;
+    public bool IsPollingActive => _pollTimer != null;
     public event Action<TeamTelemetrySnapshot>? TelemetryUpdated;
 
     public static string ResolveStateFilePath(string? explicitPath = null)
@@ -64,10 +68,26 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         return appDataState;
     }
 
-    public WindowsNativeTelemetryProvider(string? stateFilePath = null, Func<bool>? mutexProbe = null)
+    public WindowsNativeTelemetryProvider(
+        string? stateFilePath = null,
+        Func<bool>? mutexProbe = null,
+        string? mutexName = null)
     {
         _stateFilePath = ResolveStateFilePath(stateFilePath);
         _mutexProbe = mutexProbe;
+
+        if (mutexName != null)
+        {
+            _mutexName = mutexName;
+        }
+        else
+        {
+            // Auto-resolve from teams.yaml in the stateFilePath's folder or repo root
+            string? stateDir = Path.GetDirectoryName(_stateFilePath);
+            string? teamsYaml = !string.IsNullOrEmpty(stateDir) ? Path.Combine(stateDir, "teams.yaml") : null;
+            var config = TeamTelemetryConfig.Load(teamsYaml);
+            _mutexName = config.MutexName;
+        }
 
         try
         {
@@ -85,8 +105,11 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         }
         catch { }
 
-        // Poll every 300ms for hardware mutex truth
-        _pollTimer = new System.Threading.Timer(_ => CheckHardwareAndState(), null, 300, 300);
+        // Start polling timer ONLY if a mutex name is configured and non-empty
+        if (!string.IsNullOrEmpty(_mutexName))
+        {
+            _pollTimer = new System.Threading.Timer(_ => CheckHardwareAndState(), null, 300, 300);
+        }
 
         ReloadState();
     }
@@ -100,11 +123,11 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         {
             mutexActive = _mutexProbe();
         }
-        else
+        else if (!string.IsNullOrEmpty(_mutexName))
         {
             try
             {
-                if (Mutex.TryOpenExisting(NamedMutexName, out var mutex))
+                if (Mutex.TryOpenExisting(_mutexName, out var mutex))
                 {
                     mutexActive = true;
                     mutex.Dispose();

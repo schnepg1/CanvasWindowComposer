@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using Xunit;
@@ -304,4 +305,93 @@ public class TelemetryTests : IDisposable
         provider.UnregisterTeam("task-xyz");
         Assert.False(provider.Current.Teams.ContainsKey("task-xyz"));
     }
+    [Fact]
+    public void Provider_NullOrEmptyMutex_DisablesHardwarePollingTimer()
+    {
+        // Explicit null/empty mutex disables polling timer completely
+        using var provider = new WindowsNativeTelemetryProvider(StatePath, mutexProbe: null, mutexName: "");
+
+        Assert.False(provider.IsPollingActive);
+        Assert.Equal("", provider.MutexName);
+
+        // Verify state updates still work via file persistence without polling
+        provider.SetState("programmer", AgentExecutionState.Working, "Coding in Python");
+        Assert.Equal(AgentExecutionState.Working, provider.Current.Roles["programmer"].State);
+
+        // Manual hardware check does nothing when mutexName is empty
+        provider.CheckHardwareAndState();
+        Assert.Equal(AgentExecutionState.Working, provider.Current.Roles["programmer"].State);
+    }
+
+    [Fact]
+    public void Provider_CustomMutexName_EnablesPollingTimer()
+    {
+        using var provider = new WindowsNativeTelemetryProvider(
+            StatePath, mutexProbe: () => false, mutexName: @"Global\CustomApp.Tests");
+
+        Assert.True(provider.IsPollingActive);
+        Assert.Equal(@"Global\CustomApp.Tests", provider.MutexName);
+    }
+
+    [Fact]
+    public void TeamTelemetryConfig_ParsesYaml_Correctly()
+    {
+        var yaml = @"
+version: '1.0.0'
+telemetry:
+  mutex_name: 'Global\Custom.Tests'
+  test_command_pattern: 'pytest|cargo test'
+  cvl_template: '.agents/teams/custom_cvl.json'
+";
+        var config = TeamTelemetryConfig.ParseYaml(yaml);
+        Assert.Equal(@"Global\Custom.Tests", config.MutexName);
+        Assert.Equal("pytest|cargo test", config.TestCommandPattern);
+        Assert.Equal(".agents/teams/custom_cvl.json", config.CvlTemplate);
+    }
+
+    [Fact]
+    public void TeamTelemetryConfig_Defaults_WhenTelemetryBlockMissing()
+    {
+        var yaml = @"
+version: '1.0.0'
+roles:
+  programmer:
+    id: programmer
+";
+        var config = TeamTelemetryConfig.ParseYaml(yaml);
+        Assert.Null(config.MutexName);
+        Assert.Null(config.TestCommandPattern);
+        Assert.Null(config.CvlTemplate);
+    }
+
+    [Theory]
+    [InlineData("dotnet test CanvasDesktop.slnx", true)]
+    [InlineData("powershell Tools/Run-Tests.ps1", true)]
+    [InlineData("pytest tests/test_core.py", true)]
+    [InlineData("python -m unittest discover", true)]
+    [InlineData("npm test -- --watch=false", true)]
+    [InlineData("yarn test", true)]
+    [InlineData("pnpm test", true)]
+    [InlineData("cargo test --all", true)]
+    [InlineData("go test ./...", true)]
+    [InlineData("mvn test", true)]
+    [InlineData("gradle test", true)]
+    [InlineData("./gradlew test", true)]
+    [InlineData("dotnet build", false)]
+    [InlineData("npm run build", false)]
+    [InlineData("git commit -m 'test: update'", false)]
+    public void UniversalTestPattern_MatchesExpectedCommands(string command, bool shouldMatch)
+    {
+        var regex = new Regex(TeamTelemetryConfig.DefaultTestCommandPattern, RegexOptions.IgnoreCase);
+        Assert.Equal(shouldMatch, regex.IsMatch(command));
+    }
+    [Fact]
+    public void TeamTelemetryConfig_LoadsWorktreeTeamsYaml_Successfully()
+    {
+        var config = TeamTelemetryConfig.Load();
+        Assert.Equal(@"Global\CanvasWindowComposer.Tests", config.MutexName);
+        Assert.Equal("Run-Tests|dotnet test", config.TestCommandPattern);
+        Assert.Equal(".agents/teams/team_architecture_cvl.json", config.CvlTemplate);
+    }
 }
+
