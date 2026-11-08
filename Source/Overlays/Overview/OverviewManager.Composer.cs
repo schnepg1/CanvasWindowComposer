@@ -72,6 +72,17 @@ internal sealed partial class OverviewManager
             throw new InvalidOperationException("The desktop changed. Generate a fresh preview.");
         if (preview.References.Any(r=>!CurrentComposerReferences().Contains(r)))
             throw new InvalidOperationException("A shared window or project changed. Generate a fresh preview.");
+
+        if (preview.SourcePlan != null && preview.SourcePlan.HasWorkflowEntities() && _placeholderWorkspace != null)
+        {
+            var workflowService = new WorkflowService(_placeholderWorkspace, _annotationDocument, _annotationStore);
+            workflowService.ApplyComposerPlan(preview.Desktop, preview.SourcePlan, preview);
+            RefreshZoneLayout();
+            RefreshOverviewWindows();
+            ReconcileVisuals();
+            return "Applied visual workflow and workspace items to canvas.";
+        }
+
         _annotationDocument.ApplyBatch(preview.Revision, preview.Desktop, preview.Items);
         return _annotationStore?.Status is {} warning ? "Applied in memory. " + warning : "Applied to canvas. Undo restores the entire previous state.";
     }

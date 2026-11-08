@@ -28,7 +28,7 @@ internal sealed class ZoneWindow : Window
     private static SolidColorBrush Brush(string hex) => ZoneTheme.Brush(hex);
 
     public ZoneWindow(IZoneCommands zones, Action draw, Action<ZoneView> jump, Func<string?> status,
-        IZoneLayoutCommands? history = null, Action<bool>? replay = null, Action? navigate = null)
+        IZoneLayoutCommands? history = null, Action<bool>? replay = null, Action? navigate = null, Action<Guid>? exportWorkflow = null)
     {
         _zones = zones; _draw = draw; _jump = jump; _status = status;
         _history = history;
@@ -120,6 +120,19 @@ internal sealed class ZoneWindow : Window
         _membersButton = Button("Choose members…", ChooseMembers);
         _removeButton = Button("Remove area", Remove);
         _editor.Children.Add(_membersButton);
+        if (exportWorkflow != null)
+        {
+            var exportButton = Button("Export workflow (JSON)", () =>
+            {
+                if (Selected is { } zone)
+                {
+                    exportWorkflow(zone.Id);
+                    _message.Text = $"Exported '{zone.Name}' workflow to clipboard.";
+                }
+            });
+            exportButton.Margin = new Thickness(0, 4, 0, 0);
+            _editor.Children.Add(exportButton);
+        }
         _editor.Children.Add(_removeButton);
         footer.Children.Add(_message);
         _message.FontSize = 12; _message.Foreground = Brush("#A7B3C9"); _message.Margin = new Thickness(0, 12, 0, 0);

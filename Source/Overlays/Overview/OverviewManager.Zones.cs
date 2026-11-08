@@ -55,6 +55,8 @@ internal sealed partial class OverviewManager
         RefreshInventory();
         _placeholderTitles = _placeholderWorkspace?.GetPlaceholderTitles() ?? new Dictionary<IntPtr, string>();
         RefreshTemporaryDrawer();
+        CleanOrphanedArrows();
+        ReconcileConnectedArrows();
         if (CurrentMode != OverviewMode.Hidden)
         {
             RefreshOverviewWindows();
@@ -86,6 +88,7 @@ internal sealed partial class OverviewManager
     {
         _windows.SyncGeometry();
         foreach (var entry in _windows.Windows) _thumbnails.UpdateWorldRect(entry.HWnd, entry.World);
+        ReconcileConnectedArrows();
         ReconcileVisuals();
     }
 

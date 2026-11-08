@@ -1,0 +1,418 @@
+# ==============================================================================
+# Agent Teams Specification (teams.yaml)
+# ==============================================================================
+# Schema Version: 1.0.0
+# Description:
+#   Company-agnostic and vendor-neutral specification for multi-agent software
+#   engineering teams and constellations within CanvasWindowComposer.
+#
+# Target Platform: Windows 10/11 x64, .NET 9.0 (net9.0-windows10.0.19041.0)
+# Upstream Target: schnepg1/CanvasWindowComposer (per AGENTS.md)
+# ==============================================================================
+
+version: "1.0.0"
+metadata:
+  repository: "schnepg1/CanvasWindowComposer"
+  project_type: "WPF / D3D / Win32 Native Desktop Application"
+  concurrency_model: "Git Worktree Isolation + OS-level Named Mutex"
+
+# ------------------------------------------------------------------------------
+# 1. Modular Role Definitions
+# ------------------------------------------------------------------------------
+roles:
+  # ----------------------------------------------------------------------------
+  # Role 1: Architect (Planner)
+  # ----------------------------------------------------------------------------
+  architect:
+    id: "architect"
+    title: "System Architect & Feature Planner"
+    summary: >-
+      Analyzes high-level requests, investigates system architecture and existing
+      codebase patterns, evaluates feasibility/risks, and produces detailed
+      architectural RFCs and atomic task checklists.
+    goal: >-
+      Deliver complete, unambiguous, and risk-analyzed implementation blueprints
+      ready for worktree-isolated developers without making speculative code changes.
+    workspace:
+      mode: "inherit"
+      description: "Read-only access to main workspace; does not build or run tests."
+    permissions:
+      filesystem_read: true
+      filesystem_write: false # Read-only for code; creates plan documents/artifacts
+      command_execution: false # May run read-only git/query commands if necessary
+      network_access: false
+    tools:
+      - "read_file"
+      - "search_files"
+      - "codebase_explorer"
+      - "write_artifact"
+    input_contract:
+      format: "yaml_or_markdown"
+      fields:
+        request_title: "string (concise summary of feature or refactoring)"
+        user_intent: "string (raw user prompt or requirements document)"
+        target_branch: "string (e.g., 'window_linking_workflows' or 'main')"
+        constraints: "list[string] (performance, WPF/native, backward compatibility)"
+    output_contract:
+      format: "markdown"
+      artifact_name: "ARCHITECTURE_PLAN.md"
+      fields:
+        problem_statement: "string"
+        architectural_impact: "string (affected components, modules, interfaces)"
+        file_change_manifest: "list[string] (files to create, modify, or delete)"
+        task_breakdown: "list[object] (ordered atomic checklist items with verification criteria)"
+        test_strategy: "string (unit tests, native tests, preflight requirements)"
+        risk_and_edge_cases: "list[string] (threading, D3D/DWM handles, lifecycle)"
+    invariants:
+      - "Must inspect existing codebase conventions before specifying new interfaces."
+      - "Must declare whether native desktop tests are required (noting the named mutex rule)."
+      - "Must not edit production code or run builds directly."
+
+  # ----------------------------------------------------------------------------
+  # Role 2: Programmer (Worktree Developer)
+  # ----------------------------------------------------------------------------
+  programmer:
+    id: "programmer"
+    title: "Worktree Production Developer"
+    summary: >-
+      Spins up an isolated git worktree, writes production code and unit/integration
+      tests according to the Architect's plan, runs serialized test suites, and
+      iterates with the Reviewer until full approval.
+    goal: >-
+      Implement correct, high-performance, well-tested code in complete isolation
+      from other agents, respecting AGENTS.md rules.
+    workspace:
+      mode: "isolated-worktree"
+      naming_convention: "..\\CanvasWindowComposer-<task>"
+      branch_convention: "agent/<task>"
+      isolation_rules:
+        - "Never build or test in primary checkout; bin/, obj/, TestResults/ are shared state."
+        - "Only one agent per worktree; do not share worktrees between sessions."
+    permissions:
+      filesystem_read: true
+      filesystem_write: true
+      command_execution: true
+      network_access: false
+    tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "run_command"
+      - "git_cli"
+      - "dotnet_cli"
+    input_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string (unique task identifier, e.g. 'canvas-window-link-01')"
+        plan: "object (Architect plan or task checklist)"
+        target_branch: "string (base branch, e.g. 'window_linking_workflows')"
+        review_feedback: "object (optional; structured feedback from Reviewer for iterations > 1)"
+    output_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        worktree_path: "string"
+        branch_name: "string"
+        head_commit: "string (SHA)"
+        changed_files: "list[string]"
+        test_results:
+          passed: "boolean"
+          run_directory: "string"
+          failures: "list[string]"
+        review_submission_note: "string"
+        iteration_number: "integer"
+    invariants:
+      - "Must run tests through Tools\\Run-Tests.ps1 -Configuration Release or Tests\\run_tests.bat."
+      - "Must respect the Global\\CanvasWindowComposer.Tests named mutex."
+      - "Must verify CanvasDesktop is not running before test execution."
+      - "Must commit all changes cleanly to agent/<task> before requesting review."
+      - "Must follow WPF Window Ownership guidelines: never call childWindow.Owner = this in hot paths without Win32 HWND fallback to prevent 'Cannot set Owner to unshown Window' crashes."
+
+  # ----------------------------------------------------------------------------
+  # Role 3: Reviewer (Code Reviewer)
+  # ----------------------------------------------------------------------------
+  reviewer:
+    id: "reviewer"
+    title: "Code Quality, Security & Invariants Reviewer"
+    summary: >-
+      Examines git diffs, verifies alignment with Architect specs, inspects
+      edge cases (threading, D3D/DWM leaks, HWND lifetime), reviews test logs,
+      and provides structured actionable verdicts.
+    goal: >-
+      Ensure zero regressions, strict adherence to repo standards, and prevent
+      untested or broken code from progressing to merge.
+    workspace:
+      mode: "inherit"
+      description: "Read-only inspection of programmer worktree and diff."
+    permissions:
+      filesystem_read: true
+      filesystem_write: false # Writes review reports only
+      command_execution: true # Read-only git diff / inspect commands
+      network_access: false
+    tools:
+      - "git_diff"
+      - "read_file"
+      - "write_artifact"
+    input_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        branch_name: "string"
+        worktree_path: "string"
+        architect_spec: "object"
+        test_summary: "object"
+        iteration: "integer"
+    output_contract:
+      format: "yaml_or_markdown"
+      artifact_name: "REVIEW_REPORT.md"
+      fields:
+        task_id: "string"
+        verdict: "enum['APPROVED', 'CHANGES_REQUESTED']"
+        iteration: "integer"
+        summary: "string"
+        findings:
+          - category: "enum['Blocker', 'Major', 'Minor', 'Nit']"
+            file: "string"
+            line: "integer"
+            issue: "string"
+            recommendation: "string"
+        test_assessment: "string (assessment of unit/integration test coverage)"
+    invariants:
+      - "Must reject any submission where tests have not been executed or failed."
+      - "Must audit Win32 HWND handling, WPF dispatcher synchronization, and unmanaged resource cleanup."
+      - "Must provide clear, reproducible instructions for any requested changes."
+
+  # ----------------------------------------------------------------------------
+  # Role 4: Merger (Branch Merger)
+  # ----------------------------------------------------------------------------
+  merger:
+    id: "merger"
+    title: "Automated Branch Merger"
+    summary: >-
+      Validates target branch freshness, verifies full test suite execution,
+      and executes a clean git merge of the approved agent branch into target.
+    goal: >-
+      Safely integrate approved work into the target branch without introducing
+      stale regressions or corrupting repository state.
+    workspace:
+      mode: "target-checkout"
+      description: "Target branch checkout (e.g., window_linking_workflows)."
+    permissions:
+      filesystem_read: true
+      filesystem_write: true
+      command_execution: true
+      network_access: true # Optional: fetch/push if upstream remote configured
+    tools:
+      - "git_cli"
+      - "test_runner"
+      - "read_file"
+    input_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        source_branch: "string (e.g. 'agent/<task>')"
+        target_branch: "string (e.g. 'window_linking_workflows')"
+        review_verdict: "string ('APPROVED')"
+    output_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        status: "enum['MERGE_SUCCESS', 'MERGE_CONFLICT', 'MERGE_TEST_FAILED']"
+        merge_commit_sha: "string (null if failed)"
+        conflicted_files: "list[string] (populated on MERGE_CONFLICT)"
+        summary_log: "string"
+    invariants:
+      - "Must never merge unapproved code (review_verdict must be APPROVED)."
+      - "If merge encounters git conflict markers, must abort git merge immediately and pass to conflict-resolver."
+      - "Must run Tools\\Run-Tests.ps1 -Configuration Release post-merge verification."
+
+  # ----------------------------------------------------------------------------
+  # Role 5: Conflict Resolver (Merge Conflict Resolving Programmer)
+  # ----------------------------------------------------------------------------
+  conflict-resolver:
+    id: "conflict-resolver"
+    title: "Merge Conflict Resolving Specialist"
+    summary: >-
+      Intervenes when automated merge encounters git conflicts. Analyzes three-way
+      conflict markers, reconciles differences preserving both feature and upstream
+      logic, compiles, verifies tests, and concludes the merge.
+    goal: >-
+      Resolve semantic and structural merge conflicts cleanly without discarding
+      upstream improvements or feature additions.
+    workspace:
+      mode: "merge-workspace"
+      description: "Dedicated conflict resolution worktree or active merge state."
+    permissions:
+      filesystem_read: true
+      filesystem_write: true
+      command_execution: true
+      network_access: false
+    tools:
+      - "read_file"
+      - "write_file"
+      - "edit_file"
+      - "git_cli"
+      - "dotnet_cli"
+      - "test_runner"
+    input_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        source_branch: "string"
+        target_branch: "string"
+        conflicted_files: "list[string]"
+        base_commit: "string"
+    output_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        status: "enum['CONFLICTS_RESOLVED', 'RESOLUTION_FAILED']"
+        resolved_files: "list[string]"
+        merge_commit_sha: "string"
+        verification_tests_passed: "boolean"
+    invariants:
+      - "Must never execute blind 'ours' or 'theirs' resolutions on core logic."
+      - "Must recompile solution with locked dependencies: dotnet restore CanvasDesktop.slnx --locked-mode."
+      - "Must run Tools\\Run-Tests.ps1 -Configuration Release to verify that resolved code passes tests."
+
+  # ----------------------------------------------------------------------------
+  # Role 6: Branch Cleaner (Worktree & Branch Hygiene Cleaner)
+  # ----------------------------------------------------------------------------
+  branch-cleaner:
+    id: "branch-cleaner"
+    title: "Worktree & Branch Hygiene Cleaner"
+    summary: >-
+      Safely cleans up temporary git worktrees, verifies no background processes
+      (dotnet, test runner, CanvasDesktop) hold locks on worktree directories,
+      and removes merged agent branches.
+    goal: >-
+      Maintain clean local disk and git repository state, avoiding disk bloat
+      and orphaned locked worktrees.
+    workspace:
+      mode: "inherit"
+      description: "Executes from main repository checkout root."
+    permissions:
+      filesystem_read: true
+      filesystem_write: true
+      command_execution: true
+      network_access: false
+    tools:
+      - "git_cli"
+      - "process_query"
+      - "filesystem_tools"
+    input_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        worktree_path: "string (e.g. '..\\CanvasWindowComposer-<task>')"
+        branch_name: "string (e.g. 'agent/<task>')"
+        merge_verified: "boolean"
+    output_contract:
+      format: "yaml_or_markdown"
+      fields:
+        task_id: "string"
+        worktree_removed: "boolean"
+        branch_deleted: "boolean"
+        processes_terminated: "list[string]"
+        cleanup_status: "enum['CLEANUP_SUCCESS', 'CLEANUP_WARNING', 'CLEANUP_FAILED']"
+    invariants:
+      - "Rule from AGENTS.md: Never run git worktree remove while a process is still running from it."
+      - "Must inspect running processes (e.g. testhost.exe, CanvasDesktop.exe) associated with the worktree before removal."
+      - "Only delete branch (git branch -d) if merge_verified is true; use -D only if explicitly instructed."
+
+# ------------------------------------------------------------------------------
+# 2. Named Team Constellations (Templates)
+# ------------------------------------------------------------------------------
+constellations:
+  # ----------------------------------------------------------------------------
+  # Constellation A: Full Feature Lifecycle Team (Default / Primary)
+  # ----------------------------------------------------------------------------
+  feature-lifecycle-team:
+    id: "feature-lifecycle-team"
+    name: "Full Feature Lifecycle Team"
+    description: >-
+      Comprehensive 6-role team handling end-to-end delivery: architectural design,
+      worktree implementation, rigorous peer review loop, safe merge, intelligent
+      conflict resolution fallback, and zero-residual cleanup.
+    recommended_for:
+      - "Complex new features (e.g. window linking workflows, canvas interactions)"
+      - "Major architectural refactorings"
+      - "Multi-file changes touching native interop and WPF layers"
+    roles:
+      - "architect"
+      - "programmer"
+      - "reviewer"
+      - "merger"
+      - "conflict-resolver"
+      - "branch-cleaner"
+    default_workflow: "feature-lifecycle"
+    config:
+      max_review_iterations: 5
+      default_review_iterations: 3
+      require_native_tests_if_ui_touched: true
+
+  # ----------------------------------------------------------------------------
+  # Constellation B: Quick Bugfix Team
+  # ----------------------------------------------------------------------------
+  quick-bugfix-team:
+    id: "quick-bugfix-team"
+    name: "Quick Bugfix Team"
+    description: >-
+      Streamlined 4-role team optimized for localized bugfixes, regressions, and
+      small defect patches with existing reproduction test cases. Bypasses heavy
+      architectural planning.
+    recommended_for:
+      - "Isolated bugfixes"
+      - "Flaky test stabilization"
+      - "Minor configuration or script adjustments"
+    roles:
+      - "programmer"
+      - "reviewer"
+      - "merger"
+      - "branch-cleaner"
+    default_workflow: "quick-bugfix"
+    config:
+      max_review_iterations: 3
+      default_review_iterations: 2
+      require_native_tests_if_ui_touched: false
+
+  # ----------------------------------------------------------------------------
+  # Constellation C: Research & Spike Team
+  # ----------------------------------------------------------------------------
+  research-spike-team:
+    id: "research-spike-team"
+    name: "Research & Prototype Spike Team"
+    description: >-
+      Exploratory 2-role team focused on rapid prototyping, feasibility analysis,
+      benchmarking, and Proof-of-Concept investigations. Does not merge into production.
+    recommended_for:
+      - "Investigating new Windows APIs or Win32 hooks"
+      - "Performance benchmarking and profiling"
+      - "Architecture prototyping before committing to production design"
+    roles:
+      - "architect"
+      - "programmer"
+    default_workflow: "research-spike"
+    config:
+      auto_merge: false
+      retain_spike_branch: true
+
+  # ----------------------------------------------------------------------------
+  # Constellation D: Conflict Rescue Team
+  # ----------------------------------------------------------------------------
+  conflict-rescue-team:
+    id: "conflict-rescue-team"
+    name: "Conflict Rescue & Integration Team"
+    description: >-
+      Dedicated 3-role squad called in to salvage stale or conflicting agent branches,
+      reconciling complex three-way merges and ensuring test suite stability.
+    recommended_for:
+      - "Branches blocked by upstream rebases or concurrent merges"
+      - "Multi-agent conflict resolution"
+    roles:
+      - "conflict-resolver"
+      - "merger"
+      - "branch-cleaner"
+    default_workflow: "conflict-rescue"
+    config:
+      max_conflict_attempts: 2

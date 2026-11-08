@@ -1,0 +1,163 @@
+{
+  "$schema": "https://canvaswindowcomposer.dev/schemas/workflow.v1.json",
+  "version": 1,
+  "summary": "Spaceship Bridge: Multi-Agent Engineering Command (Feature Lifecycle Team)",
+  "direction": "LR",
+  "zones": [
+    {
+      "id": "z_command",
+      "name": "Spaceship Bridge: Mission Command",
+      "color": "#8B5CF6"
+    },
+    {
+      "id": "z_engineering",
+      "name": "Engineering Pod: Build & Quality Loop",
+      "color": "#10B981"
+    },
+    {
+      "id": "z_release",
+      "name": "Release Pod: Integration & Recovery",
+      "color": "#38BDF8"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "orch",
+      "kind": "service",
+      "title": "Mission Orchestrator",
+      "subtitle": "Global Task Board & Team Coordinator",
+      "text": "Mission Orchestrator",
+      "color": "#8B5CF6",
+      "zone": "z_command"
+    },
+    {
+      "id": "arch",
+      "kind": "service",
+      "title": "System Architect",
+      "subtitle": "RFCs & Atomic Task Checklists",
+      "text": "System Architect",
+      "color": "#38BDF8",
+      "zone": "z_command"
+    },
+    {
+      "id": "dev",
+      "kind": "service",
+      "title": "Worktree Programmer",
+      "subtitle": "Isolated ..\\CanvasWindowComposer-<task>",
+      "text": "Worktree Programmer",
+      "color": "#10B981",
+      "zone": "z_engineering"
+    },
+    {
+      "id": "rev",
+      "kind": "service",
+      "title": "Quality Reviewer",
+      "subtitle": "Diff, Mutex & Threading Audit",
+      "text": "Quality Reviewer",
+      "color": "#F59E0B",
+      "zone": "z_engineering"
+    },
+    {
+      "id": "mrg",
+      "kind": "service",
+      "title": "Branch Merger",
+      "subtitle": "Target Branch & Test Gatekeeper",
+      "text": "Branch Merger",
+      "color": "#6366F1",
+      "zone": "z_release"
+    },
+    {
+      "id": "res",
+      "kind": "service",
+      "title": "Conflict Resolver",
+      "subtitle": "3-Way Conflict Reconciler & Tester",
+      "text": "Conflict Resolver",
+      "color": "#EF4444",
+      "zone": "z_release"
+    },
+    {
+      "id": "cln",
+      "kind": "service",
+      "title": "Branch Cleaner",
+      "subtitle": "Lock Check & Worktree Pruning",
+      "text": "Branch Cleaner",
+      "color": "#64748B",
+      "zone": "z_command"
+    }
+  ],
+  "edges": [
+    {
+      "from": "orch",
+      "to": "arch",
+      "label": "1. Dispatch Task Request",
+      "color": "#8B5CF6",
+      "stroke": 16.0,
+      "routing": "curved"
+    },
+    {
+      "from": "arch",
+      "to": "dev",
+      "label": "2. ARCHITECTURE_PLAN.md Handoff",
+      "color": "#38BDF8",
+      "stroke": 16.0,
+      "routing": "curved"
+    },
+    {
+      "from": "dev",
+      "to": "rev",
+      "label": "3. Submit Diff for Review",
+      "color": "#10B981",
+      "stroke": 16.0,
+      "routing": "curved"
+    },
+    {
+      "from": "rev",
+      "to": "dev",
+      "label": "3b. Feedback Loop (CHANGES_REQUESTED)",
+      "color": "#F59E0B",
+      "stroke": 12.0,
+      "routing": "curved"
+    },
+    {
+      "from": "rev",
+      "to": "mrg",
+      "label": "4. Verdict: APPROVED",
+      "color": "#10B981",
+      "stroke": 16.0,
+      "routing": "curved"
+    },
+    {
+      "from": "mrg",
+      "to": "res",
+      "label": "4b. On Merge Conflict",
+      "color": "#EF4444",
+      "stroke": 12.0,
+      "routing": "curved"
+    },
+    {
+      "from": "mrg",
+      "to": "cln",
+      "label": "5. Clean Merge Completed",
+      "color": "#6366F1",
+      "stroke": 16.0,
+      "routing": "curved"
+    },
+    {
+      "from": "res",
+      "to": "cln",
+      "label": "5b. Conflict Resolved & Verified",
+      "color": "#10B981",
+      "stroke": 16.0,
+      "routing": "curved"
+    },
+    {
+      "from": "cln",
+      "to": "orch",
+      "label": "6. Task Finished & Cleaned",
+      "color": "#8B5CF6",
+      "stroke": 16.0,
+      "routing": "curved"
+    }
+  ],
+  "edits": []
+}

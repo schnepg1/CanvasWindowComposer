@@ -69,7 +69,16 @@ internal sealed class CanvasComposerWindow : Form
         }
         Row(_connections, 176);
         Row(new Label { Text = "Request — for example: Turn these notes into a three-step roadmap", AutoSize = true }, 26);
-        _action.Items.AddRange(["Custom request","Organize into themes","Show dependencies","Turn into a roadmap","Improve layout, keep wording","Create a summary"]);
+        _action.Items.AddRange([
+            "Custom request",
+            "Create visual workflow / pipeline",
+            "Design system / software architecture",
+            "Build customer funnel / user journey",
+            "Organize into themes",
+            "Show dependencies",
+            "Turn into a roadmap",
+            "Improve layout, keep wording",
+            "Create a summary"]);
         _action.SelectedIndex=0; Row(_action,32);
         Row(_prompt, -40);
         Row(new Label { Text = "Share checked text, titles and spatial bounds. No app contents or files.", AutoSize = true }, 26);
@@ -82,8 +91,19 @@ internal sealed class CanvasComposerWindow : Form
         Controls.Add(layout);
         _action.SelectedIndexChanged+=(_,_)=>
         {
-            string[] prompts=["","Organize the checked annotations into themes. Reuse their IDs to preserve wording and add labeled theme shapes where useful.","Show dependencies between the checked annotations. Reuse their IDs and connect them with arrows.","Turn this context into a development roadmap with milestones, dependencies and next actions.","Improve the layout of the checked annotations. Reuse all existing node IDs and preserve every word. Do not rewrite or add new notes.","Create a concise summary note from the checked context."];
-            if (_action.SelectedIndex>0) _prompt.Text=prompts[_action.SelectedIndex];
+            string[] prompts = [
+                "",
+                "Design an end-to-end visual workflow or pipeline connecting stages with curved labeled arrows and project zones.",
+                "Design a visual software and cloud architecture showing services, APIs, databases, caches, and queues with data flows on connection arrows.",
+                "Build a visual customer acquisition funnel with traffic sources, landing pages, automation tools, and retargeting stages.",
+                "Organize the checked annotations into themes. Reuse their IDs to preserve wording and add labeled theme shapes where useful.",
+                "Show dependencies between the checked annotations. Reuse their IDs and connect them with arrows.",
+                "Turn this context into a development roadmap with milestones, dependencies and next actions.",
+                "Improve the layout of the checked annotations. Reuse all existing node IDs and preserve every word. Do not rewrite or add new notes.",
+                "Create a concise summary note from the checked context."
+            ];
+            if (_action.SelectedIndex > 0 && _action.SelectedIndex < prompts.Length)
+                _prompt.Text = prompts[_action.SelectedIndex];
         };
         _generate.Click += async (_, _) => await GenerateAsync();
         _cancel.Click += (_, _) => Discard("Preview discarded.");
@@ -119,9 +139,10 @@ internal sealed class CanvasComposerWindow : Form
             var choices=_notes.CheckedItems.Cast<NoteChoice>().ToArray();
             var selected = choices.Where(n=>n.Item!=null).Select(n=>n.Item!).ToArray();
             var references=choices.Where(n=>n.Reference!=null).Select(n=>n.Reference!).ToArray();
-            if (_action.SelectedIndex==4 && !selected.Any(a=>a.Kind!=AnnotationKind.Arrow))
+            bool isImproveLayout = string.Equals(_action.SelectedItem as string, "Improve layout, keep wording", StringComparison.OrdinalIgnoreCase);
+            if (isImproveLayout && !selected.Any(a => a.Kind != AnnotationKind.Arrow))
                 throw new ArgumentException("Check at least one note or shape to improve its layout.");
-            var context = _context(selected,references) with { PreserveWording=_action.SelectedIndex==4 };
+            var context = _context(selected, references) with { PreserveWording = isImproveLayout };
             var connection = _connections.PrepareRequest();
             var progress = new Progress<string>(message =>
             {

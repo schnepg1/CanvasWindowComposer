@@ -41,7 +41,8 @@ internal sealed class ZoneUi : IDisposable
         if (_window == null)
         {
             _window = new ZoneWindow(_workspace.Zones, _overview.BeginZone, _overview.JumpToZone,
-                () => _workspace.Status, _workspace, OnZoneHistoryRequested, ShowNavigator);
+                () => _workspace.Status, _workspace, OnZoneHistoryRequested, ShowNavigator,
+                id => _overview.ExportCurrentWorkflowToClipboard(id));
             _window.Closed += (_, _) => { _window = null; _overview.AttachZoneWindow(null); };
             ElementHost.EnableModelessKeyboardInterop(_window);
         }

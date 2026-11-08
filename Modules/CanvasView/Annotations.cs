@@ -7,6 +7,8 @@ public enum ZOrderAction { None, BringToFront, SendToBack, BringForward, SendBac
 public enum AnnotationTextAlign { Left, Center, Right }
 public enum AnnotationTextEmphasis { Normal, Bold, Italic, BoldItalic }
 public enum AnnotationCardFill { Solid, Tinted, None }
+public enum ConnectionPort { Auto, Top, Right, Bottom, Left }
+public enum ConnectorRouting { Curved, Straight, Orthogonal }
 public sealed record CanvasAnnotation
 {
     public Guid Id { get; init; }
@@ -22,12 +24,20 @@ public sealed record CanvasAnnotation
     public AnnotationTextEmphasis Emphasis { get; init; } = AnnotationTextEmphasis.Normal;
     public AnnotationCardFill CardFill { get; init; }
     public bool InBackground { get; init; }
+    public Guid? SourceId { get; init; }
+    public ConnectionPort SourcePort { get; init; } = ConnectionPort.Auto;
+    public Guid? TargetId { get; init; }
+    public ConnectionPort TargetPort { get; init; } = ConnectionPort.Auto;
+    public ConnectorRouting Routing { get; init; } = ConnectorRouting.Curved;
 
     [System.Text.Json.Serialization.JsonConstructor]
     public CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
         CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "", double FontSize = 18,
         AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
-        AnnotationCardFill CardFill = (AnnotationCardFill)(-1), bool InBackground = false)
+        AnnotationCardFill CardFill = (AnnotationCardFill)(-1), bool InBackground = false,
+        Guid? SourceId = null, ConnectionPort SourcePort = ConnectionPort.Auto,
+        Guid? TargetId = null, ConnectionPort TargetPort = ConnectionPort.Auto,
+        ConnectorRouting Routing = ConnectorRouting.Curved)
     {
         this.Id = Id;
         this.DesktopId = DesktopId;
@@ -44,6 +54,11 @@ public sealed record CanvasAnnotation
             ? CardFill
             : (Kind == AnnotationKind.Text ? AnnotationCardFill.Solid : AnnotationCardFill.None);
         this.InBackground = InBackground;
+        this.SourceId = SourceId;
+        this.SourcePort = SourcePort;
+        this.TargetId = TargetId;
+        this.TargetPort = TargetPort;
+        this.Routing = Routing;
     }
 
     public CanvasRect Bounds => new(Math.Min(A.X, B.X), Math.Min(A.Y, B.Y), Math.Abs(B.X - A.X), Math.Abs(B.Y - A.Y));
@@ -58,6 +73,8 @@ public sealed class AnnotationDocument
     public const double DefaultFontSize = 18;
     public const double MinimumFontSize = 8;
     public const double MaximumFontSize = 4096;
+    public const double MinimumStroke = 1;
+    public const double MaximumStroke = 64;
     private readonly List<CanvasAnnotation> _items = [];
     private sealed record HistoryState(CanvasAnnotation[] Items, Func<bool, bool>? Replay, long Order);
     private readonly Dictionary<Guid, (List<HistoryState> Undo, List<HistoryState> Redo)> _history = [];
@@ -78,9 +95,10 @@ public sealed class AnnotationDocument
         {
             if (++count > MaximumItems || item is null || item.Id == Guid.Empty || !ids.Add(item.Id)
                 || !Enum.IsDefined(item.Kind) || !ValidPoint(item.A) || !ValidPoint(item.B)
-                || !double.IsFinite(item.Stroke) || item.Stroke < 1 || item.Stroke > 12
+                || !double.IsFinite(item.Stroke) || item.Stroke < MinimumStroke || item.Stroke > MaximumStroke
                 || !double.IsFinite(item.FontSize) || item.FontSize < MinimumFontSize || item.FontSize > MaximumFontSize
                 || !Enum.IsDefined(item.TextAlign) || !Enum.IsDefined(item.Emphasis) || !Enum.IsDefined(item.CardFill)
+                || !Enum.IsDefined(item.SourcePort) || !Enum.IsDefined(item.TargetPort) || !Enum.IsDefined(item.Routing)
                 || !ValidColor(item.Color) || item.Text is null || item.Text.Length > MaximumTextLength
                 || (item.Kind == AnnotationKind.Arrow ? AnnotationGeometry.Distance(item.A, item.B) < 1
                     : item.Bounds.Width < 1 || item.Bounds.Height < 1)
@@ -263,6 +281,110 @@ public static class AnnotationGeometry
     public const double HandleHitRadius = 14;
     public const double EdgeHitTolerance = 8;
     public static double Distance(CanvasPoint a, CanvasPoint b) => Math.Sqrt((a.X-b.X)*(a.X-b.X)+(a.Y-b.Y)*(a.Y-b.Y));
+    public static CanvasPoint PortPosition(CanvasRect bounds, ConnectionPort port) => port switch
+    {
+        ConnectionPort.Top => new(bounds.X + bounds.Width / 2, bounds.Y),
+        ConnectionPort.Right => new(bounds.X + bounds.Width, bounds.Y + bounds.Height / 2),
+        ConnectionPort.Bottom => new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height),
+        ConnectionPort.Left => new(bounds.X, bounds.Y + bounds.Height / 2),
+        _ => new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2)
+    };
+
+    public static (ConnectionPort Source, ConnectionPort Target) AutoPorts(CanvasRect source, CanvasRect target)
+    {
+        var sc = new CanvasPoint(source.X + source.Width / 2, source.Y + source.Height / 2);
+        var tc = new CanvasPoint(target.X + target.Width / 2, target.Y + target.Height / 2);
+        double dx = tc.X - sc.X, dy = tc.Y - sc.Y;
+        if (Math.Abs(dx) >= Math.Abs(dy))
+            return dx >= 0 ? (ConnectionPort.Right, ConnectionPort.Left) : (ConnectionPort.Left, ConnectionPort.Right);
+        return dy >= 0 ? (ConnectionPort.Bottom, ConnectionPort.Top) : (ConnectionPort.Top, ConnectionPort.Bottom);
+    }
+
+    public static (CanvasPoint A, CanvasPoint B) ComputePortAnchors(
+        CanvasRect sourceBounds, ConnectionPort sourcePort,
+        CanvasRect targetBounds, ConnectionPort targetPort)
+    {
+        if (sourcePort == ConnectionPort.Auto || targetPort == ConnectionPort.Auto)
+        {
+            var (autoSrc, autoTgt) = AutoPorts(sourceBounds, targetBounds);
+            if (sourcePort == ConnectionPort.Auto) sourcePort = autoSrc;
+            if (targetPort == ConnectionPort.Auto) targetPort = autoTgt;
+        }
+        return (PortPosition(sourceBounds, sourcePort), PortPosition(targetBounds, targetPort));
+    }
+
+    public static (CanvasPoint C1, CanvasPoint C2) BezierControlPoints(
+        CanvasPoint a, ConnectionPort sourcePort,
+        CanvasPoint b, ConnectionPort targetPort)
+    {
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double dist = Distance(a, b);
+        double d = Math.Clamp(dist * 0.45, 40, 320);
+
+        CanvasPoint d1 = sourcePort switch
+        {
+            ConnectionPort.Right => new(1, 0),
+            ConnectionPort.Left => new(-1, 0),
+            ConnectionPort.Top => new(0, -1),
+            ConnectionPort.Bottom => new(0, 1),
+            _ => Math.Abs(dx) >= Math.Abs(dy) ? (dx >= 0 ? new(1, 0) : new(-1, 0)) : (dy >= 0 ? new(0, 1) : new(0, -1))
+        };
+
+        CanvasPoint d2 = targetPort switch
+        {
+            ConnectionPort.Right => new(1, 0),
+            ConnectionPort.Left => new(-1, 0),
+            ConnectionPort.Top => new(0, -1),
+            ConnectionPort.Bottom => new(0, 1),
+            _ => Math.Abs(dx) >= Math.Abs(dy) ? (dx >= 0 ? new(-1, 0) : new(1, 0)) : (dy >= 0 ? new(0, -1) : new(0, 1))
+        };
+
+        return (new(a.X + d1.X * d, a.Y + d1.Y * d), new(b.X + d2.X * d, b.Y + d2.Y * d));
+    }
+
+    public static (CanvasPoint Midpoint, CanvasPoint Tangent) BezierMidpointAndTangent(
+        CanvasPoint a, CanvasPoint c1, CanvasPoint c2, CanvasPoint b)
+    {
+        var mid = new CanvasPoint(
+            (a.X + 3 * c1.X + 3 * c2.X + b.X) / 8.0,
+            (a.Y + 3 * c1.Y + 3 * c2.Y + b.Y) / 8.0);
+        var tan = new CanvasPoint(
+            0.75 * (c2.X - c1.X + b.X - a.X),
+            0.75 * (c2.Y - c1.Y + b.Y - a.Y));
+        return (mid, tan);
+    }
+
+    public static CanvasRect ArrowLabelBounds(
+        CanvasPoint midpoint, CanvasPoint tangent, double stroke,
+        double labelWidth, double labelHeight)
+    {
+        double len = Math.Sqrt(tangent.X * tangent.X + tangent.Y * tangent.Y);
+        double tx = len > 0.0001 ? tangent.X / len : 1.0;
+        double ty = len > 0.0001 ? tangent.Y / len : 0.0;
+        double angleRad = Math.Atan2(Math.Abs(ty), Math.Abs(tx));
+        double angleDeg = angleRad * (180.0 / Math.PI);
+
+        CanvasPoint center;
+        double clearance = labelHeight / 2.0 + stroke / 2.0 + 8.0;
+
+        if (angleDeg <= 35.0)
+        {
+            center = new(midpoint.X, midpoint.Y - clearance);
+        }
+        else if (angleDeg >= 55.0)
+        {
+            center = midpoint;
+        }
+        else
+        {
+            double nx = -ty, ny = tx;
+            if (ny > 0) { nx = -nx; ny = -ny; }
+            center = new(midpoint.X + nx * clearance, midpoint.Y + ny * clearance);
+        }
+
+        return new(center.X - labelWidth / 2.0, center.Y - labelHeight / 2.0, labelWidth, labelHeight);
+    }
+
     public static CanvasPoint Constrain(CanvasPoint start, CanvasPoint end, bool arrow)
     {
         double dx = end.X-start.X, dy = end.Y-start.Y;
@@ -281,9 +403,52 @@ public static class AnnotationGeometry
         p = Project(p); var a=Project(item.A); var b=Project(item.B);
         if (item.Kind == AnnotationKind.Arrow)
         {
-            double dx=b.X-a.X,dy=b.Y-a.Y,den=dx*dx+dy*dy;
-            double t=den==0?0:Math.Clamp(((p.X-a.X)*dx+(p.Y-a.Y)*dy)/den,0,1);
-            return Distance(p,new(a.X+t*dx,a.Y+t*dy)) <= 8+item.Stroke*view.Zoom/2;
+            double strokeDip = Math.Max(2.0, item.Stroke * view.Zoom);
+            double hitTolerance = 8 + strokeDip / 2.0;
+
+            if (item.Routing == ConnectorRouting.Curved)
+            {
+                var (c1w, c2w) = BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort);
+                var c1 = Project(c1w);
+                var c2 = Project(c2w);
+
+                CanvasPoint prev = a;
+                for (int i = 1; i <= 12; i++)
+                {
+                    double t = i / 12.0;
+                    double omt = 1.0 - t;
+                    double bx = omt * omt * omt * a.X + 3 * omt * omt * t * c1.X + 3 * omt * t * t * c2.X + t * t * t * b.X;
+                    double by = omt * omt * omt * a.Y + 3 * omt * omt * t * c1.Y + 3 * omt * t * t * c2.Y + t * t * t * b.Y;
+                    var curr = new CanvasPoint(bx, by);
+                    double dx = curr.X - prev.X, dy = curr.Y - prev.Y, den = dx * dx + dy * dy;
+                    double st = den == 0 ? 0 : Math.Clamp(((p.X - prev.X) * dx + (p.Y - prev.Y) * dy) / den, 0, 1);
+                    if (Distance(p, new(prev.X + st * dx, prev.Y + st * dy)) <= hitTolerance) return true;
+                    prev = curr;
+                }
+            }
+            else
+            {
+                double dx = b.X - a.X, dy = b.Y - a.Y, den = dx * dx + dy * dy;
+                double t = den == 0 ? 0 : Math.Clamp(((p.X - a.X) * dx + (p.Y - a.Y) * dy) / den, 0, 1);
+                if (Distance(p, new(a.X + t * dx, a.Y + t * dy)) <= hitTolerance) return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.Text))
+            {
+                var (midw, tanw) = item.Routing == ConnectorRouting.Curved
+                    ? BezierMidpointAndTangent(item.A, BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C1, BezierControlPoints(item.A, item.SourcePort, item.B, item.TargetPort).C2, item.B)
+                    : (new CanvasPoint((item.A.X + item.B.X) / 2.0, (item.A.Y + item.B.Y) / 2.0), new CanvasPoint(item.B.X - item.A.X, item.B.Y - item.A.Y));
+
+                double approxWidth = Math.Max(40, item.Text.Length * item.FontSize * 0.6 + 20);
+                double approxHeight = item.FontSize + 12;
+                var labelWorld = ArrowLabelBounds(midw, tanw, item.Stroke, approxWidth, approxHeight);
+                var labelDip = view.WorldToDip(labelWorld);
+                if (p.X >= labelDip.X - 4 && p.X <= labelDip.X + labelDip.Width + 4 &&
+                    p.Y >= labelDip.Y - 4 && p.Y <= labelDip.Y + labelDip.Height + 4)
+                    return true;
+            }
+
+            return false;
         }
         double x=Math.Min(a.X,b.X), y=Math.Min(a.Y,b.Y), w=Math.Abs(b.X-a.X),h=Math.Abs(b.Y-a.Y);
         if (item.Kind == AnnotationKind.Ellipse)

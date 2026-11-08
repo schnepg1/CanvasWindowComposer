@@ -28,6 +28,8 @@ bld/
 canvas_debug.log
 TestResults/
 .claude/
+.gemini/
+.opencode/
 native/build/
 publish*/
 Install/publish-fd/
