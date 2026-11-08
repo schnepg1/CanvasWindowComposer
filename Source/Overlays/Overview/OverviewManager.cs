@@ -326,6 +326,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _inertia = new InertiaTracker(_gestureClock);
         _smoothZoom = new SmoothZoomTracker(_gestureClock);
         _smoothZoom.MaxZoom = _appConfig.MaximumZoom;
+        _smoothZoom.AccelerationEnabled = _appConfig.ZoomAcceleration;
         _prefersReducedStartupMotion = prefersReducedStartupMotion ?? (() => !System.Windows.SystemParameters.ClientAreaAnimation);
 
         _input = input;
@@ -377,6 +378,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         _camera.MaxZoom = _appConfig.MaximumZoom;
         _smoothZoom.MaxZoom = _appConfig.MaximumZoom;
+        _smoothZoom.AccelerationEnabled = _appConfig.ZoomAcceleration;
         if (_camera.Zoom > _camera.MaxZoom) _camera.SetTo(_camera.X, _camera.Y, _camera.MaxZoom);
 
         if (_inertia.IsActive && !MomentumAllowed) FinishMomentum();
@@ -553,6 +555,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             pass.OnMouseButtonUp = HandleMouseUp;
 
             pass.OnWheel = HandleMouseWheel;
+            pass.OnGestureZoom = HandleGestureZoom;
 
             pass.OnMouseDoubleClicked = HandleDoubleClick;
 
@@ -840,6 +843,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         _camera.MaxZoom = _appConfig.MaximumZoom;
         _smoothZoom.MaxZoom = _appConfig.MaximumZoom;
+        _smoothZoom.AccelerationEnabled = _appConfig.ZoomAcceleration;
 
         _taskbarPreviews.SetEnabled(_appConfig.ShowTaskbarInCanvas);
         UpdateDesktopPanResources();

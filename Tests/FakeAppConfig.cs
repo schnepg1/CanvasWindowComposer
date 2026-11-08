@@ -14,6 +14,7 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool DesktopPanMomentum { get; set; } = true;
     public bool CanvasPanMomentum { get; set; } = true;
     public bool SmoothZoom { get; set; } = false;
+    public bool ZoomAcceleration { get; set; } = true;
     public bool ShowScreenFixedWindowsDuringPan { get; set; } = true;
     public bool DisableMouseCurve { get; set; }
     public bool DisableZoomHotkey { get; set; }

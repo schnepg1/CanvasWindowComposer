@@ -16,7 +16,7 @@ internal sealed class SmoothZoomTracker
 
     public const double BaseCadenceNotchesPerSec = 4.0;
     public const double MaxAccelerationIntervalMs = 250.0;
-    public const double MinIntervalMs = 12.0;
+    public const double MinIntervalMs = 2.0;
     public const double AccelerationSlope = 0.08;
     public const double StreakSlope = 0.15;
     public const int MaxStreak = 6;
@@ -122,7 +122,7 @@ internal sealed class SmoothZoomTracker
         _focalWorldX = worldX;
         _focalWorldY = worldY;
         _lastTick = now;
-        IsActive = Math.Abs(_targetZoom - _currentZoom) >= StopThreshold;
+        IsActive = Math.Abs(_targetZoom - _currentZoom) >= OverviewCamera.ZoomEpsilon;
 
         // Dynamically adjust responsiveness so fast scrolling tracks with zero sluggishness
         _activeLambda = Math.Clamp(_baseLambda * (1.0 + 0.25 * (multiplier - 1.0)), _baseLambda, MaxLambda);

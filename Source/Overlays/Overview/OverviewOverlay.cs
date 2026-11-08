@@ -104,7 +104,10 @@ internal sealed class OverviewOverlay : Form
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonDown;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseMoved;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseButtonUp;
-    public Action<OverviewOverlay, int, int, int, bool, bool, bool>? OnWheel;
+    public delegate void OverviewWheelHandler(OverviewOverlay sender, int x, int y, int delta, bool horizontal, bool control, bool shift, bool isTouchpad = false);
+    public OverviewWheelHandler? OnWheel;
+    public Action<OverviewOverlay, int, int, double>? OnGestureZoom;
+    private ulong _lastGestureDistance;
     public Action<OverviewOverlay, MouseEventArgs>? OnMouseDoubleClicked;
     public Action<OverviewOverlay>? OnCaptureLost;
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -233,11 +236,31 @@ internal sealed class OverviewOverlay : Form
             m.Result = (IntPtr)3; // MA_NOACTIVATE: leave real typing/shortcuts with the source app.
             return;
         }
+        if (m.Msg == NativeInputInterop.WM_GESTURE)
+        {
+            if (HandleGestureMessage(ref m))
+            {
+                m.Result = IntPtr.Zero;
+                return;
+            }
+        }
         if (m.Msg is OverviewNavigationInput.MouseWheelMessage or OverviewNavigationInput.MouseHorizontalWheelMessage)
         {
             var wheel = OverviewNavigationInput.DecodeWheel(m.Msg, m.WParam, m.LParam);
             var client = PointToClient(new Point(wheel.ScreenX, wheel.ScreenY));
-            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control, wheel.Shift);
+            bool isTouchpad = false;
+            try
+            {
+                if (NativeInputInterop.GetCurrentInputMessageSource(out var source))
+                {
+                    isTouchpad = source.deviceType == NativeInputInterop.INPUT_MESSAGE_DEVICE_TYPE.IMDT_TOUCHPAD;
+                }
+            }
+            catch
+            {
+                // Fallback gracefully on environments where GetCurrentInputMessageSource is unsupported
+            }
+            OnWheel?.Invoke(this, client.X, client.Y, wheel.Delta, wheel.Horizontal, wheel.Control, wheel.Shift, isTouchpad);
             m.Result = IntPtr.Zero;
             return;
         }
@@ -264,6 +287,49 @@ internal sealed class OverviewOverlay : Form
         base.WndProc(ref m);
         if (m.Msg == 0x1A && IsHandleCreated) // WM_SETTINGCHANGE: taskbar position / auto-hide.
             SetTaskbarVisible(_showTaskbar);
+    }
+
+    private bool HandleGestureMessage(ref Message m)
+    {
+        var gi = new NativeInputInterop.GESTUREINFO();
+        gi.cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeInputInterop.GESTUREINFO>();
+        if (!NativeInputInterop.GetGestureInfo(m.LParam, ref gi))
+            return false;
+
+        if (gi.dwID == NativeInputInterop.GID_ZOOM)
+        {
+            try
+            {
+                var client = PointToClient(new Point(gi.ptsLocation.x, gi.ptsLocation.y));
+                if ((gi.dwFlags & NativeInputInterop.GF_BEGIN) != 0)
+                {
+                    _lastGestureDistance = gi.ullArguments;
+                }
+                else if (_lastGestureDistance != 0 && gi.ullArguments != 0)
+                {
+                    double currentDist = gi.ullArguments;
+                    double ratio = (currentDist - _lastGestureDistance) / (double)_lastGestureDistance;
+                    double notches = ratio / OverviewCamera.ZoomStep;
+                    if (Math.Abs(notches) > 0.0001)
+                    {
+                        OnGestureZoom?.Invoke(this, client.X, client.Y, notches);
+                        _lastGestureDistance = gi.ullArguments;
+                    }
+                }
+
+                if ((gi.dwFlags & NativeInputInterop.GF_END) != 0)
+                {
+                    _lastGestureDistance = 0;
+                }
+            }
+            finally
+            {
+                NativeInputInterop.CloseGestureInfoHandle(m.LParam);
+            }
+            return true;
+        }
+
+        return false;
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

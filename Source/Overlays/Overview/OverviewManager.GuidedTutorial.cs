@@ -114,7 +114,7 @@ internal sealed partial class OverviewManager
     internal bool StopTutorialTravel()
     {
         bool moving=_tourFlight!=null;
-        CancelSmoothZoom();
+        if (moving) CancelSmoothZoom();
         _tourFlight=null;_tourClock.Stop();
         var timer=_tourTimer;_tourTimer=null;timer?.Stop();timer?.Dispose();_tour?.Arrive();
         return moving;

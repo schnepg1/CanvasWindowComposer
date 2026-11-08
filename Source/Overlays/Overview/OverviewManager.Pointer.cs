@@ -290,7 +290,7 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift)
+    private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift, bool isTouchpad = false)
     {
         if (PeekWorking && RoutePeekMouse(new(new(x + pass.OriginX, y + pass.OriginY), MouseButtons.None, false, false,
             Wheel: true, Delta: delta, Horizontal: horizontal, Modifiers: InteractionKeys))) return;
@@ -303,7 +303,7 @@ internal sealed partial class OverviewManager
         bool canvasNavigation = control || ((_windowInteraction.Active ? InteractionKeys : Control.ModifierKeys) & Keys.Alt) != 0;
         if (!PlacingWebResource && RouteWindowWheel(pass, x, y, delta, horizontal, canvasNavigation)) return;
         if (_windowInteraction.Active && _windowInteraction.Captured) return;
-        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, control, shift);
+        var (panX, panY, zoomNotches) = OverviewNavigationInput.TranslateWheel(delta, horizontal, control, shift, isTouchpad);
         if (zoomNotches != 0) ZoomOverview(x + pass.OriginX, y + pass.OriginY, zoomNotches);
         else { PanOverview(panX, panY); _visualFrames.RequestAndFlush(); }
         if (PlacingWebResource)
@@ -311,6 +311,21 @@ internal sealed partial class OverviewManager
             _visualFrames.Flush();
             _webResourcePlacement!.Move(new(x + pass.OriginX, y + pass.OriginY), "New web resource");
             _webResourcePlacement.RefreshPreview();
+        }
+    }
+
+    private void HandleGestureZoom(OverviewOverlay pass, int x, int y, double notches)
+    {
+        if (PeekWorking) CloseWindowPeek();
+        ResetPeekHover();
+        if (TrySkipStartupIntro()) return;
+        if (!_cfg.InputEnabled || _tools.Active || _annotationEditor != null || _shapeEditor != null) return;
+        CancelInertia();
+        if (_composerWindow is { WaitingForBrowser: false }) return;
+        if (_windowInteraction.Active && _windowInteraction.Captured) return;
+        if (notches != 0)
+        {
+            ZoomOverview(x + pass.OriginX, y + pass.OriginY, notches);
         }
     }
 

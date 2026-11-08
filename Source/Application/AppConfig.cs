@@ -21,6 +21,7 @@ internal interface IAppConfig
     bool DesktopPanMomentum => true;
     bool CanvasPanMomentum => true;
     bool SmoothZoom => true;
+    bool ZoomAcceleration => true;
     bool EnableStartupIntro => true;
     bool ReduceStartupMotion => false;
     double SelectionRadius => 1200;
@@ -93,6 +94,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DesktopPanMomentum { get; private set; } = true;
     public bool CanvasPanMomentum { get; private set; } = true;
     public bool SmoothZoom { get; private set; } = true;
+    public bool ZoomAcceleration { get; private set; } = true;
     public bool EnableStartupIntro { get; private set; } = true;
     public bool ReduceStartupMotion { get; private set; }
     public bool ShowScreenFixedWindowsDuringPan { get; private set; } = true;
@@ -145,6 +147,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DesktopPanMomentum = GetBool(values, "DesktopPanMomentum", defaultValue: true);
             CanvasPanMomentum = GetBool(values, "CanvasPanMomentum", defaultValue: true);
             SmoothZoom = GetBool(values, "SmoothZoom", defaultValue: true);
+            ZoomAcceleration = GetBool(values, "ZoomAcceleration", defaultValue: true);
             EnableStartupIntro = GetBool(values, "EnableStartupIntro", defaultValue: true);
             ReduceStartupMotion = GetBool(values, "ReduceStartupMotion", defaultValue: false);
             ShowScreenFixedWindowsDuringPan = GetBool(values, "ShowScreenFixedWindowsDuringPan", defaultValue: true);
@@ -213,7 +216,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 EnableAutomaticMinimization, EnableFlipRendering, EnableStartupIntro, ReduceStartupMotion, LowQualityMode,
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
-                EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom);
+                EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
+                ZoomAcceleration);
         }
     }
 
@@ -242,6 +246,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["DesktopPanMomentum"] = preferences.DesktopPanMomentum.ToString().ToLowerInvariant(),
                 ["CanvasPanMomentum"] = preferences.CanvasPanMomentum.ToString().ToLowerInvariant(),
                 ["SmoothZoom"] = preferences.SmoothZoom.ToString().ToLowerInvariant(),
+                ["ZoomAcceleration"] = preferences.ZoomAcceleration.ToString().ToLowerInvariant(),
                 ["EnableLivePreviewsTier"] = preferences.LivePreviewsTier.ToString().ToLowerInvariant(),
                 ["EnableDetailedCardsTier"] = preferences.DetailedCardsTier.ToString().ToLowerInvariant(),
                 ["EnableSimpleCardsTier"] = preferences.SimpleCardsTier.ToString().ToLowerInvariant(),
@@ -355,6 +360,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 
 ; Smoothly interpolate canvas zoom when scrolling or using zoom hotkeys
 ;SmoothZoom=true
+
+; Accelerate zoom velocity during rapid wheel flicking
+; Turn off to use uniform, constant-speed zoom steps
+;ZoomAcceleration=true
 
 ; Show pinned, maximized/fullscreen, and supported screen-fixed panels while panning
 ;ShowScreenFixedWindowsDuringPan=true
@@ -507,4 +516,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool DesktopPanMomentum = true, bool CanvasPanMomentum = true,
     bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount,
     bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs,
-    bool SmoothZoom = true, double MaximumZoom = OverviewZoomDefaults.MaximumZoom);
+    bool SmoothZoom = true, double MaximumZoom = OverviewZoomDefaults.MaximumZoom,
+    bool ZoomAcceleration = true);

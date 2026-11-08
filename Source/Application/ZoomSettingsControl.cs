@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 /// <summary>A detached zoom-policy editor shared by Settings and the canvas popup.</summary>
 internal sealed class ZoomSettingsControl : UserControl
 {
-    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek, _smoothZoom;
+    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek, _smoothZoom, _zoomAcceleration;
     private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay, _maximumZoom;
     private readonly ZoomSpectrumControl _spectrum;
     private readonly ZoomPreviewPlaygroundControl _playground;
@@ -31,6 +31,12 @@ internal sealed class ZoomSettingsControl : UserControl
 
         _smoothZoom = Option("Smooth canvas zooming", preferences.SmoothZoom);
         Hint("Smoothly glides zoom levels when scrolling the mouse wheel or using + / -. Turn off for immediate discrete steps.");
+
+        _zoomAcceleration = Option("Zoom acceleration", preferences.ZoomAcceleration);
+        _zoomAcceleration.IsEnabled = _smoothZoom.IsChecked == true;
+        _smoothZoom.Checked += (_, _) => _zoomAcceleration.IsEnabled = true;
+        _smoothZoom.Unchecked += (_, _) => _zoomAcceleration.IsEnabled = false;
+        Hint("Accelerates zoom velocity during rapid wheel flicking. Turn off for uniform, constant-speed zoom steps.");
 
         body.Children.Add(new TextBlock
         {
@@ -196,6 +202,7 @@ internal sealed class ZoomSettingsControl : UserControl
             _shortcutZoomOut.IsChecked = true;
             _shortcutAmount.Value = OverviewZoomDefaults.ShortcutZoomOutAmount * 100;
             _smoothZoom.IsChecked = true;
+            _zoomAcceleration.IsChecked = true;
             _live.IsChecked = _detailed.IsChecked = _simple.IsChecked = true;
             _cardEnter.Value = OverviewZoomDefaults.CardEnter * 100;
             _cardExit.Value = OverviewZoomDefaults.CardExit * 100;
@@ -290,6 +297,7 @@ internal sealed class ZoomSettingsControl : UserControl
             SimpleCardExitZoom = _simpleExit.Value / 100,
             EnableCanvasPeek = _peek.IsChecked == true, CanvasPeekDelayMs = (int)Math.Round(_peekDelay.Value),
             SmoothZoom = _smoothZoom.IsChecked == true,
+            ZoomAcceleration = _zoomAcceleration.IsChecked == true,
             MaximumZoom = _maximumZoom.Value / 100 };
         return true;
     }

@@ -222,4 +222,104 @@ public class SmoothZoomTrackerTests
         Assert.Equal((500, 300), tracker.FocalVirtual);
         Assert.Equal((50, 60), tracker.FocalWorld);
     }
+
+    [Fact]
+    public void PushZoom_WithAccelerationDisabled_FastScrollsRemainAtMultiplierOne()
+    {
+        var clock = new FakeClock(1000);
+        var tracker = new SmoothZoomTracker(clock, enableAcceleration: false);
+
+        // Notch 1 at t=1000
+        tracker.PushZoom(0, 0, 0, 0, 1.0, -1);
+        Assert.Equal(0.90, tracker.TargetZoom, 6);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
+        Assert.False(tracker.IsAccelerating);
+
+        // Rapid flick at 20ms intervals (> 40 notches/sec)
+        for (int i = 0; i < 5; i++)
+        {
+            clock.Advance(20);
+            double currentTarget = tracker.TargetZoom;
+            tracker.PushZoom(0, 0, 0, 0, tracker.TargetZoom, -1);
+
+            Assert.Equal(1.0, tracker.CurrentMultiplier);
+            Assert.False(tracker.IsAccelerating);
+            // Target moves by exactly 10% each notch (linear stepping)
+            double expected = currentTarget - (1.0 * OverviewCamera.ZoomStep * currentTarget);
+            Assert.Equal(expected, tracker.TargetZoom, 6);
+        }
+    }
+
+    [Fact]
+    public void PushZoom_WithAccelerationDisabled_PreservesFrameZeroImmediacyAndSpringDecay()
+    {
+        var clock = new FakeClock(1000);
+        var tracker = new SmoothZoomTracker(clock, enableAcceleration: false) { MaxZoom = 2.0 };
+
+        tracker.PushZoom(100, 200, 300, 400, 1.0, 1);
+        Assert.True(tracker.IsActive);
+        Assert.Equal(1.10, tracker.TargetZoom, 6);
+        Assert.Equal(1.0, tracker.CurrentMultiplier);
+
+        // Frame 0 / immediate tick
+        clock.Advance(16);
+        var (vx, vy, wx, wy, zoom1, stopped1) = tracker.Tick(1.0);
+        Assert.False(stopped1);
+        Assert.True(zoom1 > 1.0, "Zoom should advance toward target 1.10");
+        Assert.True(zoom1 < 1.10, "Zoom should not have exceeded target on first frame");
+
+        // Subsequent ticks smoothly interpolate to target
+        double currentZoom = zoom1;
+        bool stopped = false;
+        for (int i = 0; i < 30; i++)
+        {
+            clock.Advance(16);
+            var result = tracker.Tick(currentZoom);
+            currentZoom = result.zoom;
+            stopped = result.stopped;
+            if (stopped) break;
+        }
+
+        Assert.True(stopped);
+        Assert.Equal(1.10, currentZoom, 5);
+        Assert.False(tracker.IsActive);
+    }
+
+    [Fact]
+    public void PushZoom_FractionalTouchpadDeltas_ActivatesAndInterpolatesSmoothly()
+    {
+        var clock = new FakeClock(1000);
+        var tracker = new SmoothZoomTracker(clock);
+
+        // Distant zoom level (0.15), tiny fractional notches (0.01 notches ~ delta 1.2 on wheel)
+        double distantZoom = 0.15;
+        double fractionalNotches = 0.01;
+        tracker.PushZoom(200, 200, 50, 50, distantZoom, fractionalNotches);
+
+        Assert.True(tracker.IsActive, "Tracker should activate even for sub-detent fractional notches");
+        Assert.True(tracker.TargetZoom > distantZoom, "Target zoom should be greater than starting distant zoom");
+
+        clock.Advance(16);
+        var result = tracker.Tick(distantZoom);
+        Assert.True(result.zoom > distantZoom, "Interpolation should progress smoothly without deadband stall");
+    }
+
+    [Fact]
+    public void PushZoom_HighReportRateCadence_CalculatesVelocityWithoutArtificialThrottling()
+    {
+        var clock = new FakeClock(1000);
+        var tracker = new SmoothZoomTracker(clock);
+
+        // First event
+        tracker.PushZoom(0, 0, 0, 0, 1.0, 1);
+
+        // Event arriving at 6ms (approx 166 Hz report rate)
+        clock.Advance(6);
+        tracker.PushZoom(0, 0, 0, 0, 1.05, 1);
+
+        // With MinIntervalMs = 2.0 (rather than 12.0), notchRate = 1 * 1000 / 6 = 166.6 notches/sec.
+        // If clamped at 12.0, notchRate would be capped at 83.3 notches/sec.
+        // Therefore, multiplier with 6ms dt must be significantly higher (> 5.0) than if capped at 12ms.
+        Assert.True(tracker.CurrentMultiplier > 5.0, $"Expected multiplier > 5.0 at 6ms report rate, was {tracker.CurrentMultiplier}");
+    }
 }

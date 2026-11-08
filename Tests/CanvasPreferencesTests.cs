@@ -230,6 +230,26 @@ public class CanvasPreferencesTests : IDisposable
     }
 
     [Fact]
+    public void ZoomAcceleration_DefaultsToTrueAndRoundTripsThroughPreferences()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.ZoomAcceleration);
+        Assert.True(config.Preferences.ZoomAcceleration);
+        config.SavePreferences(config.Preferences with { ZoomAcceleration = false });
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.False(reopened.ZoomAcceleration);
+        Assert.False(reopened.Preferences.ZoomAcceleration);
+    }
+
+    [Fact]
+    public void ZoomAcceleration_CommentedInDefaultConfig()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        string text = File.ReadAllText(Path.Combine(_directory, "config.ini"));
+        Assert.Contains(";ZoomAcceleration=true", text);
+    }
+
+    [Fact]
     public void FailedSaveKeepsTheRunningPreferences()
     {
         using var config = new AppConfig(directory: _directory); config.Load();
