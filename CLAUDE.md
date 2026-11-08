@@ -1,0 +1,5 @@
+# Claude Code Agent Rules
+# Auto-linked to root AGENTS.md
+Please read and strictly follow all repository guidelines, Phase 0 triage protocols,
+worktree isolation rules, and named-mutex testing procedures defined in:
+AGENTS.md

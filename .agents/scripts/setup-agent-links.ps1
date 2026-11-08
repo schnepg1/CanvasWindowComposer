@@ -2,10 +2,9 @@
 # Cross-Tool Windows Junction Setup Script (setup-agent-links.ps1)
 # ==============================================================================
 # Description:
-#   Creates NTFS directory junctions for cross-tool interoperability on Windows.
-#   Links .gemini/skills and .opencode/skills directly to .agents/skills so that
-#   Google Antigravity, Gemini CLI, OpenCode, and OpenAI Codex tools can share
-#   the exact same physical skills directory without file duplication.
+#   Creates NTFS directory junctions and rule pointers for cross-tool interoperability
+#   on Windows. Links .gemini/skills and .opencode/skills directly to .agents/skills
+#   and establishes rule pointers for Codium/Windsurf, Claude Code, and Cursor to AGENTS.md.
 #
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File setup-agent-links.ps1
@@ -29,7 +28,7 @@ $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir "..\.."))
 $targetSkillsDir = Join-Path $workspaceRoot ".agents\skills"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host " Agent Cross-Tool Junction Setup (Windows NTFS)" -ForegroundColor Cyan
+Write-Host " Agent Cross-Tool Rig Setup (Windows NTFS)" -ForegroundColor Cyan
 Write-Host " Workspace Root: $workspaceRoot" -ForegroundColor DarkGray
 Write-Host " Target Skills:  $targetSkillsDir" -ForegroundColor DarkGray
 Write-Host "==========================================================" -ForegroundColor Cyan
@@ -52,6 +51,43 @@ $links = @(
     }
 )
 
+# Cross-tool rule pointer files (Codium/Windsurf, Claude Code, Cursor)
+$rulePointers = @(
+    @{
+        Name = "Windsurf / Codium"
+        FilePath = ".windsurfrules"
+        Content = @"
+# Windsurf / Codium Agent Rules
+# Auto-linked to root AGENTS.md
+Please read and strictly follow all repository guidelines, Phase 0 triage protocols,
+worktree isolation rules, and named-mutex testing procedures defined in:
+AGENTS.md
+"@
+    },
+    @{
+        Name = "Claude Code"
+        FilePath = "CLAUDE.md"
+        Content = @"
+# Claude Code Agent Rules
+# Auto-linked to root AGENTS.md
+Please read and strictly follow all repository guidelines, Phase 0 triage protocols,
+worktree isolation rules, and named-mutex testing procedures defined in:
+AGENTS.md
+"@
+    },
+    @{
+        Name = "Cursor"
+        FilePath = ".cursorrules"
+        Content = @"
+# Cursor Agent Rules
+# Auto-linked to root AGENTS.md
+Please read and strictly follow all repository guidelines, Phase 0 triage protocols,
+worktree isolation rules, and named-mutex testing procedures defined in:
+AGENTS.md
+"@
+    }
+)
+
 function Test-IsJunction([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return $false }
     $item = Get-Item -LiteralPath $Path -Force
@@ -71,7 +107,6 @@ function Get-JunctionTarget([string]$Path) {
 function Remove-JunctionSafe([string]$Path) {
     if (Test-IsJunction $Path) {
         Write-Host "  Removing junction: $Path" -ForegroundColor Yellow
-        # cmd /c rmdir removes the reparse point without touching target files
         cmd /c "rmdir `"$Path`""
     } elseif (Test-Path -LiteralPath $Path) {
         Write-Warning "  Path is a normal directory, not a junction: $Path"
@@ -95,11 +130,21 @@ if ($Check) {
             Write-Host "  [NOT CREATED] $($entry.Name) ($($entry.LinkPath))" -ForegroundColor DarkGray
         }
     }
+
+    Write-Host "`nChecking rule pointers..." -ForegroundColor Green
+    foreach ($rule in $rulePointers) {
+        $fullRulePath = Join-Path $workspaceRoot $rule.FilePath
+        if (Test-Path -LiteralPath $fullRulePath) {
+            Write-Host "  [OK] $($rule.Name) ($($rule.FilePath))" -ForegroundColor Green
+        } else {
+            Write-Host "  [NOT CREATED] $($rule.Name) ($($rule.FilePath))" -ForegroundColor DarkGray
+        }
+    }
     return
 }
 
 # ------------------------------------------------------------------------------
-# Action: Remove Junctions
+# Action: Remove Junctions & Rule Pointers
 # ------------------------------------------------------------------------------
 if ($Remove) {
     Write-Host "`nRemoving junctions..." -ForegroundColor Yellow
@@ -107,7 +152,16 @@ if ($Remove) {
         $fullLinkPath = Join-Path $workspaceRoot $entry.LinkPath
         Remove-JunctionSafe $fullLinkPath
     }
-    Write-Host "Junction removal complete." -ForegroundColor Green
+
+    Write-Host "`nRemoving rule pointers..." -ForegroundColor Yellow
+    foreach ($rule in $rulePointers) {
+        $fullRulePath = Join-Path $workspaceRoot $rule.FilePath
+        if (Test-Path -LiteralPath $fullRulePath) {
+            Write-Host "  Removing $($rule.FilePath)" -ForegroundColor Yellow
+            Remove-Item -LiteralPath $fullRulePath -Force
+        }
+    }
+    Write-Host "Cleanup complete." -ForegroundColor Green
     return
 }
 
@@ -159,5 +213,19 @@ foreach ($entry in $links) {
     }
 }
 
-Write-Host "`nAll junctions configured successfully." -ForegroundColor Green
-Write-Host "Antigravity, OpenCode, and Codex will now discover skills under .agents/skills directly." -ForegroundColor Cyan
+# ------------------------------------------------------------------------------
+# Action: Create / Sync Rule Pointers (Windsurf, Claude, Cursor)
+# ------------------------------------------------------------------------------
+Write-Host "`nConfiguring cross-tool rule pointers..." -ForegroundColor Green
+foreach ($rule in $rulePointers) {
+    $fullRulePath = Join-Path $workspaceRoot $rule.FilePath
+    if (-not (Test-Path -LiteralPath $fullRulePath) -or $Force) {
+        [System.IO.File]::WriteAllText($fullRulePath, $rule.Content.Trim() + "`r`n")
+        Write-Host "  [SUCCESS] Created rule pointer for $($rule.Name) ($($rule.FilePath))" -ForegroundColor Green
+    } else {
+        Write-Host "  [CURRENT] $($rule.Name) ($($rule.FilePath)) already exists." -ForegroundColor DarkGray
+    }
+}
+
+Write-Host "`nAll junctions and rule pointers configured successfully." -ForegroundColor Green
+Write-Host "Antigravity, OpenCode, Windsurf/Codium, Claude Code, and Cursor will now seamlessly discover AGENTS.md and .agents/skills." -ForegroundColor Cyan
