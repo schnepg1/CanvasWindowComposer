@@ -45,9 +45,11 @@ public sealed class CameraBookmarkOverviewTests
             Assert.True(overview.NavigateToWindow((IntPtr)42)); Assert.True(overview.WindowNavigationActive);
             overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration / 2);
             Assert.NotEqual(saved, overview.ViewCamera);
-            Press(overview, Keys.D2); Assert.False(overview.WindowNavigationActive); Assert.Equal(saved, overview.ViewCamera);
+            Press(overview, Keys.D2);
             overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
-            Assert.Equal(saved, overview.ViewCamera); Assert.Equal(world, canvas.Windows[(IntPtr)42]);
+            Assert.False(overview.WindowNavigationActive);
+            Assert.Equal(saved, overview.ViewCamera);
+            Assert.Equal(world, canvas.Windows[(IntPtr)42]);
         }, setup: (canvas, api) =>
         {
             api.AddWindow((IntPtr)42, 100, 200, 600, 400, title: "Bookmark test app");
@@ -64,15 +66,18 @@ public sealed class CameraBookmarkOverviewTests
             var save = Press(overview, Keys.Control | Keys.D1); Assert.True(save.Handled); Assert.True(save.SuppressKeyPress);
             canvas.SetCamera(-900, 500); overview.SyncCamera(); var desktopCamera = canvas.Camera;
             Press(overview, Keys.NumPad1);
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
             Assert.Equal(saved, overview.ViewCamera); Assert.Equal(desktopCamera, canvas.Camera);
             Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
             Press(overview, Keys.Add); var replacement = overview.ViewCamera;
             Press(overview, Keys.Control | Keys.NumPad1);
             canvas.SetCamera(3000, 4000); overview.SyncCamera(); Press(overview, Keys.D1);
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
             Assert.Equal(replacement, overview.ViewCamera);
             Assert.True(new CameraBookmarkStore(Path.Combine(folder, "camera-bookmarks.json")).TryGet(desktops.CurrentDesktopId, 1, out var persisted));
             Assert.Equal(replacement, persisted);
             overview.TransitionTo(OverviewMode.Hidden); overview.TransitionTo(OverviewMode.Zooming); Press(overview, Keys.D1);
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
             Assert.Equal(replacement, overview.ViewCamera);
         });
 
@@ -89,8 +94,10 @@ public sealed class CameraBookmarkOverviewTests
             for (int i = 0; i < 5; i++)
             {
                 Assert.True(Press(overview, Keys.D1).Handled);
+                overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
                 Assert.Equal(first, overview.ViewCamera);
                 Assert.True(Press(overview, Keys.D2).Handled);
+                overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
                 Assert.Equal(second, overview.ViewCamera);
             }
         });
@@ -127,6 +134,48 @@ public sealed class CameraBookmarkOverviewTests
             var originalDesktop = desktops.CurrentDesktopId;
             desktops.SwitchTo(Guid.NewGuid()); var second = overview.ViewCamera;
             Press(overview, Keys.D0); Assert.Equal(second, overview.ViewCamera);
-            desktops.SwitchTo(originalDesktop); Press(overview, Keys.D0); Assert.Equal(first, overview.ViewCamera);
+            desktops.SwitchTo(originalDesktop); Press(overview, Keys.D0);
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
+            Assert.Equal(first, overview.ViewCamera);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DesktopBookmarkRecallLandsInDesktopViewForFullScaleAndStaysInCanvasForOverviewScale()
+        => WithOverview((overview, canvas, desktops, folder) =>
+        {
+            // Save Slot 1 at full desktop scale (Zoom = 1.0)
+            canvas.SetCamera(1000, 2000); overview.SyncCamera();
+            Press(overview, Keys.Control | Keys.D1);
+
+            // Save Slot 2 at overview scale (Zoom = 0.40)
+            Press(overview, Keys.Subtract);
+            Press(overview, Keys.Subtract);
+            var overviewZoom = overview.ViewCamera.Zoom;
+            Assert.True(overviewZoom < 0.90);
+            Press(overview, Keys.Control | Keys.D2);
+
+            // Switch to Desktop View
+            overview.TransitionTo(OverviewMode.Hidden);
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+
+            // Recall Slot 1 from Desktop View -> should lift to Canvas, fly, and land back in Desktop View
+            Assert.True(overview.RecallBookmark(1));
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.True(overview.WindowNavigationActive);
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
+            Assert.False(overview.WindowNavigationActive);
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            Assert.Equal(1000, canvas.CamX);
+            Assert.Equal(2000, canvas.CamY);
+
+            // Recall Slot 2 from Desktop View -> should lift to Canvas, fly, and REMAIN in Canvas View
+            Assert.True(overview.RecallBookmark(2));
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.True(overview.WindowNavigationActive);
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
+            Assert.False(overview.WindowNavigationActive);
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.Equal(overviewZoom, overview.ViewCamera.Zoom);
         });
 }

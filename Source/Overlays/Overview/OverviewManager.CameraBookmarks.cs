@@ -19,6 +19,26 @@ internal sealed partial class OverviewManager
         return slot >= 0 && modifiers is Keys.None or Keys.Control;
     }
 
+    public bool RecallBookmark(int slot)
+    {
+        if (_disposed || _cameraBookmarks == null) return false;
+        if (!_cameraBookmarks.TryGet(_annotationDesktop(), slot, out var camera)) return false;
+
+        // Decision 3: Option A
+        // If bookmark has Zoom >= 0.98 and invoked from Desktop View, land in Desktop View.
+        // If bookmark has Zoom < 0.98, transition to Canvas View and remain in Canvas View!
+        bool landInDesktop = CurrentMode == OverviewMode.Hidden && camera.Zoom >= 0.98;
+        bool navigated = NavigateToCamera(camera, landInDesktopView: landInDesktop);
+        if (navigated && CurrentMode == OverviewMode.Zooming && _passes.Count > 0)
+        {
+            var pass = _passes[0];
+            string message = $"Camera {slot} · {camera.Zoom:P0}";
+            _cameraBookmarkFeedback ??= new ToolTip();
+            _cameraBookmarkFeedback.Show(message, pass, new Point(Math.Max(8, pass.ClientSize.Width / 2 - 120), 64), 2200);
+        }
+        return navigated;
+    }
+
     private bool HandleCameraBookmarkKey(OverviewOverlay pass, KeyEventArgs e)
     {
         // Local canvas shortcuts never intercept an app's keyboard or a text/number editor.
@@ -38,19 +58,9 @@ internal sealed partial class OverviewManager
             message = saved ? $"Camera {slot} saved ({_camera.Zoom:P0}) · Press {slot} to return"
                 : _cameraBookmarks.Status ?? "Camera bookmark could not be saved.";
         }
-        else if (_cameraBookmarks.TryGet(_annotationDesktop(), slot, out var camera))
+        else if (RecallBookmark(slot))
         {
-            if (IsStartupIntroActive) FinishStartupIntro(refresh: false);
-            PauseGuidedTutorial();
-            CancelInertia();
-            CancelSmoothZoom();
-            CancelInteraction();
-            CloseActiveMenus();
-            _tutorialReading = false;
-            _startupIntroLanded = false;
-            _camera.SetTo(camera.X, camera.Y, camera.Zoom);
-            ReconcileVisuals();
-            message = $"Camera {slot} · {camera.Zoom:P0}";
+            return true;
         }
         else message = $"Camera {slot} is empty · Ctrl+{slot} saves this view";
 

@@ -28,6 +28,7 @@ internal sealed class OverviewInputs : IDisposable
         input.OverviewHotkey       += OnOverviewHotkey;
         input.InputAvailable       += OnCanvasInput;
         input.EscPressed           += OnEscPressed;
+        input.CameraBookmarkHotkey += OnCameraBookmarkHotkey;
     }
 
     private void OnCanvasCameraChanged()
@@ -151,6 +152,12 @@ internal sealed class OverviewInputs : IDisposable
         }
     }
 
+    private void OnCameraBookmarkHotkey(int slot)
+    {
+        if (_disposed) return;
+        _overview.RecallBookmark(slot);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -162,5 +169,6 @@ internal sealed class OverviewInputs : IDisposable
         _input.OverviewHotkey -= OnOverviewHotkey;
         _input.InputAvailable -= OnCanvasInput;
         _input.EscPressed -= OnEscPressed;
+        _input.CameraBookmarkHotkey -= OnCameraBookmarkHotkey;
     }
 }

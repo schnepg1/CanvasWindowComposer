@@ -405,7 +405,7 @@ internal sealed partial class OverviewManager
         if (hit >= 0)
         {
             var entry = _windows.Windows[hit];
-            GoToWindow(entry.HWnd, entry.World);
+            if (!NavigateToWindow(entry.HWnd)) GoToWindow(entry.HWnd, entry.World);
         }
     }
 

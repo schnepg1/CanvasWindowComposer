@@ -31,6 +31,7 @@ internal interface IInputRouter
 
     event Action? SearchHotkey;
     event Action? OverviewHotkey;
+    event Action<int>? CameraBookmarkHotkey;
 
     /// <summary>
     /// Raised when the user presses Esc while the Esc hotkey is enabled.

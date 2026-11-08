@@ -14,6 +14,8 @@ internal interface IOverviewController
     OverviewMode CurrentMode { get; }
     void TransitionTo(OverviewMode target, bool syncCameraOnClose = true, bool zoomOutOnOpen = false);
     bool NavigateToWindow(IntPtr window);
+    bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false) => false;
+    bool RecallBookmark(int slot) => false;
     void HandleEscape();
     bool CanvasInputSuspended => false;
     bool OverviewHotkeySuspended => CanvasInputSuspended;

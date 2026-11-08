@@ -91,7 +91,7 @@ internal sealed partial class OverviewManager
         else if (e.KeyCode == Keys.Enter && _windows.SelectedIndex >= 0)
         {
             var entry = _windows.Windows[_windows.SelectedIndex];
-            GoToWindow(entry.HWnd, entry.World);
+            if (!NavigateToWindow(entry.HWnd)) GoToWindow(entry.HWnd, entry.World);
             e.Handled = true;
         }
     }

@@ -116,8 +116,7 @@ internal sealed partial class OverviewManager
         TransitionTo(OverviewMode.Zooming);
         var fit = ZoneGeometry.Fit(zone.Bounds, _screens.PrimaryWorkingArea);
         _startupIntroLanded = false;
-        _camera.SetTo(fit.X, fit.Y, fit.Zoom);
-        ReconcileVisuals();
+        NavigateToCamera(new CanvasCamera(fit.X, fit.Y, fit.Zoom), landInDesktopView: false);
     }
 
     private void RefreshZoneAnnotations()

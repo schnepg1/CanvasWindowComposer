@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -11,6 +12,7 @@ internal sealed class SearchOverlay : Form
     private readonly Canvas _canvas;
     private readonly WindowManager _wm;
     private readonly IScreens _screens;
+    private readonly IOverviewController? _overview;
     private readonly IInputRouter _input;
     private readonly WindowSearchService _searchService;
     private readonly TextBox _searchBox;
@@ -70,8 +72,9 @@ internal sealed class SearchOverlay : Form
     private readonly int _pinCheckMarginLeft;
     private readonly int _pinCheckTextGap;
 
-    public SearchOverlay(Canvas canvas, WindowManager wm, IWindowApi positioner, IInputRouter input, IScreens? screens = null)
+    public SearchOverlay(Canvas canvas, WindowManager wm, IWindowApi positioner, IInputRouter input, IScreens? screens = null, IOverviewController? overview = null)
     {
+        _overview = overview;
         _canvas = canvas;
         _wm = wm;
         _screens = screens ?? WinFormsScreens.Instance;
@@ -146,9 +149,36 @@ internal sealed class SearchOverlay : Form
         Controls.Add(_resultsList);
 
         KeyDown += OnKeyDown;
-        Deactivate += (_, _) => HideOverlay();
 
         ApplyRoundedRegion();
+    }
+
+    private long _openedTimestamp;
+
+    protected override void OnDeactivate(EventArgs e)
+    {
+        // When Alt+S opens the search overlay, releasing the Alt key can trigger a transient
+        // WM_SYSKEYUP / deactivation blip. Ignore deactivation within 300 ms of opening
+        // so the overlay stays open and focused for typing.
+        if (Environment.TickCount64 - _openedTimestamp < 300)
+        {
+            if (Visible && !IsDisposed)
+            {
+                Activate();
+                _searchBox.Focus();
+            }
+            return;
+        }
+
+        base.OnDeactivate(e);
+        HideOverlay();
+    }
+
+    public void RaiseWithoutActivation()
+    {
+        if (!Visible || IsDisposed) return;
+        PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
     }
 
     private void ApplyRoundedRegion()
@@ -203,7 +233,24 @@ internal sealed class SearchOverlay : Form
 
             PopulateResults(_searchService.GetRecentWindows());
 
+            _openedTimestamp = Environment.TickCount64;
+
+            IntPtr ownerHandle = IntPtr.Zero;
+            if (_overview != null && _overview.CurrentMode != OverviewMode.Hidden && _overview.MonitorHandles.Count > 0)
+                ownerHandle = _overview.MonitorHandles[0];
+
+            if (IsHandleCreated)
+                SetWindowLongPtr(Handle, GWLP_HWNDPARENT, ownerHandle);
+
             Show();
+            if (IsHandleCreated)
+            {
+                if (ownerHandle != IntPtr.Zero)
+                    SetWindowLongPtr(Handle, GWLP_HWNDPARENT, ownerHandle);
+
+                PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
+                    SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
+            }
             Activate();
             _searchBox.Focus();
         }
@@ -212,7 +259,30 @@ internal sealed class SearchOverlay : Form
     private void HideOverlay()
     {
         Hide();
+        if (IsHandleCreated)
+            SetWindowLongPtr(Handle, GWLP_HWNDPARENT, IntPtr.Zero);
     }
+
+    private const int GWLP_HWNDPARENT = -8;
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    private static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong) =>
+        IntPtr.Size == 8 ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong) : new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong.ToInt32()));
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+    internal static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex) =>
+        IntPtr.Size == 8 ? GetWindowLongPtr64(hWnd, nIndex) : new IntPtr(GetWindowLong32(hWnd, nIndex));
+
 
     private void OnSearchChanged(object? sender, EventArgs e)
     {
@@ -320,18 +390,19 @@ internal sealed class SearchOverlay : Form
         if (_canvas.Windows.TryGetValue(hWnd, out var current))
             world = current;
 
-        PInvoke.SetForegroundWindow(h);
-
         if (_canvas.IsPinnedToScreen(hWnd))
         {
+            PInvoke.SetForegroundWindow(h);
             HideOverlay();
             return;
         }
 
+        HideOverlay();
+        if (_overview != null && _overview.NavigateToWindow(hWnd)) return;
+        PInvoke.SetForegroundWindow(h);
         var screen = _screens.PrimaryWorkingArea;
         _canvas.CenterOn(world.X, world.Y, world.W, world.H, screen.Width, screen.Height);
         _canvas.Commit();
-        HideOverlay();
     }
 
     private void TogglePinnedAt(int idx)

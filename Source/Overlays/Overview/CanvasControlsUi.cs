@@ -219,7 +219,8 @@ internal sealed class CanvasControlsPopup : Form
 
         AddSection("Camera bookmarks", [
             ("Ctrl + 0-9", "Save or replace this camera position and zoom. Number row and numeric keypad supported."),
-            ("0-9", "Jump to a saved view. Slots are separate per virtual desktop and survive restarts. Click empty canvas first when using an app.")
+            ("0-9", "Fly to a saved view on the canvas via helicopter flight path."),
+            ("Ctrl + Alt + 0-9", "Global shortcut: fly to a saved view from anywhere, including desktop view.")
         ]);
 
         AddSection("Arrange, Interact & app cards", [

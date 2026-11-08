@@ -36,7 +36,18 @@ internal sealed class FakeOverviewController : IOverviewController
     public long? ReleasedAt;
     public List<OverviewMode> Transitions = new();
     public List<IntPtr> NavigatedWindows = new();
-    public bool NavigateToWindow(IntPtr window) { NavigatedWindows.Add(window); return true; }
+    public bool NavigateToWindowResult { get; set; } = true;
+    public Action<IntPtr>? OnNavigateToWindow { get; set; }
+    public bool NavigateToWindow(IntPtr window)
+    {
+        NavigatedWindows.Add(window);
+        OnNavigateToWindow?.Invoke(window);
+        return NavigateToWindowResult;
+    }
+    public List<CanvasCamera> NavigatedCameras = new();
+    public bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false) { NavigatedCameras.Add(target); return true; }
+    public List<int> RecalledBookmarks = new();
+    public bool RecallBookmark(int slot) { RecalledBookmarks.Add(slot); return true; }
     public bool PendingInteraction;
     public int EscapeCalls, CancelInteractionCalls;
 
