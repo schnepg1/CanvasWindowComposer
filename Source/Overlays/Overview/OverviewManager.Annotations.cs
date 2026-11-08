@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -443,6 +444,63 @@ internal sealed partial class OverviewManager
         }
         if (anyRemoved)
         {
+            _annotationStore?.Save();
+        }
+    }
+
+    internal void ReconcileConnectedArrows()
+    {
+        if (_annotationDocument == null) return;
+        var currentDesktop = _annotationDesktop();
+        var connectedArrows = _annotationDocument.Items
+            .Where(a => a.DesktopId == currentDesktop && a.Kind == AnnotationKind.Arrow && (a.SourceId.HasValue || a.TargetId.HasValue))
+            .ToList();
+        if (connectedArrows.Count == 0) return;
+
+        var boundsById = new Dictionary<Guid, CanvasRect>();
+        foreach (var item in SelectionItems())
+        {
+            boundsById[item.Key.Id] = item.Bounds;
+        }
+
+        var updated = new List<CanvasAnnotation>();
+        foreach (var arrow in connectedArrows)
+        {
+            CanvasRect srcBounds = default;
+            bool hasSrc = arrow.SourceId.HasValue && boundsById.TryGetValue(arrow.SourceId.Value, out srcBounds);
+            CanvasRect tgtBounds = default;
+            bool hasTgt = arrow.TargetId.HasValue && boundsById.TryGetValue(arrow.TargetId.Value, out tgtBounds);
+            if (!hasSrc && !hasTgt) continue;
+
+            CanvasPoint newA, newB;
+            if (hasSrc && hasTgt)
+            {
+                (newA, newB) = AnnotationGeometry.ComputePortAnchors(srcBounds, arrow.SourcePort, tgtBounds, arrow.TargetPort);
+            }
+            else if (hasSrc)
+            {
+                (newA, _) = AnnotationGeometry.ComputePortAnchors(srcBounds, arrow.SourcePort, new CanvasRect(arrow.B.X, arrow.B.Y, 0, 0), ConnectionPort.Auto);
+                newB = arrow.B;
+            }
+            else
+            {
+                (_, newB) = AnnotationGeometry.ComputePortAnchors(new CanvasRect(arrow.A.X, arrow.A.Y, 0, 0), ConnectionPort.Auto, tgtBounds, arrow.TargetPort);
+                newA = arrow.A;
+            }
+
+            if (Math.Abs(newA.X - arrow.A.X) > 0.5 || Math.Abs(newA.Y - arrow.A.Y) > 0.5 ||
+                Math.Abs(newB.X - arrow.B.X) > 0.5 || Math.Abs(newB.Y - arrow.B.Y) > 0.5)
+            {
+                updated.Add(arrow with { A = newA, B = newB });
+            }
+        }
+
+        if (updated.Count > 0)
+        {
+            foreach (var arrow in updated)
+            {
+                _annotationDocument.Put(arrow);
+            }
             _annotationStore?.Save();
         }
     }

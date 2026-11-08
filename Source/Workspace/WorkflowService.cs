@@ -184,10 +184,10 @@ internal sealed class WorkflowService : IWorkflowService
                 double minX, minY, maxX, maxY;
                 if (memberAnnotations.Count > 0)
                 {
-                    minX = memberAnnotations.Min(a => a!.Bounds.X) - 40;
-                    minY = memberAnnotations.Min(a => a!.Bounds.Y) - 60;
-                    maxX = memberAnnotations.Max(a => a!.Bounds.X + a!.Bounds.Width) + 40;
-                    maxY = memberAnnotations.Max(a => a!.Bounds.Y + a!.Bounds.Height) + 40;
+                    minX = memberAnnotations.Min(a => a!.Bounds.X) - 60;
+                    minY = memberAnnotations.Min(a => a!.Bounds.Y) - 80;
+                    maxX = memberAnnotations.Max(a => a!.Bounds.X + a!.Bounds.Width) + 60;
+                    maxY = memberAnnotations.Max(a => a!.Bounds.Y + a!.Bounds.Height) + 60;
                 }
                 else
                 {

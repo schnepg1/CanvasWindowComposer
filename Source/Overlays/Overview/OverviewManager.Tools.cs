@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
@@ -56,7 +57,24 @@ internal sealed partial class OverviewManager
     {
         ApplyPointerCapture();
         if (result.Kind == ZoneGestureKind.Draw) ZoneDrawn?.Invoke(result.Bounds);
-        else if (result.Kind == ZoneGestureKind.Move) ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
+        else if (result.Kind == ZoneGestureKind.Move)
+        {
+            var zone = _zones?.Items.FirstOrDefault(z => z.Id == result.ZoneId);
+            if (zone != null && _annotationDocument != null)
+            {
+                var zRect = new CanvasRect(zone.Bounds.X, zone.Bounds.Y, zone.Bounds.W, zone.Bounds.H);
+                var currentDesktop = _annotationDesktop();
+                var enclosed = _annotationDocument.Items
+                    .Where(a => a.DesktopId == currentDesktop && a.Kind != AnnotationKind.Arrow && !a.InBackground && CanvasSelection.Contains(zRect, CanvasSelection.Center(a.Bounds)))
+                    .ToList();
+
+                foreach (var a in enclosed)
+                {
+                    _annotationDocument.Put(a.Translate(result.Dx, result.Dy));
+                }
+            }
+            ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
+        }
         else if (result.Kind == ZoneGestureKind.Resize) ZoneResizeRequested?.Invoke(result.ZoneId, result.Bounds);
         RefreshZoneLayout();
     }

@@ -77,9 +77,23 @@ internal sealed partial class OverviewManager
         if (_zones != null)
         {
             var zones = _zones.Items;
-            result.AddRange(zones.Select(z => new CanvasSelectionItem(new(CanvasItemKind.Project,z.Id),Rect(z.Bounds),z.Name,
-                _zones.Members(z.Id).Where(m => m.Assigned).Select(m => new CanvasItemId(CanvasItemKind.Window,m.Id))
-                    .Concat(zones.Where(child => child.ParentId == z.Id).Select(child => new CanvasItemId(CanvasItemKind.Project,child.Id))).ToArray())));
+            var currentDesktop = _annotationDesktop();
+            var annotItems = _annotationDocument?.Items
+                .Where(a => a.DesktopId == currentDesktop && a.Kind != AnnotationKind.Arrow && !a.InBackground)
+                .ToList() ?? [];
+
+            result.AddRange(zones.Select(z =>
+            {
+                var zRect = Rect(z.Bounds);
+                var memberWindows = _zones.Members(z.Id).Where(m => m.Assigned).Select(m => new CanvasItemId(CanvasItemKind.Window, m.Id));
+                var memberProjects = zones.Where(child => child.ParentId == z.Id).Select(child => new CanvasItemId(CanvasItemKind.Project, child.Id));
+                var memberAnnotations = annotItems
+                    .Where(a => CanvasSelection.Contains(zRect, CanvasSelection.Center(a.Bounds)))
+                    .Select(a => new CanvasItemId(CanvasItemKind.Annotation, a.Id));
+
+                return new CanvasSelectionItem(new(CanvasItemKind.Project, z.Id), zRect, z.Name,
+                    memberWindows.Concat(memberProjects).Concat(memberAnnotations).ToArray());
+            }));
         }
         return result;
     }
@@ -144,9 +158,31 @@ internal sealed partial class OverviewManager
             {
                 bool srcMoved = arrow.SourceId.HasValue && movedIds.Contains(arrow.SourceId.Value);
                 bool tgtMoved = arrow.TargetId.HasValue && movedIds.Contains(arrow.TargetId.Value);
-                if (srcMoved && tgtMoved) moved.Add(arrow.Translate(move.Dx, move.Dy));
-                else if (srcMoved) moved.Add(arrow with { A = new(arrow.A.X + move.Dx, arrow.A.Y + move.Dy) });
-                else if (tgtMoved) moved.Add(arrow with { B = new(arrow.B.X + move.Dx, arrow.B.Y + move.Dy) });
+                if (srcMoved && tgtMoved)
+                {
+                    moved.Add(arrow.Translate(move.Dx, move.Dy));
+                }
+                else
+                {
+                    CanvasRect srcRect = arrow.SourceId.HasValue && current.TryGetValue(new(CanvasItemKind.Annotation, arrow.SourceId.Value), out var sa)
+                        ? (srcMoved ? new(sa.Bounds.X + move.Dx, sa.Bounds.Y + move.Dy, sa.Bounds.Width, sa.Bounds.Height) : sa.Bounds)
+                        : (arrow.SourceId.HasValue && current.TryGetValue(new(CanvasItemKind.Window, arrow.SourceId.Value), out var sw)
+                            ? (srcMoved ? new(sw.Bounds.X + move.Dx, sw.Bounds.Y + move.Dy, sw.Bounds.Width, sw.Bounds.Height) : sw.Bounds)
+                            : (arrow.SourceId.HasValue && current.TryGetValue(new(CanvasItemKind.Project, arrow.SourceId.Value), out var sp)
+                                ? (srcMoved ? new(sp.Bounds.X + move.Dx, sp.Bounds.Y + move.Dy, sp.Bounds.Width, sp.Bounds.Height) : sp.Bounds)
+                                : new CanvasRect(arrow.A.X + (srcMoved ? move.Dx : 0), arrow.A.Y + (srcMoved ? move.Dy : 0), 0, 0)));
+
+                    CanvasRect tgtRect = arrow.TargetId.HasValue && current.TryGetValue(new(CanvasItemKind.Annotation, arrow.TargetId.Value), out var ta)
+                        ? (tgtMoved ? new(ta.Bounds.X + move.Dx, ta.Bounds.Y + move.Dy, ta.Bounds.Width, ta.Bounds.Height) : ta.Bounds)
+                        : (arrow.TargetId.HasValue && current.TryGetValue(new(CanvasItemKind.Window, arrow.TargetId.Value), out var tw)
+                            ? (tgtMoved ? new(tw.Bounds.X + move.Dx, tw.Bounds.Y + move.Dy, tw.Bounds.Width, tw.Bounds.Height) : tw.Bounds)
+                            : (arrow.TargetId.HasValue && current.TryGetValue(new(CanvasItemKind.Project, arrow.TargetId.Value), out var tp)
+                                ? (tgtMoved ? new(tp.Bounds.X + move.Dx, tp.Bounds.Y + move.Dy, tp.Bounds.Width, tp.Bounds.Height) : tp.Bounds)
+                                : new CanvasRect(arrow.B.X + (tgtMoved ? move.Dx : 0), arrow.B.Y + (tgtMoved ? move.Dy : 0), 0, 0)));
+
+                    var (newA, newB) = AnnotationGeometry.ComputePortAnchors(srcRect, arrow.SourcePort, tgtRect, arrow.TargetPort);
+                    moved.Add(arrow with { A = newA, B = newB });
+                }
             }
             AnnotationDocument.Validate(moved);
             var savedWindowIds = move.Before.Where(i => i.Key.Kind == CanvasItemKind.Window && _placeholderWorkspace?.Document.Items.Any(w => w.Id == i.Key.Id) == true).Select(i => i.Key.Id).ToArray();

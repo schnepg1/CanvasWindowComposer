@@ -14,7 +14,7 @@ public static class WorkflowLayoutEngine
 {
     public const double DefaultWindowWidth = 800;
     public const double DefaultWindowHeight = 600;
-    public const double ColumnSpacing = 240;
+    public const double ColumnSpacing = 320;
     public const double RowSpacing = 160;
     public const double ZonePadding = 80;
 

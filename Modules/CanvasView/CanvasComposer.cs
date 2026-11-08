@@ -156,9 +156,9 @@ public static class CanvasComposer
                 double nodeWidth = GetNodeWidth(node, reused);
                 double nodeHeight = GetNodeHeight(node, reused);
 
-                double x = positions.Where(p => rank[p.Key] == row).Select(p => p.Value.X + p.Value.Width + 60).DefaultIfEmpty(0).Max();
+                double x = positions.Where(p => rank[p.Key] == row).Select(p => p.Value.X + p.Value.Width + 160).DefaultIfEmpty(0).Max();
                 double y = Enumerable.Range(0, row).Sum(r => nodesList.Where(n => rank[n.Id] == r)
-                    .Select(n => GetNodeHeight(n, reused)).DefaultIfEmpty(180).Max() + 100);
+                    .Select(n => GetNodeHeight(n, reused)).DefaultIfEmpty(180).Max() + 360);
 
                 positions[node.Id] = new(x, y, nodeWidth, nodeHeight);
             }
@@ -171,9 +171,9 @@ public static class CanvasComposer
                 double nodeWidth = GetNodeWidth(node, reused);
                 double nodeHeight = GetNodeHeight(node, reused);
 
-                double y = positions.Where(p => rank[p.Key] == column).Select(p => p.Value.Y + p.Value.Height + 60).DefaultIfEmpty(0).Max();
+                double y = positions.Where(p => rank[p.Key] == column).Select(p => p.Value.Y + p.Value.Height + 140).DefaultIfEmpty(0).Max();
                 double x = Enumerable.Range(0, column).Sum(c => nodesList.Where(n => rank[n.Id] == c)
-                    .Select(n => GetNodeWidth(n, reused)).DefaultIfEmpty(300).Max() + 100);
+                    .Select(n => GetNodeWidth(n, reused)).DefaultIfEmpty(320).Max() + 420);
 
                 positions[node.Id] = new(x, y, nodeWidth, nodeHeight);
             }
@@ -286,10 +286,10 @@ public static class CanvasComposer
 
                 if (memberNodes.Count > 0)
                 {
-                    double minX = memberNodes.Min(n => positions[n.Id].X) + origin.X - 30;
-                    double minY = memberNodes.Min(n => positions[n.Id].Y) + origin.Y - 50;
-                    double maxX = memberNodes.Max(n => positions[n.Id].X + positions[n.Id].Width) + origin.X + 30;
-                    double maxY = memberNodes.Max(n => positions[n.Id].Y + positions[n.Id].Height) + origin.Y + 30;
+                    double minX = memberNodes.Min(n => positions[n.Id].X) + origin.X - 60;
+                    double minY = memberNodes.Min(n => positions[n.Id].Y) + origin.Y - 80;
+                    double maxX = memberNodes.Max(n => positions[n.Id].X + positions[n.Id].Width) + origin.X + 60;
+                    double maxY = memberNodes.Max(n => positions[n.Id].Y + positions[n.Id].Height) + origin.Y + 60;
 
                     var zoneRect = new CanvasAnnotation(
                         Id: Guid.NewGuid(),

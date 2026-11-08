@@ -287,5 +287,83 @@ public class VisualizationLanguageTests
         Assert.Contains(arrows, a => a.Text == "4. Verdict: APPROVED" && a.Stroke == 16.0);
         Assert.Contains(arrows, a => a.Text == "4b. On Merge Conflict" && a.Stroke == 12.0);
         Assert.Contains(arrows, a => a.Text == "6. Task Finished & Cleaned" && a.Stroke == 16.0);
+
+        // 4. Verify generous horizontal arrow clearance (>= 400px between rank columns)
+        var handoffArrow = arrows.First(a => a.Text.Contains("ARCHITECTURE_PLAN.md Handoff"));
+        double arrowSpanX = Math.Abs(handoffArrow.B.X - handoffArrow.A.X);
+        Assert.True(arrowSpanX >= 400, $"Arrow span ({arrowSpanX}px) must be >= 400px to allow generous label clearance.");
+    }
+
+    [Fact]
+    public void CanvasComposer_Prepare_ProvidesGenerousLabelClearance()
+    {
+        var context = new ComposerContext(Desktop, 1, new CanvasPoint(100, 100), [], []);
+
+        var zones = new[]
+        {
+            new ComposerZone("z1", "Zone 1", "#38BDF8")
+        };
+
+        var nodes = new[]
+        {
+            new ComposerNode("n1", "service", "Service 1", "#10B981", Title: "Service 1", Zone: "z1"),
+            new ComposerNode("n2", "service", "Service 2", "#3B82F6", Title: "Service 2", Zone: "z1"),
+            new ComposerNode("n3", "service", "Service 3", "#F59E0B", Title: "Service 3")
+        };
+
+        var edges = new[]
+        {
+            new ComposerEdge("n1", "n3", "#60A5FA", Label: "A very long descriptive label between cards")
+        };
+
+        // In LR direction, n1 and n2 are in rank 0 (different rows), n3 is in rank 1 (next column)
+        var plan = new ComposerPlan("Spacing Plan", nodes, edges, [], zones, Direction: "LR");
+        var preview = CanvasComposer.Prepare(context, plan);
+
+        var item1 = preview.Items.First(i => i.Text.Contains("Service 1"));
+        var item2 = preview.Items.First(i => i.Text.Contains("Service 2"));
+        var item3 = preview.Items.First(i => i.Text.Contains("Service 3"));
+        var arrow = preview.Items.First(i => i.Kind == AnnotationKind.Arrow);
+
+        // Column gap: X distance between n1 right edge and n3 left edge should be >= 400
+        double colGap = item3.Bounds.X - (item1.Bounds.X + item1.Bounds.Width);
+        Assert.True(colGap >= 400, $"Column gap ({colGap}) must be >= 400px for generous label clearance.");
+
+        // Row gap: Y distance between n1 bottom and n2 top should be >= 140
+        double rowGap = item2.Bounds.Y - (item1.Bounds.Y + item1.Bounds.Height);
+        Assert.True(rowGap >= 140, $"Row gap ({rowGap}) must be >= 140px for comfortable vertical card clearance.");
+
+        // Zone padding: Zone rect around n1 and n2 should have at least 60px horizontal margin and 80px top margin
+        var zoneRect = preview.Items.First(i => i.InBackground);
+        Assert.True(item1.Bounds.X - zoneRect.Bounds.X >= 60, "Zone left padding must be >= 60px.");
+        Assert.True(item1.Bounds.Y - zoneRect.Bounds.Y >= 80, "Zone top padding must be >= 80px for header room.");
+    }
+
+    [Fact]
+    public void ConnectedArrowAnchors_RecomputeDynamically_WhenEndpointsOrZonesMove()
+    {
+        // Simulate two nodes and a connecting arrow
+        var srcBounds = new CanvasRect(100, 100, 320, 180);
+        var tgtBounds = new CanvasRect(800, 100, 320, 180);
+
+        var (initialA, initialB) = AnnotationGeometry.ComputePortAnchors(srcBounds, ConnectionPort.Auto, tgtBounds, ConnectionPort.Auto);
+        // Initially src is left of tgt, so Right port to Left port
+        Assert.Equal(new CanvasPoint(420, 190), initialA);
+        Assert.Equal(new CanvasPoint(800, 190), initialB);
+
+        // Move target below source: new tgtBounds at (100, 600)
+        var movedTgtBounds = new CanvasRect(100, 600, 320, 180);
+        var (updatedA, updatedB) = AnnotationGeometry.ComputePortAnchors(srcBounds, ConnectionPort.Auto, movedTgtBounds, ConnectionPort.Auto);
+
+        // Now target is directly below source: ports recompute to Bottom port (260, 280) to Top port (260, 600)
+        Assert.Equal(new CanvasPoint(260, 280), updatedA);
+        Assert.Equal(new CanvasPoint(260, 600), updatedB);
+
+        // Verify that moving target by (dx, dy) when enclosed in a zone shifts anchors cleanly
+        double dx = 200, dy = 100;
+        var translatedTgt = new CanvasRect(movedTgtBounds.X + dx, movedTgtBounds.Y + dy, movedTgtBounds.Width, movedTgtBounds.Height);
+        var (zoneA, zoneB) = AnnotationGeometry.ComputePortAnchors(srcBounds, ConnectionPort.Auto, translatedTgt, ConnectionPort.Auto);
+        Assert.Equal(new CanvasPoint(260, 280), zoneA);
+        Assert.Equal(new CanvasPoint(translatedTgt.X + translatedTgt.Width / 2, translatedTgt.Y), zoneB);
     }
 }
