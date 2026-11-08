@@ -1,0 +1,36 @@
+{
+  "canvas-team-telemetry": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$s = Resolve-Path 'scripts/telemetry-hook.ps1', '.agents/scripts/telemetry-hook.ps1' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path; & $s -Event PreToolUse\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$s = Resolve-Path 'scripts/telemetry-hook.ps1', '.agents/scripts/telemetry-hook.ps1' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path; & $s -Event PostToolUse\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$s = Resolve-Path 'scripts/telemetry-hook.ps1', '.agents/scripts/telemetry-hook.ps1' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path; & $s -Event Stop\"",
+        "timeout": 15
+      }
+    ]
+  }
+}

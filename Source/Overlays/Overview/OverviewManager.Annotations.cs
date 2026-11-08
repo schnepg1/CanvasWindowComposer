@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -17,6 +17,8 @@ internal sealed partial class OverviewManager
     private CanvasAnnotationLayer? _annotationLayer;
     private ITeamTelemetryProvider? _telemetryProvider;
     internal ITeamTelemetryProvider? TelemetryProvider => _telemetryProvider;
+    private AiOperationsSectorManager? _sectorManager;
+    internal AiOperationsSectorManager? SectorManager => _sectorManager;
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
     private IVirtualDesktops? _annotationDesktops;
     private AnnotationToolbar? _annotationToolbar;
@@ -56,17 +58,27 @@ internal sealed partial class OverviewManager
             string repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
             string statePath = Path.Combine(repoRoot, ".agents", "teams", "state.json");
             _telemetryProvider = new WindowsNativeTelemetryProvider(statePath);
-            _telemetryProvider.TelemetryUpdated += _ =>
+            if (_placeholderWorkspace != null)
+            {
+                _sectorManager = new AiOperationsSectorManager(_placeholderWorkspace, _annotationDocument, _annotationStore, _telemetryProvider);
+            }
+            _telemetryProvider.TelemetryUpdated += snapshot =>
             {
                 if (_disposed) return;
                 if (_passes.Count > 0 && _passes[0].IsHandleCreated)
                 {
                     try
                     {
-                        if (_passes[0].InvokeRequired)
-                            _passes[0].BeginInvoke(() => { if (!_disposed) ReconcileVisuals(); });
-                        else
+                        Action action = () =>
+                        {
+                            if (_disposed) return;
+                            ReconcileTeamPods(snapshot);
                             ReconcileVisuals();
+                        };
+                        if (_passes[0].InvokeRequired)
+                            _passes[0].BeginInvoke(action);
+                        else
+                            action();
                     }
                     catch (ObjectDisposedException) { }
                     catch (InvalidOperationException) { }
@@ -74,7 +86,7 @@ internal sealed partial class OverviewManager
             };
         }
         catch { }
-        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id) || _annotationEditor?.CurrentItem.Id == id, () => _windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H)).ToArray(), () => _connectionTool?.Preview, item => _telemetryProvider?.GetStateForCard(item.Text));
+        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id) || _annotationEditor?.CurrentItem.Id == id, () => _windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H)).ToArray(), () => _connectionTool?.Preview, item => _telemetryProvider?.GetStateForAnnotation(item));
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, _connectionTool, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
         _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
@@ -653,6 +665,59 @@ internal sealed partial class OverviewManager
         { message = _annotationStore.Status ?? "Canvas notes could not be saved. The update will wait."; return false; }
         return true;
     }
+
+    private void ReconcileTeamPods(TeamTelemetrySnapshot snapshot)
+    {
+        if (_sectorManager == null || _placeholderWorkspace == null || snapshot.Teams == null || snapshot.Teams.Count == 0)
+            return;
+
+        var desktop = _annotationDesktop();
+        string? cvlJson = null;
+
+        foreach (var team in snapshot.Teams.Values)
+        {
+            if (string.Equals(team.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_sectorManager.HasPod(team.TaskId))
+                {
+                    cvlJson ??= LoadTeamArchitectureCvl();
+                    if (!string.IsNullOrEmpty(cvlJson))
+                    {
+                        _sectorManager.SpawnPod(desktop, team, cvlJson);
+                        RefreshZoneLayout();
+                    }
+                }
+            }
+            else if (string.Equals(team.Status, "Completed", StringComparison.OrdinalIgnoreCase) ||
+                     (team.Roles.TryGetValue("branch-cleaner", out var cleaner) && cleaner.State == AgentExecutionState.Done))
+            {
+                if (_sectorManager.HasPod(team.TaskId))
+                {
+                    _sectorManager.CleanPod(desktop, team.TaskId);
+                    RefreshZoneLayout();
+                }
+            }
+        }
+    }
+
+    private static string? LoadTeamArchitectureCvl()
+    {
+        try
+        {
+            var candidates = new[]
+            {
+                Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "team_architecture_cvl.json"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".agents", "teams", "team_architecture_cvl.json"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", ".agents", "teams", "team_architecture_cvl.json")
+            };
+            foreach (var c in candidates)
+            {
+                if (File.Exists(c)) return File.ReadAllText(c);
+            }
+        }
+        catch { }
+        return null;
+    }
 }
 
 internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotations, ZoneCanvasTool zones, CanvasSelectionTool selection, ConnectionCanvasTool connections, Action annotationCompleted) : ICanvasTool
@@ -685,4 +750,5 @@ internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotati
         if (zoneCursor != CanvasCursor.Default) return zoneCursor;
         return annotations.CursorAt(p);
     }
+
 }

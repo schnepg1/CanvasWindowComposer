@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using CanvasDesktop;
@@ -365,5 +365,137 @@ public class VisualizationLanguageTests
         var (zoneA, zoneB) = AnnotationGeometry.ComputePortAnchors(srcBounds, ConnectionPort.Auto, translatedTgt, ConnectionPort.Auto);
         Assert.Equal(new CanvasPoint(260, 280), zoneA);
         Assert.Equal(new CanvasPoint(translatedTgt.X + translatedTgt.Width / 2, translatedTgt.Y), zoneB);
+    }
+
+    private static string LoadTeamCvlTemplate()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, ".agents", "teams", "team_architecture_cvl.json"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".agents", "teams", "team_architecture_cvl.json"),
+            Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "team_architecture_cvl.json")
+        };
+        foreach (var c in candidates)
+        {
+            var full = Path.GetFullPath(c);
+            if (File.Exists(full)) return File.ReadAllText(full);
+        }
+        throw new FileNotFoundException("team_architecture_cvl.json not found in test search paths.");
+    }
+
+    [Fact]
+    public void AiOperationsSector_AllocatesDedicatedCoordinates()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        using var telemetry = new WindowsNativeTelemetryProvider(mutexProbe: () => false);
+        var sectorManager = new AiOperationsSectorManager(harness.Workspace, annotations, null, telemetry);
+
+        Assert.Equal(new CanvasPoint(8000, 1000), sectorManager.SectorOrigin);
+        Assert.True(sectorManager.SectorOrigin.X >= 8000);
+        Assert.True(sectorManager.SectorOrigin.Y >= 1000);
+    }
+
+    [Fact]
+    public void AiOperationsSector_SpawnTeamPod_MaterializesNodesZonesArrows()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        using var telemetry = new WindowsNativeTelemetryProvider(mutexProbe: () => false);
+        var sectorManager = new AiOperationsSectorManager(harness.Workspace, annotations, null, telemetry);
+
+        string cvlJson = LoadTeamCvlTemplate();
+        var team = new TeamInstanceTelemetry(
+            TaskId: "pod-alpha",
+            Name: "Alpha Feature Team",
+            ConversationId: "conv-101",
+            Worktree: @"C:\worktrees\CanvasWindowComposer-alpha",
+            ActiveRole: "programmer",
+            Status: "Active",
+            Roles: new Dictionary<string, AgentStatusReport>(),
+            UpdatedAt: DateTimeOffset.UtcNow);
+
+        var spawned = sectorManager.SpawnPod(Desktop, team, cvlJson);
+        Assert.NotNull(spawned);
+        Assert.Equal("pod-alpha", spawned.TaskId);
+        Assert.Equal(new CanvasPoint(8000, 1000), spawned.Origin);
+        Assert.True(sectorManager.HasPod("pod-alpha"));
+
+        // Verify zones materialized with task specialization
+        Assert.True(spawned.ZoneIds.Count >= 3);
+        var docZones = harness.Workspace.Document.Zones;
+        Assert.Contains(docZones, z => z.Name.Contains("[pod-alpha]") && z.Name.Contains("Mission Command"));
+        Assert.Contains(docZones, z => z.Name.Contains("[pod-alpha]") && z.Name.Contains("Engineering Pod"));
+        Assert.Contains(docZones, z => z.Name.Contains("[pod-alpha]") && z.Name.Contains("Release Pod"));
+
+        // Verify annotations materialized (nodes + arrows)
+        var items = annotations.Items.Where(a => a.DesktopId == Desktop).ToList();
+        Assert.True(items.Count > 0);
+
+        var devCard = items.FirstOrDefault(i => i.Text.Contains("[pod-alpha]") && i.Text.Contains("Worktree Programmer"));
+        Assert.NotNull(devCard);
+        Assert.Contains("CanvasWindowComposer-alpha", devCard.Text);
+
+        var arrows = items.Where(i => i.Kind == AnnotationKind.Arrow).ToList();
+        Assert.True(arrows.Count >= 5);
+        Assert.All(arrows, a =>
+        {
+            Assert.Equal(ConnectorRouting.Curved, a.Routing);
+            Assert.NotNull(a.SourceId);
+            Assert.NotNull(a.TargetId);
+        });
+    }
+
+    [Fact]
+    public void AiOperationsSector_BindsSpawnedCardsToTeamTelemetry()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        using var telemetry = new WindowsNativeTelemetryProvider(mutexProbe: () => false);
+        var sectorManager = new AiOperationsSectorManager(harness.Workspace, annotations, null, telemetry);
+
+        string cvlJson = LoadTeamCvlTemplate();
+
+        var teamAlpha = new TeamInstanceTelemetry("alpha", "Alpha Team", "", "", "programmer", "Active", new Dictionary<string, AgentStatusReport>(), DateTimeOffset.UtcNow);
+        var teamBeta = new TeamInstanceTelemetry("beta", "Beta Team", "", "", "programmer", "Active", new Dictionary<string, AgentStatusReport>(), DateTimeOffset.UtcNow);
+
+        sectorManager.SpawnPod(Desktop, teamAlpha, cvlJson);
+        sectorManager.SpawnPod(Desktop, teamBeta, cvlJson);
+
+        telemetry.SetTeamState("alpha", "programmer", AgentExecutionState.Working, "Alpha Dev is working");
+        telemetry.SetTeamState("beta", "programmer", AgentExecutionState.Done, "Beta Dev is done");
+
+        var alphaDev = annotations.Items.First(i => i.Text.Contains("[alpha]") && i.Text.Contains("Worktree Programmer"));
+        var betaDev = annotations.Items.First(i => i.Text.Contains("[beta]") && i.Text.Contains("Worktree Programmer"));
+
+        Assert.Equal(AgentExecutionState.Working, telemetry.GetStateForAnnotation(alphaDev));
+        Assert.Equal(AgentExecutionState.Done, telemetry.GetStateForAnnotation(betaDev));
+    }
+
+    [Fact]
+    public void AiOperationsSector_CleansUpPod_WhenBranchCleanerDone()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        using var telemetry = new WindowsNativeTelemetryProvider(mutexProbe: () => false);
+        var sectorManager = new AiOperationsSectorManager(harness.Workspace, annotations, null, telemetry);
+
+        string cvlJson = LoadTeamCvlTemplate();
+        var team = new TeamInstanceTelemetry("pod-cleanup", "Cleanup Team", "", "", "branch-cleaner", "Active", new Dictionary<string, AgentStatusReport>(), DateTimeOffset.UtcNow);
+
+        var spawned = sectorManager.SpawnPod(Desktop, team, cvlJson);
+        Assert.NotNull(spawned);
+        Assert.True(sectorManager.HasPod("pod-cleanup"));
+        Assert.Contains(annotations.Items, a => a.Text.Contains("[pod-cleanup]"));
+        Assert.Contains(harness.Workspace.Document.Zones, z => z.Name.Contains("[pod-cleanup]"));
+
+        // Cleanup pod
+        bool cleaned = sectorManager.CleanPod(Desktop, "pod-cleanup");
+        Assert.True(cleaned);
+        Assert.False(sectorManager.HasPod("pod-cleanup"));
+
+        // Verify annotations and zones removed
+        Assert.DoesNotContain(annotations.Items, a => a.Text.Contains("[pod-cleanup]"));
+        Assert.DoesNotContain(harness.Workspace.Document.Zones, z => z.Name.Contains("[pod-cleanup]"));
     }
 }

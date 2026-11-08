@@ -21,11 +21,26 @@ public sealed record AgentStatusReport(
     string TaskId = "",
     string Worktree = "");
 
+public sealed record TeamInstanceTelemetry(
+    string TaskId,
+    string Name,
+    string ConversationId,
+    string Worktree,
+    string ActiveRole,
+    string Status, // "Active" | "Completed" | "Failed"
+    IReadOnlyDictionary<string, AgentStatusReport> Roles,
+    DateTimeOffset UpdatedAt);
+
 public sealed record TeamTelemetrySnapshot(
     IReadOnlyDictionary<string, AgentStatusReport> Roles,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    IReadOnlyDictionary<string, TeamInstanceTelemetry>? Teams = null,
+    string? ActiveTaskId = null)
 {
-    public static TeamTelemetrySnapshot Empty => new(new Dictionary<string, AgentStatusReport>(), DateTimeOffset.UtcNow);
+    public static TeamTelemetrySnapshot Empty => new(
+        new Dictionary<string, AgentStatusReport>(),
+        DateTimeOffset.UtcNow,
+        new Dictionary<string, TeamInstanceTelemetry>());
 }
 
 public interface ITeamTelemetryProvider : IDisposable
@@ -33,5 +48,11 @@ public interface ITeamTelemetryProvider : IDisposable
     TeamTelemetrySnapshot Current { get; }
     event Action<TeamTelemetrySnapshot>? TelemetryUpdated;
     AgentExecutionState GetStateForCard(string cardText);
+    AgentExecutionState GetStateForCard(string cardText, string? taskId);
+    AgentExecutionState GetStateForAnnotation(CanvasAnnotation item);
     void SetState(string role, AgentExecutionState state, string detail = "");
+    void SetTeamState(string taskId, string role, AgentExecutionState state, string detail = "");
+    void RegisterTeam(string taskId, string name, string conversationId = "", string worktree = "");
+    void CompleteTeam(string taskId, bool success = true);
+    void UnregisterTeam(string taskId);
 }
