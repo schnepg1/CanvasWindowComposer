@@ -10,4 +10,6 @@ internal static class OverviewZoomDefaults
     public const double MaximumZoom = 1.0;
     public const double MagnifierMin = 1.0;
     public const double MagnifierMax = 5.0;
+    public const double DistantLodZoomThreshold = 0.25;
+    public const double DistantLodProjectedSizeThreshold = 40.0;
 }

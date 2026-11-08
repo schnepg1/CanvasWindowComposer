@@ -59,6 +59,7 @@ internal interface IOverviewAnnotationLayer
 internal sealed class OverviewAnnotationSurface : FrameworkElement
 {
     private readonly PlaceholderAnnotationLayer _placeholders = new();
+    internal PlaceholderAnnotationLayer Placeholders => _placeholders;
     private readonly ZoneAnnotationLayer _zones = new();
     private readonly OverviewHudLayer _hud = new();
     private IReadOnlyList<IOverviewAnnotationLayer> _drawingLayers = Array.Empty<IOverviewAnnotationLayer>();

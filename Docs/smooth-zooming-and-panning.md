@@ -28,6 +28,7 @@ When working on overview navigation, rendering, or window tracking, the followin
 - WPF renders asynchronously                        - Defer card mode & placeholder swaps
 - Suppress active window glow animations            - Suppress synchronous FlushAnnotations()
 - Freeze geometries (Direct3D composition)          - Skip redundant Win32 RaiseCanvasPanels()
+- In-motion dynamic LOD wireframe rendering         - Bypass text layout & icon draws at distant zoom
         |                                                   |
         +-------------------------+-------------------------+
                                   |
@@ -38,6 +39,7 @@ When working on overview navigation, rendering, or window tracking, the followin
                     - FlushAnnotations() (WPF Dispatcher barrier)
                     - RaiseCanvasPanels()
                     - Re-enable glow animations & info cards
+                    - Restore full placeholder detail (text, headers, icons)
 ```
 
 ---
@@ -216,6 +218,24 @@ if (_samples.Count < 2 || (_samples.Count > 0 && released - _samples[^1].time > 
 }
 ```
 If the pause between the last movement sample and mouse release exceeds 40 ms, the gesture is treated as an intentional stationary stop. Samples are cleared, and no inertia is kicked off.
+
+---
+
+### 3.8. Dynamic Level-of-Detail (LOD) Wireframe Rendering at Distant Zooms
+
+#### The Problem
+When zoomed out across large workspaces with 50+ windows in the overview, high-frequency camera panning and zooming generated substantial CPU layout time and hundreds of WPF drawing calls:
+- Every visible placeholder card executed `PlaceholderLabelLayout.Get` and built WPF `FormattedText` objects with font measurements, word trimming, and glyph allocations.
+- Each card rendered complex visual elements: logo icons with aspect scaling and easing interpolation, cached bitmap snapshots, launch status pills, and sweep animations.
+
+#### The Architecture & Solution
+In [`PlaceholderAnnotationLayer.cs`](file:///Source/Overlays/Overview/PlaceholderAnnotationLayer.cs):
+- **Activation Conditions:** While camera motion is active (`OverviewManager.MotionActive == true`), cards at distant zoom (`zoom < 0.25`) or small projected size (`projected size < 40 px`) bypass all text layout, header styling, and icons.
+- **Lightweight Wireframe Rectangles:** In-motion LOD cards render as single, flat, Direct3D-frozen color-coded wireframe rectangles (`dc.DrawRectangle(fill, outline, rect)`):
+  - Inactive/normal cards: dark slate wireframe.
+  - Active running cards: sapphire/azure wireframe.
+  - Minimized cards: ocean teal wireframe.
+- **Non-Destructive Restoration:** Dynamic LOD is strictly an in-motion optimization. When motion settles (`!MotionActive`), resting placeholder cards immediately hydrate with their expected detail level (Detailed, Simple, Live preview, icon scaling) based on standard zoom thresholds.
 
 ---
 

@@ -82,11 +82,47 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         brush.Freeze();
         return brush;
     }
+    public const double DistantLodZoomThreshold = OverviewZoomDefaults.DistantLodZoomThreshold;
+    public const double DistantLodProjectedSizeThreshold = OverviewZoomDefaults.DistantLodProjectedSizeThreshold;
+
+    private static readonly Brush WireframeCardFill = CardFill;
+    private static readonly Pen WireframeOutline = Outline;
+    private static readonly Brush WireframeActiveCardFill = FrozenBrush(Color.FromRgb(18, 52, 84));
+    private static readonly Pen WireframeActiveOutline = OutlinePen(Color.FromArgb(200, 125, 211, 252), 1);
+    private static readonly Brush WireframeMinimizedCardFill = FrozenBrush(Color.FromRgb(13, 59, 62));
+    private static readonly Pen WireframeMinimizedOutline = OutlinePen(Color.FromArgb(180, 45, 212, 191), 1);
+
     private static Pen OutlinePen(Color color, double width) { var pen = new Pen(FrozenBrush(color), width); pen.Freeze(); return pen; }
     public IReadOnlyList<PlaceholderLabel> Labels { get; private set; } = Array.Empty<PlaceholderLabel>();
-    public void Clear() => Labels = Array.Empty<PlaceholderLabel>();
+    public int WireframeCardCount { get; private set; }
+
+    public static bool IsDistantLod(double zoom, double projectedSize)
+        => zoom < DistantLodZoomThreshold || projectedSize < DistantLodProjectedSizeThreshold;
+
+    public static bool IsDistantLod(double zoom, double width, double height)
+        => zoom < DistantLodZoomThreshold || Math.Max(width, height) < DistantLodProjectedSizeThreshold;
+
+    public static bool IsDistantLod(double zoom, Rect projectedRect)
+        => IsDistantLod(zoom, projectedRect.Width, projectedRect.Height);
+
+    public static bool ShouldUseWireframeLod(bool motionActive, double zoom, double projectedSize)
+        => motionActive && IsDistantLod(zoom, projectedSize);
+
+    public static bool ShouldUseWireframeLod(bool motionActive, double zoom, double width, double height)
+        => motionActive && IsDistantLod(zoom, width, height);
+
+    public static bool ShouldUseWireframeLod(bool motionActive, double zoom, Rect projectedRect)
+        => motionActive && IsDistantLod(zoom, projectedRect);
+
+    public void Clear()
+    {
+        Labels = Array.Empty<PlaceholderLabel>();
+        WireframeCardCount = 0;
+    }
+
     public void Draw(DrawingContext dc, OverviewAnnotationContext context)
     {
+        WireframeCardCount = 0;
         DrawPlaceholderCards(dc, context);
         DrawPlaceholderLabels(dc, context);
         DrawPeekActivation(dc, context);
@@ -95,12 +131,21 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
     {
         foreach (var card in context.Frame.Placeholders)
         {
+            if (card.Opacity <= 0) continue;
+            var rect = context.Project(card.Bounds);
+            if (!rect.IntersectsWith(new Rect(context.Size))) continue;
+
+            if (ShouldUseWireframeLod(context.MotionActive, context.View.Zoom, rect))
+            {
+                WireframeCardCount++;
+                DrawWireframeCard(dc, card, rect, context);
+                continue;
+            }
+
             double imageOpacity = card.ImageOpacity ?? (context.View.Zoom < WindowManager.OverviewLivePreviewZoom ? 0 : 1);
             // A peek activation border is drawn separately in DrawPeekActivation,
             // so a fully live card without pixels stays out of the fill pass.
-            if (card.Opacity <= 0 || (imageOpacity >= 1 && card.Image == null && card.PeekProgress == null)) continue;
-            var rect = context.Project(card.Bounds);
-            if (!rect.IntersectsWith(new Rect(context.Size))) continue;
+            if (imageOpacity >= 1 && card.Image == null && card.PeekProgress == null) continue;
 
             bool isRunning = (card.IsActiveWindow || card.IsMinimizedWindow) && card.Opacity >= 0.99 && !context.MotionActive && (imageOpacity < 1 || card.ImageIsOverlay);
             if (isRunning)
@@ -207,6 +252,25 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         }
     }
 
+    private void DrawWireframeCard(DrawingContext dc, PlaceholderAnnotation card, Rect rect, OverviewAnnotationContext context)
+    {
+        var fill = card.IsActiveWindow ? WireframeActiveCardFill
+            : card.IsMinimizedWindow ? WireframeMinimizedCardFill
+            : WireframeCardFill;
+        var outline = card.IsActiveWindow ? WireframeActiveOutline
+            : card.IsMinimizedWindow ? WireframeMinimizedOutline
+            : WireframeOutline;
+
+        bool hasOccluders = card.Occluders is { Count: > 0 };
+        if (hasOccluders) dc.PushClip(VisibleCard(card, context));
+        if (card.Opacity < 1) dc.PushOpacity(card.Opacity);
+
+        dc.DrawRectangle(fill, outline, rect);
+
+        if (card.Opacity < 1) dc.Pop();
+        if (hasOccluders) dc.Pop();
+    }
+
     /// <summary>
     /// Activation hint for a Canvas Peek dwell: a bar sweeps once around the
     /// card border as the preview is being armed. Draws above live DWM
@@ -219,6 +283,7 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             if (card.PeekProgress is not { } progress || card.Opacity <= 0) continue;
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
+            if (ShouldUseWireframeLod(context.MotionActive, context.View.Zoom, rect)) continue;
             dc.PushClip(VisibleCard(card, context));
             dc.PushOpacity(card.Opacity);
             double width = Math.Clamp(Math.Min(rect.Width, rect.Height) * .07, 2, 7);
@@ -279,8 +344,28 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
 
     private void DrawPlaceholderLabels(DrawingContext dc, OverviewAnnotationContext context)
     {
+        if (context.MotionActive && context.View.Zoom < DistantLodZoomThreshold)
+        {
+            Labels = Array.Empty<PlaceholderLabel>();
+            return;
+        }
+
+        var placeholders = context.Frame.Placeholders;
+        if (context.MotionActive)
+        {
+            placeholders = placeholders
+                .Where(p => !ShouldUseWireframeLod(true, context.View.Zoom, context.Project(p.Bounds)))
+                .ToList();
+        }
+
+        if (placeholders.Count == 0)
+        {
+            Labels = Array.Empty<PlaceholderLabel>();
+            return;
+        }
+
         var monitor = new ScreenRect(context.Frame.Screen.X, context.Frame.Screen.Y, context.Frame.Screen.Width, context.Frame.Screen.Height);
-        Labels = PlaceholderLabelLayout.Get(context.Frame.Placeholders, context.View.CameraX, context.View.CameraY, context.View.Zoom, monitor,
+        Labels = PlaceholderLabelLayout.Get(placeholders, context.View.CameraX, context.View.CameraY, context.View.Zoom, monitor,
             context.Dpi.DpiScaleX, context.Dpi.DpiScaleY);
         foreach (var label in Labels)
         {
