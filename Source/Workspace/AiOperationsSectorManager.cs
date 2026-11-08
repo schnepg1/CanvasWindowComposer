@@ -25,7 +25,48 @@ internal sealed class AiOperationsSectorManager
         CanvasPoint Origin,
         IReadOnlyList<Guid> ZoneIds,
         IReadOnlyList<Guid> AnnotationIds,
-        IReadOnlyDictionary<Guid, string> CardRoleMap);
+        IReadOnlyDictionary<Guid, string> CardRoleMap)
+    {
+        public WorldRect GetBounds(WorkspaceDocument workspaceDoc, AnnotationDocument? annotations, Guid desktopId)
+        {
+            double minX = double.PositiveInfinity, minY = double.PositiveInfinity;
+            double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity;
+
+            foreach (var zoneId in ZoneIds)
+            {
+                var zone = workspaceDoc.Zones.FirstOrDefault(z => z.Id == zoneId);
+                if (zone != null)
+                {
+                    minX = Math.Min(minX, zone.Bounds.X);
+                    minY = Math.Min(minY, zone.Bounds.Y);
+                    maxX = Math.Max(maxX, zone.Bounds.X + zone.Bounds.W);
+                    maxY = Math.Max(maxY, zone.Bounds.Y + zone.Bounds.H);
+                }
+            }
+
+            if (annotations != null)
+            {
+                foreach (var annotId in AnnotationIds)
+                {
+                    var annot = annotations.Items.FirstOrDefault(a => a.DesktopId == desktopId && a.Id == annotId);
+                    if (annot != null)
+                    {
+                        minX = Math.Min(minX, annot.Bounds.X);
+                        minY = Math.Min(minY, annot.Bounds.Y);
+                        maxX = Math.Max(maxX, annot.Bounds.X + annot.Bounds.Width);
+                        maxY = Math.Max(maxY, annot.Bounds.Y + annot.Bounds.Height);
+                    }
+                }
+            }
+
+            if (double.IsFinite(minX) && double.IsFinite(maxX) && maxX > minX)
+            {
+                return new WorldRect { X = minX, Y = minY, W = maxX - minX, H = maxY - minY };
+            }
+
+            return new WorldRect { X = Origin.X, Y = Origin.Y, W = 2800, H = 1200 };
+        }
+    }
 
     public AiOperationsSectorManager(
         WorkspaceService workspace,
@@ -43,12 +84,12 @@ internal sealed class AiOperationsSectorManager
 
     public IReadOnlyDictionary<string, SpawnedPod> SpawnedPods => _spawnedPods;
 
-    public SpawnedPod? SpawnPod(Guid desktopId, TeamInstanceTelemetry team, string cvlTemplateJson)
+    public SpawnedPod? SpawnPod(Guid desktopId, TeamInstanceTelemetry team, string cvlTemplateJson, CanvasPoint? customOrigin = null)
     {
         if (_spawnedPods.TryGetValue(team.TaskId, out var existing)) return existing;
 
         int slotIndex = _spawnedPods.Count;
-        var podOrigin = new CanvasPoint(SectorOrigin.X, SectorOrigin.Y + slotIndex * (PodHeight + PodSpacing));
+        var podOrigin = customOrigin ?? new CanvasPoint(SectorOrigin.X, SectorOrigin.Y + slotIndex * (PodHeight + PodSpacing));
 
         var basePlan = JsonSerializer.Deserialize<ComposerPlan>(cvlTemplateJson, new JsonSerializerOptions
         {

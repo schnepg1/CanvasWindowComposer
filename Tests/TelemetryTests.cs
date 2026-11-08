@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 using CanvasDesktop;
@@ -303,5 +303,42 @@ public class TelemetryTests : IDisposable
 
         provider.UnregisterTeam("task-xyz");
         Assert.False(provider.Current.Teams.ContainsKey("task-xyz"));
+    }
+
+    [Fact]
+    public void Provider_ResolveWatchedPaths_IncludesAppDataAndLocalAgents()
+    {
+        var paths = WindowsNativeTelemetryProvider.ResolveWatchedPaths(null);
+        Assert.NotEmpty(paths);
+
+        string appDataExpected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "CanvasWindowComposer", "Teams", "state.json");
+
+        Assert.Contains(paths, p => string.Equals(Path.GetFullPath(p), Path.GetFullPath(appDataExpected), StringComparison.OrdinalIgnoreCase));
+
+        // When explicit path is specified, it should only return that explicit path
+        var explicitPaths = WindowsNativeTelemetryProvider.ResolveWatchedPaths(StatePath);
+        Assert.Single(explicitPaths);
+        Assert.Equal(Path.GetFullPath(StatePath), explicitPaths[0]);
+    }
+
+    [Fact]
+    public void AnnotationToolbar_AiTeamsToggle_ControlsState()
+    {
+        using var toolbar = new AnnotationToolbar();
+        Assert.False(toolbar.IsAiTeamsActive);
+
+
+        bool toggled = false;
+        toolbar.AiTeamsToggled += () => toggled = true;
+
+        toolbar.SetAiTeamsActive(true);
+        Assert.True(toolbar.IsAiTeamsActive);
+
+        toolbar.SetAiTeamsActive(false);
+        Assert.False(toggled);
+        Assert.False(toolbar.IsAiTeamsActive);
+
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using CanvasDesktop;
@@ -497,5 +497,29 @@ public class VisualizationLanguageTests
         // Verify annotations and zones removed
         Assert.DoesNotContain(annotations.Items, a => a.Text.Contains("[pod-cleanup]"));
         Assert.DoesNotContain(harness.Workspace.Document.Zones, z => z.Name.Contains("[pod-cleanup]"));
+    }
+
+    [Fact]
+    public void AiOperationsSector_SpawnPod_SupportsCustomAnchorAndCalculatesBounds()
+    {
+        using var harness = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        using var telemetry = new WindowsNativeTelemetryProvider(mutexProbe: () => false);
+        var sectorManager = new AiOperationsSectorManager(harness.Workspace, annotations, null, telemetry);
+
+        string cvlJson = LoadTeamCvlTemplate();
+        var team = new TeamInstanceTelemetry("pod-custom", "Custom Team", "", "", "programmer", "Active", new Dictionary<string, AgentStatusReport>(), DateTimeOffset.UtcNow);
+
+        var anchor = new CanvasPoint(2500, 3500);
+        var spawned = sectorManager.SpawnPod(Desktop, team, cvlJson, anchor);
+
+        Assert.NotNull(spawned);
+        Assert.Equal(anchor, spawned.Origin);
+
+        var bounds = spawned.GetBounds(harness.Workspace.Document, annotations, Desktop);
+        Assert.True(bounds.W > 0);
+        Assert.True(bounds.H > 0);
+        Assert.True(bounds.X >= anchor.X - 500);
+        Assert.True(bounds.Y >= anchor.Y - 500);
     }
 }

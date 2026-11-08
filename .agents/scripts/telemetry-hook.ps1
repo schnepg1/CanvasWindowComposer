@@ -201,6 +201,8 @@ try {
     $state.updatedAt = [DateTimeOffset]::UtcNow.ToString("o")
     $jsonOutput = $state | ConvertTo-Json -Depth 6
     Write-JsonWithRetry $stateFile $jsonOutput
+    $appDataStateFile = Join-Path $env:APPDATA "CanvasWindowComposer\Teams\state.json"
+    Write-JsonWithRetry $appDataStateFile $jsonOutput
 } catch {}
 
 if ($Event -eq "PreToolUse") {

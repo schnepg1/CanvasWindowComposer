@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,8 +15,10 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
     private static readonly Regex TaskIdRegex = new(@"\[(?<taskId>[a-zA-Z0-9_\-]+)\]", RegexOptions.Compiled);
 
     private readonly string _stateFilePath;
+    private readonly IReadOnlyList<string> _watchedPaths;
+    private readonly List<FileSystemWatcher> _watchers = new();
+    private readonly Dictionary<string, string> _lastFileContents = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<bool>? _mutexProbe;
-    private readonly FileSystemWatcher? _watcher;
     private readonly System.Threading.Timer? _pollTimer;
     private readonly object _syncLock = new();
     private string? _lastWrittenJson;
@@ -32,13 +34,29 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
             return explicitPath;
 
         // 1. Project folder (.canvas or .agents in CurrentDirectory or BaseDirectory)
-        var candidates = new[]
+        var candidates = new List<string>
         {
             Path.Combine(Environment.CurrentDirectory, ".canvas", "state.json"),
             Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "state.json"),
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".canvas", "state.json"),
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".agents", "teams", "state.json")
         };
+
+        string? curr = Environment.CurrentDirectory;
+        for (int i = 0; i < 4 && curr != null; i++)
+        {
+            candidates.Add(Path.Combine(curr, ".agents", "teams", "state.json"));
+            candidates.Add(Path.Combine(curr, ".canvas", "state.json"));
+            curr = Path.GetDirectoryName(curr);
+        }
+
+        string? baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        for (int i = 0; i < 4 && baseDir != null; i++)
+        {
+            candidates.Add(Path.Combine(baseDir, ".agents", "teams", "state.json"));
+            candidates.Add(Path.Combine(baseDir, ".canvas", "state.json"));
+            baseDir = Path.GetDirectoryName(baseDir);
+        }
 
         foreach (var candidate in candidates)
         {
@@ -64,26 +82,48 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         return appDataState;
     }
 
+    public static IReadOnlyList<string> ResolveWatchedPaths(string? explicitPath = null)
+    {
+        if (!string.IsNullOrEmpty(explicitPath))
+            return new[] { Path.GetFullPath(explicitPath) };
+
+        var paths = new List<string>();
+
+        var appDataState = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "CanvasWindowComposer", "Teams", "state.json");
+        paths.Add(Path.GetFullPath(appDataState));
+
+        var defaultResolved = ResolveStateFilePath(null);
+        paths.Add(Path.GetFullPath(defaultResolved));
+
+        paths.Add(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "state.json")));
+        paths.Add(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, ".canvas", "state.json")));
+
+        string? curr = Environment.CurrentDirectory;
+        for (int i = 0; i < 4 && curr != null; i++)
+        {
+            paths.Add(Path.GetFullPath(Path.Combine(curr, ".agents", "teams", "state.json")));
+            curr = Path.GetDirectoryName(curr);
+        }
+
+        string? baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        for (int i = 0; i < 4 && baseDir != null; i++)
+        {
+            paths.Add(Path.GetFullPath(Path.Combine(baseDir, ".agents", "teams", "state.json")));
+            baseDir = Path.GetDirectoryName(baseDir);
+        }
+
+        return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     public WindowsNativeTelemetryProvider(string? stateFilePath = null, Func<bool>? mutexProbe = null)
     {
         _stateFilePath = ResolveStateFilePath(stateFilePath);
+        _watchedPaths = ResolveWatchedPaths(stateFilePath);
         _mutexProbe = mutexProbe;
 
-        try
-        {
-            var dir = Path.GetDirectoryName(_stateFilePath);
-            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-            {
-                _watcher = new FileSystemWatcher(dir, Path.GetFileName(_stateFilePath))
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
-                    EnableRaisingEvents = true
-                };
-                _watcher.Changed += (_, _) => ReloadState();
-                _watcher.Created += (_, _) => ReloadState();
-            }
-        }
-        catch { }
+        SetupWatchers();
 
         // Poll every 300ms for hardware mutex truth
         _pollTimer = new System.Threading.Timer(_ => CheckHardwareAndState(), null, 300, 300);
@@ -91,9 +131,40 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         ReloadState();
     }
 
+    private void SetupWatchers()
+    {
+        foreach (var path in _watchedPaths)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                {
+                    if (!_watchers.Any(w => string.Equals(w.Path, dir, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var watcher = new FileSystemWatcher(dir, Path.GetFileName(path))
+                        {
+                            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+                            EnableRaisingEvents = true
+                        };
+                        watcher.Changed += (_, _) => ReloadState();
+                        watcher.Created += (_, _) => ReloadState();
+                        _watchers.Add(watcher);
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
     internal void CheckHardwareAndState()
     {
         if (_disposed) return;
+
+        if (_watchers.Count < _watchedPaths.Count)
+        {
+            SetupWatchers();
+        }
 
         bool mutexActive = false;
         if (_mutexProbe != null)
@@ -168,23 +239,125 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         }
     }
 
+    private static void ParseJsonSnapshot(
+        string json,
+        out Dictionary<string, AgentStatusReport> rootRoles,
+        out Dictionary<string, TeamInstanceTelemetry> teams,
+        out string? activeTaskId,
+        out DateTimeOffset updatedAt)
+    {
+        rootRoles = new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase);
+        teams = new Dictionary<string, TeamInstanceTelemetry>(StringComparer.OrdinalIgnoreCase);
+        activeTaskId = null;
+        updatedAt = DateTimeOffset.UtcNow;
+
+        using var doc = JsonDocument.Parse(json);
+
+        if (doc.RootElement.TryGetProperty("updatedAt", out var updProp) &&
+            updProp.ValueKind == JsonValueKind.String &&
+            DateTimeOffset.TryParse(updProp.GetString(), out var parsedUpd))
+        {
+            updatedAt = parsedUpd;
+        }
+
+        if (doc.RootElement.TryGetProperty("activeTaskId", out var actProp) &&
+            actProp.ValueKind == JsonValueKind.String)
+        {
+            activeTaskId = actProp.GetString();
+        }
+
+        if (doc.RootElement.TryGetProperty("roles", out var rolesElem) && rolesElem.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in rolesElem.EnumerateObject())
+            {
+                string role = prop.Name;
+                string stateStr = prop.Value.TryGetProperty("state", out var s) ? s.GetString() ?? "Idle" : "Idle";
+                string detail = prop.Value.TryGetProperty("detail", out var d) ? d.GetString() ?? "" : "";
+                DateTimeOffset ts = updatedAt;
+                if (prop.Value.TryGetProperty("timestamp", out var tsProp) &&
+                    DateTimeOffset.TryParse(tsProp.GetString(), out var parsedTs))
+                {
+                    ts = parsedTs;
+                }
+
+                if (Enum.TryParse<AgentExecutionState>(stateStr, true, out var state))
+                {
+                    rootRoles[role] = new AgentStatusReport(role, state, detail, ts);
+                }
+            }
+        }
+
+        if (doc.RootElement.TryGetProperty("teams", out var teamsElem) && teamsElem.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var tProp in teamsElem.EnumerateObject())
+            {
+                string taskId = tProp.Name;
+                var tObj = tProp.Value;
+                string name = tObj.TryGetProperty("name", out var n) ? n.GetString() ?? taskId : taskId;
+                string convId = tObj.TryGetProperty("conversationId", out var c) ? c.GetString() ?? "" : "";
+                string worktree = tObj.TryGetProperty("worktree", out var w) ? w.GetString() ?? "" : "";
+                string activeRole = tObj.TryGetProperty("activeRole", out var ar) ? ar.GetString() ?? "orchestrator" : "orchestrator";
+                string status = tObj.TryGetProperty("status", out var st) ? st.GetString() ?? "Active" : "Active";
+                DateTimeOffset teamUpdated = updatedAt;
+                if (tObj.TryGetProperty("updatedAt", out var tuProp) &&
+                    DateTimeOffset.TryParse(tuProp.GetString(), out var parsedTu))
+                {
+                    teamUpdated = parsedTu;
+                }
+
+                var teamRoles = new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase);
+                if (tObj.TryGetProperty("roles", out var trElem) && trElem.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var rProp in trElem.EnumerateObject())
+                    {
+                        string role = rProp.Name;
+                        string stateStr = rProp.Value.TryGetProperty("state", out var rs) ? rs.GetString() ?? "Idle" : "Idle";
+                        string detail = rProp.Value.TryGetProperty("detail", out var rd) ? rd.GetString() ?? "" : "";
+                        DateTimeOffset ts = teamUpdated;
+                        if (rProp.Value.TryGetProperty("timestamp", out var rtsProp) &&
+                            DateTimeOffset.TryParse(rtsProp.GetString(), out var parsedRts))
+                        {
+                            ts = parsedRts;
+                        }
+
+                        if (Enum.TryParse<AgentExecutionState>(stateStr, true, out var state))
+                        {
+                            teamRoles[role] = new AgentStatusReport(role, state, detail, ts, taskId, worktree);
+                        }
+                    }
+                }
+
+                teams[taskId] = new TeamInstanceTelemetry(
+                    taskId, name, convId, worktree, activeRole, status, teamRoles, teamUpdated);
+            }
+        }
+    }
+
     public void ReloadState()
     {
         if (_disposed) return;
         try
         {
-            if (File.Exists(_stateFilePath))
+            bool anyRead = false;
+            bool anyChanged = false;
+            var combinedRootRoles = new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase);
+            var combinedTeams = new Dictionary<string, TeamInstanceTelemetry>(StringComparer.OrdinalIgnoreCase);
+            string? activeTaskId = null;
+            DateTimeOffset latestUpdated = DateTimeOffset.MinValue;
+
+            foreach (var path in _watchedPaths)
             {
+                if (!File.Exists(path)) continue;
+
                 string json = "";
                 bool readSuccess = false;
-
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
                     try
                     {
                         lock (_syncLock)
                         {
-                            json = File.ReadAllText(_stateFilePath);
+                            json = File.ReadAllText(path);
                         }
                         readSuccess = true;
                         break;
@@ -195,111 +368,65 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
                     }
                 }
 
-                if (!readSuccess || string.IsNullOrWhiteSpace(json)) return;
+                if (!readSuccess || string.IsNullOrWhiteSpace(json)) continue;
 
-                if (json == _lastWrittenJson) return;
-                _lastWrittenJson = json;
-                using var doc = JsonDocument.Parse(json);
-                var rootRoles = new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase);
-                var teams = new Dictionary<string, TeamInstanceTelemetry>(StringComparer.OrdinalIgnoreCase);
-                string? activeTaskId = null;
-                DateTimeOffset updatedAt = DateTimeOffset.UtcNow;
-
-                if (doc.RootElement.TryGetProperty("updatedAt", out var updProp) &&
-                    updProp.ValueKind == JsonValueKind.String &&
-                    DateTimeOffset.TryParse(updProp.GetString(), out var parsedUpd))
+                string fullPath = Path.GetFullPath(path);
+                if (!_lastFileContents.TryGetValue(fullPath, out var prevJson) || prevJson != json)
                 {
-                    updatedAt = parsedUpd;
+                    anyChanged = true;
+                    _lastFileContents[fullPath] = json;
                 }
 
-                if (doc.RootElement.TryGetProperty("activeTaskId", out var actProp) &&
-                    actProp.ValueKind == JsonValueKind.String)
+                anyRead = true;
+
+                ParseJsonSnapshot(json, out var rootRoles, out var teams, out var fileActiveTaskId, out var fileUpdated);
+
+                if (fileUpdated >= latestUpdated)
                 {
-                    activeTaskId = actProp.GetString();
+                    latestUpdated = fileUpdated;
+                    if (!string.IsNullOrEmpty(fileActiveTaskId))
+                        activeTaskId = fileActiveTaskId;
+                }
+                else if (string.IsNullOrEmpty(activeTaskId) && !string.IsNullOrEmpty(fileActiveTaskId))
+                {
+                    activeTaskId = fileActiveTaskId;
                 }
 
-                if (doc.RootElement.TryGetProperty("roles", out var rolesElem) && rolesElem.ValueKind == JsonValueKind.Object)
+                foreach (var (rName, rReport) in rootRoles)
                 {
-                    foreach (var prop in rolesElem.EnumerateObject())
+                    if (!combinedRootRoles.TryGetValue(rName, out var existing) || rReport.Timestamp >= existing.Timestamp)
                     {
-                        string role = prop.Name;
-                        string stateStr = prop.Value.TryGetProperty("state", out var s) ? s.GetString() ?? "Idle" : "Idle";
-                        string detail = prop.Value.TryGetProperty("detail", out var d) ? d.GetString() ?? "" : "";
-                        DateTimeOffset ts = updatedAt;
-                        if (prop.Value.TryGetProperty("timestamp", out var tsProp) &&
-                            DateTimeOffset.TryParse(tsProp.GetString(), out var parsedTs))
-                        {
-                            ts = parsedTs;
-                        }
-
-                        if (Enum.TryParse<AgentExecutionState>(stateStr, true, out var state))
-                        {
-                            rootRoles[role] = new AgentStatusReport(role, state, detail, ts);
-                        }
+                        combinedRootRoles[rName] = rReport;
                     }
                 }
 
-                if (doc.RootElement.TryGetProperty("teams", out var teamsElem) && teamsElem.ValueKind == JsonValueKind.Object)
+                foreach (var (tKey, tVal) in teams)
                 {
-                    foreach (var tProp in teamsElem.EnumerateObject())
+                    if (!combinedTeams.TryGetValue(tKey, out var existingTeam) || tVal.UpdatedAt >= existingTeam.UpdatedAt)
                     {
-                        string taskId = tProp.Name;
-                        var tObj = tProp.Value;
-                        string name = tObj.TryGetProperty("name", out var n) ? n.GetString() ?? taskId : taskId;
-                        string convId = tObj.TryGetProperty("conversationId", out var c) ? c.GetString() ?? "" : "";
-                        string worktree = tObj.TryGetProperty("worktree", out var w) ? w.GetString() ?? "" : "";
-                        string activeRole = tObj.TryGetProperty("activeRole", out var ar) ? ar.GetString() ?? "orchestrator" : "orchestrator";
-                        string status = tObj.TryGetProperty("status", out var st) ? st.GetString() ?? "Active" : "Active";
-                        DateTimeOffset teamUpdated = updatedAt;
-                        if (tObj.TryGetProperty("updatedAt", out var tuProp) &&
-                            DateTimeOffset.TryParse(tuProp.GetString(), out var parsedTu))
-                        {
-                            teamUpdated = parsedTu;
-                        }
-
-                        var teamRoles = new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase);
-                        if (tObj.TryGetProperty("roles", out var trElem) && trElem.ValueKind == JsonValueKind.Object)
-                        {
-                            foreach (var rProp in trElem.EnumerateObject())
-                            {
-                                string role = rProp.Name;
-                                string stateStr = rProp.Value.TryGetProperty("state", out var rs) ? rs.GetString() ?? "Idle" : "Idle";
-                                string detail = rProp.Value.TryGetProperty("detail", out var rd) ? rd.GetString() ?? "" : "";
-                                DateTimeOffset ts = teamUpdated;
-                                if (rProp.Value.TryGetProperty("timestamp", out var rtsProp) &&
-                                    DateTimeOffset.TryParse(rtsProp.GetString(), out var parsedRts))
-                                {
-                                    ts = parsedRts;
-                                }
-
-                                if (Enum.TryParse<AgentExecutionState>(stateStr, true, out var state))
-                                {
-                                    teamRoles[role] = new AgentStatusReport(role, state, detail, ts, taskId, worktree);
-                                }
-                            }
-                        }
-
-                        teams[taskId] = new TeamInstanceTelemetry(
-                            taskId, name, convId, worktree, activeRole, status, teamRoles, teamUpdated);
+                        combinedTeams[tKey] = tVal;
                     }
                 }
-
-                // If root roles was empty but teams exists, project active team (or first team)
-                if (rootRoles.Count == 0 && teams.Count > 0)
-                {
-                    var primaryTeam = (!string.IsNullOrEmpty(activeTaskId) && teams.TryGetValue(activeTaskId, out var at))
-                        ? at
-                        : teams.Values.First();
-
-                    foreach (var (rName, rReport) in primaryTeam.Roles)
-                    {
-                        rootRoles[rName] = rReport;
-                    }
-                }
-
-                _current = new TeamTelemetrySnapshot(rootRoles, updatedAt, teams, activeTaskId);
-                TelemetryUpdated?.Invoke(_current);
             }
+
+            if (!anyRead || !anyChanged) return;
+
+            if (combinedRootRoles.Count == 0 && combinedTeams.Count > 0)
+            {
+                var primaryTeam = (!string.IsNullOrEmpty(activeTaskId) && combinedTeams.TryGetValue(activeTaskId, out var at))
+                    ? at
+                    : combinedTeams.Values.First();
+
+                foreach (var (rName, rReport) in primaryTeam.Roles)
+                {
+                    combinedRootRoles[rName] = rReport;
+                }
+            }
+
+            if (latestUpdated == DateTimeOffset.MinValue) latestUpdated = DateTimeOffset.UtcNow;
+
+            _current = new TeamTelemetrySnapshot(combinedRootRoles, latestUpdated, combinedTeams, activeTaskId);
+            TelemetryUpdated?.Invoke(_current);
         }
         catch { }
     }
@@ -355,7 +482,22 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
 
                 string json = JsonSerializer.Serialize(rootObj, new JsonSerializerOptions { WriteIndented = true });
                 _lastWrittenJson = json;
+                _lastFileContents[Path.GetFullPath(_stateFilePath)] = json;
                 File.WriteAllText(_stateFilePath, json);
+
+                if (_watchedPaths.Count > 1)
+                {
+                    var appDataPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "CanvasWindowComposer", "Teams", "state.json");
+                    if (!string.Equals(Path.GetFullPath(_stateFilePath), Path.GetFullPath(appDataPath), StringComparison.OrdinalIgnoreCase))
+                    {
+                        var appDataDir = Path.GetDirectoryName(appDataPath);
+                        if (!string.IsNullOrEmpty(appDataDir)) Directory.CreateDirectory(appDataDir);
+                        _lastFileContents[Path.GetFullPath(appDataPath)] = json;
+                        File.WriteAllText(appDataPath, json);
+                    }
+                }
             }
             catch { }
         }
@@ -553,7 +695,11 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
     public void Dispose()
     {
         _disposed = true;
-        _watcher?.Dispose();
+        foreach (var watcher in _watchers)
+        {
+            watcher.Dispose();
+        }
+        _watchers.Clear();
         _pollTimer?.Dispose();
     }
 }
