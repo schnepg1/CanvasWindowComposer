@@ -18,6 +18,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private int _overviewMaxDimension;
     private bool _itemApplied;
     internal bool IsActiveWindow => _item.State == "Open";
+    internal bool IsMinimizedWindow => _item.State is "Minimized" or "Sleeping";
     internal WorkspaceItemView Item => _item;
     public event Action? PlacementChanged;
     protected override bool ShowWithoutActivation => true;
@@ -34,7 +35,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         FormBorderStyle = FormBorderStyle.SizableToolWindow;
         ShowInTaskbar = false;
         MinimumSize = new Size(220, 150);
-        BackColor = item.State == "Open" ? Color.FromArgb(18, 52, 84) : Color.FromArgb(28, 34, 46);
+        BackColor = item.State == "Open" ? Color.FromArgb(18, 52, 84) : item.State is "Minimized" or "Sleeping" ? Color.FromArgb(13, 59, 62) : Color.FromArgb(28, 34, 46);
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 11);
         _title = new PlaceholderArtwork { Dock = DockStyle.Fill, MinimumSize = new Size(0, 40),
@@ -118,7 +119,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         _itemApplied = true;
         _overviewImage = null;
         Text = "Saved: " + _item.Title;
-        BackColor = _item.State == "Open" ? Color.FromArgb(18, 52, 84) : Color.FromArgb(28, 34, 46);
+        BackColor = _item.State == "Open" ? Color.FromArgb(18, 52, 84) : _item.State is "Minimized" or "Sleeping" ? Color.FromArgb(13, 59, 62) : Color.FromArgb(28, 34, 46);
         _title.UpdateItem(item);
         _title.Parent?.Invalidate(true);
         _pathHeader.Text = item.MissingWebsiteUrl ? "Browser:" : item.WebResource == null ? "Path:" : "Website:";

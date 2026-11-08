@@ -15,6 +15,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         Color.FromRgb(22, 60, 98), Color.FromRgb(14, 42, 72), 90);
     private static readonly Brush LabelFill = FrozenBrush(Color.FromArgb(218, 10, 16, 25));
     private static readonly Brush ActiveLabelFill = FrozenBrush(Color.FromArgb(222, 10, 24, 42));
+    private static readonly Brush MinimizedCardFill = FrozenLinearGradient(
+        Color.FromRgb(14, 67, 71), Color.FromRgb(9, 43, 45), 90);
+    private static readonly Brush MinimizedLabelFill = FrozenBrush(Color.FromArgb(222, 8, 32, 36));
     private static readonly Pen Outline = OutlinePen(Color.FromRgb(91, 125, 166), 1);
     private static readonly Typeface LabelTypeface = new(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
@@ -41,6 +44,33 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         double t = i / 31.0;
         byte a = (byte)(190 + 65 * t);
         var p = new Pen(FrozenBrush(Color.FromArgb(a, 125, 211, 252)), 1.5);
+        p.Freeze();
+        return p;
+    }).ToArray();
+
+    private static readonly Pen[] MinimizedOuterGlowPens = Enumerable.Range(0, 32).Select(i =>
+    {
+        double t = i / 31.0;
+        byte a = (byte)(16 + 24 * t);
+        var p = new Pen(FrozenBrush(Color.FromArgb(a, 13, 148, 136)), 3.0 + 2.0 * t);
+        p.Freeze();
+        return p;
+    }).ToArray();
+
+    private static readonly Pen[] MinimizedInnerGlowPens = Enumerable.Range(0, 32).Select(i =>
+    {
+        double t = i / 31.0;
+        byte a = (byte)(35 + 40 * t);
+        var p = new Pen(FrozenBrush(Color.FromArgb(a, 45, 212, 191)), 1.2 + 1.0 * t);
+        p.Freeze();
+        return p;
+    }).ToArray();
+
+    private static readonly Pen[] MinimizedOutlinePens = Enumerable.Range(0, 32).Select(i =>
+    {
+        double t = i / 31.0;
+        byte a = (byte)(160 + 50 * t);
+        var p = new Pen(FrozenBrush(Color.FromArgb(a, 45, 212, 191)), 1.2);
         p.Freeze();
         return p;
     }).ToArray();
@@ -72,7 +102,8 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
 
-            if (card.IsActiveWindow && card.Opacity >= 0.99 && !context.MotionActive && (imageOpacity < 1 || card.ImageIsOverlay))
+            bool isRunning = (card.IsActiveWindow || card.IsMinimizedWindow) && card.Opacity >= 0.99 && !context.MotionActive && (imageOpacity < 1 || card.ImageIsOverlay);
+            if (isRunning)
             {
                 double pulse = 0.5;
                 if (!context.ReduceMotion)
@@ -81,14 +112,18 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                     pulse = 0.5 + 0.5 * Math.Sin(phase);
                 }
                 int glowIdx = Math.Clamp((int)(pulse * 31.99), 0, 31);
-                double spread = Math.Clamp(Math.Min(rect.Width, rect.Height) * 0.03, 3, 8) + 2.0 * pulse;
+                double spread = card.IsActiveWindow
+                    ? Math.Clamp(Math.Min(rect.Width, rect.Height) * 0.03, 3, 8) + 2.0 * pulse
+                    : Math.Clamp(Math.Min(rect.Width, rect.Height) * 0.025, 2.5, 6) + 1.2 * pulse;
                 var outerGlowRect = Rect.Inflate(rect, spread, spread);
                 dc.PushClip(VisibleGlow(card, outerGlowRect, context));
                 dc.PushOpacity(card.Opacity);
-                dc.DrawRoundedRectangle(null, OuterGlowPens[glowIdx], outerGlowRect, 6 + spread * 0.5, 6 + spread * 0.5);
+                var outerPen = card.IsActiveWindow ? OuterGlowPens[glowIdx] : MinimizedOuterGlowPens[glowIdx];
+                var innerPen = card.IsActiveWindow ? InnerGlowPens[glowIdx] : MinimizedInnerGlowPens[glowIdx];
+                dc.DrawRoundedRectangle(null, outerPen, outerGlowRect, 6 + spread * 0.5, 6 + spread * 0.5);
                 double innerSpread = spread * 0.5;
                 var innerGlowRect = Rect.Inflate(rect, innerSpread, innerSpread);
-                dc.DrawRoundedRectangle(null, InnerGlowPens[glowIdx], innerGlowRect, 6 + innerSpread * 0.5, 6 + innerSpread * 0.5);
+                dc.DrawRoundedRectangle(null, innerPen, innerGlowRect, 6 + innerSpread * 0.5, 6 + innerSpread * 0.5);
                 dc.Pop();
                 dc.Pop();
             }
@@ -97,9 +132,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             dc.PushOpacity(card.Opacity);
             if (imageOpacity < 1 || card.ImageIsOverlay)
             {
-                var fill = card.IsActiveWindow ? ActiveCardFill : CardFill;
+                var fill = card.IsActiveWindow ? ActiveCardFill : card.IsMinimizedWindow ? MinimizedCardFill : CardFill;
                 int outlineIdx = 16;
-                if (card.IsActiveWindow)
+                if (card.IsActiveWindow || card.IsMinimizedWindow)
                 {
                     double pulse = 0.5;
                     if (!context.ReduceMotion)
@@ -109,7 +144,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                     }
                     outlineIdx = Math.Clamp((int)(pulse * 31.99), 0, 31);
                 }
-                var outline = card.IsActiveWindow ? ActiveOutlinePens[outlineIdx] : Outline;
+                var outline = card.IsActiveWindow ? ActiveOutlinePens[outlineIdx]
+                    : card.IsMinimizedWindow ? MinimizedOutlinePens[outlineIdx]
+                    : Outline;
                 dc.DrawRoundedRectangle(fill, outline, rect, 6, 6);
                 if (card.Logo is { Width: > 0, Height: > 0 } logo)
                 {
@@ -260,7 +297,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             };
             double textY = rect.Y + (rect.Height - text.Height) / 2;
             double backingWidth = Math.Min(rect.Width, text.Width + label.FontSize * .4);
-            var labelFill = label.Card.IsActiveWindow ? ActiveLabelFill : LabelFill;
+            var labelFill = label.Card.IsActiveWindow ? ActiveLabelFill
+                : label.Card.IsMinimizedWindow ? MinimizedLabelFill
+                : LabelFill;
             dc.DrawRoundedRectangle(labelFill, null,
                 new Rect(rect.X + (rect.Width - backingWidth) / 2, textY, backingWidth, text.Height), 3, 3);
             dc.DrawText(text, new Point(rect.X, textY));

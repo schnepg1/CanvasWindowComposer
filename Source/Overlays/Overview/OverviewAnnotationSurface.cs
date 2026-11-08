@@ -97,7 +97,7 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         _frame = frame;
         Opacity = frame.Intro?.RevealOpacity ?? 1;
         _placeholders.Clear();
-        _hasActiveCards = !frame.ReduceMotion && !frame.MotionActive && frame.Placeholders.Any(p => p.IsActiveWindow && p.Opacity >= 0.99);
+        _hasActiveCards = !frame.ReduceMotion && !frame.MotionActive && frame.Placeholders.Any(p => (p.IsActiveWindow || p.IsMinimizedWindow) && p.Opacity >= 0.99);
         if (_hasActiveCards)
         {
             if (!_glowTimer.IsEnabled) _glowTimer.Start();
