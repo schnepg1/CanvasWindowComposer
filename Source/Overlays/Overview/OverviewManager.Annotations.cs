@@ -56,7 +56,22 @@ internal sealed partial class OverviewManager
             string repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
             string statePath = Path.Combine(repoRoot, ".agents", "teams", "state.json");
             _telemetryProvider = new WindowsNativeTelemetryProvider(statePath);
-            _telemetryProvider.TelemetryUpdated += _ => ReconcileVisuals();
+            _telemetryProvider.TelemetryUpdated += _ =>
+            {
+                if (_disposed) return;
+                if (_passes.Count > 0 && _passes[0].IsHandleCreated)
+                {
+                    try
+                    {
+                        if (_passes[0].InvokeRequired)
+                            _passes[0].BeginInvoke(() => { if (!_disposed) ReconcileVisuals(); });
+                        else
+                            ReconcileVisuals();
+                    }
+                    catch (ObjectDisposedException) { }
+                    catch (InvalidOperationException) { }
+                }
+            };
         }
         catch { }
         _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id) || _annotationEditor?.CurrentItem.Id == id, () => _windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H)).ToArray(), () => _connectionTool?.Preview, item => _telemetryProvider?.GetStateForCard(item.Text));
