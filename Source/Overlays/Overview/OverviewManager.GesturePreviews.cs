@@ -156,6 +156,7 @@ internal sealed partial class OverviewManager
         _restoringGesturePreviews = false;
         _gestureTitles.Clear();
         _thumbnails.SimplifyDuringMotion = false;
+        _thumbnails.CancelSettle();
         _zoomSettleTimer?.Stop();
         _zoomSettleUntil = 0;
         if (_parkingBeforeGesture.HasValue)

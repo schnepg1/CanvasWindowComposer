@@ -99,6 +99,7 @@ internal sealed partial class OverviewManager
     {
         StopWindowNavigation();
         StopTutorialTravel();
+        _thumbnails.CancelSettle();
         bool windowDrag = _tools.Kind == CanvasInteractionKind.Window;
         bool windowResize = _tools.Kind == CanvasInteractionKind.WindowResize;
         bool cancelled = CloseWindowPeek();

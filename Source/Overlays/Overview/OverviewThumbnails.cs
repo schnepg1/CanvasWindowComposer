@@ -44,6 +44,7 @@ internal sealed class OverviewThumbnails
         {
             if (_simplifyDuringMotion == value) return;
             _simplifyDuringMotion = value;
+            if (_simplifyDuringMotion) CancelSettle();
             InvalidateCameraCache();
         }
     }
@@ -52,6 +53,111 @@ internal sealed class OverviewThumbnails
     // display topology change via InvalidateShellCache. Self-healing via
     // IsWindow() guards (explorer.exe restart destroys Progman / WorkerW /
     // Shell_TrayWnd and recreates them with new handles).
+    public const int SettleBatchSize = 8;
+    private bool _settleActive;
+    private int _settleBatchIndex;
+    private List<IntPtr> _settleOrdered = new();
+    private readonly HashSet<IntPtr> _settleAllowed = new();
+
+    public bool IsSettling => _settleActive;
+    public int SettleBatchIndex => _settleBatchIndex;
+
+    public void CancelSettle()
+    {
+        if (!_settleActive) return;
+        _settleActive = false;
+        _settleBatchIndex = 0;
+        _settleOrdered.Clear();
+        _settleAllowed.Clear();
+        InvalidateCameraCache();
+    }
+
+    public void BeginSettle(CanvasPoint focal, CanvasCamera camera)
+    {
+        _settleActive = false;
+        _settleBatchIndex = 0;
+        _settleOrdered.Clear();
+        _settleAllowed.Clear();
+
+        var list = new List<(IntPtr HWnd, double DistSq)>();
+        double camX = camera.X, camY = camera.Y, zoom = camera.Zoom;
+
+        for (int i = 0; i < _windows.Count; i++)
+        {
+            var entry = _windows.Windows[i];
+            if (_useCached(entry.HWnd) || entry.ScreenFixed) continue;
+
+            var screen = GetScreenRect(entry, camX, camY, zoom);
+            int right = screen.X + screen.W, bottom = screen.Y + screen.H;
+            bool onScreen = false;
+            foreach (var pass in _passes)
+            {
+                var bounds = pass.Screen.Bounds;
+                if (right > bounds.Left && screen.X < bounds.Right &&
+                    bottom > bounds.Top && screen.Y < bounds.Bottom)
+                {
+                    onScreen = true;
+                    break;
+                }
+            }
+            if (!onScreen) continue;
+
+            double cx = entry.World.X + entry.World.W * 0.5;
+            double cy = entry.World.Y + entry.World.H * 0.5;
+            double dx = cx - focal.X, dy = cy - focal.Y;
+            list.Add((entry.HWnd, dx * dx + dy * dy));
+        }
+
+        if (list.Count <= SettleBatchSize)
+        {
+            _settleActive = false;
+            InvalidateCameraCache();
+            return;
+        }
+
+        list.Sort((a, b) => a.DistSq.CompareTo(b.DistSq));
+        _settleOrdered = new List<IntPtr>(list.Count);
+        for (int i = 0; i < list.Count; i++)
+            _settleOrdered.Add(list[i].HWnd);
+
+        _settleActive = true;
+        _settleBatchIndex = 0;
+
+        int initialCount = Math.Min(SettleBatchSize, _settleOrdered.Count);
+        for (int i = 0; i < initialCount; i++)
+            _settleAllowed.Add(_settleOrdered[i]);
+
+        InvalidateCameraCache();
+    }
+
+    public bool AdvanceSettle()
+    {
+        if (!_settleActive) return false;
+        _settleBatchIndex++;
+        int allowedCount = (_settleBatchIndex + 1) * SettleBatchSize;
+        if (allowedCount >= _settleOrdered.Count)
+        {
+            _settleActive = false;
+            _settleAllowed.Clear();
+            _settleOrdered.Clear();
+            InvalidateCameraCache();
+            return false;
+        }
+
+        int targetLimit = Math.Min(allowedCount, _settleOrdered.Count);
+        for (int i = _settleAllowed.Count; i < targetLimit; i++)
+            _settleAllowed.Add(_settleOrdered[i]);
+
+        InvalidateCameraCache();
+        return true;
+    }
+
+    private bool IsAllowedBySettle(IntPtr hwnd)
+    {
+        if (!_settleActive || _settleAllowed.Count == 0) return true;
+        return _settleAllowed.Contains(hwnd);
+    }
+
     private IntPtr _cachedDesktopWallpaperHwnd;
     private List<IntPtr>? _cachedTaskbarHwnds;
 
@@ -153,6 +259,7 @@ internal sealed class OverviewThumbnails
     /// <summary>Unregister everything. Call when the overview closes.</summary>
     public void Hide()
     {
+        CancelSettle();
         _liveSources.Clear();
         _prepareLiveSources?.Invoke(_liveSources);
         foreach (var kv in _windowsByPass)
@@ -513,7 +620,7 @@ internal sealed class OverviewThumbnails
             // Pinned/screen-fixed windows remain live because they are not moving.
             bool cached = _useCached(entry.HWnd);
             var source = cached ? _cachedSource(entry.HWnd) : entry.HWnd;
-            bool visible = !SimplifyDuringMotion || entry.ScreenFixed || cached;
+            bool visible = (!SimplifyDuringMotion && IsAllowedBySettle(entry.HWnd)) || entry.ScreenFixed || cached;
             var target = new TargetEntry(entry, source, cached, visible);
 
             var screen = GetScreenRect(entry, camX, camY, zoom);
