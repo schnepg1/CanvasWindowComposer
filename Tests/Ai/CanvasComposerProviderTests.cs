@@ -98,4 +98,140 @@ public class CanvasComposerProviderTests
         Assert.Equal("Guardian editor",input.RootElement.GetProperty("sharedPlaces")[0].GetProperty("title").GetString());
         Assert.DoesNotContain("987654",body);Assert.DoesNotContain("ExecutablePath",body);Assert.DoesNotContain("Target",body);
     }
+
+    private sealed class SynchronousProgress : IProgress<string>
+    {
+        public readonly List<string> Reports = [];
+        public void Report(string value) => Reports.Add(value);
+    }
+
+    [Fact]
+    public async Task PlanUsageSucceedsWhenChatGptReturnsApplicationJsonFallback()
+    {
+        var handler = new Handler { Respond = (_, _) => Task.FromResult(Response()) };
+        using var http = new HttpClient(handler);
+        var provider = new OpenAiCanvasComposerProvider(http, "test-key", planUsage: true);
+        var result = await provider.GenerateAsync("test-model", "Make a roadmap", Context(), null, CancellationToken.None);
+        Assert.NotNull(result);
+        Assert.Equal("Plan", result.Summary);
+        Assert.Single(result.Nodes);
+    }
+
+    [Fact]
+    public async Task PlanUsageParsesEventStreamWithDeltasAndReportsProgress()
+    {
+        string sseContent =
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"{\\\"summary\\\":\\\"Plan\\\"\"}\n\n" +
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":" + JsonSerializer.Serialize(PlanJson) + "}]}]}}\n\n" +
+            "data: [DONE]\n\n";
+
+        var handler = new Handler
+        {
+            Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(sseContent, Encoding.UTF8, "text/event-stream")
+            })
+        };
+        using var http = new HttpClient(handler);
+        var provider = new OpenAiCanvasComposerProvider(http, "test-key", planUsage: true);
+        var progress = new SynchronousProgress();
+
+        var result = await provider.GenerateAsync("test-model", "Make a roadmap", Context(), progress, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("Plan", result.Summary);
+        Assert.Contains(progress.Reports, r => r.Contains("Receiving proposal"));
+        Assert.Contains(progress.Reports, r => r.Contains("Request sent"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AcceptHeaderIsConfiguredAppropriatelyForPlanUsage(bool planUsage)
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var handler = new Handler
+        {
+            Respond = (request, _) =>
+            {
+                capturedRequest = request;
+                return Task.FromResult(Response());
+            }
+        };
+        using var http = new HttpClient(handler);
+        var provider = new OpenAiCanvasComposerProvider(http, "test-key", planUsage);
+        await provider.GenerateAsync("test-model", "Make a roadmap", Context(), null, CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        var mediaTypes = capturedRequest.Headers.Accept.Select(a => a.MediaType).ToList();
+        if (planUsage)
+        {
+            Assert.Contains("text/event-stream", mediaTypes);
+            Assert.Contains("application/json", mediaTypes);
+        }
+        else
+        {
+            Assert.DoesNotContain("text/event-stream", mediaTypes);
+            Assert.Contains("application/json", mediaTypes);
+        }
+    }
+
+    [Fact]
+    public async Task PlanUsageParsesJsonErrorResponseCleanly()
+    {
+        var errorResponse = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { error = new { code = "subscription_sharing_usage_limit_exceeded", message = "limit" } }),
+                Encoding.UTF8,
+                "application/json")
+        };
+        var handler = new Handler { Respond = (_, _) => Task.FromResult(errorResponse) };
+        using var http = new HttpClient(handler);
+        var provider = new OpenAiCanvasComposerProvider(http, "test-key", planUsage: true);
+
+        var ex = await Assert.ThrowsAsync<AiConnectionException>(() =>
+            provider.GenerateAsync("test-model", "prompt", Context(), null, CancellationToken.None));
+        Assert.True(ex.ManageUsage);
+        Assert.Equal("subscription_sharing_usage_limit_exceeded", ex.ServiceCode);
+    }
+
+    [Fact]
+    public async Task PlanUsageParsesEventStreamErrorCleanly()
+    {
+        string sseError =
+            "event: response.failed\n" +
+            "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\",\"message\":\"limit\"}}}\n\n";
+
+        var handler = new Handler
+        {
+            Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(sseError, Encoding.UTF8, "text/event-stream")
+            })
+        };
+        using var http = new HttpClient(handler);
+        var provider = new OpenAiCanvasComposerProvider(http, "test-key", planUsage: true);
+
+        var ex = await Assert.ThrowsAsync<AiConnectionException>(() =>
+            provider.GenerateAsync("test-model", "prompt", Context(), null, CancellationToken.None));
+        Assert.True(ex.ManageUsage);
+        Assert.Equal("subscription_sharing_usage_limit_exceeded", ex.ServiceCode);
+    }
+
+    [Fact]
+    public async Task PlanUsageThrowsInvalidDataWhenNeitherEventStreamNorJson()
+    {
+        var nonStreamResponse = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("<html>Gateway Timeout</html>", Encoding.UTF8, "text/html")
+        };
+        var handler = new Handler { Respond = (_, _) => Task.FromResult(nonStreamResponse) };
+        using var http = new HttpClient(handler);
+        var provider = new OpenAiCanvasComposerProvider(http, "test-key", planUsage: true);
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            provider.GenerateAsync("test-model", "prompt", Context(), null, CancellationToken.None));
+        Assert.Contains("ChatGPT did not return an event stream.", ex.Message);
+    }
 }

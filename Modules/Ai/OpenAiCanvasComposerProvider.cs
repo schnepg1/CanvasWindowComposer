@@ -22,6 +22,8 @@ public sealed class OpenAiCanvasComposerProvider : ICanvasComposerProvider
     private readonly bool _planUsage;
     public OpenAiCanvasComposerProvider(HttpClient http, string apiKey)
         : this(http, _ => Task.FromResult(apiKey), false) { }
+    internal OpenAiCanvasComposerProvider(HttpClient http, string apiKey, bool planUsage)
+        : this(http, _ => Task.FromResult(apiKey), planUsage) { }
     internal OpenAiCanvasComposerProvider(HttpClient http, Func<CancellationToken, Task<string>> token, bool planUsage)
     { this.http = http; _token = token; _planUsage = planUsage; }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -94,6 +96,15 @@ public sealed class OpenAiCanvasComposerProvider : ICanvasComposerProvider
         });
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/responses");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
+        if (_planUsage)
+        {
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
+        else
+        {
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        }
         var body = new System.Collections.Generic.Dictionary<string, object>
         {
             ["model"] = model.Trim(), ["store"] = false, ["stream"] = _planUsage,
