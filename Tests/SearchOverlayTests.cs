@@ -30,6 +30,10 @@ public class SearchOverlayTests
         // should NOT close the overlay
         var onDeactivate = typeof(SearchOverlay).GetMethod("OnDeactivate", BindingFlags.Instance | BindingFlags.NonPublic, [typeof(EventArgs)]);
         Assert.NotNull(onDeactivate);
+
+        // Ensure we test the transient guard (< 300ms) deterministically regardless of test-runner load
+        typeof(SearchOverlay).GetField("_openedTimestamp", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(search, Environment.TickCount64);
         onDeactivate.Invoke(search, [EventArgs.Empty]);
 
         Assert.True(search.Visible);

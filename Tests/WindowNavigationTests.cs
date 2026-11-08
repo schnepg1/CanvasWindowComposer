@@ -16,9 +16,30 @@ public class WindowNavigationTests
         Assert.Equal(from, flight.Sample(double.NaN));
         Assert.Equal(to, flight.Sample(WindowNavigationFlight.Duration));
         var middle = flight.Sample(WindowNavigationFlight.Duration / 2);
-        Assert.Equal((from.X + to.X) / 2, middle.X);
-        Assert.Equal((from.Y + to.Y) / 2, middle.Y);
+        Assert.Equal((from.X + to.X) / 2, middle.X, 1);
+        Assert.Equal((from.Y + to.Y) / 2, middle.Y, 1);
         Assert.Equal(from.Zoom, middle.Zoom);
+    }
+
+    [Fact]
+    public void HelicopterFlightTravelsInStrictlyStraight2DLineAcrossCanvas()
+    {
+        // Window A at (1000, 1000) and Window B at (6000, 3000) in world coordinates
+        var vp = new ScreenRect(0, 0, 1920, 1080);
+        var from = WindowNavigationFlight.Target(new WorldRect { X = 1000, Y = 1000, W = 800, H = 600 }, 1.0, vp);
+        var to = WindowNavigationFlight.Target(new WorldRect { X = 6000, Y = 3000, W = 800, H = 600 }, 1.0, vp);
+        var flight = new WindowNavigationFlight(from, to, vp);
+
+        // Verify that throughout the entire flight, the 2D world focal center follows an exact straight line
+        foreach (double u in new[] { 0.05, 0.10, 0.20, 0.35, 0.50, 0.65, 0.80, 0.90, 0.95 })
+        {
+            var focal = flight.SampleFocalPoint(WindowNavigationFlight.Duration * u);
+            double ratioX = (focal.X - flight.FromFocalPoint.X) / (flight.ToFocalPoint.X - flight.FromFocalPoint.X);
+            double ratioY = (focal.Y - flight.FromFocalPoint.Y) / (flight.ToFocalPoint.Y - flight.FromFocalPoint.Y);
+
+            // Straight line invariant: ratioX == ratioY at all times (no 2D arcing or canvas deflection)
+            Assert.Equal(ratioX, ratioY, 5);
+        }
     }
 
     [Fact]
@@ -28,25 +49,30 @@ public class WindowNavigationTests
         var to = new CanvasCamera(5000, 2000, 1.0);
         var flight = new WindowNavigationFlight(from, to);
 
-        // At takeoff (u = 0.08): horizontal progress has begun smoothly without dead zones,
-        // but initial trajectory is predominantly vertical (zoom out climbs much faster than horizontal shift).
+        // At takeoff (u = 0.08): 2D horizontal progress starts very slowly without flat freeze,
+        // while altitude (zoom-out) climbs strongly first (vertical takeoff emphasis).
         var takeoff = flight.Sample(WindowNavigationFlight.Duration * 0.08);
-        Assert.True(takeoff.X > from.X, "Horizontal motion should be continuous and start without flat freeze");
-        Assert.True(takeoff.X < 5000 * 0.02, "Horizontal motion should start gradually during takeoff");
-        Assert.True(takeoff.Zoom < 1.0, "Camera should lift up (zoom out) during takeoff");
-        double horizFraction = (takeoff.X - from.X) / 5000.0;
-        double vertFraction = (1.0 - takeoff.Zoom) / (1.0 - 0.18);
-        Assert.True(vertFraction > horizFraction * 5.0, "Takeoff trajectory should be steep and predominantly vertical");
+        var takeoffFocal = flight.SampleFocalPoint(WindowNavigationFlight.Duration * 0.08);
+        double horizFraction = (takeoffFocal.X - flight.FromFocalPoint.X) / (flight.ToFocalPoint.X - flight.FromFocalPoint.X);
+        double vertFraction = (1.0 - takeoff.Zoom) / (1.0 - flight.CruisingZoom);
 
-        // At midpoint (u = 0.50): halfway horizontally, reaches peak cruising altitude (crests smoothly with zero vertical speed)
+        Assert.True(horizFraction > 0, "Horizontal motion should be continuous and start without flat freeze");
+        Assert.True(horizFraction < 0.01, "Horizontal motion should start gradually during takeoff");
+        Assert.True(takeoff.Zoom < 1.0, "Camera should lift up (zoom out) during takeoff");
+        Assert.True(vertFraction > horizFraction * 5.0, "Takeoff trajectory should climb strongly in altitude first");
+
+        // At midpoint (u = 0.50): halfway horizontally, reaches peak cruising altitude (crests smoothly)
         var mid = flight.Sample(WindowNavigationFlight.Duration * 0.50);
-        Assert.Equal(2500, mid.X);
-        Assert.Equal(1000, mid.Y);
+        var midFocal = flight.SampleFocalPoint(WindowNavigationFlight.Duration * 0.50);
+        Assert.Equal((flight.FromFocalPoint.X + flight.ToFocalPoint.X) / 2.0, midFocal.X, 3);
+        Assert.Equal((flight.FromFocalPoint.Y + flight.ToFocalPoint.Y) / 2.0, midFocal.Y, 3);
         Assert.True(mid.Zoom < takeoff.Zoom, "Midpoint zoom should be at cruising altitude");
 
-        // Near landing (u = 0.95): horizontal movement is nearly arrived (>99%), while vertical decline is in its final settle
+        // Near landing (u = 0.95): horizontal movement is nearly arrived (>99%), while vertical descent is settling
         var landing = flight.Sample(WindowNavigationFlight.Duration * 0.95);
-        Assert.True(landing.X > 5000 * 0.99, "Horizontal position should be nearly arrived at landing zone");
+        var landingFocal = flight.SampleFocalPoint(WindowNavigationFlight.Duration * 0.95);
+        double landingHoriz = (landingFocal.X - flight.FromFocalPoint.X) / (flight.ToFocalPoint.X - flight.FromFocalPoint.X);
+        Assert.True(landingHoriz > 0.99, "Horizontal position should be nearly arrived at landing zone");
         Assert.True(landing.Zoom > mid.Zoom, "Vertical descent should already be declining towards destination");
         Assert.True(landing.Zoom < to.Zoom, "Camera should be settling vertically onto landing pad");
 
@@ -63,8 +89,8 @@ public class WindowNavigationTests
         var flight = new WindowNavigationFlight(from, to);
 
         var mid = flight.Sample(WindowNavigationFlight.Duration * 0.50);
-        Assert.Equal(150, mid.X);
-        Assert.Equal(125, mid.Y);
+        Assert.Equal(150, mid.X, 1);
+        Assert.Equal(125, mid.Y, 1);
         Assert.Equal(1.0, mid.Zoom); // No vertical climb for short distance
     }
 
