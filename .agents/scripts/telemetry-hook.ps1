@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$Event = "PreToolUse"
 )
 
@@ -153,7 +153,7 @@ try {
         $state.roles[$role] = @{ state = $rState; detail = $rDetail; timestamp = $now }
     }
 
-    if ($Event -eq "PreToolUse") {
+    if ($Event -eq "PreToolUse" -or $Event -eq "PostToolUse") {
         if ($toolName -eq "run_command") {
             if ($command -match "Run-Tests|dotnet test") {
                 Set-TeamRoleState "programmer" "Testing" "Running test suite under mutex"

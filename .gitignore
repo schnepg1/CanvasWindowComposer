@@ -36,6 +36,7 @@ Install/publish-fd/
 Install/CanvasWindowComposer-Setup.exe
 artifacts/
 .canvas-launch.lock
+.agents/teams/state.json
 
 ## Perf traces (large binary captures + analysis scripts/notes)
 Tracing/
