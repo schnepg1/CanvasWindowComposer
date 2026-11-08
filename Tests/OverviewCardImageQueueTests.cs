@@ -64,6 +64,54 @@ public class OverviewCardImageQueueTests
             Assert.Null(Assert.Single(transitions.Update([simple], 820)).Image);
             Assert.Equal(0, transitions.RetainedImages);
         });
+
+    [Fact]
+    public void NewerZoomDimensionRequestSupersedesStaleDimension()
+    {
+        var queue = new OverviewCardImageQueue(() => 0);
+        var preparedDimensions = new List<int>();
+        var cardId = Guid.NewGuid();
+
+        queue.BeginFrame();
+        queue.RequestImage(cardId, 10, () => preparedDimensions.Add(256), 256);
+        Assert.True(queue.TryGetPendingDimension(cardId, out int dim1));
+        Assert.Equal(256, dim1);
+
+        // Rapid zoom flick occurs before queue is processed -> higher dimension supersedes previous
+        queue.RequestImage(cardId, 5, () => preparedDimensions.Add(1024), 1024);
+        Assert.True(queue.TryGetPendingDimension(cardId, out int dim2));
+        Assert.Equal(1024, dim2);
+        queue.EndFrame();
+
+        Assert.Equal(1, queue.PendingCount);
+        Assert.Equal(1, queue.Process());
+        // Only the newer 1024 dimension should have executed!
+        Assert.Single(preparedDimensions);
+        Assert.Equal(1024, preparedDimensions[0]);
+    }
+
+    [Fact]
+    public void WireframeLodTransitionPrunesPendingImageRequests()
+    {
+        var queue = new OverviewCardImageQueue(() => 0);
+        var cardId = Guid.NewGuid();
+        bool executed = false;
+
+        // Frame 1: Detailed zoom requests image
+        queue.BeginFrame();
+        queue.RequestImage(cardId, 0, () => executed = true, 512);
+        queue.EndFrame();
+        Assert.True(queue.HasPending);
+
+        // Frame 2: Rapid zoom flick enters wireframe LOD -> no request made for cardId
+        queue.BeginFrame();
+        queue.EndFrame();
+
+        // Pending request for cardId should be automatically pruned
+        Assert.False(queue.HasPending);
+        Assert.Equal(0, queue.Process());
+        Assert.False(executed);
+    }
 }
 
 [Collection("ShellViews")]

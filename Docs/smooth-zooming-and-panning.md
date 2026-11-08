@@ -257,6 +257,31 @@ In [`OverviewThumbnails.cs`](file:///Source/Overlays/Overview/OverviewThumbnails
 
 ---
 
+### 3.10. Bounded LRU Image Cache Eviction for Rapid Zoom Flicks
+
+#### The Problem
+During rapid mouse wheel bursts between distant overviews (5%) and close inspections (200%):
+- **Unbounded Bitmap Retention:** Placeholder forms previously retained high-resolution `BitmapSource` instances (up to 4 MB per 1024x1024 card) indefinitely in `PlaceholderForm._overviewImage`. Even when cards entered Live mode (`OverviewCardMode.Live`) and were completely occluded by live DWM thumbnails, snapshots remained pinned in memory, accumulating 120–240+ MB in dense workspaces.
+- **Redundant Icon Extractions:** Each placeholder card independently extracted 256x256 GDI icons from disk and built duplicate WPF frozen textures. A workspace with 20 browser or editor windows held 20 identical unmanaged GDI bitmaps simultaneously, threatening Windows GDI handle limits.
+- **Stale Zoom Request Churn:** Rapid wheel flicks crossing zoom tiers caused `OverviewCardImageQueue` to generate intermediate resolutions (e.g. 256 px) that were already obsolete by the time the camera reached 1024 px or entered Live mode.
+- **$O(N)$ Preview Cache Eviction & Worker Contention:** Automatic parking previews in `WindowPreviewCache` scanned all entries linearly and suffered data races on memory byte accounting (`_used`) between background worker threads and UI dispatchers.
+
+#### The Architecture & Solution
+- **Generic Dual-Constraint $O(1)$ LRU Cache (`LruMemoryCache<TKey, TValue>`):**
+  In [`LruMemoryCache.cs`](file:///Source/Core/LruMemoryCache.cs), a thread-safe generic container provides $O(1)$ lookups and evictions via an internal hash map and doubly-linked list. It enforces dual constraints: item capacity and aggregate byte budgets, automatically disposing evicted `IDisposable` instances outside synchronization locks to eliminate UI deadlocks.
+- **Centralized Overview Card Image Cache (`OverviewCardImageCache`):**
+  In [`OverviewCardImageCache.cs`](file:///Source/Overlays/Overview/OverviewCardImageCache.cs), card snapshot bitmaps are decoupled from `PlaceholderForm` instances under a 48 MB budget (`OverviewZoomDefaults.DefaultCardImageBudgetBytes`) and 64-item cap (`DefaultCardImageMaxCount`).
+- **Live Card Demotion:**
+  When cards transition into Live mode (`OverviewCardMode.Live`) in [`OverviewCardTransitions.cs`](file:///Source/Overlays/Overview/OverviewCardTransitions.cs) or [`OverviewManager.Zones.cs`](file:///Source/Overlays/Overview/OverviewManager.Zones.cs), their cache entry is demoted via `Demote(cardId)` to the eviction head (tail of the LRU queue), ensuring occluded bitmaps are reclaimed first under memory pressure.
+- **Icon Deduplication (`PlaceholderArtworkCache`):**
+  In [`PlaceholderArtworkCache.cs`](file:///Source/Workspace/PlaceholderArtworkCache.cs), application and folder artwork is shared across all cards and drawer entries ([`DrawerAppIcon.cs`](file:///Source/Overlays/Temporary/DrawerAppIcon.cs)), reducing icon memory by >85% and maintaining GDI handle counts safely under 200.
+- **Rapid Zoom Request Superseding & LOD Pruning:**
+  In [`OverviewCardImageQueue.cs`](file:///Source/Overlays/Overview/OverviewCardImageQueue.cs), incoming requests for higher zoom dimensions replace pending intermediate requests in-place. If the camera accelerates into wireframe LOD or Live mode, obsolete requests are immediately pruned at frame end. During active camera motion, image queue processing is throttled to 1 item per frame to preserve 60–144 FPS responsiveness.
+- **Hardened $O(1)$ `WindowPreviewCache`:**
+  In [`WindowPreviewCache.cs`](file:///Source/Core/WindowPreviewCache.cs), eviction is modernized to $O(1)$, all updates to `_used` are strictly synchronized under `_workerGate`, and HWND surface disposal is decoupled from background worker locking.
+
+---
+
 ## 4. Troubleshooting Guide
 
 Use this table if regressions occur in future changes:

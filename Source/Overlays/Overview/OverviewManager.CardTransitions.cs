@@ -41,7 +41,7 @@ internal sealed partial class OverviewManager
                 _cardAnimationTimer.Tick += (_, _) =>
                 {
                     if (_disposed || CurrentMode == OverviewMode.Hidden) { ClearCardTransitions(); return; }
-                    if (!GesturePreviewsActive && !SmoothZoomActive && !_wm.OverviewUsesSimpleCards) _cardImages.Process();
+                    if (!GesturePreviewsActive && !SmoothZoomActive && !_wm.OverviewUsesSimpleCards) _cardImages.Process(maxItems: MotionActive ? 1 : 2);
                     RefreshCardIdentities();
                     _thumbnails.Reconcile();
                     RefreshZoneAnnotations();

@@ -11,7 +11,7 @@ internal sealed class OverviewCardImageQueue
     internal const int ImageMaxDimension = 1024;
     internal static int ImageDimension(double projectedEdge)
         => (int)Math.Clamp(Math.Ceiling(projectedEdge / 256) * 256, 256, ImageMaxDimension);
-    private sealed record Request(long Priority, long Order, Action Prepare);
+    private sealed record Request(long Priority, long Order, Action Prepare, int Dimension);
     private readonly Dictionary<Guid, Request> _pending = new();
     private readonly HashSet<Guid> _visible = new();
     private readonly Func<double> _milliseconds;
@@ -21,13 +21,39 @@ internal sealed class OverviewCardImageQueue
         => _milliseconds = milliseconds ?? (() => Stopwatch.GetTimestamp() * 1000.0 / Stopwatch.Frequency);
 
     public bool HasPending => _pending.Count > 0;
+    public int PendingCount => _pending.Count;
     public void BeginFrame() => _visible.Clear();
 
-    public void RequestImage(Guid id, long priority, Action prepare)
+    public void RequestImage(Guid id, long priority, Action prepare, int dimension = 0)
     {
         _visible.Add(id);
         long order = _pending.TryGetValue(id, out var old) ? old.Order : ++_order;
-        _pending[id] = new(priority, order, prepare);
+        _pending[id] = new(priority, order, prepare, dimension);
+    }
+
+    public bool TryGetPendingDimension(Guid id, out int dimension)
+    {
+        if (_pending.TryGetValue(id, out var req))
+        {
+            dimension = req.Dimension;
+            return true;
+        }
+        dimension = 0;
+        return false;
+    }
+
+    public void Cancel(Guid id)
+    {
+        _pending.Remove(id);
+        _visible.Remove(id);
+    }
+
+    public void CancelIf(Func<Guid, bool> predicate)
+    {
+        foreach (var id in _pending.Keys.Where(predicate).ToArray())
+        {
+            _pending.Remove(id);
+        }
     }
 
     public void EndFrame()
@@ -35,7 +61,7 @@ internal sealed class OverviewCardImageQueue
         foreach (var id in _pending.Keys.Where(id => !_visible.Contains(id)).ToArray()) _pending.Remove(id);
     }
 
-    public int Process()
+    public int Process(int maxItems = 2, double maxMilliseconds = 4)
     {
         double started = _milliseconds();
         int count = 0;
@@ -43,7 +69,7 @@ internal sealed class OverviewCardImageQueue
         // more work in the same tick. Wheel/pan callbacks never call this method.
         foreach (var pair in _pending.OrderBy(p => p.Value.Priority).ThenBy(p => p.Value.Order).ToArray())
         {
-            if (count >= 2 || (count > 0 && _milliseconds() - started >= 4)) break;
+            if (count >= maxItems || (count > 0 && _milliseconds() - started >= maxMilliseconds)) break;
             _pending.Remove(pair.Key);
             pair.Value.Prepare();
             count++;

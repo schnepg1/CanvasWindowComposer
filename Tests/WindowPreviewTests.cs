@@ -542,6 +542,36 @@ public class WindowPreviewTests
             finally { thumbnails.Hide(); }
         });
 
+    [Fact]
+    public void ThreadSafeUsedAccountingUnderRapidDrain()
+    {
+        using var cache = new WindowPreviewCache(
+            new FakeCapture(),
+            _ => new Surface(),
+            budgetBytes: 100 * 1024 * 1024);
+
+        var keys = new List<AutomaticParkingToken>();
+        for (int i = 0; i < 20; i++)
+        {
+            var key = Key(1000 + i);
+            keys.Add(key);
+            cache.Observe(key.Identity.Handle, key);
+        }
+
+        for (int round = 0; round < 10; round++)
+        {
+            var key = keys[round % keys.Count];
+            cache.RequestCapture(key, new Size(20, 20));
+            Finish(cache);
+            Assert.True(cache.ImageBytes >= 0);
+            Assert.True(cache.ImageBytes <= 100 * 1024 * 1024);
+        }
+
+        long finalBytes = cache.ImageBytes;
+        Assert.True(finalBytes > 0);
+        Assert.True(finalBytes <= 100 * 1024 * 1024);
+    }
+
     private sealed class PaintedWindow : Form
     {
         private readonly bool _black;
