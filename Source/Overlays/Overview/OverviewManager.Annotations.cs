@@ -668,35 +668,68 @@ internal sealed partial class OverviewManager
 
     private void ReconcileTeamPods(TeamTelemetrySnapshot snapshot)
     {
-        if (_sectorManager == null || _placeholderWorkspace == null || snapshot.Teams == null || snapshot.Teams.Count == 0)
+        if (_sectorManager == null || _placeholderWorkspace == null)
             return;
 
         var desktop = _annotationDesktop();
-        string? cvlJson = null;
+        bool podsMutated = false;
 
-        foreach (var team in snapshot.Teams.Values)
+        if (snapshot.Teams != null && snapshot.Teams.Count > 0)
         {
-            if (string.Equals(team.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            string? cvlJson = null;
+
+            foreach (var team in snapshot.Teams.Values)
             {
-                if (!_sectorManager.HasPod(team.TaskId))
+                if (string.Equals(team.Status, "Active", StringComparison.OrdinalIgnoreCase))
                 {
-                    cvlJson ??= LoadTeamArchitectureCvl();
-                    if (!string.IsNullOrEmpty(cvlJson))
+                    if (!_sectorManager.HasPod(team.TaskId))
                     {
-                        _sectorManager.SpawnPod(desktop, team, cvlJson);
-                        RefreshZoneLayout();
+                        cvlJson ??= LoadTeamArchitectureCvl();
+                        if (!string.IsNullOrEmpty(cvlJson))
+                        {
+                            _sectorManager.SpawnPod(desktop, team, cvlJson);
+                            podsMutated = true;
+                        }
+                    }
+                }
+                else if (string.Equals(team.Status, "Completed", StringComparison.OrdinalIgnoreCase) ||
+                         (team.Roles.TryGetValue("branch-cleaner", out var cleaner) && cleaner.State == AgentExecutionState.Done))
+                {
+                    if (_sectorManager.HasPod(team.TaskId))
+                    {
+                        _sectorManager.CleanPod(desktop, team.TaskId);
+                        podsMutated = true;
                     }
                 }
             }
-            else if (string.Equals(team.Status, "Completed", StringComparison.OrdinalIgnoreCase) ||
-                     (team.Roles.TryGetValue("branch-cleaner", out var cleaner) && cleaner.State == AgentExecutionState.Done))
+
+            // Orphan sweep: sweep any pods that are no longer active in snapshot
+            var activeTaskIds = new HashSet<string>(
+                snapshot.Teams.Values.Where(t => string.Equals(t.Status, "Active", StringComparison.OrdinalIgnoreCase)).Select(t => t.TaskId),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var spawnedTaskId in _sectorManager.SpawnedPods.Keys.ToList())
             {
-                if (_sectorManager.HasPod(team.TaskId))
+                if (!activeTaskIds.Contains(spawnedTaskId))
                 {
-                    _sectorManager.CleanPod(desktop, team.TaskId);
-                    RefreshZoneLayout();
+                    _sectorManager.CleanPod(desktop, spawnedTaskId);
+                    podsMutated = true;
                 }
             }
+        }
+        else
+        {
+            // If teams is null or empty, all existing pods are orphaned
+            foreach (var spawnedTaskId in _sectorManager.SpawnedPods.Keys.ToList())
+            {
+                _sectorManager.CleanPod(desktop, spawnedTaskId);
+                podsMutated = true;
+            }
+        }
+
+        if (podsMutated)
+        {
+            RefreshZoneLayout();
         }
     }
 

@@ -175,11 +175,28 @@ internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
         {
             if (File.Exists(_stateFilePath))
             {
-                string json;
-                lock (_syncLock)
+                string json = "";
+                bool readSuccess = false;
+
+                for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    json = File.ReadAllText(_stateFilePath);
+                    try
+                    {
+                        lock (_syncLock)
+                        {
+                            json = File.ReadAllText(_stateFilePath);
+                        }
+                        readSuccess = true;
+                        break;
+                    }
+                    catch (IOException) when (attempt < 2)
+                    {
+                        Thread.Sleep(25);
+                    }
                 }
+
+                if (!readSuccess || string.IsNullOrWhiteSpace(json)) return;
+
                 if (json == _lastWrittenJson) return;
                 _lastWrittenJson = json;
                 using var doc = JsonDocument.Parse(json);

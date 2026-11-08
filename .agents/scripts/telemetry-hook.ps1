@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Event = "PreToolUse"
 )
 
@@ -8,8 +8,14 @@ if ([Console]::IsInputRedirected) {
     $inputJson = [Console]::In.ReadToEnd()
 }
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$stateFile = Join-Path $repoRoot ".agents\teams\state.json"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$agentsDir = Split-Path -Parent $scriptDir
+if (Test-Path (Join-Path $agentsDir "teams")) {
+    $stateFile = Join-Path $agentsDir "teams\state.json"
+} else {
+    $repoRoot = Split-Path -Parent $agentsDir
+    $stateFile = Join-Path $repoRoot ".agents\teams\state.json"
+}
 
 function Read-JsonWithRetry([string]$path, [int]$maxRetries = 3) {
     for ($i = 0; $i -lt $maxRetries; $i++) {
