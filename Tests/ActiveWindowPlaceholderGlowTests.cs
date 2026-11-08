@@ -76,6 +76,51 @@ public class ActiveWindowPlaceholderGlowTests
         });
 
     [Fact]
+    public void MinimizedCardRendersDeepOceanTealBackgroundAndCalmGlow()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var inactiveCard = new PlaceholderAnnotation((IntPtr)1, "Closed App",
+                new WorldRect { X = 100, Y = 100, W = 200, H = 100 }, ImageOpacity: 0, IsActiveWindow: false, IsMinimizedWindow: false);
+            var minCard = new PlaceholderAnnotation((IntPtr)2, "Minimized App",
+                new WorldRect { X = 100, Y = 100, W = 200, H = 100 }, ImageOpacity: 0, IsActiveWindow: false, IsMinimizedWindow: true);
+
+            var inactivePixels = Render(inactiveCard, zoom: 1);
+            var minPixels = Render(minCard, zoom: 1, timestamp: 550);
+
+            // Check card interior center pixel: (x=200, y=150)
+            int centerIdx = (150 * 400 + 200) * 4;
+            byte inactB = inactivePixels[centerIdx];
+            byte inactG = inactivePixels[centerIdx + 1];
+            byte inactR = inactivePixels[centerIdx + 2];
+
+            byte minB = minPixels[centerIdx];
+            byte minG = minPixels[centerIdx + 1];
+            byte minR = minPixels[centerIdx + 2];
+
+            // Inactive card fill is dark slate: RGB(28, 34, 46) => B=46, G=34, R=28
+            Assert.InRange(inactB, 40, 52);
+            Assert.InRange(inactG, 30, 40);
+            Assert.InRange(inactR, 24, 34);
+
+            // Minimized card fill is deep ocean teal: RGB(14, 67, 71) to RGB(9, 43, 45) -> Green and Blue dominate, Red is low (< 20)
+            Assert.True(minG > inactG + 10, $"Minimized card green ({minG}) should be noticeably higher than inactive ({inactG})");
+            Assert.True(minR < inactR, $"Minimized card red ({minR}) should be lower than inactive ({inactR})");
+
+            // Check pixel 3px outside top card border: (x=200, y=97)
+            int glowIdx = (97 * 400 + 200) * 4;
+            byte inactiveOutsideA = inactivePixels[glowIdx + 3];
+            byte minOutsideA = minPixels[glowIdx + 3];
+            byte minOutsideG = minPixels[glowIdx + 1];
+
+            // Inactive card has no glow outside its border
+            Assert.Equal(0, inactiveOutsideA);
+
+            // Minimized card has a calm teal glow radiating outside its bounds
+            Assert.True(minOutsideA > 0, "Minimized card should have visible glow aura outside its rect");
+            Assert.True(minOutsideG > 0, "Minimized card glow should have teal (green/blue) tint");
+        });
+
+    [Fact]
     public void ActiveCardGlowModulatesWithTimestamp()
         => WorkspaceViewTests.OnSta(() =>
         {
@@ -89,6 +134,23 @@ public class ActiveWindowPlaceholderGlowTests
             var maxPixels = Render(card, zoom: 1, timestamp: 550);
 
             int glowIdx = (96 * 400 + 200) * 4; // 4px above top edge
+            byte minA = minPixels[glowIdx + 3];
+            byte maxA = maxPixels[glowIdx + 3];
+
+            Assert.True(maxA > minA, $"Peak pulse alpha ({maxA}) should be greater than trough alpha ({minA})");
+        });
+
+    [Fact]
+    public void MinimizedCardGlowModulatesWithTimestamp()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var card = new PlaceholderAnnotation((IntPtr)1, "Minimized Window",
+                new WorldRect { X = 100, Y = 100, W = 200, H = 100 }, ImageOpacity: 0, IsMinimizedWindow: true);
+
+            var minPixels = Render(card, zoom: 1, timestamp: 1650);
+            var maxPixels = Render(card, zoom: 1, timestamp: 550);
+
+            int glowIdx = (97 * 400 + 200) * 4; // 3px above top edge
             byte minA = minPixels[glowIdx + 3];
             byte maxA = maxPixels[glowIdx + 3];
 
@@ -130,7 +192,7 @@ public class ActiveWindowPlaceholderGlowTests
         });
 
     [Fact]
-    public void PlaceholderFormReflectsActiveStateAndColor()
+    public void PlaceholderFormReflectsActiveAndMinimizedStateAndColor()
         => WorkspaceViewTests.OnSta(() =>
         {
             using var rig = new WorkspaceHarness();
@@ -138,43 +200,68 @@ public class ActiveWindowPlaceholderGlowTests
                 new WorldRect { W = 400, H = 300 }, "Open");
             var closedItem = new WorkspaceItemView(Guid.NewGuid(), "Closed App", "", @"C:\app.exe", false,
                 new WorldRect { W = 400, H = 300 }, "Placeholder");
-            var minimizedItem = new WorkspaceItemView(Guid.NewGuid(), "Minimized App", "", @"C:\app.exe", false,
+            var minItem = new WorkspaceItemView(Guid.NewGuid(), "Minimized App", "", @"C:\app.exe", false,
                 new WorldRect { W = 400, H = 300 }, "Minimized");
+            var sleepItem = new WorkspaceItemView(Guid.NewGuid(), "Sleeping App", "", @"C:\app.exe", false,
+                new WorldRect { W = 400, H = 300 }, "Sleeping");
 
             using var openForm = new PlaceholderForm(rig.Workspace, openItem);
             using var closedForm = new PlaceholderForm(rig.Workspace, closedItem);
-            using var minForm = new PlaceholderForm(rig.Workspace, minimizedItem);
+            using var minForm = new PlaceholderForm(rig.Workspace, minItem);
+            using var sleepForm = new PlaceholderForm(rig.Workspace, sleepItem);
 
             Assert.True(openForm.IsActiveWindow);
+            Assert.False(openForm.IsMinimizedWindow);
+
             Assert.False(closedForm.IsActiveWindow);
+            Assert.False(closedForm.IsMinimizedWindow);
+
             Assert.False(minForm.IsActiveWindow);
+            Assert.True(minForm.IsMinimizedWindow);
+
+            Assert.False(sleepForm.IsActiveWindow);
+            Assert.True(sleepForm.IsMinimizedWindow);
 
             Assert.Equal(System.Drawing.Color.FromArgb(18, 52, 84), openForm.BackColor);
             Assert.Equal(System.Drawing.Color.FromArgb(28, 34, 46), closedForm.BackColor);
-            Assert.Equal(System.Drawing.Color.FromArgb(28, 34, 46), minForm.BackColor);
+            Assert.Equal(System.Drawing.Color.FromArgb(13, 59, 62), minForm.BackColor);
+            Assert.Equal(System.Drawing.Color.FromArgb(13, 59, 62), sleepForm.BackColor);
 
-            // Updating item state toggles active state and BackColor
+            // Updating item state toggles active and minimized states and BackColor
             closedForm.UpdateItem(openItem);
             Assert.True(closedForm.IsActiveWindow);
+            Assert.False(closedForm.IsMinimizedWindow);
             Assert.Equal(System.Drawing.Color.FromArgb(18, 52, 84), closedForm.BackColor);
+
+            closedForm.UpdateItem(minItem);
+            Assert.False(closedForm.IsActiveWindow);
+            Assert.True(closedForm.IsMinimizedWindow);
+            Assert.Equal(System.Drawing.Color.FromArgb(13, 59, 62), closedForm.BackColor);
 
             closedForm.UpdateItem(closedItem);
             Assert.False(closedForm.IsActiveWindow);
+            Assert.False(closedForm.IsMinimizedWindow);
             Assert.Equal(System.Drawing.Color.FromArgb(28, 34, 46), closedForm.BackColor);
         });
 
     [Fact]
-    public void OverviewCardTransitionsPreservesIsActiveWindow()
+    public void OverviewCardTransitionsPreservesIsActiveAndMinimizedWindow()
     {
         var transitions = new OverviewCardTransitions();
-        var card = new PlaceholderAnnotation((IntPtr)10, "Terminal", new WorldRect { W = 300, H = 200 },
-            IsActiveWindow: true);
+        var activeCard = new PlaceholderAnnotation((IntPtr)10, "Terminal", new WorldRect { W = 300, H = 200 },
+            IsActiveWindow: true, IsMinimizedWindow: false);
+        var minCard = new PlaceholderAnnotation((IntPtr)11, "Editor", new WorldRect { W = 300, H = 200 },
+            IsActiveWindow: false, IsMinimizedWindow: true);
 
-        var input = new OverviewCardInput(Guid.NewGuid(), card, OverviewCardMode.Simple);
-        var result = transitions.Update([input], 100);
+        var input1 = new OverviewCardInput(Guid.NewGuid(), activeCard, OverviewCardMode.Simple);
+        var input2 = new OverviewCardInput(Guid.NewGuid(), minCard, OverviewCardMode.Simple);
+        var result = transitions.Update([input1, input2], 100);
 
-        var output = Assert.Single(result);
-        Assert.True(output.IsActiveWindow, "OverviewCardTransitions must preserve IsActiveWindow property");
+        Assert.Equal(2, result.Count);
+        Assert.True(result[0].IsActiveWindow, "OverviewCardTransitions must preserve IsActiveWindow property");
+        Assert.False(result[0].IsMinimizedWindow);
+        Assert.False(result[1].IsActiveWindow);
+        Assert.True(result[1].IsMinimizedWindow, "OverviewCardTransitions must preserve IsMinimizedWindow property");
     }
 
     [Fact]

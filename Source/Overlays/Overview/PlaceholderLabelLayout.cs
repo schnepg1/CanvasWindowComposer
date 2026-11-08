@@ -12,7 +12,9 @@ internal sealed record PlaceholderAnnotation(IntPtr Handle, string Title, WorldR
     /// <summary>Canvas Peek hover dwell for this card; 0..1 while arming, null otherwise.</summary>
     double? PeekProgress = null,
     /// <summary>Whether this placeholder card represents a live/active running window (open application or folder).</summary>
-    bool IsActiveWindow = false);
+    bool IsActiveWindow = false,
+    /// <summary>Whether this placeholder card represents a running window that is minimized or sleeping.</summary>
+    bool IsMinimizedWindow = false);
 internal sealed record PlaceholderLabel(PlaceholderAnnotation Card, Rect Rect, double FontSize);
 
 /// <summary>Card-local titles: bounds, padding and type all scale with the camera.</summary>

@@ -25,6 +25,17 @@ internal sealed partial class OverviewManager
         return card?.IsActiveWindow == true;
     }
 
+    private bool IsMinimizedWindowCard(IntPtr cardHandle, PlaceholderForm? card)
+    {
+        if (_cardSources.TryGetValue(cardHandle, out var source) && source != IntPtr.Zero)
+        {
+            return (_wm.UsesCachedPreview(source)
+                || (_win32.GetWindowStyle(source) & (int)WINDOW_STYLE.WS_MINIMIZE) != 0)
+                && _win32.GetWindowProcessId(source) != 0;
+        }
+        return card?.IsMinimizedWindow == true;
+    }
+
     public void AttachPlaceholderWorkspace(WorkspaceService workspace)
     {
         if (_placeholderWorkspace != null)
@@ -168,7 +179,8 @@ internal sealed partial class OverviewManager
                     LabelOpacity: image != null ? 0 : 1, Logo: logo,
                     LaunchStatus: placeholder?.LaunchStatus, LogoBounds: placeholder?.OverviewLogoBounds,
                     ImageIsOverlay: image != null && placeholder?.OverviewImageIsOverlay == true,
-                    IsActiveWindow: IsActiveWindowCard(entry.HWnd, placeholder)));
+                    IsActiveWindow: IsActiveWindowCard(entry.HWnd, placeholder),
+                    IsMinimizedWindow: IsMinimizedWindowCard(entry.HWnd, placeholder)));
                 hasRestoreFallback |= restoreFallback;
             }
             else if (visible && _overviewItemIds.TryGetValue(entry.HWnd, out var id))
@@ -198,14 +210,16 @@ internal sealed partial class OverviewManager
                         Logo: card.OverviewLogo, LaunchStatus: card.LaunchStatus,
                         LogoBounds: card.OverviewLogoBounds, ImageIsOverlay: card.OverviewImageIsOverlay,
                         PeekProgress: PeekHoverProgress(entry.HWnd, gauge),
-                        IsActiveWindow: IsActiveWindowCard(entry.HWnd, card)),
+                        IsActiveWindow: IsActiveWindowCard(entry.HWnd, card),
+                        IsMinimizedWindow: IsMinimizedWindowCard(entry.HWnd, card)),
                         simple ? OverviewCardMode.Simple : OverviewCardMode.Detailed, underlay, stagger,
                         DetailReady: simple || image != null));
                 }
                 else
                     inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i),
                         PeekProgress: PeekHoverProgress(entry.HWnd, gauge),
-                        IsActiveWindow: IsActiveWindowCard(entry.HWnd, null)),
+                        IsActiveWindow: IsActiveWindowCard(entry.HWnd, null),
+                        IsMinimizedWindow: IsMinimizedWindowCard(entry.HWnd, null)),
                         OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd), stagger));
             }
             else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)
