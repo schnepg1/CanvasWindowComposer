@@ -790,20 +790,40 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private static string? LoadTeamArchitectureCvl()
+    private static string? LoadTeamArchitectureCvl(string? templatePath = null)
     {
         try
         {
+            if (string.IsNullOrEmpty(templatePath))
+            {
+                var config = TeamTelemetryConfig.Load();
+                templatePath = !string.IsNullOrEmpty(config.CvlTemplate)
+                    ? config.CvlTemplate
+                    : TeamTelemetryConfig.DefaultCvlTemplate;
+            }
+
+            if (Path.IsPathRooted(templatePath) && File.Exists(templatePath))
+            {
+                return File.ReadAllText(templatePath);
+            }
+
             var candidates = new List<string>
             {
-                Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "team_architecture_cvl.json"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".agents", "teams", "team_architecture_cvl.json"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CanvasWindowComposer", "Teams", "team_architecture_cvl.json")
+                templatePath,
+                Path.Combine(Environment.CurrentDirectory, templatePath),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, templatePath),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", templatePath),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CanvasWindowComposer", "Teams", "team_architecture_cvl.json"),
+                // Fallbacks to default template
+                Path.Combine(Environment.CurrentDirectory, TeamTelemetryConfig.DefaultCvlTemplate),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, TeamTelemetryConfig.DefaultCvlTemplate),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", TeamTelemetryConfig.DefaultCvlTemplate)
             };
 
             string? curr = Environment.CurrentDirectory;
             for (int i = 0; i < 4 && curr != null; i++)
             {
+                candidates.Add(Path.Combine(curr, templatePath));
                 candidates.Add(Path.Combine(curr, ".agents", "teams", "team_architecture_cvl.json"));
                 curr = Path.GetDirectoryName(curr);
             }
@@ -811,13 +831,14 @@ internal sealed partial class OverviewManager
             string? baseDir = AppDomain.CurrentDomain.BaseDirectory;
             for (int i = 0; i < 4 && baseDir != null; i++)
             {
+                candidates.Add(Path.Combine(baseDir, templatePath));
                 candidates.Add(Path.Combine(baseDir, ".agents", "teams", "team_architecture_cvl.json"));
                 baseDir = Path.GetDirectoryName(baseDir);
             }
-
             foreach (var c in candidates)
             {
-                if (File.Exists(c)) return File.ReadAllText(c);
+                if (!string.IsNullOrEmpty(c) && File.Exists(c))
+                    return File.ReadAllText(c);
             }
         }
         catch { }
