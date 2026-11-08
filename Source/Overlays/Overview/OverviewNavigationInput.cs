@@ -22,9 +22,24 @@ internal static class OverviewNavigationInput
 
     // Preserve fractional deltas for smooth wheel and touchpad input.
     public static (double PanX, double PanY, double ZoomNotches) TranslateWheel(
-        int delta, bool horizontal, bool control, bool shift = false)
+        int delta, bool horizontal, bool control, bool shift = false, bool isTouchpad = false)
     {
+        if (isTouchpad)
+        {
+            // Touchpad input:
+            // - Pinch gesture is sent as Ctrl+wheel -> Zoom
+            // - 2-finger horizontal scroll -> Pan X
+            // - 2-finger vertical scroll -> Pan Y
+            if (control) return (0, 0, delta / WheelDelta);
+            if (horizontal || shift) return (delta, 0, 0);
+            return (0, delta, 0);
+        }
+
+        // Physical mouse input / synthetic fallback:
+        // - Shift+wheel or horizontal tilt -> Pan X
+        // - Ctrl+wheel -> Zoom (standard Windows shortcut)
+        // - Bare wheel -> Zoom (canvas overview default)
         if (horizontal || shift) return (delta, 0, 0);
-        return control ? (0, delta, 0) : (0, 0, delta / WheelDelta);
+        return (0, 0, delta / WheelDelta);
     }
 }

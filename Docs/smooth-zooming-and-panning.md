@@ -282,6 +282,32 @@ During rapid mouse wheel bursts between distant overviews (5%) and close inspect
 
 ---
 
+### 3.11. Precision Touchpad & Trackpad Pinch Parity with Opt-Out Zoom Acceleration
+
+#### The Problem
+While desktop physical mouse wheels generate detented wheel ticks, Windows Precision Touchpads (PTP) report multi-touch pinch and scroll gestures through higher-frequency messages:
+1. Windows touchpad drivers deliver two-finger pinch-to-zoom as high-frequency `WM_MOUSEWHEEL` messages with `MK_CONTROL` set, or direct `WM_GESTURE` (`GID_ZOOM`) messages. Earlier translation routines repurposed `Ctrl` for vertical pan, inadvertently causing touchpad pinch to pan vertically instead of zooming, while two-finger vertical scrolling caused unintended zoom hops.
+2. In `SmoothZoomTracker`, cadence calculations clamped delta-time to `MinIntervalMs = 12.0`, which artificially throttled 120 Hz and 144 Hz precision touchpad reports.
+3. At distant camera scales ($Z < 0.25$), tiny sub-detent fractional wheel notches fell below the previous `StopThreshold = 0.0005`, dropping micro-gestures until multiple reports accumulated.
+4. Users requiring uniform, constant-speed zoom steps had no option to opt out of velocity acceleration while retaining smooth critically-damped spring transitions.
+
+#### The Architecture & Solution
+- **Hardware Device Source Interop:**
+  In [`NativeInputInterop.cs`](file:///Source/System/NativeInputInterop.cs) and [`OverviewOverlay.cs`](file:///Source/Overlays/Overview/OverviewOverlay.cs), `GetCurrentInputMessageSource` dynamically queries whether an incoming wheel event originated from a precision touchpad (`IMDT_TOUCHPAD`) or a standard mouse (`IMDT_MOUSE`).
+- **Natural Touchpad Gesture Mapping:**
+  In [`OverviewNavigationInput.cs`](file:///Source/Overlays/Overview/OverviewNavigationInput.cs), `TranslateWheel` normalizes input across device types:
+  - Touchpad two-finger vertical scroll $\rightarrow$ Natural 2D canvas Pan Y.
+  - Touchpad two-finger horizontal scroll $\rightarrow$ Natural 2D canvas Pan X.
+  - Touchpad pinch gesture (`control == true`) $\rightarrow$ Focal point Zoom.
+  - Direct Win32 `WM_GESTURE` (`GID_ZOOM`) $\rightarrow$ Decoded distance ratio to zoom notches dispatched to `ZoomOverview`.
+  - Desktop physical mouse wheel $\rightarrow$ Zoom (canvas overview default) and Ctrl+wheel $\rightarrow$ Zoom (standard Windows shortcut).
+- **High-Cadence Un-throttling & Deadband Removal:**
+  In [`SmoothZoomTracker.cs`](file:///Source/Core/SmoothZoomTracker.cs), `MinIntervalMs` was decreased to $2.0\text{ ms}$, accommodating high-refresh-rate touchpads up to $500\text{ Hz}$. The deadband threshold in `PushZoom` now evaluates against `OverviewCamera.ZoomEpsilon` ($1 \times 10^{-4}$), ensuring even single-unit fractional deltas ($\Delta = 1$, notches $\approx 0.0083$) initiate immediate smooth interpolation.
+- **Opt-Out Zoom Acceleration:**
+  Exposed via `ZoomAcceleration` in [`AppConfig.cs`](file:///Source/Application/AppConfig.cs) and [`ZoomSettingsControl.cs`](file:///Source/Application/ZoomSettingsControl.cs) (enabled by default). When disabled, the cadence multiplier is locked to $1.0\times$, maintaining linear zoom steps while fully preserving Frame-0 immediacy and smooth critically-damped exponential spring decay.
+
+---
+
 ## 4. Troubleshooting Guide
 
 Use this table if regressions occur in future changes:
@@ -295,6 +321,7 @@ Use this table if regressions occur in future changes:
 | **Zoom feels laggy on the first mouse wheel tick** | Frame 0 immediate step missing from smooth zoom tracker | `SmoothZoomTracker.cs`<br>`OverviewManager.SmoothZoom.cs` |
 | **Frame drops during camera drag with multiple tool windows open** | Redundant Win32 `SetWindowPos` calls per motion frame | `OverviewManager.cs` (`!isMoving` guard on `RaiseCanvasPanels`) |
 | **1-frame hitch right when camera stops moving in dense workspaces** | Settle staggering bypassed or failing to partition DWM unsuppression | `OverviewThumbnails.cs` (`BeginSettle`, `AdvanceSettle`)<br>`OverviewManager.cs` (`ReconcileVisualFrame`) |
+| **Touchpad pinch pans canvas instead of zooming** | Touchpad vs mouse hardware detection missing or inverted `TranslateWheel` mapping | `OverviewOverlay.cs`<br>`OverviewNavigationInput.cs` |
 
 ---
 

@@ -105,4 +105,59 @@ public class SmoothZoomIntegrationTests
                 if (!overview.SmoothZoomActive) break;
             }
         });
+
+    [Fact]
+    public void TouchpadPinch_SmoothZoomEnabled_AnimatesZoomTowardCursorFocalPoint()
+        => Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.SmoothZoom = true;
+            var before = overview.ViewCamera;
+
+            // Touchpad pinch gesture: isTouchpad = true, control = true, delta = -120
+            pass.OnWheel!(pass, 300, 300, -120, false, true, false, isTouchpad: true);
+            Assert.True(overview.SmoothZoomActive, "Touchpad pinch should activate smooth zoom");
+            Assert.Equal(before.Zoom * 0.9, overview.SmoothZoomTarget, 5);
+
+            // Animate
+            clock.Advance(16);
+            overview.AdvanceSmoothZoom(clock.TickCount64);
+            Assert.True(overview.ViewCamera.Zoom < before.Zoom);
+        });
+
+    [Fact]
+    public void TouchpadScroll_PansCameraSmoothly()
+        => Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var before = overview.ViewCamera;
+
+            // Touchpad two-finger vertical scroll: isTouchpad = true, control = false, delta = 50
+            pass.OnWheel!(pass, 300, 300, 50, false, false, false, isTouchpad: true);
+            Assert.False(overview.SmoothZoomActive, "Touchpad 2-finger scroll should NOT activate zoom");
+            Assert.Equal(before.Zoom, overview.ViewCamera.Zoom, 5);
+            Assert.NotEqual(before.Y, overview.ViewCamera.Y);
+        });
+
+    [Fact]
+    public void ZoomAcceleration_WhenDisabledInConfig_ExecutesConstantSpeedSteps()
+        => Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.SmoothZoom = true;
+            config.ZoomAcceleration = false;
+            overview.RefreshConfig();
+
+            var before = overview.ViewCamera;
+
+            // Notch 1
+            pass.OnWheel!(pass, 300, 300, -120, false, false, false);
+            double expectedTarget1 = before.Zoom * 0.90;
+            Assert.Equal(expectedTarget1, overview.SmoothZoomTarget, 5);
+
+            // Fast consecutive notch at dt = 25ms
+            clock.Advance(25);
+            pass.OnWheel!(pass, 300, 300, -120, false, false, false);
+
+            // When acceleration is disabled, target should be exactly expectedTarget1 * 0.90
+            double expectedTarget2 = expectedTarget1 * 0.90;
+            Assert.Equal(expectedTarget2, overview.SmoothZoomTarget, 5);
+        });
 }
