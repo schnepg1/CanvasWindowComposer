@@ -12,10 +12,6 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     private readonly Label _pathHeader, _details, _launchState;
     private readonly WorkspaceContextMenu _menu;
     private readonly ToolTip _resourceTip = new();
-    private System.Windows.Media.Imaging.BitmapSource? _overviewImage;
-    private Size _overviewSize;
-    private int _overviewDpi;
-    private int _overviewMaxDimension;
     private bool _itemApplied;
     internal bool IsActiveWindow => _item.State == "Open";
     internal bool IsMinimizedWindow => _item.State is "Minimized" or "Sleeping";
@@ -117,7 +113,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
         // card or invalidate its snapshot. Native size/DPI are checked separately.
         if (!appearanceChanged) return;
         _itemApplied = true;
-        _overviewImage = null;
+        OverviewCardImageCache.Default.Remove(_item.Id);
         Text = "Saved: " + _item.Title;
         BackColor = _item.State == "Open" ? Color.FromArgb(18, 52, 84) : _item.State is "Minimized" or "Sleeping" ? Color.FromArgb(13, 59, 62) : Color.FromArgb(28, 34, 46);
         _title.UpdateItem(item);
@@ -149,7 +145,15 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     internal System.Windows.Media.Imaging.BitmapSource GetOverviewImage(int maxDimension = 0)
     {
         if (maxDimension < 0) throw new ArgumentOutOfRangeException(nameof(maxDimension));
-        if (CachedOverviewImage != null && _overviewMaxDimension == maxDimension) return _overviewImage!;
+        if (OverviewCardImageCache.Default.TryGet(_item.Id, out var cached) &&
+            cached != null &&
+            cached.Dimension == maxDimension &&
+            cached.Dpi == DeviceDpi &&
+            cached.Size == Size)
+        {
+            return cached.Image;
+        }
+
         PerformLayout();
         double scale = maxDimension == 0 ? 1 : Math.Min(1, (double)maxDimension / Math.Max(Width, Height));
         var target = new Size(Math.Max(1, (int)Math.Ceiling(Width * scale)), Math.Max(1, (int)Math.Ceiling(Height * scale)));
@@ -173,10 +177,9 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
             var image = System.Windows.Media.Imaging.BitmapSource.Create(target.Width, target.Height, 96, 96,
                 System.Windows.Media.PixelFormats.Pbgra32, null, bits.Scan0, checked(bits.Stride * target.Height), bits.Stride);
             image.Freeze();
-            _overviewSize = Size;
-            _overviewDpi = DeviceDpi;
-            _overviewMaxDimension = maxDimension;
-            return _overviewImage = image;
+            var entry = CachedCardImage.Create(image, maxDimension, DeviceDpi, Size);
+            OverviewCardImageCache.Default.Set(_item.Id, entry);
+            return image;
         }
         finally { bitmap.UnlockBits(bits); }
     }
@@ -184,7 +187,19 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     // Gesture rendering may borrow this immutable image, but must never trigger
     // DrawToBitmap/pixel conversion in response to a pointer or wheel event.
     internal System.Windows.Media.ImageSource? CachedOverviewImage
-        => _overviewSize == Size && _overviewDpi == DeviceDpi ? _overviewImage : null;
+    {
+        get
+        {
+            if (OverviewCardImageCache.Default.TryGet(_item.Id, out var cached) &&
+                cached != null &&
+                cached.Dpi == DeviceDpi &&
+                cached.Size == Size)
+            {
+                return cached.Image;
+            }
+            return null;
+        }
+    }
 
     private void DrawOverview(Graphics graphics)
     {
@@ -212,7 +227,8 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     }
 
     internal System.Windows.Media.ImageSource? OverviewLogo => _title.OverviewLogo;
-    internal bool OverviewImageIsOverlay => _overviewMaxDimension > 0;
+    internal bool OverviewImageIsOverlay
+        => OverviewCardImageCache.Default.TryGet(_item.Id, out var cached) && cached != null && cached.Dimension > 0;
     internal System.Windows.Rect OverviewLogoBounds
     {
         get
@@ -224,7 +240,7 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
     }
     internal string? LaunchStatus => _launchState.Text.Length > 0 ? _launchState.Text : null;
 
-    internal void ReleaseOverviewImage() => _overviewImage = null;
+    internal void ReleaseOverviewImage() => OverviewCardImageCache.Default.Remove(_item.Id);
 
     protected override void OnLayout(LayoutEventArgs e)
     {
@@ -255,7 +271,13 @@ internal sealed class PlaceholderForm : Form, IWorkspacePlaceholder
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { PlacementChanged = null; _overviewImage = null; _menu.Dispose(); _resourceTip.Dispose(); }
+        if (disposing)
+        {
+            PlacementChanged = null;
+            OverviewCardImageCache.Default.Remove(_item.Id);
+            _menu.Dispose();
+            _resourceTip.Dispose();
+        }
         base.Dispose(disposing);
     }
 
@@ -290,4 +312,3 @@ internal static class WorkspaceDialogs
         }
     }
 }
-

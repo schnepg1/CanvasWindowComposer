@@ -199,11 +199,12 @@ internal sealed partial class OverviewManager
                     bool upgrade = image is System.Windows.Media.Imaging.BitmapSource bitmap
                         && dimension > Math.Max(bitmap.PixelWidth, bitmap.PixelHeight)
                         && projectedEdge > Math.Max(bitmap.PixelWidth, bitmap.PixelHeight) * 1.25;
-                    if (!simple && (image == null || upgrade))
+                    bool wireframeLod = MotionActive && (camera.Zoom < OverviewZoomDefaults.DistantLodZoomThreshold || projectedEdge < OverviewZoomDefaults.DistantLodProjectedSizeThreshold);
+                    if (!simple && !wireframeLod && (image == null || upgrade))
                         _cardImages.RequestImage(id, priority ? -1 : stagger, () =>
                         {
                             if (!card.IsDisposed) card.GetOverviewImage(dimension);
-                        });
+                        }, dimension);
                     bool underlay = _cardSources.TryGetValue(entry.HWnd, out var source) && CanShowUnderlay(source);
                     inputs.Add(new(id, new(entry.HWnd, title, entry.World, priority,
                         image, new ArraySegment<WorldRect>(occluders, 0, i),
@@ -216,11 +217,14 @@ internal sealed partial class OverviewManager
                         DetailReady: simple || image != null));
                 }
                 else
+                {
+                    OverviewCardImageCache.Default.Demote(id);
                     inputs.Add(new(id, new(entry.HWnd, "", entry.World, priority, Occluders: new ArraySegment<WorldRect>(occluders, 0, i),
                         PeekProgress: PeekHoverProgress(entry.HWnd, gauge),
                         IsActiveWindow: IsActiveWindowCard(entry.HWnd, null),
                         IsMinimizedWindow: IsMinimizedWindowCard(entry.HWnd, null)),
                         OverviewCardMode.Live, !_wm.UsesCachedPreview(entry.HWnd) && _thumbnails.HasLiveSource(entry.HWnd), stagger));
+                }
             }
             else if (_placeholderTitles.ContainsKey(entry.HWnd) && Control.FromHandle(entry.HWnd) is PlaceholderForm offscreen)
                 offscreen.ReleaseOverviewImage();

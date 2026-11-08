@@ -15,6 +15,7 @@ internal sealed class OverviewCardTransitions
     internal const long DurationMs = 150;
     private sealed class Entry
     {
+        public Guid Id;
         public OverviewCardMode Target;
         public double Detail, Live, FromDetail, FromLive;
         public long Started;
@@ -45,9 +46,16 @@ internal sealed class OverviewCardTransitions
             if (!_entries.TryGetValue(input.Id, out var e))
             {
                 var initial = input.Mode == OverviewCardMode.Detailed && !input.DetailReady ? OverviewCardMode.Simple : input.Mode;
-                e = new Entry { Target = initial, Detail = initial == OverviewCardMode.Detailed ? 1 : 0,
+                e = new Entry {
+                    Id = input.Id,
+                    Target = initial,
+                    Detail = initial == OverviewCardMode.Detailed ? 1 : 0,
                     Live = input.Mode == OverviewCardMode.Live ? 1 : 0 };
                 _entries.Add(input.Id, e);
+                if (input.Mode == OverviewCardMode.Live)
+                {
+                    OverviewCardImageCache.Default.Demote(input.Id);
+                }
             }
             Advance(e, now);
             if (input.Card.Image != null)
@@ -116,7 +124,14 @@ internal sealed class OverviewCardTransitions
         double eased = t * t * (3 - 2 * t);
         e.Detail = e.FromDetail + ((e.Target == OverviewCardMode.Detailed ? 1 : 0) - e.FromDetail) * eased;
         e.Live = e.FromLive + ((e.Target == OverviewCardMode.Live ? 1 : 0) - e.FromLive) * eased;
-        if (t >= 1) e.Moving = false;
+        if (t >= 1)
+        {
+            e.Moving = false;
+            if (e.Target == OverviewCardMode.Live)
+            {
+                OverviewCardImageCache.Default.Demote(e.Id);
+            }
+        }
     }
 
     public void Clear()

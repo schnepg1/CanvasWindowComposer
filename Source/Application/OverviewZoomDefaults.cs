@@ -12,4 +12,7 @@ internal static class OverviewZoomDefaults
     public const double MagnifierMax = 5.0;
     public const double DistantLodZoomThreshold = 0.25;
     public const double DistantLodProjectedSizeThreshold = 40.0;
+
+    public const long DefaultCardImageBudgetBytes = 48L * 1024 * 1024; // 48 MB
+    public const int DefaultCardImageMaxCount = 64;
 }

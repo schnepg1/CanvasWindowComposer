@@ -28,14 +28,13 @@ internal sealed class PlaceholderArtwork : Control
     {
         Text = item.Title;
         AccessibleName = item.Title;
-        string key = item.IsFolder ? "folder" : item.ExecutablePath;
+        string key = PlaceholderArtworkCache.GetCacheKey(item);
         if (_symbolKey != key)
         {
             _symbolKey = key;
-            _symbol?.Dispose();
-            _symbol = LoadSymbol(item);
-            _overviewLogo = null;
-            if (_symbol != null) _overviewLogo = CreateOverviewLogo(_symbol);
+            var artwork = PlaceholderArtworkCache.Default.GetArtwork(item);
+            _symbol = artwork.Symbol;
+            _overviewLogo = artwork.OverviewLogo;
         }
         Invalidate();
     }
@@ -206,7 +205,7 @@ internal sealed class PlaceholderArtwork : Control
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _symbol?.Dispose(); _symbol = null; _overviewLogo = null; }
+        if (disposing) { _symbol = null; _overviewLogo = null; }
         base.Dispose(disposing);
     }
 }

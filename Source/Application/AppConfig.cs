@@ -54,6 +54,8 @@ internal interface IAppConfig
     double OverviewSimpleCardEnterZoom => OverviewZoomDefaults.SimpleCardEnter;
     double OverviewSimpleCardExitZoom => OverviewZoomDefaults.SimpleCardExit;
     double MaximumZoom => OverviewZoomDefaults.MaximumZoom;
+    long OverviewCardImageBudgetBytes => OverviewZoomDefaults.DefaultCardImageBudgetBytes;
+    int OverviewCardImageMaxCount => OverviewZoomDefaults.DefaultCardImageMaxCount;
 }
 
 /// <summary>

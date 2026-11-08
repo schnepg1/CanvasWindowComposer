@@ -8,6 +8,7 @@ namespace CanvasDesktop;
 /// <summary>
 /// UI-thread-owned LRU cache. One background capture maximum, no queued jobs.
 /// Image bytes include the in-flight reservation; all surfaces/bitmaps have one owner.
+/// Eviction is O(1) via an internal doubly-linked list.
 /// </summary>
 internal sealed class WindowPreviewCache : IDisposable
 {
@@ -22,7 +23,8 @@ internal sealed class WindowPreviewCache : IDisposable
         public long Bytes => (long)Image.Width * Image.Height * 4;
     }
     private readonly Dictionary<IntPtr, AutomaticParkingToken> _identities = new();
-    private readonly Dictionary<IntPtr, Entry> _entries = new();
+    private readonly Dictionary<IntPtr, LinkedListNode<Entry>> _entries = new();
+    private readonly LinkedList<Entry> _lruList = new();
     private readonly IWindowPreviewCapture _capture;
     private readonly Func<Bitmap, ICachedPreviewSurface> _createSurface;
     private readonly long _budget;
@@ -67,21 +69,30 @@ internal sealed class WindowPreviewCache : IDisposable
     }
 
     public bool HasImage(AutomaticParkingToken key)
-        => !_disposed && _entries.TryGetValue(key.Identity.Handle, out var e) && e.Key == key;
+        => !_disposed && _entries.TryGetValue(key.Identity.Handle, out var node) && node.Value.Key == key;
 
     public bool RequestCapture(AutomaticParkingToken key, Size sourceSize)
     {
         var size = Fit(sourceSize);
         long bytes = _capture.ReservationBytes(sourceSize, size);
+        var surfacesToDispose = new List<ICachedPreviewSurface>();
+        var imagesToDispose = new List<Bitmap>();
         lock (_workerGate)
         {
             if (_disposed || _busy || bytes == 0 || bytes > _budget || !IsObserved(key)) return false;
             // Remove an older frame before reserving; no unaccounted duplicate images.
-            RemoveImage(key.Identity.Handle);
-            while (_used + bytes > _budget || _entries.Count >= MaxEntries) EvictOldest();
+            var older = RemoveImageUnderLock(key.Identity.Handle, surfacesToDispose);
+            if (older != null) imagesToDispose.Add(older.Image);
+            while (_used + bytes > _budget || _entries.Count >= MaxEntries)
+            {
+                EvictOldestUnderLock(surfacesToDispose, imagesToDispose);
+            }
             _reserved = bytes;
             _busy = true;
         }
+        foreach (var s in surfacesToDispose) try { s.Dispose(); } catch { }
+        foreach (var img in imagesToDispose) try { img.Dispose(); } catch { }
+
         var thread = new Thread(() =>
         {
             Bitmap? image = null;
@@ -111,21 +122,46 @@ internal sealed class WindowPreviewCache : IDisposable
         }
         var (key, image) = completed.Value;
         if (image == null) return;
-        if (_disposed || !IsObserved(key) || image.Width > MaxWidth || image.Height > MaxHeight
-            || (long)image.Width * image.Height * 4 + _used > _budget)
-        { image.Dispose(); return; }
+        if (_disposed || !IsObserved(key) || image.Width > MaxWidth || image.Height > MaxHeight)
+        {
+            image.Dispose();
+            return;
+        }
+        long imageBytes = (long)image.Width * image.Height * 4;
         var entry = new Entry { Key = key, Image = image, Used = ++_sequence };
-        _entries[key.Identity.Handle] = entry;
-        _used += entry.Bytes;
-        Changed?.Invoke();
+        bool accepted = false;
+        lock (_workerGate)
+        {
+            if (!_disposed && _used + imageBytes <= _budget)
+            {
+                var node = new LinkedListNode<Entry>(entry);
+                _lruList.AddFirst(node);
+                _entries[key.Identity.Handle] = node;
+                _used += imageBytes;
+                accepted = true;
+            }
+        }
+        if (accepted)
+        {
+            Changed?.Invoke();
+        }
+        else
+        {
+            image.Dispose();
+        }
     }
 
     public IntPtr GetSource(AutomaticParkingToken key)
     {
         if (!HasImage(key)) return IsObserved(key) && !_disposed ? GetFallbackSource() : IntPtr.Zero;
-        var e = _entries[key.Identity.Handle];
-        e.Used = ++_sequence;
-        try { e.Surface ??= _createSurface(e.Image); return e.Surface.Handle; }
+        var node = _entries[key.Identity.Handle];
+        node.Value.Used = ++_sequence;
+        if (node != _lruList.First)
+        {
+            _lruList.Remove(node);
+            _lruList.AddFirst(node);
+        }
+        try { node.Value.Surface ??= _createSurface(node.Value.Image); return node.Value.Surface.Handle; }
         catch { RemoveImage(key.Identity.Handle); return IntPtr.Zero; }
     }
 
@@ -139,11 +175,31 @@ internal sealed class WindowPreviewCache : IDisposable
                 int h = Math.Min(90, w);
                 if (w < 1) return IntPtr.Zero;
                 long bytes = (long)w * h * 4;
-                // Do not displace an in-flight capture to create a placeholder.
-                if (_reserved + bytes > _budget) return IntPtr.Zero;
-                while (_used + _reserved + bytes > _budget) EvictOldest();
+                var surfacesToDispose = new List<ICachedPreviewSurface>();
+                var imagesToDispose = new List<Bitmap>();
+                lock (_workerGate)
+                {
+                    // Do not displace an in-flight capture to create a placeholder.
+                    if (_reserved + bytes > _budget) return IntPtr.Zero;
+                    while (_used + _reserved + bytes > _budget)
+                    {
+                        if (_lruList.Last != null)
+                        {
+                            var evicted = RemoveImageUnderLock(_lruList.Last.Value.Key.Identity.Handle, surfacesToDispose);
+                            if (evicted != null) imagesToDispose.Add(evicted.Image);
+                        }
+                        else
+                        {
+                            ClearFallbackUnderLock(surfacesToDispose);
+                            break;
+                        }
+                    }
+                    _used += bytes;
+                }
+                foreach (var s in surfacesToDispose) try { s.Dispose(); } catch { }
+                foreach (var img in imagesToDispose) try { img.Dispose(); } catch { }
+
                 _fallback = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
-                _used += bytes;
                 using var g = Graphics.FromImage(_fallback);
                 g.Clear(Color.FromArgb(38, 42, 48));
                 if (w >= 100) g.DrawString("Preview unavailable", SystemFonts.MessageBoxFont!, Brushes.LightGray,
@@ -158,7 +214,7 @@ internal sealed class WindowPreviewCache : IDisposable
     // Overview close releases native surfaces but keeps bounded CPU images for reopening.
     public void ReleaseSurfaces()
     {
-        foreach (var e in _entries.Values) { e.Surface?.Dispose(); e.Surface = null; }
+        foreach (var node in _entries.Values) { node.Value.Surface?.Dispose(); node.Value.Surface = null; }
         _fallbackSurface?.Dispose();
         _fallbackSurface = null;
     }
@@ -167,36 +223,100 @@ internal sealed class WindowPreviewCache : IDisposable
     public void Clear()
     {
         _identities.Clear();
-        foreach (var handle in new List<IntPtr>(_entries.Keys)) RemoveImage(handle);
+        List<IntPtr> handles;
+        lock (_workerGate)
+        {
+            handles = new List<IntPtr>(_entries.Keys);
+        }
+        foreach (var handle in handles) RemoveImage(handle);
         ClearFallback();
     }
     private bool IsObserved(AutomaticParkingToken key)
         => _identities.TryGetValue(key.Identity.Handle, out var current) && current == key;
-    private void EvictOldest()
+
+    private void EvictOldestUnderLock(List<ICachedPreviewSurface> surfacesToDispose, List<Bitmap> imagesToDispose)
     {
-        Entry? oldest = null;
-        foreach (var e in _entries.Values) if (oldest == null || e.Used < oldest.Used) oldest = e;
-        if (oldest != null) RemoveImage(oldest.Key.Identity.Handle);
-        else ClearFallback();
+        if (_lruList.Last != null)
+        {
+            var evicted = RemoveImageUnderLock(_lruList.Last.Value.Key.Identity.Handle, surfacesToDispose);
+            if (evicted != null) imagesToDispose.Add(evicted.Image);
+        }
+        else
+        {
+            ClearFallbackUnderLock(surfacesToDispose);
+        }
     }
-    private void ClearFallback()
+
+    private void ClearFallbackUnderLock(List<ICachedPreviewSurface>? surfacesToDispose = null)
     {
-        _fallbackSurface?.Dispose(); _fallbackSurface = null;
+        if (_fallbackSurface != null)
+        {
+            if (surfacesToDispose != null) surfacesToDispose.Add(_fallbackSurface);
+            else try { _fallbackSurface.Dispose(); } catch { }
+            _fallbackSurface = null;
+        }
         if (_fallback != null)
         {
             _used -= (long)_fallback.Width * _fallback.Height * 4;
-            _fallback.Dispose(); _fallback = null;
+            try { _fallback.Dispose(); } catch { }
+            _fallback = null;
             Changed?.Invoke();
         }
     }
+
+    private void ClearFallback()
+    {
+        ICachedPreviewSurface? surface = null;
+        Bitmap? fallback = null;
+        lock (_workerGate)
+        {
+            surface = _fallbackSurface;
+            _fallbackSurface = null;
+            if (_fallback != null)
+            {
+                fallback = _fallback;
+                _used -= (long)_fallback.Width * _fallback.Height * 4;
+                _fallback = null;
+            }
+        }
+        try { surface?.Dispose(); } catch { }
+        if (fallback != null)
+        {
+            try { fallback.Dispose(); } catch { }
+            Changed?.Invoke();
+        }
+    }
+
+    private Entry? RemoveImageUnderLock(IntPtr handle, List<ICachedPreviewSurface>? surfacesToDispose = null)
+    {
+        if (!_entries.Remove(handle, out var node)) return null;
+        _lruList.Remove(node);
+        var e = node.Value;
+        _used -= e.Bytes;
+        if (e.Surface != null)
+        {
+            if (surfacesToDispose != null) surfacesToDispose.Add(e.Surface);
+            else try { e.Surface.Dispose(); } catch { }
+            e.Surface = null;
+        }
+        return e;
+    }
+
     private void RemoveImage(IntPtr handle)
     {
-        if (!_entries.Remove(handle, out var e)) return;
-        _used -= e.Bytes;
-        try { e.Surface?.Dispose(); }
-        finally { e.Image.Dispose(); }
-        Changed?.Invoke();
+        Entry? e;
+        lock (_workerGate)
+        {
+            e = RemoveImageUnderLock(handle);
+        }
+        if (e != null)
+        {
+            try { e.Surface?.Dispose(); } catch { }
+            try { e.Image.Dispose(); } catch { }
+            Changed?.Invoke();
+        }
     }
+
     public void Dispose()
     {
         lock (_workerGate)
