@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -15,6 +17,54 @@ internal sealed class AiConnectionPanel : UserControl
     {
         public override string ToString() => Account?.ToString() ?? "Add another account or workspace…";
     }
+
+    private sealed class SettingsData
+    {
+        public int SourceIndex { get; set; }
+        public string? AccountId { get; set; }
+        public string? ModelId { get; set; }
+    }
+
+    internal static string SettingsPath { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "CanvasWindowComposer", "AI", "composer_settings.json");
+
+    private string? _savedModelId;
+
+    private static SettingsData LoadSettings()
+    {
+        try
+        {
+            if (File.Exists(SettingsPath))
+            {
+                string json = File.ReadAllText(SettingsPath);
+                return JsonSerializer.Deserialize<SettingsData>(json) ?? new();
+            }
+        }
+        catch { }
+        return new();
+    }
+
+    private void SaveSettings()
+    {
+        if (_updating) return;
+        try
+        {
+            string? dir = Path.GetDirectoryName(SettingsPath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            string model = _model.SelectedItem is AiModel selected ? selected.Id : _model.Text.Trim();
+            var data = new SettingsData
+            {
+                SourceIndex = _source.SelectedIndex,
+                AccountId = SelectedAccount?.Id,
+                ModelId = string.IsNullOrWhiteSpace(model) ? _savedModelId : model
+            };
+            string json = JsonSerializer.Serialize(data);
+            File.WriteAllText(SettingsPath, json);
+        }
+        catch { }
+    }
+
     private readonly Func<string, ICanvasComposerProvider> _apiProvider;
     private readonly IComposerCredentials _credentials;
     private readonly IChatGptAccounts _accounts;
@@ -62,7 +112,12 @@ internal sealed class AiConnectionPanel : UserControl
         _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
         _layout.ColumnStyles.Add(new(SizeType.Percent, 100));
         foreach (int height in new[] { 30, 70, 0, 34, 32 }) _layout.RowStyles.Add(new(SizeType.Absolute, height));
-        _source.Items.AddRange(["OpenAI API key", "ChatGPT plan"]); _source.SelectedIndex = 0;
+        
+        var settings = LoadSettings();
+        _savedModelId = settings.ModelId;
+
+        _source.Items.AddRange(["OpenAI API key", "ChatGPT plan"]);
+        _source.SelectedIndex = (settings.SourceIndex >= 0 && settings.SourceIndex < _source.Items.Count) ? settings.SourceIndex : 0;
         _layout.Controls.Add(_source, 0, 0);
         _api.RowStyles.Add(new(SizeType.Absolute, 32)); _api.RowStyles.Add(new(SizeType.Absolute, 34));
         _api.ColumnStyles.Add(new(SizeType.Percent, 100)); _api.Controls.Add(_key, 0, 0);
@@ -81,17 +136,41 @@ internal sealed class AiConnectionPanel : UserControl
         {
             if (_updating) return;
             CancelPending(); InvalidateConnection(); ClearModels(); UpdateMode();
+            SaveSettings();
             if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true) _ = RefreshModelsAsync();
         };
         _account.SelectedIndexChanged += (_, _) =>
         {
             if (_updating) return;
             CancelPending(); InvalidateConnection(); ClearModels(); UpdateControls();
+            SaveSettings();
             if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true) _ = RefreshModelsAsync();
         };
         _key.TextChanged += (_, _) => { if (!_updating) { ClearModels(); InvalidateConnection(); } };
-        _model.TextChanged += (_, _) => { if (!_updating) InvalidateConnection(); };
-        _model.SelectedIndexChanged += (_, _) => { if (!_updating) InvalidateConnection(); };
+        _model.TextChanged += (_, _) =>
+        {
+            if (!_updating)
+            {
+                InvalidateConnection();
+                if (!ChatGpt && !string.IsNullOrWhiteSpace(_model.Text))
+                {
+                    _savedModelId = _model.Text.Trim();
+                    SaveSettings();
+                }
+            }
+        };
+        _model.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_updating)
+            {
+                InvalidateConnection();
+                if (_model.SelectedItem is AiModel m)
+                {
+                    _savedModelId = m.Id;
+                    SaveSettings();
+                }
+            }
+        };
         _signIn.Click += async (_, _) => await SignInAsync();
         _signOut.Click += async (_, _) => await SignOutAsync();
         _refresh.Click += async (_, _) => await RefreshModelsAsync();
@@ -104,7 +183,16 @@ internal sealed class AiConnectionPanel : UserControl
         };
         try { _key.Text = _credentials.Read() ?? ""; _remember.Checked = _key.TextLength > 0; }
         catch { Report("Windows could not read the saved API key. Enter a key to continue."); }
-        ReloadAccounts(null); UpdateMode();
+        ReloadAccounts(settings.AccountId);
+        if (!ChatGpt && !string.IsNullOrWhiteSpace(_savedModelId))
+        {
+            _model.Text = _savedModelId;
+        }
+        UpdateMode();
+        if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true)
+        {
+            _ = RefreshModelsAsync();
+        }
     }
 
     private static FlowLayoutPanel Actions(params Control[] controls)
@@ -145,6 +233,7 @@ internal sealed class AiConnectionPanel : UserControl
             finally { SetWaitingForBrowser(false); }
             if (token.IsCancellationRequested || IsDisposed) return;
             ReloadAccounts(account.Id);
+            SaveSettings();
             if (account.NeedsWelcome)
             {
                 _welcome();
@@ -164,7 +253,7 @@ internal sealed class AiConnectionPanel : UserControl
         {
             string result = await _accounts.SignOutAsync(account.Id, token);
             if (IsDisposed || token.IsCancellationRequested) return;
-            ReloadAccounts(account.Id); ClearModels(); Report(result);
+            ReloadAccounts(account.Id); ClearModels(); SaveSettings(); Report(result);
         });
     }
 
@@ -195,7 +284,16 @@ internal sealed class AiConnectionPanel : UserControl
         try
         {
             _model.Items.Clear(); _model.Items.AddRange(models.Cast<object>().ToArray());
-            if (models.Count > 0) _model.SelectedIndex = 0;
+            if (!string.IsNullOrEmpty(_savedModelId))
+            {
+                var match = models.FirstOrDefault(m => string.Equals(m.Id, _savedModelId, StringComparison.OrdinalIgnoreCase));
+                if (match != null) _model.SelectedItem = match;
+                else if (models.Count > 0) _model.SelectedIndex = 0;
+            }
+            else if (models.Count > 0)
+            {
+                _model.SelectedIndex = 0;
+            }
         }
         finally { _updating = false; }
         if (models.Count == 0) throw new AiConnectionException("No models are available for this connection.");

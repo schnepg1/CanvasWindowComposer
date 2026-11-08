@@ -66,6 +66,8 @@ public class CanvasComposerOverviewTests
         =>WorkspaceViewTests.OnSta(()=>
         {
             string folder=Path.Combine(Path.GetTempPath(),"composer-ui-"+Guid.NewGuid().ToString("N"));
+            string prevSettings = AiConnectionPanel.SettingsPath;
+            AiConnectionPanel.SettingsPath = Path.Combine(folder, "composer_settings.json");
             try
             {
                 var canvas=new Canvas();var api=new FakeWindowApi();var input=new FakeInputRouter();var config=new FakeAppConfig { EnableStartupIntro=false };
@@ -74,7 +76,7 @@ public class CanvasComposerOverviewTests
                 overview.AttachAnnotations(desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
                 action(overview,desktops,input,canvas,api);
             }
-            finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
+            finally { AiConnectionPanel.SettingsPath = prevSettings; if(Directory.Exists(folder))Directory.Delete(folder,true); }
         });
     [Fact]
     [Trait("Category","NativeRendering")]
@@ -268,5 +270,71 @@ public class CanvasComposerOverviewTests
             window.ApplyButton.PerformClick();Assert.Equal(2,overview.Annotations.Items.Count);
             Assert.Equal(a.Text,overview.Annotations.Items.Single(n=>n.Id==a.Id).Text);
             Assert.True(overview.Annotations.Undo(desktops.CurrentDesktopId));Assert.Equal(new[]{a,b},overview.Annotations.Items);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void ContextOnlyContainsCanvasSelectionAndEmptyWhenNothingSelected()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            var a = new CanvasAnnotation(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text, new(100, 100), new(300, 200), Text: "First Note");
+            var b = a with { Id = Guid.NewGuid(), A = new(400, 100), B = new(600, 200), Text = "Second Note" };
+            overview.Annotations!.ApplyBatch(0, desktops.CurrentDesktopId, [a, b]);
+
+            overview.OpenCanvasComposer(new Provider(), new Credentials(), new Accounts());
+            var window = overview.ComposerWindow!;
+            Assert.True(window.ShowInTaskbar);
+            Assert.Empty(window.ContextBox.Items);
+
+            overview.Selection.Pick(new(CanvasItemKind.Annotation, a.Id), overview.SelectionItems(), false);
+            Assert.Single(window.ContextBox.Items);
+            Assert.Single(window.ContextBox.CheckedItems);
+
+            overview.Selection.Pick(new(CanvasItemKind.Annotation, b.Id), overview.SelectionItems(), true);
+            Assert.Equal(2, window.ContextBox.Items.Count);
+            Assert.Equal(2, window.ContextBox.CheckedItems.Count);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void SettingsPersistenceRestoresChatGptSubscriptionAndModel()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            var chat = new Provider { Models = [new("gpt-4o", "GPT-4o"), new("o1-preview", "o1 Preview")] };
+            var accounts = new Accounts(chat) { AccountsList = [new("acc-1", "My ChatGPT Plan", true, true, false)] };
+            overview.OpenCanvasComposer(new Provider(), new Credentials(), accounts);
+            var window = overview.ComposerWindow!;
+            window.Connections.SourceBox.SelectedIndex = 1;
+            PumpUntil(() => !window.Busy);
+            window.ModelBox.SelectedIndex = 1;
+
+            Assert.True(File.Exists(AiConnectionPanel.SettingsPath));
+
+            input.RaiseEscPressed();
+            Assert.Null(overview.ComposerWindow);
+
+            overview.OpenCanvasComposer(new Provider(), new Credentials(), accounts);
+            var reopened = overview.ComposerWindow!;
+            Assert.Equal(1, reopened.Connections.SourceBox.SelectedIndex);
+            PumpUntil(() => !reopened.Busy);
+            Assert.Equal("o1-preview", Assert.IsType<AiModel>(reopened.ModelBox.SelectedItem).Id);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void ModeTransitionDoesNotKillComposerWindow()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            overview.OpenCanvasComposer(new Provider(), new Credentials(), new Accounts());
+            var window = overview.ComposerWindow!;
+            Assert.Same(window, overview.ComposerWindow);
+
+            overview.TransitionTo(OverviewMode.Hidden);
+            Assert.Same(window, overview.ComposerWindow);
+            Assert.False(window.IsDisposed);
+
+            overview.TransitionTo(OverviewMode.Zooming);
+            Assert.Same(window, overview.ComposerWindow);
+            Assert.False(window.IsDisposed);
         });
 }

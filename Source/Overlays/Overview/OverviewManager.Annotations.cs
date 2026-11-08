@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -114,13 +114,13 @@ internal sealed partial class OverviewManager
         if (_annotationDocument!.LastChange==AnnotationChangeKind.Edit) _placeholderWorkspace?.ClearZoneRedoHistory(_annotationDocument.LastChangedDesktop);
         var available=SelectionItems().Select(i=>i.Key).ToHashSet();
         Selection.Replace(Selection.Ids.Where(available.Contains).ToArray());
-        _composerWindow?.CanvasChanged(CurrentComposerNotes());
+        _composerWindow?.CanvasChanged(CurrentComposerNotes(), CurrentComposerReferences(), Selection.Ids, Selection.Ids.Count == 0 ? _annotationTool?.SelectedId : null);
         RefreshToolPreview();
     }
     private void OnAnnotationDesktopChanged()
     {
         PauseGuidedTutorial();
-        CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Select);
+        CancelCanvasComposer(); CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Select);
         RefreshToolPreview();
     }
     internal void SelectAnnotationMode(AnnotationMode mode)
