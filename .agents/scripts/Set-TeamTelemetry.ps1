@@ -52,7 +52,21 @@ try {
     $report = [pscustomobject]@{ state = $State; detail = $Detail; timestamp = [DateTimeOffset]::UtcNow.ToString('o'); worktree = (Get-Location).Path }
     $team.roles | Add-Member -NotePropertyName $Role -NotePropertyValue $report -Force
     $root | Add-Member -NotePropertyName updatedAt -NotePropertyValue ([DateTimeOffset]::UtcNow.ToString('o')) -Force
-    [IO.File]::WriteAllText($temporary, ($root | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
+    # Match TeamTelemetryJson's collection/byte limits while holding the writer lock.
+    # Validate the candidate, so updates to existing tasks still work at capacity.
+    if ($root.teams -and @($root.teams.PSObject.Properties).Count -gt 64) {
+        throw 'Team telemetry supports at most 64 registrations. Remove an obsolete registration before adding another task.'
+    }
+    $roleMaps = @($root.roles)
+    if ($root.teams) { $roleMaps += @($root.teams.PSObject.Properties | ForEach-Object { $_.Value.roles }) }
+    foreach ($roles in $roleMaps) {
+        if ($roles -and @($roles.PSObject.Properties).Count -gt 64) { throw 'Team telemetry supports at most 64 roles per task or global role map.' }
+    }
+    if ($report.worktree.Length -gt 1000) { throw 'Team telemetry worktree paths must not exceed 1000 characters.' }
+    $json = $root | ConvertTo-Json -Depth 12
+    $encoding = [Text.UTF8Encoding]::new($false)
+    if ($encoding.GetByteCount($json) -gt 1048576) { throw 'Team telemetry must not exceed 1 MiB of UTF-8 data.' }
+    [IO.File]::WriteAllText($temporary, $json, $encoding)
     if (Test-Path -LiteralPath $StatePath) { [IO.File]::Replace($temporary, $StatePath, [NullString]::Value) }
     else { [IO.File]::Move($temporary, $StatePath) }
 }

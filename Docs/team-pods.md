@@ -29,6 +29,11 @@ In a repository containing `.agents`, the fallback is `.agents/teams/state.json`
 The helper defaults to the state file beside the repository's team templates.
 State is local runtime data and is ignored by git. Writers share a named mutex
 and atomically replace the file, preserving other tasks and global legacy roles.
+Before replacing the file, the helper enforces the reader's limits: 64 task
+registrations, 64 roles per task or global role map, and 1 MiB of UTF-8 data.
+Completed and archived tasks count toward the limit. At capacity, existing tasks
+can still update; adding another task reports an error and preserves the valid
+file. Remove an obsolete registration explicitly before registering a new task.
 
 For lifecycle hooks, set `CANVAS_TASK_ID` and optionally `CANVAS_TASK_NAME`, or pass
 `-TaskId`, `-TaskName`, and `-Role` to `telemetry-hook.ps1`. A Stop event finishes
