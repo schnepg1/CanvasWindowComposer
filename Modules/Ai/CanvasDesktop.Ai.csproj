@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="../CanvasView/CanvasDesktop.CanvasView.csproj" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
+    <InternalsVisibleTo Include="CanvasDesktop.Ai.Tests" />
   </ItemGroup>
 </Project>

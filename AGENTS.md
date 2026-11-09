@@ -6,7 +6,58 @@
 Read this file before working in this repository. It covers how to isolate
 concurrent agent work and how to run the test suite safely.
 
-## Parallel agents: use a git worktree
+## 1. Mandatory Entrypoint: Phase 0 Reconnaissance & Triage
+
+Before creating worktrees, writing code, or running builds, **every agent must execute Phase 0**:
+
+### Step 1: Codebase Reconnaissance (Read-Only)
+- Inspect the repository to locate symbols, callers, interfaces, and existing tests relevant to the user's request.
+- Assess architectural layers touched (`Source/` WPF UI, `Modules/`, `Native/` Win32/D3D interop, `Tests/`).
+- **Do not modify code or start builds during reconnaissance.**
+
+### Step 2: Dynamic Blast Radius Assessment
+Evaluate the task against these complexity criteria (no hardcoded keywords):
+1. **Architectural Footprint**: Does the change span multiple subsystems, modify public interfaces, or touch more than 2–3 files?
+2. **Native & Concurrency Risk**: Does it touch unmanaged Win32 handles (HWND, hooks, DWM thumbnails, DirectX), multi-threading dispatchers (`Dispatcher.Invoke`), or shared state?
+3. **Verification Friction**: Does verification require running serialized desktop integration suites (`Tools\Run-Tests.ps1` under the machine-wide named mutex) rather than fast in-memory unit tests?
+4. **Merge & Regression Hazard**: Is there significant risk of regression or merge conflicts with active target branches (e.g. `window_linking_workflows` or `main`)?
+
+### Step 3: Triage Decision Gate
+- **Route A: Solo Execution (`[TRIAGE: SOLO]`):**
+  - Triggered **only if all** answers above are **NO**.
+  - Execute directly within a single isolated worktree following the standard lifecycle (implement -> test -> review -> merge -> clean).
+- **Route B: Multi-Agent Orchestration (`[TRIAGE: MULTI-AGENT]`):**
+  - Triggered **if any** answer above is **YES**.
+  - Consult the team catalog in [`.agents/teams/teams.yaml`](.agents/teams/teams.yaml) and workflow transitions in [`.agents/teams/workflow.yaml`](.agents/teams/workflow.yaml).
+
+---
+
+## 2. Multi-Agent Team Orchestration & Role Catalog
+
+For complex tasks (`[TRIAGE: MULTI-AGENT]`), the work is divided across specialized roles located in [`.agents/skills/`](.agents/skills/):
+
+| Role | Skill Directory | Core Mandate |
+| :--- | :--- | :--- |
+| **Architect** | [`.agents/skills/architect-planning`](.agents/skills/architect-planning) | Read-only analysis; drafts `ARCHITECTURE_PLAN.md` with atomic checklists and native test requirements. |
+| **Programmer** | [`.agents/skills/worktree-developer`](.agents/skills/worktree-developer) | Creates isolated worktree, writes code/tests, builds with locked dependencies, runs serialized tests. |
+| **Reviewer** | [`.agents/skills/code-reviewer`](.agents/skills/code-reviewer) | Cold-context review of diff vs. spec; audits WPF dispatcher and Win32 handle safety; gives `APPROVED` or `CHANGES_REQUESTED`. |
+| **Merger** | [`.agents/skills/branch-merger`](.agents/skills/branch-merger) | Verifies reviewer approval, synchronizes target branch, executes merge under named mutex. |
+| **Conflict Resolver** | [`.agents/skills/conflict-resolver`](.agents/skills/conflict-resolver) | Exception-handler role; reconciles 3-way git conflicts, rebuilds, tests, and finalizes commit. |
+| **Branch Cleaner** | [`.agents/skills/worktree-cleaner`](.agents/skills/worktree-cleaner) | Verifies running `CanvasDesktop` or `dotnet` processes are stopped before removing worktree and branch. |
+
+### Environment Adaptation:
+- **Sub-Agent Capable Environments (Google Antigravity, OpenCode):**
+  The entry agent acts as **Mission Orchestrator**, using `invoke_subagent` to delegate to each role in sequence with clean, uncluttered contexts.
+- **Single-Agent Environments (Codium / Windsurf, Claude Code, Cursor, Aider):**
+  The agent must enforce the same state machine sequentially:
+  1. Produce `ARCHITECTURE_PLAN.md` and pause for user review.
+  2. Implement and test within an isolated worktree.
+  3. Generate a formal self-audit diff review before touching the merge step.
+  4. Perform clean post-merge cleanup.
+
+---
+
+## 3. Parallel agents: use a git worktree
 
 Never let two agents build or test in the same working copy. `bin/`, `obj/`,
 `TestResults/` and the launcher's publish directories are shared state; concurrent
@@ -34,7 +85,7 @@ Rules:
   `git worktree remove "..\CanvasWindowComposer-<task>"`. The branch remains.
 - Never run `git worktree remove` while a process is still running from it.
 
-## Testing
+## 4. Testing
 
 Preferred entry point (works from any worktree):
 
@@ -112,7 +163,7 @@ never run concurrently with anything else.
 runs the solution's tests. CI runners are isolated, so the preflight is skipped
 automatically when `CI`, `TF_BUILD` or `GITHUB_ACTIONS` is set.
 
-## Build and launch
+## 5. Build and launch
 
 ```powershell
 dotnet restore CanvasDesktop.slnx --locked-mode

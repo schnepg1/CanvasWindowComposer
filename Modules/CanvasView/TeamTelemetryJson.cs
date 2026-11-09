@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 namespace CanvasDesktop.CanvasView;
@@ -26,11 +29,14 @@ public static class TeamTelemetryJson
                 var name = Read(entry.Value, "name", taskId[..Math.Min(taskId.Length, 100)], 100);
                 var status = Read(entry.Value, "status", "Active", 40);
                 var activeRole = Read(entry.Value, "activeRole", "", 80);
-                if (!teams.TryAdd(taskId, new(taskId, name, status, activeRole, Roles(entry.Value, taskId, now))))
+                var conversationId = Read(entry.Value, "conversationId", "", 200);
+                var worktree = Read(entry.Value, "worktree", "", 1000);
+                if (!teams.TryAdd(taskId, new(taskId, name, status, activeRole, Roles(entry.Value, taskId, now), conversationId, worktree, now)))
                     throw new JsonException("Duplicate task registration.");
             }
         }
-        return new(Roles(root, "", now), now) { Teams = teams };
+        string? activeTaskId = root.TryGetProperty("activeTaskId", out var at) && at.ValueKind == JsonValueKind.String ? at.GetString() : null;
+        return new(Roles(root, "", now), now, teams, activeTaskId) { Teams = teams, ActiveTaskId = activeTaskId };
     }
 
     private static Dictionary<string, AgentStatusReport> Roles(JsonElement parent, string taskId, DateTimeOffset now)

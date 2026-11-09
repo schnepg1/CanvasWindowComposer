@@ -33,7 +33,11 @@ internal sealed partial class OverviewManager
             else _annotationTool?.ClearSelection();
             if (ids.Count == 1 && ids.First().Kind == CanvasItemKind.Project) _zoneTool.SelectZone(ids.First().Id);
             else _zoneTool.Deselect();
-            _composerWindow?.Discard("Selection changed. Reopen the composer to share the new selection.");
+            if (_composerWindow is { IsDisposed: false } composer)
+            {
+                Guid? selectedId = ids.Count == 0 ? _annotationTool?.SelectedId : null;
+                composer.CanvasChanged(CurrentComposerNotes(), CurrentComposerReferences(), ids, selectedId);
+            }
         };
     }
 

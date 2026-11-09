@@ -11,6 +11,14 @@ namespace CanvasDesktop;
 /// <summary>Cache a real WPF-UI Badge as passive canvas artwork between telemetry updates.</summary>
 internal sealed class TelemetryStatusPill
 {
+    static TelemetryStatusPill()
+    {
+        if (!UriParser.IsKnownScheme("pack"))
+        {
+            _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        }
+    }
+
     internal Badge Badge { get; }
     internal string Label { get; }
     internal VisualBrush Brush { get; }
@@ -33,12 +41,14 @@ internal sealed class TelemetryStatusPill
         };
         AutomationProperties.SetName(Badge, Label);
         Badge.ApplyTemplate();
-        if (Badge.Template.FindName("Border", Badge) is Border border) border.CornerRadius = new CornerRadius(14);
-        Badge.Measure(new Size(width, 28)); Badge.Arrange(new Rect(0, 0, width, 28)); Badge.UpdateLayout();
-        Brush = new VisualBrush(Badge) { Stretch = Stretch.Fill };
+        Badge.Measure(new Size(width, 28));
+        Badge.Arrange(new Rect(0, 0, width, 28));
+        Badge.UpdateLayout();
+        Brush = new VisualBrush(Badge) { Stretch = Stretch.None };
+        Brush.Freeze();
     }
 
-    internal static Color ColorFor(AgentExecutionState state) => state switch
+    public static Color ColorFor(AgentExecutionState state) => state switch
     {
         AgentExecutionState.Working => Color.FromRgb(56, 189, 248),
         AgentExecutionState.Testing => Color.FromRgb(245, 158, 11),

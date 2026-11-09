@@ -18,7 +18,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     private readonly ToolStripButton _selectButton, _textButton, _undo, _redo;
     private readonly ToolStripSplitButton _shapesButton;
     private readonly ToolStripDropDownButton _more, _colors, _widths, _sizes, _textStyle, _fills;
-    private readonly ToolStripMenuItem _edit, _delete, _save;
+    private readonly ToolStripMenuItem _edit, _delete, _save, _aiTeams;
     private readonly ToolStripLabel _status = new() { ForeColor = CanvasDockTheme.Muted };
     private readonly CanvasDockSurface _properties = new() { RoundBottom = true, Text = "Annotation properties", AccessibleName = "Annotation properties" };
     private readonly List<ToolStripDropDownItem> _dropDowns = [];
@@ -40,11 +40,14 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     public event Action<AnnotationTextEmphasis>? EmphasisRequested;
     public event Action<AnnotationCardFill>? CardFillRequested;
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
+    public event Action? AiTeamsToggled;
     public event Action? WebResourceRequested;
     public event Action? BackgroundsRequested;
     public event Action? ProjectNavigatorRequested;
     public event Action? ProjectAreasRequested;
     public event Action? ExportAllWorkflowsRequested, ImportWorkflowRequested;
+    public bool IsAiTeamsActive => _aiTeams.Checked;
+    public void SetAiTeamsActive(bool active) => _aiTeams.Checked = active;
     internal CanvasDockSurface PropertiesSurface => _properties;
 
     public AnnotationToolbar()
@@ -78,6 +81,8 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _more.DropDownItems.Add(nearby);
         _more.DropDownItems.Add(new ToolStripSeparator());
         _more.DropDownItems.Add(MenuItem("AI Compose", () => ComposerRequested?.Invoke(), DockGlyph.Compose));
+        _aiTeams = MenuItem("AI Teams Mission Control", () => AiTeamsToggled?.Invoke(), DockGlyph.Compose);
+        _more.DropDownItems.Add(_aiTeams);
         _more.DropDownItems.Add(MenuItem("Add web resource…", () => WebResourceRequested?.Invoke()));
         _more.DropDownItems.Add(MenuItem("Backgrounds…", () => BackgroundsRequested?.Invoke()));
         var projectNav = MenuItem("Project Navigator…", () => ProjectNavigatorRequested?.Invoke());

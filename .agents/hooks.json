@@ -1,0 +1,24 @@
+{
+  "canvas-team-telemetry": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd /c scripts\\telemetry-hook.cmd -Event PreToolUse",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "cmd /c scripts\\telemetry-hook.cmd -Event Stop",
+        "timeout": 15
+      }
+    ]
+  }
+}
