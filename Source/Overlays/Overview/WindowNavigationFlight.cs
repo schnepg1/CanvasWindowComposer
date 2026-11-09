@@ -4,7 +4,7 @@ namespace CanvasDesktop;
 
 internal sealed class WindowNavigationFlight
 {
-    public const double Duration = .45;
+    public const double Duration = .85;
     private readonly CanvasCamera _from;
     private readonly CanvasCamera _to;
     private readonly double _fromFocalX;
@@ -51,12 +51,13 @@ internal sealed class WindowNavigationFlight
             double logTo = Math.Log(to.Zoom);
             double logMin = Math.Min(logFrom, logTo);
 
-            // Scale climb with distance: up to ~2.8x zoom-out factor.
-            double distanceFactor = Math.Clamp((_distance - 300.0) / 3700.0, 0.0, 1.0);
-            double climbLog = distanceFactor * Math.Log(2.8);
+            // Scale climb with distance: up to ~3.5x zoom-out factor.
+            double distanceFactor = Math.Clamp((_distance - 300.0) / 3200.0, 0.0, 1.0);
+            double easedD = Math.Pow(distanceFactor, 0.65);
+            double climbLog = (0.25 + 0.75 * easedD) * Math.Log(3.5);
 
             // Cruising zoom clamped so it does not zoom out further than 0.18
-            double targetLog = Math.Max(Math.Log(0.18), logMin - climbLog);
+            double targetLog = Math.Min(logMin, Math.Max(Math.Log(0.18), logMin - climbLog));
             _cruisingZoom = Math.Exp(targetLog);
         }
         else
@@ -71,7 +72,7 @@ internal sealed class WindowNavigationFlight
         if (u <= 0) return FromFocalPoint;
         if (u >= 1) return ToFocalPoint;
 
-        double pXy = SepticSmoothstep(u);
+        double pXy = PanningSmoothstep(u);
         double curFocalX = _fromFocalX + (_toFocalX - _fromFocalX) * pXy;
         double curFocalY = _fromFocalY + (_toFocalY - _fromFocalY) * pXy;
         return new CanvasPoint(curFocalX, curFocalY);
@@ -83,19 +84,21 @@ internal sealed class WindowNavigationFlight
         if (u <= 0) return _from;
         if (u >= 1) return _to;
 
-        // --- Straight 2D Canvas Panning Progress P_xy(u) across full [0, 1] ---
-        // Uses SepticSmoothstep (C3 continuous):
-        // Liftoff accelerates slowly at first (allowing zoom-out altitude to climb strongly first),
-        // surges across the canvas at peak cruising speed, and smoothly decelerates before landing.
+        // --- Decoupled 2D Canvas Panning Progress P_xy(u) across full [0, 1] ---
+        // Uses NonicSmoothstep (C4 continuous):
+        // Liftoff begins much slower (<2% lateral distance during initial climb),
+        // accelerates into rapid cruising translation, flares over the landing zone (>98%),
+        // and softly eases into final alignment.
         // The focal center moves in a strictly straight 2D line from start to target.
-        double pXy = SepticSmoothstep(u);
+        double pXy = PanningSmoothstep(u);
         double curFocalX = _fromFocalX + (_toFocalX - _fromFocalX) * pXy;
         double curFocalY = _fromFocalY + (_toFocalY - _fromFocalY) * pXy;
 
         // --- Altitude / Zoom Curve Z(u) across full [0, 1] ---
-        // Altitude climbs upward strongly first (zoom-out), starting smoothly without exploding,
-        // crests at cruising altitude at midpoint, initiates decline, and slows down descent
-        // to touch down gently at destination.
+        // Decoupled verticality:
+        // Climbs smoothly and strongly in the first phase (u <= 0.42), crests at cruising altitude (0.42 - 0.50),
+        // and smoothly begins descent from u = 0.50 onwards, gently decelerating into touchdown as horizontal
+        // motion finishes simultaneously.
         double curZoom;
         if (_hasClimb)
         {
@@ -109,15 +112,19 @@ internal sealed class WindowNavigationFlight
                 double logTo = Math.Log(_to.Zoom);
                 double logCruise = Math.Log(_cruisingZoom);
 
-                if (u <= 0.5)
+                if (u <= 0.42)
                 {
-                    double tAscent = u * 2.0;
+                    double tAscent = u / 0.42;
                     double easedAscent = SmoothQuintic(tAscent);
                     curZoom = Math.Exp(logFrom + (logCruise - logFrom) * easedAscent);
                 }
+                else if (u <= 0.50)
+                {
+                    curZoom = _cruisingZoom;
+                }
                 else
                 {
-                    double tDescent = (u - 0.5) * 2.0;
+                    double tDescent = (u - 0.50) / 0.50;
                     double easedDescent = SmoothQuintic(tDescent);
                     curZoom = Math.Exp(logCruise + (logTo - logCruise) * easedDescent);
                 }
@@ -125,7 +132,7 @@ internal sealed class WindowNavigationFlight
         }
         else
         {
-            double eased = SepticSmoothstep(u);
+            double eased = PanningSmoothstep(u);
             curZoom = _from.Zoom + (_to.Zoom - _from.Zoom) * eased;
         }
 
@@ -139,8 +146,8 @@ internal sealed class WindowNavigationFlight
     private static double SmoothQuintic(double t)
         => t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 
-    private static double SepticSmoothstep(double t)
-        => t * t * t * t * (35.0 - 84.0 * t + 70.0 * t * t - 20.0 * t * t * t);
+    private static double PanningSmoothstep(double t)
+        => t * t * t * t * t * (126.0 - 420.0 * t + 540.0 * t * t - 315.0 * t * t * t + 70.0 * t * t * t * t);
 
     internal static CanvasCamera Target(WorldRect world, double zoom, ScreenRect viewport)
         => new(world.X + world.W / 2.0 - (viewport.X + viewport.Width / 2.0) / zoom,

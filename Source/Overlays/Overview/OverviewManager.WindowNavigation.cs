@@ -14,7 +14,7 @@ internal sealed partial class OverviewManager
     private uint _windowFlightPid;
     private bool _cameraFlightLandsInDesktop;
 
-    internal bool WindowNavigationActive => _windowFlight != null;
+    public bool WindowNavigationActive => _windowFlight != null;
 
     public bool NavigateToWindow(IntPtr window)
     {
@@ -22,6 +22,7 @@ internal sealed partial class OverviewManager
         if (_disposed
             || !_mainCanvas.Windows.TryGetValue(window, out var world) || world.PinnedToScreen
             || !_win32.IsWindowVisible(window) || _win32.GetWindowProcessId(window) == 0) return false;
+        if (_windowFlightTarget == window && WindowNavigationActive) return true;
         if (IsStartupIntroActive) FinishStartupIntro(refresh: false);
         PauseGuidedTutorial();
         CancelInertia();

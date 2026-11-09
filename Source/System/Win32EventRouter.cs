@@ -138,17 +138,21 @@ internal sealed class Win32EventRouter : IDisposable
                 break;
 
             case PInvoke.EVENT_SYSTEM_FOREGROUND:
-                WindowFocused?.Invoke(hwnd);
                 if (_canSelectWindow?.Invoke(hwnd) == true
                     && _altTab?.TryCompleteReleased(out bool selected) == true)
                 {
                     AltTabEnded?.Invoke();
                     if (selected) WindowSelected?.Invoke(hwnd);
+                    break;
                 }
                 if (_taskbar?.Enabled == true && _canSelectWindow?.Invoke(hwnd) != false
                     && !ShellSelectionInputHook.IsTaskbarWindow(hwnd)
                     && _taskbar?.TrySelect(hwnd, dwmsEventTime) == true)
+                {
                     WindowSelected?.Invoke(hwnd);
+                    break;
+                }
+                WindowFocused?.Invoke(hwnd);
                 break;
 
             case PInvoke.EVENT_OBJECT_LOCATIONCHANGE:
