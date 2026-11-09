@@ -1,6 +1,6 @@
 # AI Mission Control: Multi-Agent Spatial Telemetry & Orchestration Engine
 
-> **CanvasWindowComposer as an AI Operating System & Live Mission Deck**  
+> **CanvasWindowComposer as an AI Operating System & Live Mission Deck**
 > *Transforming autonomous coding agents into real-time, visual spatial workflows on your desktop canvas.*
 
 ---
@@ -13,11 +13,14 @@ Historically, when autonomous coding agents (such as Google Antigravity, Gemini 
 
 AI Mission Control bridges this gap by turning your infinite spatial desktop into an **active mission control deck**:
 
-1. **Autonomous Team Orchestration**: Deconstructs complex user requests into specialized agent roles with strict context boundaries and peer review loops.
-2. **Invisible Real-Time Telemetry**: Captures tool execution and agent lifecycle transitions in real time without requiring the model to waste tokens or call special status tools.
-3. **Dynamic Canvas Materialization**: Spawns visual team workflow pods on the desktop canvas with animated HUD glows representing live agent states (Cyan for Working, Amber for Testing, Emerald Green for Done).
-4. **Predictable UI Control**: Provides an instant toggle in the Canvas Toolbelt ("AI Teams Mission Control") that auto-navigates and fits the camera onto the team pod.
-5. **Universal & Config-Driven**: Operates completely out of the box across any language or framework (Python, Node.js, Rust, Go, Java, or C#) with zero external package dependencies.
+1. **Team Workflow Guidance**: Defines specialized agent roles, isolated worktrees, and peer review loops for a configured external agent harness. Canvas itself does not launch agents or infer tasks from conversations.
+2. **Lifecycle Telemetry**: Accepts task registration and progress through a PowerShell command or configured lifecycle hooks.
+3. **Task-Specific Canvas Pods**: Materializes one saved mission-control frame per registered task, with role cards, connectors, animated glows, and Fluent status/detail pills.
+4. **Persistent Spatial Control**: Lets users find a pod in the project navigator and drag its frame to move the group in one undoable operation.
+5. **Vendor-Neutral Reporting**: Uses a shared JSON file that external tools can update. The supplied hook recognizes .NET test commands; other harnesses and test runners need explicit integration.
+
+The delivered task-pod implementation was merged in [PR #33](https://github.com/schnepg1/CanvasWindowComposer/pull/33).
+For a shorter operational runbook, see [Agent team pods](team-pods.md).
 
 ---
 
@@ -25,49 +28,29 @@ AI Mission Control bridges this gap by turning your infinite spatial desktop int
 
 ```mermaid
 flowchart TD
-    subgraph AgentEnvironment ["1. Agent Harness (Antigravity / Windsurf / CLI)"]
-        User(["User Prompt"]) --> Triage{"Phase 0 Triage"}
-        Triage -->|Solo Task| Solo["Solo Worktree Developer"]
-        Triage -->|Complex Task| Orch["Mission Orchestrator"]
-        Orch --> Roles["Sub-Agent Team\n(Architect, Programmer, Reviewer, Merger, Cleaner)"]
-    end
-
-    subgraph TelemetryPipeline ["2. Lifecycle Telemetry & Bus"]
-        Roles -->|Tool Calls & Stop| HookRunner["Hook Runner"]
-        ConfigHooks[".agents/hooks.json"] -.->|Configures| HookRunner
-        HookRunner -->|PreToolUse / Stop| HookCmd[".agents/scripts/telemetry-hook.cmd"]
-        HookCmd --> HookPs1["telemetry-hook.ps1\n(Universal Regex Matching)"]
-        HookPs1 -->|Dual-Write State| LocalState[".agents/teams/state.json\n(Local Workspace)"]
-        HookPs1 -->|Dual-Write State| GlobalState["%APPDATA%\\...\\state.json\n(Cross-Worktree Hub)"]
-    end
-
-    subgraph CanvasRuntime ["3. CanvasWindowComposer Host Runtime (.NET 9 / WPF)"]
-        TelemProv["WindowsNativeTelemetryProvider\n(Multi-Path FileSystemWatcher)"]
-        HardwareMutex["Global Named Mutex\n(Optional Hardware Truth)"]
-        SectorMgr["AiOperationsSectorManager\n(Sector Placement & CVL Specialization)"]
-        CVLTemplate[".agents/teams/team_architecture_cvl.json"]
-        WfService["WorkflowService & CanvasComposer"]
-        AnnotLayer["CanvasAnnotationLayer\n(Live Pulsing HUD Glows)"]
-    end
-
-    subgraph UserInterface ["4. Canvas Spatial Deck"]
-        ToolbeltMenu["Toolbelt '...' Menu\n[AI Teams Mission Control]"]
-        CameraNav["Camera Auto-Center & Fit\n(NavigateToCamera)"]
-        VisualPod["Visual Team Pod on Canvas\n(Zones, Cards & Connector Arrows)"]
-    end
-
-    LocalState --> TelemProv
-    GlobalState --> TelemProv
-    HardwareMutex -.->|Probed if configured| TelemProv
-    TelemProv -->|TelemetryUpdated| SectorMgr
-    ToolbeltMenu -->|Toggle ON/OFF| SectorMgr
-    SectorMgr -->|Spawns via| WfService
-    CVLTemplate -->|Loaded by| SectorMgr
-    WfService --> VisualPod
-    VisualPod --> CameraNav
-    TelemProv -->|Live Role States| AnnotLayer
-    AnnotLayer -->|Draws Neon Shaders| VisualPod
+    Harness["External agent harness / orchestrator"] -->|Task ID, role, progress| Hook["telemetry-hook.ps1 or direct invocation"]
+    Hook --> Writer["Set-TeamTelemetry.ps1"]
+    Writer -->|Writer mutex + validation + atomic replacement| State["One shared state.json"]
+    State --> Provider["WindowsNativeTelemetryProvider: watcher + 300ms polling"]
+    Provider -->|Task-scoped snapshot on UI thread| Pods["TeamPodService"]
+    Template["Embedded team_architecture_cvl.json"] --> Layout["TeamPodLayout + CanvasComposer"]
+    Layout --> Pods
+    Pods --> Zone["AI Mission Control: task name"]
+    Pods --> Cards["Role cards + connector arrows"]
+    Provider --> Painter["CanvasAnnotationLayer + WPF-UI Badge"]
+    Painter --> Cards
+    Mutex["Global test mutex: legacy global roles only"] -.-> Provider
+    Navigator["Project navigator + frame-header drag"] --> Group["Grouped move / undo / redo"]
+    Zone --> Group
+    Cards --> Group
+    Group --> Workspace["workspace.json: frame geometry and task identity"]
+    Group --> Annotations["annotations.json: card/connector geometry and identity"]
 ```
+
+The host targets .NET 10 on Windows and uses the installed WPF-UI 4.3.0 package.
+The role/workflow diagrams below describe how an external harness can organize
+agents; the canvas runtime consumes their telemetry and manages the visualization.
+
 
 ---
 
@@ -89,7 +72,7 @@ sequenceDiagram
 
     User->>Orch: User Feature Request
     Note over Orch: Phase 0 Triage: [TRIAGE: MULTI-AGENT]
-    
+
     %% Planning
     Orch->>Arch: 1. Request Architecture Plan
     Note over Arch: Read-Only Reconnaissance<br/>Evaluates Threading & Locks
@@ -101,7 +84,7 @@ sequenceDiagram
     Orch->>Prog: 2. Dispatch Spec & Tasks
     Note over Prog: Creates ..\CanvasWindowComposer-<task><br/>Writes Code & Tests under Mutex
     Prog-->>Orch: Implementation Complete (Commit)
-    
+
     Orch->>Rev: 3. Cold-Context Review (Diff vs Spec)
     Note over Rev: Audits Threading, Leaks & Coverage
     alt Changes Requested
@@ -149,7 +132,9 @@ sequenceDiagram
 
 ## 4. Phase 0: Dynamic Reconnaissance & Triage Protocol
 
-Every agent reading [`AGENTS.md`](../AGENTS.md) must execute Phase 0 before writing code:
+The following is a suggested triage protocol for a harness using the team rig.
+It is not an automatic Canvas behavior or an additional requirement imposed by
+[`AGENTS.md`](../AGENTS.md), which governs worktree isolation and safe test execution:
 
 1. **Read-Only Codebase Reconnaissance**:
    - Locates symbols, interfaces, and call sites without modifying files.
@@ -164,151 +149,263 @@ Every agent reading [`AGENTS.md`](../AGENTS.md) must execute Phase 0 before writ
 
 ---
 
-## 5. Live Telemetry & Hook Infrastructure
+## 5. Delivered Telemetry and Registration Pipeline
 
-The telemetry subsystem updates the visual canvas in real time with **zero cognitive burden** on the agents.
+### A. Register a Task and Report Progress
 
-### A. Lifecycle Hook Protocol (`.agents/hooks.json` & `.cmd`)
-Antigravity executes [`.agents/scripts/telemetry-hook.cmd`](../.agents/scripts/telemetry-hook.cmd) via cmd wrapper to eliminate PowerShell inline variable expansion failures:
+An agent or orchestrator chooses a stable task ID and calls
+[`.agents/scripts/Set-TeamTelemetry.ps1`](../.agents/scripts/Set-TeamTelemetry.ps1).
+The first task-scoped update creates the registration; later updates reuse it.
+Different task IDs produce separate pods. Task IDs must match their `teams` keys
+when explicitly supplied in JSON.
 
-* **`PreToolUse`**: Fires **before** a tool starts executing. It deduces the active role from the command or file edited, updates `state.json` to `Working` or `Testing`, and returns `{"decision":"allow"}` to stdout.
-* **`Stop`**: Fires when an agent finishes its work turn, automatically transitioning active roles to `Done`.
-
-```json
-{
-  "canvas-team-telemetry": {
-    "enabled": true,
-    "PreToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cmd /c scripts\\telemetry-hook.cmd -Event PreToolUse",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "type": "command",
-        "command": "cmd /c scripts\\telemetry-hook.cmd -Event Stop",
-        "timeout": 15
-      }
-    ]
-  }
-}
+```powershell
+# Use the same absolute path in Canvas and every agent's environment.
+$env:CANVAS_TEAM_STATE_PATH = 'C:\Projects\CanvasWindowComposer\.agents\teams\state.json'
+.agents\scripts\Set-TeamTelemetry.ps1 -TaskId task-window-linking-01 `
+  -Name 'Feature: Window Linking' -Role architect -State Working -Detail 'Planning window links'
+.agents\scripts\Set-TeamTelemetry.ps1 -TaskId task-window-linking-01 `
+  -Role programmer -State Working -Detail 'Editing WindowManager.cs'
+.agents\scripts\Set-TeamTelemetry.ps1 -TaskId task-window-linking-01 `
+  -Role reviewer -State Testing -Detail 'Running mutex tests'
+.agents\scripts\Set-TeamTelemetry.ps1 -TaskId task-window-linking-01 `
+  -Role orchestrator -State Done -Detail 'Phase complete' -TaskStatus Done
 ```
 
-### B. Multi-Tenant Telemetry Schema (`state.json`)
-The telemetry state supports concurrent teams while remaining backward-compatible with legacy single-team monitors:
+`Done` on a role finishes that phase; `-TaskStatus Done` marks the task itself
+complete. Task completion leaves the saved pod in place. Calling the helper
+without a task ID updates legacy global roles and does not register a pod.
+
+### B. Lifecycle Hook Integration
+
+Configure the external harness to invoke
+[`.agents/scripts/telemetry-hook.ps1`](../.agents/scripts/telemetry-hook.ps1).
+Set `CANVAS_TASK_ID` and optionally `CANVAS_TASK_NAME`, or pass `-TaskId`,
+`-TaskName`, and `-Role` explicitly. The role defaults to `programmer`.
+
+* **`PreToolUse`**: Reports Working, or Testing when the command matches
+  `Run-Tests|dotnet test`; recognized file tools supply a more useful detail.
+* **`Stop`**: Reports Done for this invocation's task and role. It leaves other
+  roles and other tasks unchanged.
+* The hook reads a JSON tool payload from redirected stdin, delegates writes to
+  the helper, reports failures on stderr, and writes `{}` to stdout.
+
+The current checkout does not ship `.agents/hooks.json` or a
+`telemetry-hook.cmd` wrapper. Configure the lifecycle command using the actual
+hook schema of the selected harness; installation of `.agents/` alone does not
+enable hooks in every agent product.
+
+### C. Shared State and Task Isolation
 
 ```json
 {
-  "updatedAt": "2026-11-09T00:30:00Z",
-  "activeTaskId": "window_linking_42",
   "teams": {
-    "window_linking_42": {
+    "task-window-linking-01": {
       "name": "Feature: Window Linking",
-      "taskId": "window_linking_42",
-      "activeRole": "programmer",
+      "taskId": "task-window-linking-01",
       "status": "Active",
+      "activeRole": "programmer",
       "roles": {
         "architect": { "state": "Done", "detail": "Spec approved" },
-        "programmer": { "state": "Working", "detail": "Editing WindowManager.cs" },
-        "reviewer": { "state": "Idle", "detail": "" }
+        "programmer": { "state": "Working", "detail": "Editing WindowManager.cs" }
       }
     }
   },
   "roles": {
-    "programmer": { "state": "Working", "detail": "Editing WindowManager.cs" }
+    "programmer": { "state": "Idle", "detail": "Legacy global card" }
   }
 }
 ```
 
-### C. Cross-Worktree Rendezvous Hub
-Sub-agents often execute inside separate worktrees (`..\CanvasWindowComposer-<task>`). To ensure the primary host application captures events from external worktrees:
-* `telemetry-hook.ps1` writes to both the local repo and `%APPDATA%\CanvasWindowComposer\Teams\state.json`.
-* `WindowsNativeTelemetryProvider.cs` sets up multiple `FileSystemWatcher` instances to aggregate local and global AppData updates simultaneously.
+The shared contract lives in [TeamTelemetry.cs](../Modules/CanvasView/TeamTelemetry.cs)
+and [TeamTelemetryJson.cs](../Modules/CanvasView/TeamTelemetryJson.cs). New cards
+persist `AgentTaskId` and `AgentRole`; bound cards resolve only their own task's
+report, independently of their displayed text. A registered Active task's
+`activeRole` defaults to Working when no role report exists; other unreported
+roles show Idle. Legacy cards retain text-based matching against global roles.
+The reader does not use `activeTaskId` to choose a single team.
+
+### D. Cross-Worktree State Path and Recovery
+
+Canvas watches one resolved state file. It does not merge multiple files or
+require dual writes. Set `CANVAS_TEAM_STATE_PATH` before starting Canvas and
+in every agent environment, using a common absolute path across worktrees.
+The helper also accepts `-StatePath`; its default is the repository's
+`.agents/teams/state.json` beside the team templates.
+
+Without an explicit path or the environment override, Canvas checks existing
+`.canvas/state.json` and `.agents/teams/state.json` files in the working and
+application directories, then `%APPDATA%\CanvasWindowComposer\Teams\state.json`.
+If no file exists, it falls back to the working repository's `.agents/teams`
+when `.agents` exists, otherwise AppData.
+
+[WindowsNativeTelemetryProvider](../Source/Workspace/WindowsNativeTelemetryProvider.cs)
+handles creation, change, deletion, and rename events. Its 300 ms polling also
+finds files or directories created after startup and recovers missed events.
+Malformed or partial writes retain the last valid snapshot. The snapshot is
+marshaled to the UI thread before creating pods or refreshing visuals.
+
+### E. Atomic Writes and Reader Limits
+
+All supplied writers serialize updates with a named mutex derived from the
+absolute state path, preserve other registrations and legacy roles, and replace
+the file atomically. The helper validates the candidate under that lock before
+writing a temporary file or replacing the destination:
+
+| Limit | Behavior |
+| :--- | :--- |
+| 64 task registrations | Completed and archived tasks count; existing-task updates remain allowed at capacity. |
+| 64 roles per task or global role map | Reject a candidate exceeding either map limit. |
+| 1 MiB of UTF-8 data | Count encoded bytes, including preserved fields and multibyte characters. |
+| 1,000 characters in a generated worktree path | Reject an oversized path before publishing its report. |
+
+A rejected update reports an error and preserves the valid file's exact bytes.
+There is no automatic pruning: explicitly remove an obsolete registration before
+adding a task beyond capacity. This addresses the Codex review finding in PR #33
+that a 65th task could otherwise make the entire file unreadable after restart.
+Runtime `state.json` and temporary state files are ignored by git.
 
 ---
 
-## 6. Config-Driven & Multi-Language Design
+## 6. Configuration Boundaries and Test Mutex
 
-The system is decoupled from WPF/.NET specifics, making it universal for any repository:
+The installed provider probes `Global\CanvasWindowComposer.Tests` every 300 ms.
+Because this machine-wide mutex cannot identify a task, it only overrides legacy
+global programmer/reviewer cards to Testing. Releasing it restores their reported
+state; it never sets unrelated task cards to Testing.
 
-### A. Zero-Overhead Hardware Mutex Configuration
-In `.agents/teams/teams.yaml`:
-```yaml
-telemetry:
-  # Optional: Named OS mutex for desktop tests (null/omitted disables polling timer completely)
-  mutex_name: "Global\\CanvasWindowComposer.Tests"
-  # Custom or universal test runner regex
-  test_command_pattern: "Run-Tests|dotnet test|pytest|npm test|cargo test|go test|mvn test"
-  # Active CVL visualization template
-  cvl_template: ".agents/teams/team_architecture_cvl.json"
-```
-* **Desktop Repos**: Polls the named mutex every 300ms to detect hardware test runs.
-* **Web / Python / Rust Repos**: When `mutex_name` is omitted or null, `_pollTimer` is **completely null**, creating **zero background thread wakeups and zero polling overhead**.
+The supplied hook recognizes .NET test commands. Other test runners can call
+`Set-TeamTelemetry.ps1 -State Testing -Detail ...` explicitly, or extend the
+harness's hook integration. The current implementation does not load
+`mutex_name`, `test_command_pattern`, or `cvl_template` from `teams.yaml`, and
+there is no `TeamTelemetryConfig.cs` parser or zero-polling configuration mode.
+Those remain possible extensions rather than delivered configuration switches.
 
-### B. Universal Test Runner Detection
-`telemetry-hook.ps1` automatically detects test executions across:
-* **Python**: `pytest`, `python -m unittest`
-* **Node.js**: `npm test`, `yarn test`, `pnpm test`
-* **Rust**: `cargo test`
-* **Go**: `go test`
-* **Java**: `mvn test`, `gradle test`, `gradlew test`
-* **.NET**: `dotnet test`, `Run-Tests.ps1`
-
-### C. Zero NuGet Dependencies
-Configuration reading is implemented in `TeamTelemetryConfig.cs` using pure BCL regex line parsing. It introduces zero NuGet dependencies and preserves `packages.lock.json` locked-mode compilation in CI.
+The telemetry contracts and layout use BCL APIs; the status UI uses the existing
+WPF-UI dependency. This feature did not add a new NuGet package or change locked
+package versions.
 
 ---
 
-## 7. Canvas Spatial User Interface
+## 7. Canvas Pods, Status Pills, and Permanent Placement
 
-### A. The Toolbelt Context Menu Toggle
-Users can toggle the AI Operations area directly from the Canvas Toolbelt:
-1. Click the **"..." (More actions)** button on the floating toolbelt.
-2. Select **"AI Teams Mission Control"** (with compose glyph and checkmark).
-3. **Toggled ON**: Instantiates the visual pod and **smoothly centers/fits the camera** to it (`NavigateToCamera`). It remains persistent and will **never** randomly vanish when turns complete.
-4. **Toggled OFF**: Cleans all pod annotations and zones from the workspace.
+### A. Automatic Task Pod Materialization
 
-### B. Live HUD Glow Shaders
-Cards on the canvas glow dynamically based on real-time execution states:
+[TeamPodService](../Source/Workspace/TeamPodService.cs) reconciles registered tasks
+on the UI thread. [TeamPodLayout](../Modules/CanvasView/TeamPodLayout.cs) uses the
+embedded [CVL team template](../.agents/teams/team_architecture_cvl.json) and
+`CanvasComposer.Prepare` to produce seven role cards, nine bound connector arrows,
+and the template's three background annotations inside a single master project
+area named **AI Mission Control: <task name>**.
 
-| State | HUD Glow Color | RGB Hex | Meaning |
+Stable per-desktop/task identities make repeated telemetry updates reuse the saved
+pod. New pods are placed beside existing canvas contents; existing pod positions
+are never reset by telemetry. Pods stay on the desktop where first created and
+remain after completion. Registration creation is also an undoable group with
+its frame.
+
+The runtime uses `TeamPodService`, not an `AiOperationsSectorManager`. There is
+currently no dedicated “AI Teams Mission Control” toolbelt toggle; use the project
+navigator to find and frame the saved mission-control area.
+
+### B. Fluent Status and Detail Pills
+
+[CanvasAnnotationLayer](../Source/Overlays/Overview/CanvasAnnotationLayer.cs) renders
+live glows and cached [TelemetryStatusPill](../Source/Overlays/Overview/TelemetryStatusPill.cs)
+artwork using the installed [WPF-UI](https://github.com/lepoco/wpfui) 4.3.0 `Badge`
+control. Each pill carries a text state and optional detail, for example
+`● WORKING · Editing WindowManager.cs`.
+
+| State | Pill and Glow Color | RGB Hex | Meaning |
 | :--- | :--- | :--- | :--- |
-| **Working** | Cyan / Sky Blue | `#38BDF8` | Agent is actively planning, writing code, or executing tools. |
-| **Testing** | Amber / Orange | `#F59E0B` | Agent is running the test suite or holding the test mutex. |
-| **Blocked** | Vivid Orange | `#FB923C` | Agent is paused waiting for peer review or user confirmation. |
-| **Done** | Emerald Green | `#10B981` | Phase or task successfully completed. |
-| **Error** | Crimson Red | `#EF4444` | Build failure, test failure, or merge conflict. |
+| **Idle** | Gray pill | `#94A3B8` | Registered role has no active report; no animated glow. |
+| **Working** | Cyan / Sky Blue | `#38BDF8` | Planning, editing, or executing tools. |
+| **Testing** | Amber | `#F59E0B` | Reported test execution; legacy cards may also reflect the global mutex. |
+| **Blocked** | Orange | `#FB923C` | Waiting for review or confirmation. |
+| **Done** | Emerald | `#10B981` | Phase completed successfully. |
+| **Error** | Red | `#EF4444` | Reported failure or conflict. |
+
+Task cards reserve header space for the pill; legacy cards show it just above
+the artwork. Long details truncate within the available width. Pills and text
+follow canvas zoom and DPI. Glow animation respects reduced motion and pauses
+during camera motion.
+
+### C. Move, Undo, and Persist the Whole Container
+
+Open the interactive canvas, including at 100% zoom, and locate the mission-control
+area in the project navigator. Drag its outlined header to move cards, connectors,
+nested areas, and member windows together. Header drags use the existing grouped
+selection transaction instead of moving annotations individually before the
+workspace move succeeds. Undo and redo restore the group and frame together.
+
+Task identity keeps cards linked to the container and their telemetry after
+renaming or moving them outside the frame. Geometry and identity persist in:
+
+* `workspace.json`: master frame bounds and `AgentTaskId`.
+* `annotations.json`: card and connector bounds, `AgentTaskId`, and `AgentRole`.
+
+The normal desktop view hides canvas overlays. Enter the interactive canvas to
+see and manipulate borders; permanent placement means saved coordinates across
+app restarts, not an always-visible overlay above desktop applications.
 
 ---
 
-## 8. Quickstart Guide: Adding Mission Control to Any Project
+## 8. Quickstart
 
-To enable AI Mission Control in a new project (e.g. `MyNextJsApp` or `FastApiBackend`):
+1. Keep CanvasWindowComposer and the configured agent harness available. Set a
+   common `CANVAS_TEAM_STATE_PATH` for Canvas and every agent before starting them.
+2. Use the registration commands in section 5 to publish a stable task ID and role.
+   Another task ID creates a separate pod with independent progress.
+3. For automatic reporting, configure the harness to invoke `telemetry-hook.ps1`
+   with the correct task and role; for other test runners, report Testing explicitly.
+4. Open the interactive canvas and find **AI Mission Control: <task name>** in the
+   project navigator. Inspect the pills and drag the frame to choose its saved position.
+5. Report Done for the completed role, and use `-TaskStatus Done` when the task is
+   complete. The pod remains in place for reference.
 
-1. **Install CanvasWindowComposer**: Keep the desktop application running.
-2. **Copy `.agents/`**: Copy the `.agents/` folder into your project root.
-3. **Configure `teams.yaml`**:
-   ```yaml
-   telemetry:
-     mutex_name: null  # No Windows desktop mutex required
-     test_command_pattern: "pytest|npm test"
-   ```
-4. **Run Cross-Tool Symlinks**:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .agents\scripts\setup-agent-links.ps1
-   ```
-5. **Start Coding**: Launch your preferred agent (Antigravity, Windsurf, Claude Code, Cursor). 
-6. **Open Canvas**: In CanvasWindowComposer, click **`...` $\to$ `AI Teams Mission Control`** to watch your AI team collaborate in real time!
+The role skills and junction helper remain available under `.agents/` for harnesses
+that discover those directories. Copying the scripts to another project supports
+reporting into the shared file; the visualization template is embedded in the
+Canvas build rather than loaded from an arbitrary project's configuration.
 
 ---
 
-*Document Author: Antigravity Mission Orchestration Rig*  
-*Target Branch: `main`*  
-*Repository: `schnepg1/CanvasWindowComposer`*
+## 9. Verification and Delivery Record
+
+[PR #33](https://github.com/schnepg1/CanvasWindowComposer/pull/33) delivered task-scoped
+registration, stable pod materialization, Fluent status/detail pills, grouped
+container movement, persistence, and the reader-limit review fix. It was merged
+into `main` as `0d0f4ac`.
+
+| Verification | Recorded result |
+| :--- | :--- |
+| Locked restore and full Windows Release build, including x64/x86 native binaries | Passed during PR validation. |
+| Headless AI/telemetry suite | 93 tests passed, including the review-fix validation. |
+| New Windows pod/badge tests | All 8 passed in the PR run before the writer-limit fix. |
+| PowerShell integration checks | Passed; cover concurrent writers, legacy compatibility, Stop isolation, updates at capacity, rejection without file changes, role limits, and multibyte UTF-8 limits. |
+| Full Windows/UI suite before the writer-limit fix | 63 failing tests also failed on the unchanged base `main`; this was not a fully green CI run. |
+
+These are recorded implementation checks, not a claim about the status of future
+CI runs. Relevant tests are [TeamTelemetryTests](../Tests/Ai/TeamTelemetryTests.cs),
+[TeamPodTests](../Tests/TeamPodTests.cs), and
+[Test-TeamTelemetry.ps1](../Tests/Test-TeamTelemetry.ps1).
+
+To verify reporting and parsing changes:
+
+```powershell
+pwsh -NoProfile -File Tests/Test-TeamTelemetry.ps1
+dotnet test Tests/Ai/CanvasDesktop.Ai.Tests.csproj -c Release
+```
+
+For Windows rendering and desktop checks, follow the serialized test runner in
+[`AGENTS.md`](../AGENTS.md):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/Run-Tests.ps1 -Configuration Release -NoPrompt
+```
+
+---
+
+*Groundwork documentation: Antigravity Mission Orchestration Rig.*
+*Updated with the task-pod implementation and review fix delivered in PR #33.*
+*Repository: `schnepg1/CanvasWindowComposer`.*
