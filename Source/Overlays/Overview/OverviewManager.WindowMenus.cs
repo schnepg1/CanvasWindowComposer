@@ -123,6 +123,7 @@ internal sealed partial class OverviewManager
         if (_annotationToolbar != null && _annotationToolbar.HasOpenDropDown)
         {
             _annotationToolbar.CloseDropDowns();
+            _unifiedDock?.Panel.CloseDropDowns();
             hadMenu = true;
         }
         return hadMenu;

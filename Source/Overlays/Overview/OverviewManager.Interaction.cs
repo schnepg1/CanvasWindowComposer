@@ -26,6 +26,8 @@ internal sealed partial class OverviewManager
         EndBackgroundEditing();
         CancelInteraction();
         if (enabled) _annotationTool?.SetMode(AnnotationMode.Select);
+        _unifiedDock?.Panel.SetInteractMode(enabled);
+        _controlsButton?.SetInteractMode(enabled);
         _interactionError = null;
         RefreshToolPreview();
         FocusOverview();
