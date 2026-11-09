@@ -21,6 +21,8 @@ internal interface IAppConfig
     double FlightDurationSeconds => 3.0;
     double FlightCruisingScale => 1.0;
     string FlightProfile => "Helicopter";
+    double FlightFullDurationDistance => WindowNavigationFlight.DefaultFullDurationDistance;
+    double FlightFullClimbDistance => WindowNavigationFlight.DefaultFullClimbDistance;
     bool DesktopPanMomentum => true;
     bool CanvasPanMomentum => true;
     bool SmoothZoom => true;
@@ -97,6 +99,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public double FlightDurationSeconds { get; private set; } = 3.0;
     public double FlightCruisingScale { get; private set; } = 1.0;
     public string FlightProfile { get; private set; } = "Helicopter";
+    public double FlightFullDurationDistance { get; private set; } = WindowNavigationFlight.DefaultFullDurationDistance;
+    public double FlightFullClimbDistance { get; private set; } = WindowNavigationFlight.DefaultFullClimbDistance;
     public bool DesktopPanMomentum { get; private set; } = true;
     public bool CanvasPanMomentum { get; private set; } = true;
     public bool SmoothZoom { get; private set; } = true;
@@ -153,6 +157,10 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             FlightDurationSeconds = GetDouble(values, "FlightDurationSeconds", 3.0, min: 0.5, max: 10.0);
             FlightCruisingScale = GetDouble(values, "FlightCruisingScale", 1.0, min: 0.4, max: 2.5);
             FlightProfile = values.TryGetValue("FlightProfile", out var flightProfile) && !string.IsNullOrWhiteSpace(flightProfile) ? flightProfile : "Helicopter";
+            FlightFullDurationDistance = GetDouble(values, "FlightFullDurationDistance", WindowNavigationFlight.DefaultFullDurationDistance,
+                WindowNavigationFlight.MinimumRampDistance, WindowNavigationFlight.MaximumRampDistance);
+            FlightFullClimbDistance = GetDouble(values, "FlightFullClimbDistance", WindowNavigationFlight.DefaultFullClimbDistance,
+                WindowNavigationFlight.MinimumRampDistance, WindowNavigationFlight.MaximumRampDistance);
             DesktopPanMomentum = GetBool(values, "DesktopPanMomentum", defaultValue: true);
             CanvasPanMomentum = GetBool(values, "CanvasPanMomentum", defaultValue: true);
             SmoothZoom = GetBool(values, "SmoothZoom", defaultValue: true);
@@ -226,7 +234,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
                 EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
-                ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile);
+                ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile, FlightFullDurationDistance, FlightFullClimbDistance);
         }
     }
 
@@ -270,6 +278,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["FlightDurationSeconds"] = preferences.FlightDurationSeconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["FlightCruisingScale"] = preferences.FlightCruisingScale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["FlightProfile"] = preferences.FlightProfile,
+                ["FlightFullDurationDistance"] = preferences.FlightFullDurationDistance.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+                ["FlightFullClimbDistance"] = preferences.FlightFullClimbDistance.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
             });
             Load();
         }
@@ -530,4 +540,6 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs,
     bool SmoothZoom = true, double MaximumZoom = OverviewZoomDefaults.MaximumZoom,
     bool ZoomAcceleration = true,
-    double FlightDurationSeconds = 3.0, double FlightCruisingScale = 1.0, string FlightProfile = "Helicopter");
+    double FlightDurationSeconds = 3.0, double FlightCruisingScale = 1.0, string FlightProfile = "Helicopter",
+    double FlightFullDurationDistance = WindowNavigationFlight.DefaultFullDurationDistance,
+    double FlightFullClimbDistance = WindowNavigationFlight.DefaultFullClimbDistance);
