@@ -88,10 +88,67 @@ public class WindowNavigationTests
         var to = new CanvasCamera(200, 150, 1.0); // distance ~ 111px (< 300px)
         var flight = new WindowNavigationFlight(from, to);
 
-        var mid = flight.Sample(WindowNavigationFlight.Duration * 0.50);
+        var mid = flight.Sample(flight.FlightDuration * 0.50);
         Assert.Equal(150, mid.X, 1);
         Assert.Equal(125, mid.Y, 1);
         Assert.Equal(1.0, mid.Zoom); // No vertical climb for short distance
+        Assert.InRange(flight.FlightDuration, 0.25, 0.5);
+        Assert.Equal(to, flight.Sample(flight.FlightDuration));
+    }
+
+    [Theory]
+    [InlineData(0, 0.25, 1)]
+    [InlineData(300, 0.486, 1)]
+    [InlineData(500, 0.643, 0.911)]
+    [InlineData(3500, 3, 0.286)]
+    [InlineData(6000, 3, 0.286)]
+    public void DefaultDurationAndClimbScaleWithRouteLength(double distance, double seconds, double zoom)
+    {
+        var flight = new WindowNavigationFlight(new(0, 0, 1), new(distance, 0, 1));
+        Assert.Equal(seconds, flight.FlightDuration, 3);
+        Assert.Equal(zoom, flight.CruisingZoom, 3);
+        Assert.Equal(flight.CruisingZoom, flight.Sample(flight.FlightDuration / 2).Zoom);
+    }
+
+    [Fact]
+    public void DurationAndClimbDistancesCanBeAdjustedIndependently()
+    {
+        var from = new CanvasCamera(0, 0, 1);
+        var to = new CanvasCamera(1000, 0, 1);
+        var flight = new WindowNavigationFlight(from, to, fullDurationDistance: 2000, fullClimbDistance: 1700);
+        var faster = new WindowNavigationFlight(from, to, fullDurationDistance: 4000, fullClimbDistance: 1700);
+        var shallower = new WindowNavigationFlight(from, to, fullDurationDistance: 2000, fullClimbDistance: 3100);
+
+        Assert.Equal(1.625, flight.FlightDuration);
+        Assert.Equal(1 / Math.Sqrt(3.5), flight.CruisingZoom, 6);
+        Assert.Equal(flight.CruisingZoom, faster.CruisingZoom);
+        Assert.True(faster.FlightDuration < flight.FlightDuration);
+        Assert.Equal(flight.FlightDuration, shallower.FlightDuration);
+        Assert.True(shallower.CruisingZoom > flight.CruisingZoom);
+    }
+
+    [Fact]
+    public void ZoomChangeRemainsContinuousAcrossTheNoClimbDistance()
+    {
+        var viewport = new ScreenRect(0, 0, 200, 100);
+        var from = new CanvasCamera(0, 0, 0.8);
+        var near = new WindowNavigationFlight(from, new(324, 12.5, 1), viewport);
+        var farther = new WindowNavigationFlight(from, new(326, 12.5, 1), viewport);
+        Assert.Equal(299, near.Distance);
+        Assert.Equal(301, farther.Distance);
+        Assert.Equal(near.Sample(near.FlightDuration / 2).Zoom,
+            farther.Sample(farther.FlightDuration / 2).Zoom, 3);
+    }
+
+    [Fact]
+    public void StrongClimbReachesTheZoomFloorAtTheConfiguredDistance()
+    {
+        var from = new CanvasCamera(0, 0, 1);
+        var halfway = new WindowNavigationFlight(from, new(1650, 0, 1), cruisingScale: 2.5, profile: "Cinematic");
+        var full = new WindowNavigationFlight(from, new(3000, 0, 1), cruisingScale: 2.5, profile: "Cinematic");
+
+        Assert.Equal(0.072, full.CruisingZoom, 6);
+        Assert.Equal(Math.Sqrt(full.CruisingZoom), halfway.CruisingZoom, 6);
     }
 
     [Theory]
@@ -137,6 +194,6 @@ public class WindowNavigationTests
 
         // Cruising zoom should provide a substantial overview (< 0.50x)
         Assert.True(flight.CruisingZoom < 0.50, $"Cruising zoom ({flight.CruisingZoom:F3}) should provide substantial zoom-out overview");
-        Assert.True(WindowNavigationFlight.Duration >= 0.75, "Duration should be tuned for natural pacing");
+        Assert.InRange(flight.FlightDuration, 0.75, WindowNavigationFlight.Duration);
     }
 }

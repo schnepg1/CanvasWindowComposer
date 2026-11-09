@@ -34,11 +34,11 @@ public class WindowNavigationIntegrationTests
 
         Assert.Equal(from, flight.Sample(0));
 
-        var midFocal = flight.SampleFocalPoint(WindowNavigationFlight.Duration / 2);
+        var midFocal = flight.SampleFocalPoint(flight.FlightDuration / 2);
         Assert.Equal((flight.FromFocalPoint.X + flight.ToFocalPoint.X) / 2.0, midFocal.X, 3);
         Assert.Equal((flight.FromFocalPoint.Y + flight.ToFocalPoint.Y) / 2.0, midFocal.Y, 3);
 
-        Assert.Equal(to, flight.Sample(WindowNavigationFlight.Duration));
+        Assert.Equal(to, flight.Sample(flight.FlightDuration));
 
     }
 

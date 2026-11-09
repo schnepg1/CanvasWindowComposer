@@ -5,6 +5,12 @@ namespace CanvasDesktop;
 internal sealed class WindowNavigationFlight
 {
     public const double Duration = 3.0;
+    internal const double MinimumFlightDuration = 0.25;
+    internal const double DefaultFullDurationDistance = 3500;
+    internal const double DefaultFullClimbDistance = 3000;
+    internal const double MinimumRampDistance = 500;
+    internal const double MaximumRampDistance = 10000;
+    internal const double NoClimbDistance = 300;
     private readonly CanvasCamera _from;
     private readonly CanvasCamera _to;
     private readonly double _fromFocalX;
@@ -15,7 +21,7 @@ internal sealed class WindowNavigationFlight
     private readonly double _vpCenterY;
     private readonly double _distance;
     private readonly double _cruisingZoom;
-    private readonly bool _hasClimb;
+    private readonly double _climbFraction;
     private readonly double _flightDuration;
     private readonly double _cruisingScale;
     private readonly string _profile;
@@ -34,11 +40,12 @@ internal sealed class WindowNavigationFlight
         ScreenRect? viewport = null,
         double? duration = null,
         double? cruisingScale = null,
-        string? profile = null)
+        string? profile = null,
+        double fullDurationDistance = DefaultFullDurationDistance,
+        double fullClimbDistance = DefaultFullClimbDistance)
     {
         _from = from;
         _to = to;
-        _flightDuration = Math.Clamp(duration ?? Duration, 0.5, 10.0);
         _cruisingScale = Math.Clamp(cruisingScale ?? 1.0, 0.4, 2.5);
         _profile = string.IsNullOrWhiteSpace(profile) ? "Helicopter" : profile.Trim();
 
@@ -55,28 +62,26 @@ internal sealed class WindowNavigationFlight
         double dx = _toFocalX - _fromFocalX;
         double dy = _toFocalY - _fromFocalY;
         _distance = Math.Sqrt(dx * dx + dy * dy);
+        fullDurationDistance = Math.Clamp(fullDurationDistance, MinimumRampDistance, MaximumRampDistance);
+        fullClimbDistance = Math.Clamp(fullClimbDistance, MinimumRampDistance, MaximumRampDistance);
+        double maximumDuration = Math.Clamp(duration ?? Duration, 0.5, 10.0);
+        double durationFraction = Math.Min(_distance / fullDurationDistance, 1);
+        _flightDuration = MinimumFlightDuration + (maximumDuration - MinimumFlightDuration) * durationFraction;
 
-        // If distance < 300px (nearby window or small recenter) or profile is Planar, no cruising altitude climb is added.
-        _hasClimb = _distance >= 300 && !string.Equals(_profile, "Planar", StringComparison.OrdinalIgnoreCase);
-        if (_hasClimb)
+        _climbFraction = string.Equals(_profile, "Planar", StringComparison.OrdinalIgnoreCase)
+            ? 0
+            : Math.Clamp((_distance - NoClimbDistance) / (fullClimbDistance - NoClimbDistance), 0, 1);
+        if (_climbFraction > 0)
         {
             // Calculate cruising altitude in logarithmic zoom space.
             // Ground level: Zoom = 1.0 (log = 0). Overview: Zoom < 1.0 (log < 0).
-            double logFrom = Math.Log(from.Zoom);
-            double logTo = Math.Log(to.Zoom);
-            double logMin = Math.Min(logFrom, logTo);
-
-            // Scale climb with distance:
-            double distanceFactor = Math.Clamp((_distance - 300.0) / 3200.0, 0.0, 1.0);
-            double easedD = Math.Pow(distanceFactor, 0.65);
+            double baseZoom = Math.Min(from.Zoom, to.Zoom);
             double maxFactor = string.Equals(_profile, "Cinematic", StringComparison.OrdinalIgnoreCase) ? 4.5
                 : string.Equals(_profile, "Brisk", StringComparison.OrdinalIgnoreCase) ? 2.5 : 3.5;
-            double climbLog = (0.25 + 0.75 * easedD) * Math.Log(maxFactor) * _cruisingScale;
-
-            // Cruising zoom clamped so it does not zoom out further than min zoom
+            // Ramp towards the allowed full climb so it reaches the zoom floor only at the configured distance.
             double minZoom = Math.Max(0.05, 0.18 / _cruisingScale);
-            double targetLog = Math.Min(logMin, Math.Max(Math.Log(minZoom), logMin - climbLog));
-            _cruisingZoom = Math.Exp(targetLog);
+            double fullClimbLog = Math.Max(0, Math.Min(Math.Log(maxFactor) * _cruisingScale, Math.Log(baseZoom / minZoom)));
+            _cruisingZoom = baseZoom * Math.Exp(-_climbFraction * fullClimbLog);
         }
         else
         {
@@ -117,8 +122,9 @@ internal sealed class WindowNavigationFlight
         // Climbs smoothly and strongly in the first phase (u <= 0.42), crests at cruising altitude (0.42 - 0.50),
         // and smoothly begins descent from u = 0.50 onwards, gently decelerating into touchdown as horizontal
         // motion finishes simultaneously.
-        double curZoom;
-        if (_hasClimb)
+        double directZoom = _from.Zoom + (_to.Zoom - _from.Zoom) * pXy;
+        double curZoom = directZoom;
+        if (_climbFraction > 0)
         {
             if (Math.Abs(_from.Zoom - _cruisingZoom) < 1e-12 && Math.Abs(_to.Zoom - _cruisingZoom) < 1e-12)
             {
@@ -147,10 +153,9 @@ internal sealed class WindowNavigationFlight
                     curZoom = Math.Exp(logCruise + (logTo - logCruise) * easedDescent);
                 }
             }
-        }
-        else
-        {
-            curZoom = _from.Zoom + (_to.Zoom - _from.Zoom) * pXy;
+            // Ease from direct endpoint zoom changes into the vertical flight profile as the route grows.
+            if (_from.Zoom != _to.Zoom && _climbFraction < 1)
+                curZoom = directZoom + (curZoom - directZoom) * _climbFraction;
         }
 
         // Reconstruct top-left camera corner from the straight-line world focal center

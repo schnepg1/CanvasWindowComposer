@@ -31,7 +31,7 @@ public class FlightSettingsControlTests
             var control = new FlightSettingsControl(preferences);
 
             var durationSlider = WorkspaceViewTests.Descendants(control).OfType<Slider>()
-                .Single(s => AutomationProperties.GetName(s) == "Flight duration in seconds");
+                .Single(s => AutomationProperties.GetName(s) == "Maximum flight duration in seconds");
 
             Assert.Equal(0.5, durationSlider.Minimum);
             Assert.Equal(10.0, durationSlider.Maximum);
@@ -60,7 +60,9 @@ public class FlightSettingsControlTests
             {
                 FlightDurationSeconds = 8.5,
                 FlightCruisingScale = 2.2,
-                FlightProfile = "Cinematic"
+                FlightProfile = "Cinematic",
+                FlightFullDurationDistance = 8000,
+                FlightFullClimbDistance = 9000
             };
             var control = new FlightSettingsControl(preferences);
 
@@ -73,6 +75,9 @@ public class FlightSettingsControlTests
             Assert.Equal(3.0, control.SelectedDuration, precision: 2);
             Assert.Equal(1.0, control.SelectedCruisingScale, precision: 2);
             Assert.Equal("Helicopter", control.SelectedProfile);
+            Assert.True(control.TryApply(preferences, out var reset, out _));
+            Assert.Equal(WindowNavigationFlight.DefaultFullDurationDistance, reset.FlightFullDurationDistance);
+            Assert.Equal(WindowNavigationFlight.DefaultFullClimbDistance, reset.FlightFullClimbDistance);
         });
 
     [Theory]
@@ -93,12 +98,18 @@ public class FlightSettingsControlTests
                 var window = new SettingsWindow(config, () => appliedCount++, zoomOnly: false);
 
                 var durationSlider = WorkspaceViewTests.Descendants(window).OfType<Slider>()
-                    .Single(s => AutomationProperties.GetName(s) == "Flight duration in seconds");
+                    .Single(s => AutomationProperties.GetName(s) == "Maximum flight duration in seconds");
                 var scaleSlider = WorkspaceViewTests.Descendants(window).OfType<Slider>()
                     .Single(s => AutomationProperties.GetName(s) == "Cruising altitude zoom depth multiplier");
+                var fullDurationSlider = WorkspaceViewTests.Descendants(window).OfType<Slider>()
+                    .Single(s => AutomationProperties.GetName(s) == "Distance for maximum duration in canvas pixels");
+                var fullClimbSlider = WorkspaceViewTests.Descendants(window).OfType<Slider>()
+                    .Single(s => AutomationProperties.GetName(s) == "Distance for full climb in canvas pixels");
 
                 durationSlider.Value = targetDuration;
                 scaleSlider.Value = targetScale;
+                fullDurationSlider.Value = 4900;
+                fullClimbSlider.Value = 6100;
 
                 WorkspaceViewTests.Descendants(window).OfType<Button>()
                     .Single(b => Equals(b.Content, action))
@@ -114,17 +125,52 @@ public class FlightSettingsControlTests
                     Assert.Equal(targetScale, reloaded.FlightCruisingScale, precision: 2);
                     Assert.Equal(targetDuration, reloaded.Preferences.FlightDurationSeconds, precision: 2);
                     Assert.Equal(targetScale, reloaded.Preferences.FlightCruisingScale, precision: 2);
+                    Assert.Equal(4900, reloaded.Preferences.FlightFullDurationDistance);
+                    Assert.Equal(6100, reloaded.Preferences.FlightFullClimbDistance);
                 }
                 else
                 {
                     Assert.Equal(0, appliedCount);
                     Assert.Equal(original.FlightDurationSeconds, reloaded.FlightDurationSeconds, precision: 2);
                     Assert.Equal(original.FlightCruisingScale, reloaded.FlightCruisingScale, precision: 2);
+                    Assert.Equal(original.FlightFullDurationDistance, reloaded.FlightFullDurationDistance);
+                    Assert.Equal(original.FlightFullClimbDistance, reloaded.FlightFullClimbDistance);
                 }
             }
             finally
             {
                 Directory.Delete(directory, true);
+            }
+        });
+
+    [Fact]
+    public void PreviewReportsTheRuntimeDurationAndZoomForTheSelectedDistance()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var preferences = new AppConfig().Preferences;
+            var control = new FlightSettingsControl(preferences);
+            var elements = WorkspaceViewTests.Descendants(control).ToArray();
+            var readout = elements.OfType<TextBlock>()
+                .Single(t => AutomationProperties.GetAutomationId(t) == "FlightPreviewResult");
+            var distanceSlider = elements.OfType<Slider>()
+                .Single(s => AutomationProperties.GetName(s) == "Preview flight distance in canvas pixels");
+
+            AssertPreview(500, 3500);
+            elements.OfType<Button>().Single(b => Equals(b.Content, "Far"))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            AssertPreview(5000, 3500);
+
+            var rampSlider = elements.OfType<Slider>()
+                .Single(s => AutomationProperties.GetName(s) == "Distance for maximum duration in canvas pixels");
+            rampSlider.Value = 8000;
+            AssertPreview(5000, 8000);
+
+            void AssertPreview(double distance, double fullDurationDistance)
+            {
+                Assert.Equal(distance, distanceSlider.Value);
+                var flight = new WindowNavigationFlight(new(0, 0, 1), new(distance, 0, 1), fullDurationDistance: fullDurationDistance);
+                Assert.Contains($"{flight.FlightDuration:0.00} s", readout.Text);
+                Assert.Contains($"{flight.CruisingZoom:0.#%}", readout.Text);
             }
         });
 
