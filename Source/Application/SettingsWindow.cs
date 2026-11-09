@@ -9,6 +9,7 @@ namespace CanvasDesktop;
 internal sealed class SettingsWindow : Window
 {
     private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation, _desktopMomentum, _canvasMomentum;
+    private readonly FlightSettingsControl? _flightSettings;
     private readonly ZoomSettingsControl _zoomSettings;
     internal bool ZoomOnly { get; }
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
@@ -51,6 +52,11 @@ internal sealed class SettingsWindow : Window
         _fixed = Option("Show pinned and fullscreen windows while panning", preferences.ScreenFixedWindows);
         _navigation = Option("Animate navigation to apps selected with Alt+Tab or the taskbar", preferences.AnimateWindowNavigation);
         Hint("Stays in Canvas view at the current zoom. Turn off for an immediate jump with less rendering work.");
+        _flightSettings = new FlightSettingsControl(preferences);
+        _flightSettings.IsEnabled = preferences.AnimateWindowNavigation;
+        _navigation.Checked += (_, _) => _flightSettings.IsEnabled = true;
+        _navigation.Unchecked += (_, _) => _flightSettings.IsEnabled = false;
+        body.Children.Add(_flightSettings);
         Hint("Shortcut changes take effect after restarting Canvas.");
         Heading("Window resources");
         _clip = Option("Clip windows outside the desktop", preferences.ClipOffscreen);
@@ -76,14 +82,26 @@ internal sealed class SettingsWindow : Window
             try
             {
                 var draft = config.Preferences;
-                if (!zoomOnly) draft = draft with { Search = _search.IsChecked == true, AltPan = _altPan.IsChecked == true,
-                    ZoomHotkey = _zoom.IsChecked == true, MouseCurve = _curve.IsChecked == true,
-                    ScreenFixedWindows = _fixed.IsChecked == true, ClipOffscreen = _clip.IsChecked == true,
-                    AutomaticMinimization = _parking.IsChecked == true, FlipRendering = _flip.IsChecked == true,
-                    StartupIntro = _intro.IsChecked == true, ReducedIntroMotion = _reducedMotion.IsChecked == true,
-                    LowQualityMode = _lowQuality.IsChecked == true, ShowTaskbarInCanvas = _taskbar.IsChecked == true,
-                    AnimateWindowNavigation = _navigation.IsChecked == true,
-                    DesktopPanMomentum = _desktopMomentum.IsChecked == true, CanvasPanMomentum = _canvasMomentum.IsChecked == true };
+                if (!zoomOnly)
+                {
+                    draft = draft with { Search = _search.IsChecked == true, AltPan = _altPan.IsChecked == true,
+                        ZoomHotkey = _zoom.IsChecked == true, MouseCurve = _curve.IsChecked == true,
+                        ScreenFixedWindows = _fixed.IsChecked == true, ClipOffscreen = _clip.IsChecked == true,
+                        AutomaticMinimization = _parking.IsChecked == true, FlipRendering = _flip.IsChecked == true,
+                        StartupIntro = _intro.IsChecked == true, ReducedIntroMotion = _reducedMotion.IsChecked == true,
+                        LowQualityMode = _lowQuality.IsChecked == true, ShowTaskbarInCanvas = _taskbar.IsChecked == true,
+                        AnimateWindowNavigation = _navigation.IsChecked == true,
+                        DesktopPanMomentum = _desktopMomentum.IsChecked == true, CanvasPanMomentum = _canvasMomentum.IsChecked == true };
+                    if (_flightSettings != null)
+                    {
+                        if (!_flightSettings.TryApply(draft, out var flightDraft, out var flightError))
+                        {
+                            _status.Text = flightError;
+                            return;
+                        }
+                        draft = flightDraft;
+                    }
+                }
                 if (!_zoomSettings.TryApply(draft, out var updated, out var error)) { _status.Text = error; return; }
                 config.SavePreferences(updated);
                 applied(); Close();
