@@ -76,6 +76,9 @@ internal sealed class ForegroundCoordinator : IDisposable
             now - _lastOverlayClosedTick < ForegroundSuppressionMs)
             return;
 
+        if (_overview.WindowNavigationActive)
+            return;
+
         if (_canvas.HasWindow(hwnd))
         {
             var world = _canvas.Windows[hwnd];

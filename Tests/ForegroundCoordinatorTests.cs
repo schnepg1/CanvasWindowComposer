@@ -210,4 +210,17 @@ public class ForegroundCoordinatorTests
 
         Assert.Equal(camBefore, h.Canvas.CamX);
     }
+
+    [Fact]
+    public void WindowNavigationActive_SuppressesIncidentalWindowFocusedSnapping()
+    {
+        var h = new Harness();
+        using var foreground = h.Foreground;
+        h.Canvas.SetWindow((IntPtr)1, 5000, 5000, 400, 300);
+        h.Clock.Now = 10000;
+        h.Overview.WindowNavigationActive = true;
+        double camBefore = h.Canvas.CamX;
+        h.Input.RaiseWindowFocused((IntPtr)1);
+        Assert.Equal(camBefore, h.Canvas.CamX);
+    }
 }

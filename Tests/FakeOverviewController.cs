@@ -35,6 +35,7 @@ internal sealed class FakeOverviewController : IOverviewController
     public List<long?> RecordedTimes = new();
     public long? ReleasedAt;
     public List<OverviewMode> Transitions = new();
+    public bool WindowNavigationActive { get; set; }
     public List<IntPtr> NavigatedWindows = new();
     public bool NavigateToWindowResult { get; set; } = true;
     public Action<IntPtr>? OnNavigateToWindow { get; set; }

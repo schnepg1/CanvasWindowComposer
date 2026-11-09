@@ -104,4 +104,39 @@ public class WindowNavigationTests
         var center = target.ProjectPosition(world.X + world.W / 2, world.Y + world.H / 2);
         Assert.Equal((x + 960, y + 520), center);
     }
+
+    [Fact]
+    public void DecoupledPanningSpeedIsMuchSlowerAtBeginningAndEnd()
+    {
+        var from = new CanvasCamera(0, 0, 1.0);
+        var to = new CanvasCamera(6000, 3000, 1.0);
+        var flight = new WindowNavigationFlight(from, to);
+
+        // At u = 0.20: horizontal movement is very slow (< 2.5%), while altitude has climbed strongly (> 40%)
+        var sampleEarly = flight.Sample(WindowNavigationFlight.Duration * 0.20);
+        var focalEarly = flight.SampleFocalPoint(WindowNavigationFlight.Duration * 0.20);
+        double horizEarly = (focalEarly.X - flight.FromFocalPoint.X) / (flight.ToFocalPoint.X - flight.FromFocalPoint.X);
+        double vertEarly = (1.0 - sampleEarly.Zoom) / (1.0 - flight.CruisingZoom);
+        Assert.True(horizEarly < 0.025, "Horizontal movement should be less than 2.5% at u = 0.20");
+        Assert.True(vertEarly > 0.40, "Altitude should have climbed more than 40% at u = 0.20");
+
+        // At u = 0.85: horizontal movement has essentially arrived (> 99%), while altitude is gently settling
+        var sampleLate = flight.Sample(WindowNavigationFlight.Duration * 0.85);
+        var focalLate = flight.SampleFocalPoint(WindowNavigationFlight.Duration * 0.85);
+        double horizLate = (focalLate.X - flight.FromFocalPoint.X) / (flight.ToFocalPoint.X - flight.FromFocalPoint.X);
+        Assert.True(horizLate > 0.99, "Horizontal position should be >99% arrived by u = 0.85");
+        Assert.True(sampleLate.Zoom < 1.0, "Altitude should still be gently settling towards 1.0 at u = 0.85");
+    }
+
+    [Fact]
+    public void CruisingAltitudeProvidesSubstantialOverviewForCanvasJumps()
+    {
+        var from = new CanvasCamera(0, 0, 1.0);
+        var to = new CanvasCamera(1500, 1000, 1.0); // distance ~ 1800px
+        var flight = new WindowNavigationFlight(from, to);
+
+        // Cruising zoom should provide a substantial overview (< 0.50x)
+        Assert.True(flight.CruisingZoom < 0.50, $"Cruising zoom ({flight.CruisingZoom:F3}) should provide substantial zoom-out overview");
+        Assert.True(WindowNavigationFlight.Duration >= 0.75, "Duration should be tuned for natural pacing");
+    }
 }
