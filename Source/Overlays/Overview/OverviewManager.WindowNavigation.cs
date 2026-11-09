@@ -15,6 +15,8 @@ internal sealed partial class OverviewManager
     private bool _cameraFlightLandsInDesktop;
 
     public bool WindowNavigationActive => _windowFlight != null;
+    internal event Action? WindowNavigationStarted;
+    internal event Action? WindowNavigationEnded;
 
     public bool NavigateToWindow(IntPtr window)
     {
@@ -49,6 +51,7 @@ internal sealed partial class OverviewManager
         var target = WindowNavigationFlight.Target(world, 1, _screens.PrimaryWorkingArea);
         _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
             _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile);
+        WindowNavigationStarted?.Invoke();
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
             AdvanceWindowNavigation(_windowFlight.FlightDuration);
@@ -84,6 +87,7 @@ internal sealed partial class OverviewManager
 
         _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
             _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile);
+        WindowNavigationStarted?.Invoke();
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
             AdvanceWindowNavigation(_windowFlight.FlightDuration);
@@ -141,9 +145,11 @@ internal sealed partial class OverviewManager
 
     private void StopWindowNavigation()
     {
+        bool wasActive = _windowFlight != null;
         _windowFlight = null;
         _windowFlightClock.Stop();
         _windowFlightTimer?.Stop();
         if (CurrentMode == OverviewMode.Hidden) _navigationDisplayTarget = IntPtr.Zero;
+        if (wasActive) WindowNavigationEnded?.Invoke();
     }
 }

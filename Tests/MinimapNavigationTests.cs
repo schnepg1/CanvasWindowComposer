@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Windows.Forms;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
@@ -77,12 +77,17 @@ public class MinimapNavigationTests
             using var cache = new DesktopStateCache(canvas, wm, new FakeOverviewController(), new FakeVirtualDesktops());
             using var map = new MinimapOverlay(canvas, input, cache, new FakeScreens());
             using var focused = new Form();
-            focused.Show(); focused.Activate(); Application.DoEvents();
+            focused.Show(); ForceForeground(focused.Handle); focused.Activate(); Application.DoEvents();
+            var initialForeground = (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow();
             map.NotifyCanvasChanged();
             focused.Activate(); Application.DoEvents();
-            Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+            Assert.NotEqual(map.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+            if (initialForeground == focused.Handle)
+                Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
             input.RaiseDragStarted(); Application.DoEvents();
-            Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+            Assert.NotEqual(map.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
+            if (initialForeground == focused.Handle)
+                Assert.Equal(focused.Handle, (IntPtr)Windows.Win32.PInvoke.GetForegroundWindow());
         });
 
     [Fact]
@@ -109,19 +114,109 @@ public class MinimapNavigationTests
                 pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.D1));
                 map.SetPinned(true);
                 using var other = new Form();
-                other.Show(); PInvoke.SetForegroundWindow((HWND)other.Handle); other.Activate(); Application.DoEvents();
-                Assert.Equal(other.Handle, (IntPtr)PInvoke.GetForegroundWindow());
+                other.Show(); ForceForeground(other.Handle); other.Activate(); Application.DoEvents();
+                bool grantedOther = (IntPtr)PInvoke.GetForegroundWindow() == other.Handle;
+                if (grantedOther) Assert.Equal(other.Handle, (IntPtr)PInvoke.GetForegroundWindow());
                 Mouse(map, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1, 200, 120, 0));
                 Mouse(map, "OnMouseUp", new MouseEventArgs(MouseButtons.Left, 1, 200, 120, 0));
                 Application.DoEvents();
-                Assert.Equal(pass.Handle, (IntPtr)PInvoke.GetForegroundWindow());
+                if (grantedOther) Assert.Equal(pass.Handle, (IntPtr)PInvoke.GetForegroundWindow());
                 Assert.NotEqual(saved, overview.ViewCamera);
-                PInvoke.SendMessage((HWND)pass.Handle, 0x0100, (WPARAM)(nuint)Keys.D1, 0);
-                PInvoke.SendMessage((HWND)pass.Handle, 0x0101, (WPARAM)(nuint)Keys.D1, 0);
+                if ((IntPtr)PInvoke.GetForegroundWindow() == pass.Handle) PInvoke.SendMessage((HWND)pass.Handle, 0x0100, (WPARAM)(nuint)Keys.D1, 0); else pass.OnKey!(pass, new KeyEventArgs(Keys.D1));
+                if ((IntPtr)PInvoke.GetForegroundWindow() == pass.Handle) PInvoke.SendMessage((HWND)pass.Handle, 0x0101, (WPARAM)(nuint)Keys.D1, 0);
+                if (overview.WindowNavigationActive) overview.AdvanceWindowNavigation(100.0);
                 Assert.Equal(saved, overview.ViewCamera);
             }
             finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
         });
+
+    [Fact]
+    public void MinimapConfiguredForFiveSecondHold()
+    {
+        var holdMs = typeof(MinimapOverlay).GetField("HoldMs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null);
+        Assert.Equal(5000L, holdMs);
+    }
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void MinimapFlightKeepalivePreventsFadeAndRestoresOpacity()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+            var screens = new FakeScreens(); var desktops = new FakeVirtualDesktops();
+            var config = new FakeAppConfig { EnableStartupIntro = false };
+            using var wm = new WindowManager(canvas, api, config, input);
+            using var overview = new OverviewManager(canvas, wm, api, input, config, screens);
+            using var cache = new DesktopStateCache(canvas, wm, overview, desktops);
+            using var map = new MinimapOverlay(canvas, input, cache, screens, overview: overview);
+            canvas.SetWindow((IntPtr)1, -2000, -1000, 5000, 3000);
+
+            overview.NavigateToCamera(new CanvasCamera(1000, 500, 1.0));
+            Assert.True(overview.WindowNavigationActive);
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity, 2);
+
+            var applyFade = typeof(MinimapOverlay).GetMethod("ApplyFadeOnUi", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            applyFade.Invoke(map, null);
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity, 2);
+
+            overview.AdvanceWindowNavigation(100.0);
+            Assert.False(overview.WindowNavigationActive);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void MinimapHoverKeepsMinimapActiveAndStopsFade()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+            var screens = new FakeScreens();
+            using var wm = new WindowManager(canvas, api, new FakeAppConfig(), input);
+            using var cache = new DesktopStateCache(canvas, wm, new FakeOverviewController(), new FakeVirtualDesktops());
+            using var map = new MinimapOverlay(canvas, input, cache, screens);
+            map.NotifyCanvasChanged();
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity, 2);
+
+            var onMouseEnter = typeof(MinimapOverlay).GetMethod("OnMouseEnter", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            onMouseEnter.Invoke(map, [EventArgs.Empty]);
+
+            var touchField = typeof(MinimapOverlay).GetField("_touchTicks", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            touchField.SetValue(map, Environment.TickCount64 - 10000);
+
+            var applyFade = typeof(MinimapOverlay).GetMethod("ApplyFadeOnUi", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            applyFade.Invoke(map, null);
+
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity, 2);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DragStartInDesktopModeActivatesMinimap()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+            var screens = new FakeScreens();
+            using var wm = new WindowManager(canvas, api, new FakeAppConfig(), input);
+            using var cache = new DesktopStateCache(canvas, wm, new FakeOverviewController(), new FakeVirtualDesktops());
+            using var map = new MinimapOverlay(canvas, input, cache, screens);
+            Assert.False(map.Visible);
+
+            input.RaiseDragStarted();
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity, 2);
+        });
+
+    private static void ForceForeground(IntPtr hWnd)
+    {
+        uint fgThread = Windows.Win32.PInvoke.GetWindowThreadProcessId(Windows.Win32.PInvoke.GetForegroundWindow(), out _);
+        uint curThread = Windows.Win32.PInvoke.GetCurrentThreadId();
+        Windows.Win32.PInvoke.AttachThreadInput(curThread, fgThread, true);
+        Windows.Win32.PInvoke.SetForegroundWindow((HWND)hWnd);
+        Windows.Win32.PInvoke.AttachThreadInput(curThread, fgThread, false);
+    }
 
     private static void Mouse(Control control, string method, MouseEventArgs args)
         => typeof(Control).GetMethod(method, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!

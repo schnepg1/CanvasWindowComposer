@@ -24,6 +24,8 @@ internal sealed partial class OverviewManager
         _zoneNavigator?.SetCanvasOwner(CanvasPanelOwner);
     }
 
+    internal event Action? CanvasPanelsRaised;
+
     private void RaiseCanvasPanels()
     {
         if (_disposed) return;
@@ -34,6 +36,7 @@ internal sealed partial class OverviewManager
         _backgroundEditor?.RaiseWithoutActivation();
         _zoneWindow?.RaiseWithoutActivation();
         _zoneNavigator?.RaiseWithoutActivation();
+        CanvasPanelsRaised?.Invoke();
     }
 
     private ZoneWindow? _zoneWindow;
@@ -53,5 +56,6 @@ internal sealed partial class OverviewManager
         if (_disposed) return;
         UpdateCanvasPanelOwners();
         _zoneNavigator?.RaiseWithoutActivation();
+        CanvasPanelsRaised?.Invoke();
     }
 }

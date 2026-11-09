@@ -15,6 +15,7 @@ internal sealed class TelemetryStatusPill
     {
         if (!UriParser.IsKnownScheme("pack"))
         {
+            if (System.Windows.Application.Current == null) try { _ = new System.Windows.Application(); } catch { }
             _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
         }
     }
@@ -45,7 +46,7 @@ internal sealed class TelemetryStatusPill
         Badge.Arrange(new Rect(0, 0, width, 28));
         Badge.UpdateLayout();
         Brush = new VisualBrush(Badge) { Stretch = Stretch.None };
-        Brush.Freeze();
+        if (Brush.CanFreeze) Brush.Freeze();
     }
 
     public static Color ColorFor(AgentExecutionState state) => state switch

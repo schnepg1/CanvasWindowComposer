@@ -50,7 +50,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         || CurrentMode == OverviewMode.Panning
 
-        || MomentumActive;
+        || MomentumActive || WindowNavigationActive;
 
     private OverviewModeConfig _cfg { get { return _state.CurrentConfig; } }
 

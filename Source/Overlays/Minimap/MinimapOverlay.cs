@@ -22,7 +22,7 @@ internal sealed class MinimapOverlay : Form
     private const double MinimapOpacity = 0.75;
 
     // Hold without GPU work, then animate only the layered-window opacity.
-    private const long HoldMs = 2000;
+    private const long HoldMs = 5000;
     private const long FadeMs = 500;
     private const double OpacityQuantum = 0.02;
 
@@ -104,6 +104,9 @@ internal sealed class MinimapOverlay : Form
         {
             _overview.ViewCameraChanged += OnViewCameraChanged;
             _overview.AfterModeChanged += OnModeChanged;
+            _overview.CanvasPanelsRaised += RaiseWithoutActivation;
+            _overview.WindowNavigationStarted += OnWindowNavigationStarted;
+            _overview.WindowNavigationEnded += OnWindowNavigationEnded;
         }
 
         canvas.CameraChanged       += NotifyCanvasChanged;
@@ -111,7 +114,7 @@ internal sealed class MinimapOverlay : Form
         canvas.MaximizeChanged     += OnWindowChanged;
         canvas.PinnedChanged       += OnWindowChanged;
         canvas.FrontChanged        += OnFrontChanged;
-        input.DragStarted          += RaiseWithoutActivation;
+        input.DragStarted          += OnDragStarted;
         desktops.AfterStateLoaded  += NotifyCanvasChanged;
     }
 
@@ -129,10 +132,18 @@ internal sealed class MinimapOverlay : Form
         _fadeTimer.Start();
         Opacity = MinimapOpacity;
         _lastAppliedOpacity = MinimapOpacity;
+        RaiseWithoutActivation();
         if (!Visible)
         {
             Show();
             _renderer.Start();
+            RaiseWithoutActivation();
+        }
+        else
+        {
+            _renderer.Start();
+            RaiseWithoutActivation();
+            _renderer.RequestFrame();
         }
     }
 
@@ -182,6 +193,23 @@ internal sealed class MinimapOverlay : Form
         if (_closing || IsDisposed) return;
         _fadeTimer.Interval = 16;
 
+        bool isMouseOver = Visible && IsHandleCreated && ClientRectangle.Contains(PointToClient(Cursor.Position));
+        if (isMouseOver && !_hovered)
+        {
+            _hovered = true;
+            Opacity = MinimapOpacity;
+            _lastAppliedOpacity = MinimapOpacity;
+        }
+
+        if (_overview?.WindowNavigationActive == true)
+        {
+            _touchTicks = Environment.TickCount64;
+            Opacity = MinimapOpacity;
+            _lastAppliedOpacity = MinimapOpacity;
+            _fadeTimer.Stop();
+            return;
+        }
+
         if (_pinned || _hovered || _dragProjection.HasValue || _mapMenu.Visible) { _fadeTimer.Stop(); return; }
         long elapsed = Environment.TickCount64 - _touchTicks;
         double fadeProgress = Math.Clamp((elapsed - HoldMs) / (double)FadeMs, 0.0, 1.0);
@@ -226,7 +254,7 @@ internal sealed class MinimapOverlay : Form
 
     private void RestartFade()
     {
-        if (_closing || IsDisposed || !Visible || _pinned || _hovered || _dragProjection.HasValue || _mapMenu.Visible) return;
+        if (_closing || IsDisposed || !Visible || _pinned || _hovered || _dragProjection.HasValue || _mapMenu.Visible || (_overview?.WindowNavigationActive == true)) return;
         _touchTicks = Environment.TickCount64;
         _fadeTimer.Stop(); _fadeTimer.Interval = (int)HoldMs; _fadeTimer.Start();
     }
@@ -249,10 +277,27 @@ internal sealed class MinimapOverlay : Form
         RaiseWithoutActivation();
     }
 
+    private void OnDragStarted()
+    {
+        NotifyCanvasChanged();
+        RaiseWithoutActivation();
+    }
+
+    private void OnWindowNavigationStarted()
+    {
+        NotifyCanvasChanged();
+        RaiseWithoutActivation();
+    }
+
+    private void OnWindowNavigationEnded()
+    {
+        RestartFade();
+    }
+
     private void RaiseWithoutActivation()
     {
         if (_closing || IsDisposed || !IsHandleCreated) return;
-        PInvoke.SetWindowPos((HWND)Handle, HWND.Null, 0, 0, 0, 0,
+        PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
             SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
     }
 
@@ -266,6 +311,7 @@ internal sealed class MinimapOverlay : Form
     {
         base.OnMouseEnter(e); _hovered = true; _fadeTimer.Stop();
         Opacity = MinimapOpacity; _lastAppliedOpacity = MinimapOpacity;
+        RaiseWithoutActivation();
     }
 
     protected override void OnMouseLeave(EventArgs e)
@@ -287,6 +333,13 @@ internal sealed class MinimapOverlay : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+        if (!_hovered)
+        {
+            _hovered = true;
+            _fadeTimer.Stop();
+            Opacity = MinimapOpacity;
+            _lastAppliedOpacity = MinimapOpacity;
+        }
         if (_dragProjection.HasValue && Capture) Navigate(e.Location);
     }
 
@@ -341,14 +394,21 @@ internal sealed class MinimapOverlay : Form
         if (disposing && !_closing)
         {
             _closing = true;
-            if (_overview != null) { _overview.ViewCameraChanged -= OnViewCameraChanged; _overview.AfterModeChanged -= OnModeChanged; }
+            if (_overview != null)
+            {
+                _overview.ViewCameraChanged -= OnViewCameraChanged;
+                _overview.AfterModeChanged -= OnModeChanged;
+                _overview.CanvasPanelsRaised -= RaiseWithoutActivation;
+                _overview.WindowNavigationStarted -= OnWindowNavigationStarted;
+                _overview.WindowNavigationEnded -= OnWindowNavigationEnded;
+            }
             _mapMenu.Dispose();
             _canvas.CameraChanged -= NotifyCanvasChanged;
             _canvas.CollapseChanged -= OnWindowChanged;
             _canvas.MaximizeChanged -= OnWindowChanged;
             _canvas.PinnedChanged -= OnWindowChanged;
             _canvas.FrontChanged -= OnFrontChanged;
-            _input.DragStarted -= RaiseWithoutActivation;
+            _input.DragStarted -= OnDragStarted;
             _desktops.AfterStateLoaded -= NotifyCanvasChanged;
             _renderer.OnFrameTick = null;
             _fadeTimer.Dispose();
