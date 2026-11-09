@@ -20,7 +20,9 @@ public class TeamPodTests
         service.Reconcile(snapshot, desktop);
         var zone = Assert.Single(rig.Workspace.Document.Zones);
         Assert.StartsWith("AI Mission Control", zone.Name);
-        Assert.Equal(16, annotations.Items.Count);
+        Assert.Equal(7, annotations.Items.Count(a => a.AgentRole.Length > 0));
+        Assert.Equal(9, annotations.Items.Count(a => a.Kind == AnnotationKind.Arrow));
+        Assert.Equal(3, annotations.Items.Count(a => a.InBackground));
         var original = zone.Bounds; var moved = original; moved.X += 400; moved.Y += 800;
         zone.Bounds = moved;
         var offset = annotations.Items.Select(a => a.Translate(400, 800)).ToArray();
@@ -55,8 +57,8 @@ public class TeamPodTests
         Assert.Equal(2, rig.Workspace.Document.Zones.Count);
         var first = rig.Workspace.Document.Zones[0].Bounds; var second = rig.Workspace.Document.Zones[1].Bounds;
         Assert.True(second.X > first.X + first.W);
-        Assert.Equal(16, annotations.Items.Count(a => a.AgentTaskId == "a"));
-        Assert.Equal(16, annotations.Items.Count(a => a.AgentTaskId == "b"));
+        Assert.Equal(19, annotations.Items.Count(a => a.AgentTaskId == "a"));
+        Assert.Equal(19, annotations.Items.Count(a => a.AgentTaskId == "b"));
     }
 
     [Fact]
