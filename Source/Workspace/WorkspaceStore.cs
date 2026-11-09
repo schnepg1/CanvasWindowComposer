@@ -91,6 +91,7 @@ internal sealed class WorkspaceStore : IWorkspaceStore
         foreach (var zone in doc.Zones)
         {
             if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
+                || zone.AgentTaskId is null || zone.AgentTaskId.Length > 200
                 || zone.IsTemporaryArea && !temporaryDesktops.Add(zone.DesktopId)
                 || !ZoneService.ValidName(zone.Name) || !ZoneService.ValidColor(zone.Color)
                 || !ZoneGeometry.ValidBounds(zone.Bounds) || zone.ItemIds == null || zone.ItemIds.Count > 2000)

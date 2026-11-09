@@ -68,6 +68,7 @@ internal static class WorkspaceGeometry
 
 internal sealed class WorkspaceZone
 {
+    public string AgentTaskId { get; set; } = "";
     public bool IsTemporaryArea { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid DesktopId { get; set; }

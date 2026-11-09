@@ -64,7 +64,8 @@ internal static class AnnotationVisual
             var label = AnnotationGeometry.ArrowLabelBounds(mid, tan, item.Stroke, approxWidth, approxHeight);
             return new Rect(label.X - bounds.X, label.Y - bounds.Y, label.Width, label.Height);
         }
-        return new(r.X+TextInset,r.Y+TextInset,Math.Max(1,r.Width-TextInset*2),Math.Max(1,r.Height-TextInset*2));
+        double header = item.AgentRole.Length > 0 ? 36 : 0;
+        return new(r.X+TextInset,r.Y+TextInset+header,Math.Max(1,r.Width-TextInset*2),Math.Max(1,r.Height-TextInset*2-header));
     }
 
     /// <summary>Keep wrapping width and the top-left anchor; grow vertically to show every line.</summary>

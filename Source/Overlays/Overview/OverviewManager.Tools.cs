@@ -60,21 +60,13 @@ internal sealed partial class OverviewManager
         if (result.Kind == ZoneGestureKind.Draw) ZoneDrawn?.Invoke(result.Bounds);
         else if (result.Kind == ZoneGestureKind.Move)
         {
-            var zone = _zones?.Items.FirstOrDefault(z => z.Id == result.ZoneId);
-            if (zone != null && _annotationDocument != null)
+            if (_annotationDocument != null && _placeholderWorkspace != null)
             {
-                var zRect = new CanvasRect(zone.Bounds.X, zone.Bounds.Y, zone.Bounds.W, zone.Bounds.H);
-                var currentDesktop = _annotationDesktop();
-                var enclosed = _annotationDocument.Items
-                    .Where(a => a.DesktopId == currentDesktop && a.Kind != AnnotationKind.Arrow && !a.InBackground && CanvasSelection.Contains(zRect, CanvasSelection.Center(a.Bounds)))
-                    .ToList();
-
-                foreach (var a in enclosed)
-                {
-                    _annotationDocument.Put(a.Translate(result.Dx, result.Dy));
-                }
+                var all = SelectionItems();
+                var group = CanvasSelection.Expand([new(CanvasItemKind.Project, result.ZoneId)], all);
+                MoveSelection(new(all.Where(i => group.Contains(i.Key)).ToArray(), result.Dx, result.Dy));
             }
-            ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
+            else ZoneMoveRequested?.Invoke(result.ZoneId, result.Dx, result.Dy);
         }
         else if (result.Kind == ZoneGestureKind.Resize) ZoneResizeRequested?.Invoke(result.ZoneId, result.Bounds);
         RefreshZoneLayout();
