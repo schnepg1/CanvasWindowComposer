@@ -18,6 +18,9 @@ internal interface IAppConfig
     bool LowQualityMode => false;
     bool ShowTaskbarInCanvas => true;
     bool AnimateWindowNavigation => true;
+    double FlightDurationSeconds => 3.0;
+    double FlightCruisingScale => 1.0;
+    string FlightProfile => "Helicopter";
     bool DesktopPanMomentum => true;
     bool CanvasPanMomentum => true;
     bool SmoothZoom => true;
@@ -91,6 +94,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool LowQualityMode { get; private set; }
     public bool ShowTaskbarInCanvas { get; private set; } = true;
     public bool AnimateWindowNavigation { get; private set; } = true;
+    public double FlightDurationSeconds { get; private set; } = 3.0;
+    public double FlightCruisingScale { get; private set; } = 1.0;
+    public string FlightProfile { get; private set; } = "Helicopter";
     public bool DesktopPanMomentum { get; private set; } = true;
     public bool CanvasPanMomentum { get; private set; } = true;
     public bool SmoothZoom { get; private set; } = true;
@@ -144,6 +150,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             LowQualityMode = GetBool(values, "LowQualityMode", defaultValue: false);
             ShowTaskbarInCanvas = GetBool(values, "ShowTaskbarInCanvas", defaultValue: true);
             AnimateWindowNavigation = GetBool(values, "AnimateWindowNavigation", defaultValue: true);
+            FlightDurationSeconds = GetDouble(values, "FlightDurationSeconds", 3.0, min: 0.5, max: 10.0);
+            FlightCruisingScale = GetDouble(values, "FlightCruisingScale", 1.0, min: 0.4, max: 2.5);
+            FlightProfile = values.TryGetValue("FlightProfile", out var flightProfile) && !string.IsNullOrWhiteSpace(flightProfile) ? flightProfile : "Helicopter";
             DesktopPanMomentum = GetBool(values, "DesktopPanMomentum", defaultValue: true);
             CanvasPanMomentum = GetBool(values, "CanvasPanMomentum", defaultValue: true);
             SmoothZoom = GetBool(values, "SmoothZoom", defaultValue: true);
@@ -217,7 +226,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
                 EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
-                ZoomAcceleration);
+                ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile);
         }
     }
 
@@ -258,6 +267,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["OverviewSimpleCardEnterZoom"] = preferences.SimpleCardEnterZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["OverviewSimpleCardExitZoom"] = preferences.SimpleCardExitZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["MaximumZoom"] = preferences.MaximumZoom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["FlightDurationSeconds"] = preferences.FlightDurationSeconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["FlightCruisingScale"] = preferences.FlightCruisingScale.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["FlightProfile"] = preferences.FlightProfile,
             });
             Load();
         }
@@ -517,4 +529,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool ShortcutZoomOut = true, double ShortcutZoomOutAmount = OverviewZoomDefaults.ShortcutZoomOutAmount,
     bool EnableCanvasPeek = true, int CanvasPeekDelayMs = AppConfig.DefaultCanvasPeekDelayMs,
     bool SmoothZoom = true, double MaximumZoom = OverviewZoomDefaults.MaximumZoom,
-    bool ZoomAcceleration = true);
+    bool ZoomAcceleration = true,
+    double FlightDurationSeconds = 3.0, double FlightCruisingScale = 1.0, string FlightProfile = "Helicopter");

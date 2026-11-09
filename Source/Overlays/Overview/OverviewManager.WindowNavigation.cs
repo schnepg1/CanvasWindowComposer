@@ -47,10 +47,11 @@ internal sealed partial class OverviewManager
         RefreshOverviewWindows();
         _windowFlightPid = _win32.GetWindowProcessId(window);
         var target = WindowNavigationFlight.Target(world, 1, _screens.PrimaryWorkingArea);
-        _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea);
+        _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
+            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile);
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
-            AdvanceWindowNavigation(WindowNavigationFlight.Duration);
+            AdvanceWindowNavigation(_windowFlight.FlightDuration);
             return true;
         }
         _windowFlightTimer ??= new Timer { Interval = 16 };
@@ -81,10 +82,11 @@ internal sealed partial class OverviewManager
         if (CurrentMode != OverviewMode.Zooming) TransitionTo(OverviewMode.Zooming);
         RefreshOverviewWindows();
 
-        _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea);
+        _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
+            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile);
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
-            AdvanceWindowNavigation(WindowNavigationFlight.Duration);
+            AdvanceWindowNavigation(_windowFlight.FlightDuration);
             return true;
         }
 
@@ -114,9 +116,10 @@ internal sealed partial class OverviewManager
             { StopWindowNavigation(); return; }
         }
 
-        if (!_appConfig.AnimateWindowNavigation) seconds = WindowNavigationFlight.Duration;
+        double flightDuration = _windowFlight.FlightDuration;
+        if (!_appConfig.AnimateWindowNavigation) seconds = flightDuration;
         var frame = _windowFlight.Sample(seconds);
-        bool complete = seconds >= WindowNavigationFlight.Duration;
+        bool complete = seconds >= flightDuration;
         if (complete) StopWindowNavigation();
         else ObserveGestureMotion();
         _camera.SetTo(frame.X, frame.Y, frame.Zoom);
