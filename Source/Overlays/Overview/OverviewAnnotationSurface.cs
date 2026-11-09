@@ -49,6 +49,7 @@ internal readonly record struct OverviewAnnotationContext(
 
 internal interface IOverviewAnnotationLayer
 {
+    bool HasAnimatedContent => false;
     void Draw(DrawingContext dc, OverviewAnnotationContext context);
 }
 
@@ -98,7 +99,8 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         _frame = frame;
         Opacity = frame.Intro?.RevealOpacity ?? 1;
         _placeholders.Clear();
-        _hasActiveCards = !frame.ReduceMotion && !frame.MotionActive && frame.Placeholders.Any(p => (p.IsActiveWindow || p.IsMinimizedWindow) && p.Opacity >= 0.99);
+        _hasActiveCards = !frame.ReduceMotion && !frame.MotionActive && (frame.Placeholders.Any(p => (p.IsActiveWindow || p.IsMinimizedWindow) && p.Opacity >= 0.99)
+            || _drawingLayers.Any(layer => layer.HasAnimatedContent));
         if (_hasActiveCards)
         {
             if (!_glowTimer.IsEnabled) _glowTimer.Start();

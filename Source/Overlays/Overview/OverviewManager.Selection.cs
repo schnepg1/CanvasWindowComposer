@@ -92,6 +92,11 @@ internal sealed partial class OverviewManager
                 var memberAnnotations = annotItems
                     .Where(a => CanvasSelection.Contains(zRect, CanvasSelection.Center(a.Bounds)))
                     .Select(a => new CanvasItemId(CanvasItemKind.Annotation, a.Id));
+                var taskId = _placeholderWorkspace?.Document.Zones.FirstOrDefault(area => area.Id == z.Id)?.AgentTaskId;
+                if (!string.IsNullOrEmpty(taskId))
+                    memberAnnotations = memberAnnotations.Concat(_annotationDocument!.Items
+                        .Where(a => a.DesktopId == currentDesktop && a.AgentTaskId == taskId)
+                        .Select(a => new CanvasItemId(CanvasItemKind.Annotation, a.Id)));
 
                 return new CanvasSelectionItem(new(CanvasItemKind.Project, z.Id), zRect, z.Name,
                     memberWindows.Concat(memberProjects).Concat(memberAnnotations).ToArray());

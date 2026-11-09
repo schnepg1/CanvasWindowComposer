@@ -25,13 +25,18 @@ public sealed record TeamTelemetrySnapshot(
     IReadOnlyDictionary<string, AgentStatusReport> Roles,
     DateTimeOffset UpdatedAt)
 {
+    public IReadOnlyDictionary<string, TeamStatusReport> Teams { get; init; } = new Dictionary<string, TeamStatusReport>();
     public static TeamTelemetrySnapshot Empty => new(new Dictionary<string, AgentStatusReport>(), DateTimeOffset.UtcNow);
 }
+
+public sealed record TeamStatusReport(string TaskId, string Name, string Status, string ActiveRole,
+    IReadOnlyDictionary<string, AgentStatusReport> Roles);
 
 public interface ITeamTelemetryProvider : IDisposable
 {
     TeamTelemetrySnapshot Current { get; }
     event Action<TeamTelemetrySnapshot>? TelemetryUpdated;
     AgentExecutionState GetStateForCard(string cardText);
+    AgentStatusReport? GetReportForCard(CanvasAnnotation card);
     void SetState(string role, AgentExecutionState state, string detail = "");
 }

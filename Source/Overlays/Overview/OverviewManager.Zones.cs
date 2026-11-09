@@ -49,6 +49,11 @@ internal sealed partial class OverviewManager
             _placeholderWorkspace.ArrivalViewportProvider = null;
         }
         _placeholderWorkspace = workspace;
+        if (_annotationDocument != null)
+        {
+            _teamPods = new(workspace, _annotationDocument);
+            RefreshTeamTelemetry();
+        }
         workspace.Changed += RefreshPlaceholderTitles;
         workspace.ZoneLayoutRecorded += OnZoneLayoutRecorded;
         workspace.TemporaryWindowsArrived += OnTemporaryWindowsArrived;

@@ -8,8 +8,12 @@ namespace CanvasDesktop;
 
 using CanvasDesktop.CanvasView;
 
-internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null, Func<CanvasAnnotation?>? connectionPreview = null, Func<CanvasAnnotation, AgentExecutionState?>? telemetryState = null) : IOverviewAnnotationLayer
+internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null, Func<CanvasAnnotation?>? connectionPreview = null, Func<CanvasAnnotation, AgentStatusReport?>? telemetryState = null) : IOverviewAnnotationLayer
 {
+    public bool HasAnimatedContent => visible() && document.Items.Any(item => item.DesktopId == desktop()
+        && item.Kind != AnnotationKind.Arrow && !item.InBackground
+        && telemetryState?.Invoke(item) is { State: not AgentExecutionState.Idle });
+    private readonly Dictionary<Guid, (AgentExecutionState State, string Detail, double Width, TelemetryStatusPill Pill)> _pills = [];
     private readonly Dictionary<Guid,(CanvasAnnotation Item,double Dpi,DrawingGroup Drawing)> _artwork = [];
     private long _revision = -1;
     private DrawingGroup Artwork(CanvasAnnotation item,double dpi,bool transient)
@@ -26,7 +30,7 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
     {
         if (!visible()) return;
         // Camera movement only changes transforms; keep expensive text layout out of that path.
-        if (_revision != document.Revision) { _artwork.Clear(); _revision=document.Revision; }
+        if (_revision != document.Revision) { _artwork.Clear(); _pills.Clear(); _revision=document.Revision; }
         var preview = tool.Preview;
         var conn = connectionPreview?.Invoke();
         var items = document.Items.Where(a => a.DesktopId == desktop() && a.Id != preview?.Id && hidden?.Invoke(a.Id) != true).ToList();
@@ -70,13 +74,21 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
             dc.PushTransform(new TranslateTransform(rect.X,rect.Y));
             dc.PushTransform(new ScaleTransform(context.View.Zoom/context.Dpi.DpiScaleX,context.View.Zoom/context.Dpi.DpiScaleY));
             dc.DrawDrawing(Artwork(item,context.Dpi.PixelsPerDip,item.Id==preview?.Id));
+            var report = item.Kind != AnnotationKind.Arrow && !item.InBackground ? telemetryState?.Invoke(item) : null;
+            if (report != null && (report.State != AgentExecutionState.Idle || item.AgentRole.Length > 0) && item.Bounds.Width >= 80)
+            {
+                double width = item.Bounds.Width - 16;
+                if (!_pills.TryGetValue(item.Id, out var cached) || cached.State != report.State || cached.Detail != report.Detail || cached.Width != width)
+                    _pills[item.Id] = cached = (report.State, report.Detail, width, new TelemetryStatusPill(report, width));
+                dc.DrawRectangle(cached.Pill.Brush, null, new Rect(8, item.AgentRole.Length > 0 ? 8 : -32, width, 28));
+            }
             dc.Pop(); dc.Pop();
             if (pushedClip) dc.Pop();
 
             // Telemetry Glow HUD
-            if (item.Kind != AnnotationKind.Arrow && !item.InBackground && telemetryState?.Invoke(item) is { } state && state != AgentExecutionState.Idle)
+            if (report is { State: not AgentExecutionState.Idle })
             {
-                DrawTelemetryGlow(dc, rect, state);
+                DrawTelemetryGlow(dc, rect, report.State, context);
             }
 
             if (tool.Mode == AnnotationMode.Select && item.Id == tool.SelectedId)
@@ -92,7 +104,7 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
         }
     }
 
-    private static void DrawTelemetryGlow(DrawingContext dc, Rect rect, AgentExecutionState state)
+    private static void DrawTelemetryGlow(DrawingContext dc, Rect rect, AgentExecutionState state, OverviewAnnotationContext context)
     {
         Color glowColor = state switch
         {
@@ -106,7 +118,7 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
 
         if (glowColor == Colors.Transparent) return;
 
-        double pulse = 0.7 + 0.3 * Math.Sin(Environment.TickCount64 / 220.0);
+        double pulse = context.ReduceMotion || context.MotionActive ? 0.7 : 0.7 + 0.3 * Math.Sin(context.Timestamp / 220.0);
 
         byte outerAlpha = (byte)(35 * pulse);
         byte midAlpha = (byte)(80 * pulse);
@@ -121,14 +133,5 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
         dc.DrawRoundedRectangle(null, midPen, new Rect(rect.X - 1.5, rect.Y - 1.5, rect.Width + 3, rect.Height + 3), 7, 7);
         dc.DrawRoundedRectangle(null, innerPen, rect, 6, 6);
 
-        // Corner Status Indicator Badge
-        double badgeRadius = 6.0;
-        Point badgeCenter = new Point(rect.Right - 14, rect.Top + 14);
-
-        var badgeFill = new SolidColorBrush(Color.FromArgb(220, glowColor.R, glowColor.G, glowColor.B));
-        badgeFill.Freeze();
-        var badgeBorder = new Pen(Brushes.White, 1.2);
-        badgeBorder.Freeze();
-        dc.DrawEllipse(badgeFill, badgeBorder, badgeCenter, badgeRadius, badgeRadius);
     }
 }

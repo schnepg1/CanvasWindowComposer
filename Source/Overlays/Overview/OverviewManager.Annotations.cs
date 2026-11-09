@@ -16,6 +16,7 @@ internal sealed partial class OverviewManager
     private ICanvasTool? _annotationRouter;
     private CanvasAnnotationLayer? _annotationLayer;
     private ITeamTelemetryProvider? _telemetryProvider;
+    private TeamPodService? _teamPods;
     internal ITeamTelemetryProvider? TelemetryProvider => _telemetryProvider;
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
     private IVirtualDesktops? _annotationDesktops;
@@ -55,9 +56,8 @@ internal sealed partial class OverviewManager
         _connectionTool.ConnectionCreated += OnConnectionCreated;
         try
         {
-            string repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", ".."));
-            string statePath = Path.Combine(repoRoot, ".agents", "teams", "state.json");
-            _telemetryProvider = new WindowsNativeTelemetryProvider(statePath);
+            _telemetryProvider = new WindowsNativeTelemetryProvider();
+            if (_placeholderWorkspace != null) _teamPods = new(_placeholderWorkspace, _annotationDocument);
             _telemetryProvider.TelemetryUpdated += _ =>
             {
                 if (_disposed) return;
@@ -66,9 +66,9 @@ internal sealed partial class OverviewManager
                     try
                     {
                         if (_passes[0].InvokeRequired)
-                            _passes[0].BeginInvoke(() => { if (!_disposed) ReconcileVisuals(); });
+                            _passes[0].BeginInvoke(() => { if (!_disposed) RefreshTeamTelemetry(); });
                         else
-                            ReconcileVisuals();
+                            RefreshTeamTelemetry();
                     }
                     catch (ObjectDisposedException) { }
                     catch (InvalidOperationException) { }
@@ -76,7 +76,7 @@ internal sealed partial class OverviewManager
             };
         }
         catch { }
-        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id) || _annotationEditor?.CurrentItem.Id == id, () => _windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H)).ToArray(), () => _connectionTool?.Preview, item => _telemetryProvider?.GetStateForCard(item.Text));
+        _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id) || _annotationEditor?.CurrentItem.Id == id, () => _windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H)).ToArray(), () => _connectionTool?.Preview, item => _telemetryProvider?.GetReportForCard(item));
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, _connectionTool, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
         _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
@@ -86,6 +86,20 @@ internal sealed partial class OverviewManager
         _annotationDocument.Changed+=OnAnnotationsChanged;
         _annotationTool.EditTextRequested+=QueueAnnotationTextEdit;
         desktops.DesktopChanged+=OnAnnotationDesktopChanged;
+        AfterModeChanged += OnTeamTelemetryModeChanged;
+        RefreshTeamTelemetry();
+    }
+    private void OnTeamTelemetryModeChanged(OverviewMode from, OverviewMode to)
+    {
+        if (to == OverviewMode.Zooming) RefreshTeamTelemetry();
+    }
+    private void RefreshTeamTelemetry()
+    {
+        if (_telemetryProvider == null) return;
+        try { _teamPods?.Reconcile(_telemetryProvider.Current, _annotationDesktop()); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        { _annotationError = "Team pod could not be created: " + ex.Message; }
+        ReconcileVisuals();
     }
     private void OnConnectionCreated(CanvasAnnotation arrow)
     {
@@ -697,7 +711,8 @@ internal sealed partial class OverviewManager
         _unifiedDock?.Dispose(); _unifiedDock=null;
         _controlsPopup?.Dispose(); _controlsPopup=null;
         _controlsButton?.Dispose(); _controlsButton=null;
-        _telemetryProvider?.Dispose(); _telemetryProvider=null;
+        AfterModeChanged -= OnTeamTelemetryModeChanged;
+        _telemetryProvider?.Dispose(); _telemetryProvider=null; _teamPods=null;
     }
 
     internal bool PrepareForUpdate(out string? message)

@@ -1,233 +1,170 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading;
-using CanvasDesktop.CanvasView;
-
-namespace CanvasDesktop;
-
-internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
-{
-    public const string NamedMutexName = @"Global\CanvasWindowComposer.Tests";
-    private readonly string _stateFilePath;
-    private readonly Func<bool>? _mutexProbe;
-    private readonly FileSystemWatcher? _watcher;
-    private readonly System.Threading.Timer? _pollTimer;
-    private TeamTelemetrySnapshot _current = TeamTelemetrySnapshot.Empty;
-    private bool _disposed;
-
-    public TeamTelemetrySnapshot Current => _current;
-    public event Action<TeamTelemetrySnapshot>? TelemetryUpdated;
-
-    public static string ResolveStateFilePath(string? explicitPath = null)
-    {
-        if (!string.IsNullOrEmpty(explicitPath))
-            return explicitPath;
-
-        // 1. Project folder (.canvas or .agents in CurrentDirectory or BaseDirectory)
-        var candidates = new[]
-        {
-            Path.Combine(Environment.CurrentDirectory, ".canvas", "state.json"),
-            Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "state.json"),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".canvas", "state.json"),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".agents", "teams", "state.json")
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        // 2. User AppData (Vendor-neutral Windows standard)
-        var appDataState = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CanvasWindowComposer", "Teams", "state.json");
-
-        if (File.Exists(appDataState))
-            return appDataState;
-
-        // 3. Fallback: project directory if in dev/launcher, else AppData
-        if (File.Exists(Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "teams.yaml")) ||
-            Directory.Exists(Path.Combine(Environment.CurrentDirectory, ".agents")))
-        {
-            return Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "state.json");
-        }
-
-        return appDataState;
-    }
-
-    public WindowsNativeTelemetryProvider(string? stateFilePath = null, Func<bool>? mutexProbe = null)
-    {
-        _stateFilePath = ResolveStateFilePath(stateFilePath);
-        _mutexProbe = mutexProbe;
-
-        try
-        {
-            var dir = Path.GetDirectoryName(_stateFilePath);
-            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-            {
-                _watcher = new FileSystemWatcher(dir, Path.GetFileName(_stateFilePath))
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
-                    EnableRaisingEvents = true
-                };
-                _watcher.Changed += (_, _) => ReloadState();
-                _watcher.Created += (_, _) => ReloadState();
-            }
-        }
-        catch { }
-
-        // Poll every 300ms for hardware mutex truth
-        _pollTimer = new System.Threading.Timer(_ => CheckHardwareAndState(), null, 300, 300);
-
-        ReloadState();
-    }
-
-    internal void CheckHardwareAndState()
-    {
-        if (_disposed) return;
-
-        bool mutexActive = false;
-        if (_mutexProbe != null)
-        {
-            mutexActive = _mutexProbe();
-        }
-        else
-        {
-            try
-            {
-                if (Mutex.TryOpenExisting(NamedMutexName, out var mutex))
-                {
-                    mutexActive = true;
-                    mutex.Dispose();
-                }
-            }
-            catch { }
-        }
-
-        bool stateChanged = false;
-        var roles = new Dictionary<string, AgentStatusReport>(_current.Roles, StringComparer.OrdinalIgnoreCase);
-
-        // Hardware truth: if mutex is held, the test runner is actively running native tests
-        if (mutexActive)
-        {
-            if (!roles.TryGetValue("programmer", out var prog) || prog.State != AgentExecutionState.Testing)
-            {
-                roles["programmer"] = new AgentStatusReport("programmer", AgentExecutionState.Testing, "Executing test suite under named mutex", DateTimeOffset.UtcNow);
-                stateChanged = true;
-            }
-            if (!roles.TryGetValue("reviewer", out var rev) || rev.State != AgentExecutionState.Testing)
-            {
-                roles["reviewer"] = new AgentStatusReport("reviewer", AgentExecutionState.Testing, "Verifying tests under named mutex", DateTimeOffset.UtcNow);
-                stateChanged = true;
-            }
-        }
-
-        if (stateChanged)
-        {
-            _current = new TeamTelemetrySnapshot(roles, DateTimeOffset.UtcNow);
-            TelemetryUpdated?.Invoke(_current);
-        }
-    }
-
-    public void ReloadState()
-    {
-        if (_disposed) return;
-        try
-        {
-            if (File.Exists(_stateFilePath))
-            {
-                string json = File.ReadAllText(_stateFilePath);
-                using var doc = JsonDocument.Parse(json);
-                var roles = new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase);
-
-                if (doc.RootElement.TryGetProperty("roles", out var rolesElem) && rolesElem.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var prop in rolesElem.EnumerateObject())
-                    {
-                        string role = prop.Name;
-                        string stateStr = prop.Value.TryGetProperty("state", out var s) ? s.GetString() ?? "Idle" : "Idle";
-                        string detail = prop.Value.TryGetProperty("detail", out var d) ? d.GetString() ?? "" : "";
-
-                        if (Enum.TryParse<AgentExecutionState>(stateStr, true, out var state))
-                        {
-                            roles[role] = new AgentStatusReport(role, state, detail, DateTimeOffset.UtcNow);
-                        }
-                    }
-                }
-
-                _current = new TeamTelemetrySnapshot(roles, DateTimeOffset.UtcNow);
-                TelemetryUpdated?.Invoke(_current);
-            }
-        }
-        catch { }
-    }
-
-    public void SetState(string role, AgentExecutionState state, string detail = "")
-    {
-        var roles = new Dictionary<string, AgentStatusReport>(_current.Roles, StringComparer.OrdinalIgnoreCase);
-        roles[role] = new AgentStatusReport(role, state, detail, DateTimeOffset.UtcNow);
-        _current = new TeamTelemetrySnapshot(roles, DateTimeOffset.UtcNow);
-
-        try
-        {
-            var dir = Path.GetDirectoryName(_stateFilePath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-            var dict = new Dictionary<string, object>();
-            var rolesDict = new Dictionary<string, object>();
-            foreach (var r in roles)
-            {
-                rolesDict[r.Key] = new { state = r.Value.State.ToString(), detail = r.Value.Detail, timestamp = r.Value.Timestamp };
-            }
-            dict["roles"] = rolesDict;
-            dict["updatedAt"] = DateTimeOffset.UtcNow;
-
-            string json = JsonSerializer.Serialize(dict, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_stateFilePath, json);
-        }
-        catch { }
-
-        TelemetryUpdated?.Invoke(_current);
-    }
-
-    public AgentExecutionState GetStateForCard(string cardText)
-    {
-        if (string.IsNullOrWhiteSpace(cardText) || _current.Roles.Count == 0) return AgentExecutionState.Idle;
-
-        foreach (var (roleKey, report) in _current.Roles)
-        {
-            if (report.State == AgentExecutionState.Idle) continue;
-
-            if (cardText.Contains(roleKey, StringComparison.OrdinalIgnoreCase))
-                return report.State;
-
-            // Common aliases and titles
-            bool matches = roleKey.ToLowerInvariant() switch
-            {
-                "programmer" or "dev" => cardText.Contains("Programmer", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Developer", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Dev", StringComparison.OrdinalIgnoreCase),
-                "architect" or "arch" => cardText.Contains("Architect", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Planner", StringComparison.OrdinalIgnoreCase),
-                "reviewer" or "rev" => cardText.Contains("Reviewer", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Quality", StringComparison.OrdinalIgnoreCase),
-                "merger" or "mrg" => cardText.Contains("Merger", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Branch Merger", StringComparison.OrdinalIgnoreCase),
-                "conflict-resolver" or "res" => cardText.Contains("Conflict", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Resolver", StringComparison.OrdinalIgnoreCase),
-                "branch-cleaner" or "cln" => cardText.Contains("Cleaner", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Hygiene", StringComparison.OrdinalIgnoreCase),
-                "orchestrator" or "orch" => cardText.Contains("Orchestrator", StringComparison.OrdinalIgnoreCase) || cardText.Contains("Mission", StringComparison.OrdinalIgnoreCase),
-                _ => false
-            };
-
-            if (matches) return report.State;
-        }
-
-        return AgentExecutionState.Idle;
-    }
-
-    public void Dispose()
-    {
-        _disposed = true;
-        _watcher?.Dispose();
-        _pollTimer?.Dispose();
-    }
-}
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using CanvasDesktop.CanvasView;
+
+namespace CanvasDesktop;
+
+internal sealed class WindowsNativeTelemetryProvider : ITeamTelemetryProvider
+{
+    public const string NamedMutexName = @"Global\CanvasWindowComposer.Tests";
+    private readonly string _stateFilePath;
+    private readonly Func<bool>? _mutexProbe;
+    private readonly FileSystemWatcher? _watcher;
+    private readonly System.Threading.Timer _pollTimer;
+    private readonly object _gate = new();
+    private TeamTelemetrySnapshot _fileState = TeamTelemetrySnapshot.Empty;
+    private TeamTelemetrySnapshot _current = TeamTelemetrySnapshot.Empty;
+    private string? _lastJson;
+    private bool _mutexActive, _disposed;
+    public TeamTelemetrySnapshot Current => Volatile.Read(ref _current);
+    public event Action<TeamTelemetrySnapshot>? TelemetryUpdated;
+
+    public static string ResolveStateFilePath(string? explicitPath = null)
+    {
+        if (!string.IsNullOrEmpty(explicitPath)) return explicitPath;
+        if (Environment.GetEnvironmentVariable("CANVAS_TEAM_STATE_PATH") is { Length: > 0 } sharedPath) return sharedPath;
+        var candidates = new[]
+        {
+            Path.Combine(Environment.CurrentDirectory, ".canvas", "state.json"),
+            Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "state.json"),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".canvas", "state.json"),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".agents", "teams", "state.json")
+        };
+        foreach (var candidate in candidates) if (File.Exists(candidate)) return candidate;
+        var appDataState = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "CanvasWindowComposer", "Teams", "state.json");
+        if (File.Exists(appDataState)) return appDataState;
+        return Directory.Exists(Path.Combine(Environment.CurrentDirectory, ".agents"))
+            ? Path.Combine(Environment.CurrentDirectory, ".agents", "teams", "state.json") : appDataState;
+    }
+
+    public WindowsNativeTelemetryProvider(string? stateFilePath = null, Func<bool>? mutexProbe = null)
+    {
+        _stateFilePath = Path.GetFullPath(ResolveStateFilePath(stateFilePath));
+        _mutexProbe = mutexProbe;
+        var dir = Path.GetDirectoryName(_stateFilePath)!;
+        if (Directory.Exists(dir))
+        {
+            _watcher = new FileSystemWatcher(dir, Path.GetFileName(_stateFilePath))
+            { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
+            _watcher.Changed += (_, _) => ReloadState();
+            _watcher.Created += (_, _) => ReloadState();
+            _watcher.Deleted += (_, _) => ReloadState();
+            _watcher.Renamed += (_, _) => ReloadState();
+            _watcher.EnableRaisingEvents = true;
+        }
+        ReloadState();
+        // Also finds files/directories created after startup and recovers missed replace events.
+        _pollTimer = new System.Threading.Timer(_ => CheckHardwareAndState(), null, 300, 300);
+    }
+
+    internal void CheckHardwareAndState()
+    {
+        ReloadState();
+        bool active = false;
+        if (_mutexProbe != null) active = _mutexProbe();
+        else
+        {
+            try
+            {
+                if (Mutex.TryOpenExisting(NamedMutexName, out var mutex))
+                { active = true; mutex.Dispose(); }
+            }
+            catch (UnauthorizedAccessException) { }
+        }
+        TeamTelemetrySnapshot snapshot;
+        lock (_gate)
+        {
+            if (_disposed || active == _mutexActive) return;
+            _mutexActive = active;
+            snapshot = Publish();
+        }
+        TelemetryUpdated?.Invoke(snapshot);
+    }
+
+    private TeamTelemetrySnapshot Publish()
+    {
+        // A machine-wide mutex cannot identify a task. Only legacy global cards use it.
+        var roles = new Dictionary<string, AgentStatusReport>(_fileState.Roles, StringComparer.OrdinalIgnoreCase);
+        if (_mutexActive)
+            foreach (var role in new[] { "programmer", "reviewer" })
+                roles[role] = new(role, AgentExecutionState.Testing, "Executing test suite under named mutex", DateTimeOffset.UtcNow);
+        var snapshot = _fileState with { Roles = roles, UpdatedAt = DateTimeOffset.UtcNow };
+        Volatile.Write(ref _current, snapshot);
+        return snapshot;
+    }
+
+    public void ReloadState()
+    {
+        TeamTelemetrySnapshot snapshot;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            try
+            {
+                string json = "{}";
+                if (File.Exists(_stateFilePath))
+                {
+                    if (new FileInfo(_stateFilePath).Length > TeamTelemetryJson.MaximumBytes) return;
+                    json = File.ReadAllText(_stateFilePath);
+                }
+                if (_lastJson == json) return;
+                var parsed = TeamTelemetryJson.Parse(json);
+                _lastJson = json;
+                _fileState = parsed;
+                snapshot = Publish();
+            }
+            // Preserve the last valid snapshot during partial writes or atomic replacements.
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return; }
+        }
+        TelemetryUpdated?.Invoke(snapshot);
+    }
+
+    public void SetState(string role, AgentExecutionState state, string detail = "")
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_stateFilePath.ToUpperInvariant())));
+            using var writer = new Mutex(false, @"Local\CanvasWindowComposer.Telemetry." + hash);
+            bool held = false;
+            try
+            {
+                try { held = writer.WaitOne(TimeSpan.FromSeconds(10)); }
+                catch (AbandonedMutexException) { held = true; }
+                if (!held) throw new IOException("Timed out waiting to update team telemetry.");
+                // Preserve registered teams and unrelated fields when a legacy caller writes a role.
+                var json = File.Exists(_stateFilePath) ? File.ReadAllText(_stateFilePath).TrimStart('\uFEFF') : "{}";
+                var root = JsonNode.Parse(json)!.AsObject();
+                var roles = root["roles"] as JsonObject ?? new JsonObject();
+                root["roles"] = roles;
+                roles[role] = new JsonObject { ["state"] = state.ToString(), ["detail"] = detail,
+                    ["timestamp"] = DateTimeOffset.UtcNow.ToString("O") };
+                var next = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                _ = TeamTelemetryJson.Parse(next);
+                Directory.CreateDirectory(Path.GetDirectoryName(_stateFilePath)!);
+                string temp = _stateFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try { File.WriteAllText(temp, next); File.Move(temp, _stateFilePath, true); }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+            }
+            finally { if (held) writer.ReleaseMutex(); }
+        }
+        ReloadState();
+    }
+
+    public AgentStatusReport? GetReportForCard(CanvasAnnotation card) => TeamTelemetryJson.ReportForCard(Current, card);
+    public AgentExecutionState GetStateForCard(string cardText)
+        => TeamTelemetryJson.LegacyReport(Current, cardText)?.State ?? AgentExecutionState.Idle;
+
+    public void Dispose()
+    {
+        lock (_gate) { _disposed = true; }
+        _watcher?.Dispose(); _pollTimer.Dispose();
+    }
+}
