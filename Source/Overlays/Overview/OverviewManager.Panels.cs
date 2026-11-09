@@ -16,6 +16,7 @@ internal sealed partial class OverviewManager
 
     private void UpdateCanvasPanelOwners()
     {
+        if (_unifiedDock?.IsAlive == true) _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
         _backpack?.SetCanvasOwner(CanvasPanelOwner);
         _temporaryDrawer?.SetCanvasOwner(CanvasPanelOwner);
         _backgroundEditor?.SetCanvasOwner(CanvasPanelOwner);
@@ -26,6 +27,7 @@ internal sealed partial class OverviewManager
     private void RaiseCanvasPanels()
     {
         if (_disposed) return;
+        if (_unifiedDock?.IsAlive == true) _unifiedDock.RaiseWithoutActivation();
         _peekWindow?.RaiseWithoutActivation();
         _backpack?.RaiseWithoutActivation();
         _temporaryDrawer?.RaiseWithoutActivation();

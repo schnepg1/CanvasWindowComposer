@@ -84,12 +84,13 @@ public class UnifiedCanvasControlTests
                 overview.TransitionTo(OverviewMode.Zooming);
 
                 // Controls button should be visible in top right
-                Assert.NotNull(overview.ControlsButton);
-                Assert.True(overview.ControlsButton.Visible);
+                Assert.NotNull(overview.UnifiedDock);
+                Assert.True(overview.UnifiedDock.IsDockVisible);
 
                 // Click Controls button to open popup
-                var btn = overview.ControlsButton.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().Single(b => b.Text.Contains("Controls"));
-                btn.PerformClick();
+                var btn = overview.UnifiedDock.Panel.ControlsButton;
+                void ClickControls() => btn.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                ClickControls();
 
                 Assert.NotNull(overview.ControlsPopup);
                 Assert.True(overview.ControlsPopup.Visible);
@@ -102,19 +103,19 @@ public class UnifiedCanvasControlTests
                 // Leaving canvas view must hide both independent topmost windows.
                 foreach (var target in new[] { OverviewMode.Hidden, OverviewMode.Panning })
                 {
-                    btn.PerformClick();
+                    ClickControls();
                     Assert.True(overview.ControlsPopup.Visible);
 
                     overview.TransitionTo(target);
-                    Assert.False(overview.ControlsButton.Visible);
+                    Assert.False(overview.UnifiedDock.IsDockVisible);
                     Assert.False(overview.ControlsPopup.Visible);
 
                     // A stale click must not reopen help outside canvas view.
-                    btn.PerformClick();
+                    ClickControls();
                     Assert.False(overview.ControlsPopup.Visible);
 
                     overview.TransitionTo(OverviewMode.Zooming);
-                    Assert.True(overview.ControlsButton.Visible);
+                    Assert.True(overview.UnifiedDock.IsDockVisible);
                     Assert.False(overview.ControlsPopup.Visible);
                 }
             }
