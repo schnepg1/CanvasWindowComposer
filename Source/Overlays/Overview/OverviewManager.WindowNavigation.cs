@@ -50,7 +50,8 @@ internal sealed partial class OverviewManager
         _windowFlightPid = _win32.GetWindowProcessId(window);
         var target = WindowNavigationFlight.Target(world, 1, _screens.PrimaryWorkingArea);
         _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
-            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile);
+            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile,
+            _appConfig.FlightFullDurationDistance, _appConfig.FlightFullClimbDistance);
         WindowNavigationStarted?.Invoke();
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
@@ -86,7 +87,8 @@ internal sealed partial class OverviewManager
         RefreshOverviewWindows();
 
         _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
-            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile);
+            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile,
+            _appConfig.FlightFullDurationDistance, _appConfig.FlightFullClimbDistance);
         WindowNavigationStarted?.Invoke();
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {

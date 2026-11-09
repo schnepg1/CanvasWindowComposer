@@ -11,15 +11,6 @@ namespace CanvasDesktop;
 /// <summary>Cache a real WPF-UI Badge as passive canvas artwork between telemetry updates.</summary>
 internal sealed class TelemetryStatusPill
 {
-    static TelemetryStatusPill()
-    {
-        if (!UriParser.IsKnownScheme("pack"))
-        {
-            if (System.Windows.Application.Current == null) try { _ = new System.Windows.Application(); } catch { }
-            _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
-        }
-    }
-
     internal Badge Badge { get; }
     internal string Label { get; }
     internal VisualBrush Brush { get; }
@@ -28,8 +19,8 @@ internal sealed class TelemetryStatusPill
         Label = "● " + report.State.ToString().ToUpperInvariant()
             + (string.IsNullOrWhiteSpace(report.Detail) ? "" : " · " + report.Detail.Replace('\r', ' ').Replace('\n', ' '));
         var color = ColorFor(report.State);
-        var styles = new ResourceDictionary
-        { Source = new Uri("pack://application:,,,/Wpf.Ui;component/Controls/Badge/Badge.xaml") };
+        var styles = (ResourceDictionary)Application.LoadComponent(
+            new Uri("/Wpf.Ui;component/Controls/Badge/Badge.xaml", UriKind.Relative));
         Badge = new Badge
         {
             Style = (Style)styles[typeof(Badge)], Appearance = ControlAppearance.Primary,
@@ -45,8 +36,8 @@ internal sealed class TelemetryStatusPill
         Badge.Measure(new Size(width, 28));
         Badge.Arrange(new Rect(0, 0, width, 28));
         Badge.UpdateLayout();
+        // WPF requires brushes that reference a visual to stay unfrozen.
         Brush = new VisualBrush(Badge) { Stretch = Stretch.None };
-        if (Brush.CanFreeze) Brush.Freeze();
     }
 
     public static Color ColorFor(AgentExecutionState state) => state switch

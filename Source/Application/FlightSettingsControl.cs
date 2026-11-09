@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
@@ -25,9 +26,14 @@ internal sealed class FlightSettingsControl : UserControl
 
     private readonly Slider _durationSlider;
     private readonly Slider _altitudeSlider;
+    private readonly Slider _fullDurationDistanceSlider;
+    private readonly Slider _fullClimbDistanceSlider;
+    private readonly Slider _previewDistanceSlider;
     private readonly TextBlock _durationReadout;
     private readonly TextBlock _altitudeReadout;
-    private readonly TextBlock _altitudeHint;
+    private readonly TextBlock _durationRate;
+    private readonly TextBlock _climbRate;
+    private readonly TextBlock _previewReadout;
     private readonly FlightCurvePreviewControl _previewGraph;
     private readonly Border[] _profileCards;
     private readonly string[] _profileKeys = ["Helicopter", "Brisk", "Cinematic", "Planar"];
@@ -84,7 +90,7 @@ internal sealed class FlightSettingsControl : UserControl
         _profileCards[0] = CreateProfileCard("Helicopter", "🚁 Helicopter (Standard)", "Vertical liftoff first, gradual 2D acceleration, soft flared landing", 0);
         _profileCards[1] = CreateProfileCard("Brisk", "⚡ Brisk", "Fast lateral takeoff and swift ascent for rapid switching", 1);
         _profileCards[2] = CreateProfileCard("Cinematic", "🎬 Cinematic", "Grand overview climb, extended gliding cruise, sweeping curves", 2);
-        _profileCards[3] = CreateProfileCard("Planar", "📐 Planar", "Direct 2D glide across canvas with no zoom changes", 3);
+        _profileCards[3] = CreateProfileCard("Planar", "📐 Planar", "Direct 2D glide across canvas with no extra climb", 3);
 
         foreach (var card in _profileCards) profileGrid.Children.Add(card);
 
@@ -101,7 +107,7 @@ internal sealed class FlightSettingsControl : UserControl
         durationHeader.Children.Add(_durationReadout);
         durationHeader.Children.Add(new TextBlock
         {
-            Text = "Flight Duration",
+            Text = "Maximum Flight Duration",
             FontWeight = FontWeights.Medium,
             Foreground = ZoneTheme.Brush("#F1F5F9")
         });
@@ -120,7 +126,7 @@ internal sealed class FlightSettingsControl : UserControl
             AutoToolTipPrecision = 2,
             Margin = new Thickness(0, 2, 0, 2)
         };
-        AutomationProperties.SetName(_durationSlider, "Flight duration in seconds");
+        AutomationProperties.SetName(_durationSlider, "Maximum flight duration in seconds");
         UpdateDurationReadout();
         _durationSlider.ValueChanged += (_, _) =>
         {
@@ -129,15 +135,8 @@ internal sealed class FlightSettingsControl : UserControl
         };
         root.Children.Add(_durationSlider);
 
-        var durationHint = new TextBlock
-        {
-            Text = "Standard duration is 3.0 seconds. Can be adjusted from 0.5s up to 10.0 seconds.",
-            FontSize = 11,
-            Foreground = ZoneTheme.Brush("#94A3B8"),
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 10)
-        };
-        root.Children.Add(durationHint);
+        _fullDurationDistanceSlider = AddDistanceSlider(root, "Distance for maximum duration", preferences.FlightFullDurationDistance);
+        _durationRate = AddHint(root);
 
         // Cruising Altitude Scale Slider
         var altitudeHeader = new DockPanel { Margin = new Thickness(0, 4, 0, 2) };
@@ -152,7 +151,7 @@ internal sealed class FlightSettingsControl : UserControl
         altitudeHeader.Children.Add(_altitudeReadout);
         altitudeHeader.Children.Add(new TextBlock
         {
-            Text = "Cruising Altitude Depth",
+            Text = "Maximum Climb Depth",
             FontWeight = FontWeights.Medium,
             Foreground = ZoneTheme.Brush("#F1F5F9")
         });
@@ -180,15 +179,28 @@ internal sealed class FlightSettingsControl : UserControl
         };
         root.Children.Add(_altitudeSlider);
 
-        _altitudeHint = new TextBlock
+        _fullClimbDistanceSlider = AddDistanceSlider(root, "Distance for full climb", preferences.FlightFullClimbDistance);
+        _climbRate = AddHint(root);
+
+        _previewDistanceSlider = AddDistanceSlider(root, "Preview flight distance", 500, minimum: 100);
+        var distances = new UniformGrid { Columns = 3 };
+        AddPreset("Nearby", 500);
+        AddPreset("Across canvas", 1500);
+        AddPreset("Far", 5000);
+        root.Children.Add(distances);
+
+        void AddPreset(string label, double distance)
         {
-            Text = "Relative zoom-out depth during flight. Higher values give a broader view of surrounding windows.",
-            FontSize = 11,
-            Foreground = ZoneTheme.Brush("#94A3B8"),
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 10)
-        };
-        root.Children.Add(_altitudeHint);
+            var button = ZoneTheme.Button(label, () => _previewDistanceSlider.Value = distance);
+            button.Padding = new Thickness(4);
+            button.Margin = new Thickness(2);
+            AutomationProperties.SetName(button, $"{label} preview, {distance:N0} canvas pixels");
+            distances.Children.Add(button);
+        }
+
+        _previewReadout = AddHint(root);
+        AutomationProperties.SetAutomationId(_previewReadout, "FlightPreviewResult");
+        _previewReadout.Margin = new Thickness(0, 4, 0, 0);
 
         // Interactive Live Curve Graph
         _previewGraph = new FlightCurvePreviewControl
@@ -202,10 +214,7 @@ internal sealed class FlightSettingsControl : UserControl
         var actionsRow = new UniformGrid { Columns = 2, Margin = new Thickness(0, 4, 0, 0) };
         root.Children.Add(actionsRow);
 
-        var previewBtn = ZoneTheme.Button("▶ Test Flight Preview", () =>
-        {
-            _previewGraph.PlayFlightSimulation(_durationSlider.Value);
-        });
+        var previewBtn = ZoneTheme.Button("▶ Test Flight Preview", _previewGraph.PlayFlightSimulation);
         previewBtn.Margin = new Thickness(0, 0, 4, 0);
         AutomationProperties.SetName(previewBtn, "Test Flight Preview");
         actionsRow.Children.Add(previewBtn);
@@ -215,8 +224,50 @@ internal sealed class FlightSettingsControl : UserControl
         AutomationProperties.SetName(resetBtn, "Reset flight defaults");
         actionsRow.Children.Add(resetBtn);
 
+        _fullDurationDistanceSlider.ValueChanged += (_, _) => UpdatePreview();
+        _fullClimbDistanceSlider.ValueChanged += (_, _) => UpdatePreview();
+        _previewDistanceSlider.ValueChanged += (_, _) => UpdatePreview();
         HighlightSelectedProfileCard();
         UpdatePreview();
+    }
+
+    private static Slider AddDistanceSlider(Panel parent, string label, double value, double minimum = WindowNavigationFlight.MinimumRampDistance)
+    {
+        var heading = new DockPanel { Margin = new Thickness(0, 4, 0, 2) };
+        var readout = new TextBlock { Foreground = ZoneTheme.Brush("#93C5FD"), Margin = new Thickness(8, 0, 0, 0) };
+        DockPanel.SetDock(readout, Dock.Right);
+        heading.Children.Add(readout);
+        heading.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap });
+        parent.Children.Add(heading);
+
+        var slider = new Slider
+        {
+            Minimum = minimum,
+            Maximum = WindowNavigationFlight.MaximumRampDistance,
+            Value = Math.Clamp(value, minimum, WindowNavigationFlight.MaximumRampDistance),
+            TickFrequency = 100,
+            IsSnapToTickEnabled = true,
+            SmallChange = 100,
+            LargeChange = 500
+        };
+        AutomationProperties.SetName(slider, label + " in canvas pixels");
+        readout.Text = $"{slider.Value:N0} px";
+        slider.ValueChanged += (_, _) => readout.Text = $"{slider.Value:N0} px";
+        parent.Children.Add(slider);
+        return slider;
+    }
+
+    private static TextBlock AddHint(Panel parent)
+    {
+        var hint = new TextBlock
+        {
+            FontSize = 11,
+            Foreground = ZoneTheme.Brush("#A7B3C9"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 10)
+        };
+        parent.Children.Add(hint);
+        return hint;
     }
 
     private Border CreateProfileCard(string key, string title, string subtitle, int index)
@@ -277,9 +328,7 @@ internal sealed class FlightSettingsControl : UserControl
 
         bool isPlanar = string.Equals(_currentProfile, "Planar", StringComparison.OrdinalIgnoreCase);
         _altitudeSlider.IsEnabled = !isPlanar;
-        _altitudeHint.Text = isPlanar
-            ? "Altitude climb is disabled in Planar profile (pure 2D glide)."
-            : "Relative zoom-out depth during flight. Higher values give a broader view of surrounding windows.";
+        _fullClimbDistanceSlider.IsEnabled = !isPlanar;
     }
 
     private void UpdateDurationReadout()
@@ -298,7 +347,23 @@ internal sealed class FlightSettingsControl : UserControl
 
     private void UpdatePreview()
     {
-        _previewGraph?.UpdateKinematics(_currentProfile, _durationSlider.Value, _altitudeSlider.Value);
+        double maxDuration = _durationSlider.Value;
+        double durationDistance = _fullDurationDistanceSlider.Value;
+        double climbDistance = _fullClimbDistanceSlider.Value;
+        double minimumDuration = WindowNavigationFlight.MinimumFlightDuration;
+        double noClimbDistance = WindowNavigationFlight.NoClimbDistance;
+        double secondsPerChunk = (maxDuration - minimumDuration) * 1000 / durationDistance;
+        double climbPerChunk = 100 / (climbDistance - noClimbDistance);
+        _durationRate.Text = $"Starts at {minimumDuration:0.00} s and adds {secondsPerChunk:0.00} s per 1,000 canvas px up to the maximum.";
+        _climbRate.Text = !string.Equals(_currentProfile, "Planar", StringComparison.OrdinalIgnoreCase)
+            ? $"After {noClimbDistance:N0} canvas px, adds {climbPerChunk:0.#%} of full climb depth per 100 px, capped at full climb."
+            : "Planar flies without extra climb.";
+
+        var flight = new WindowNavigationFlight(new(0, 0, 1), new(_previewDistanceSlider.Value, 0, 1),
+            duration: maxDuration, cruisingScale: _altitudeSlider.Value, profile: _currentProfile,
+            fullDurationDistance: durationDistance, fullClimbDistance: climbDistance);
+        _previewReadout.Text = $"{flight.Distance:N0} canvas px  ·  {flight.FlightDuration:0.00} s  ·  Lowest zoom {flight.CruisingZoom:0.#%}";
+        _previewGraph.UpdateFlight(flight, maxDuration);
     }
 
     public void ResetDefaults()
@@ -306,6 +371,8 @@ internal sealed class FlightSettingsControl : UserControl
         _currentProfile = "Helicopter";
         _durationSlider.Value = StandardDuration;
         _altitudeSlider.Value = StandardCruisingScale;
+        _fullDurationDistanceSlider.Value = WindowNavigationFlight.DefaultFullDurationDistance;
+        _fullClimbDistanceSlider.Value = WindowNavigationFlight.DefaultFullClimbDistance;
         HighlightSelectedProfileCard();
         UpdateDurationReadout();
         UpdateAltitudeReadout();
@@ -325,7 +392,9 @@ internal sealed class FlightSettingsControl : UserControl
         {
             FlightDurationSeconds = duration,
             FlightCruisingScale = cruising,
-            FlightProfile = profile
+            FlightProfile = profile,
+            FlightFullDurationDistance = _fullDurationDistanceSlider.Value,
+            FlightFullClimbDistance = _fullClimbDistanceSlider.Value
         };
         return true;
     }
@@ -336,182 +405,101 @@ internal sealed class FlightSettingsControl : UserControl
 /// </summary>
 internal sealed class FlightCurvePreviewControl : FrameworkElement
 {
-    private double _durationSeconds = 3.0;
-    private double _cruisingScale = 1.0;
-    private string _profile = "Helicopter";
+    private readonly Stopwatch _elapsed = new();
+    private DispatcherTimer? _timer;
+    private WindowNavigationFlight? _flight;
+    private double _axisDuration;
 
-    private DispatcherTimer? _animTimer;
-    private DateTime _animStartTime;
-    private double _animProgress = -1.0; // -1: idle
+    public FlightCurvePreviewControl() => Unloaded += (_, _) => StopSimulation();
 
-    public void UpdateKinematics(string profile, double durationSeconds, double cruisingScale)
+    public void UpdateFlight(WindowNavigationFlight flight, double maximumDuration)
     {
-        _profile = profile;
-        _durationSeconds = durationSeconds;
-        _cruisingScale = cruisingScale;
+        StopSimulation();
+        _flight = flight;
+        _axisDuration = maximumDuration;
         InvalidateVisual();
     }
 
-    public void PlayFlightSimulation(double durationSeconds)
+    public void PlayFlightSimulation()
     {
-        _durationSeconds = durationSeconds;
-        _animStartTime = DateTime.UtcNow;
-        _animProgress = 0.0;
-
-        _animTimer ??= new DispatcherTimer(DispatcherPriority.Render)
+        if (_flight == null) return;
+        if (_timer == null)
         {
-            Interval = TimeSpan.FromMilliseconds(16)
-        };
-        _animTimer.Tick -= OnAnimTick;
-        _animTimer.Tick += OnAnimTick;
-        _animTimer.Start();
+            _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
+            _timer.Tick += (_, _) =>
+            {
+                if (_flight is not { } flight || _elapsed.Elapsed.TotalSeconds >= flight.FlightDuration) StopSimulation();
+                InvalidateVisual();
+            };
+        }
+        _elapsed.Restart();
+        _timer.Start();
         InvalidateVisual();
     }
 
-    private void OnAnimTick(object? sender, EventArgs e)
+    private void StopSimulation()
     {
-        double elapsed = (DateTime.UtcNow - _animStartTime).TotalSeconds;
-        if (elapsed >= _durationSeconds)
-        {
-            _animProgress = 1.0;
-            _animTimer?.Stop();
-        }
-        else
-        {
-            _animProgress = elapsed / _durationSeconds;
-        }
-        InvalidateVisual();
+        _timer?.Stop();
+        _elapsed.Reset();
     }
 
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
-        double w = ActualWidth;
-        double h = ActualHeight;
-        if (w <= 10 || h <= 10) return;
+        if (_flight is not { } flight || ActualWidth <= 64 || ActualHeight <= 46) return;
 
-        // Background
-        var bgRect = new Rect(0, 0, w, h);
-        dc.DrawRoundedRectangle(ZoneTheme.Brush("#0D1522"), new Pen(ZoneTheme.Brush("#2D3B4E"), 1), bgRect, 8, 8);
+        var background = new Rect(0, 0, ActualWidth, ActualHeight);
+        dc.DrawRoundedRectangle(ZoneTheme.Brush("#0D1522"), new Pen(ZoneTheme.Brush("#2D3B4E"), 1), background, 8, 8);
 
-        double padX = 24;
-        double padTop = 18;
-        double padBottom = 22;
-        double plotW = Math.Max(10, w - padX * 2);
-        double plotH = Math.Max(10, h - padTop - padBottom);
-
-        // Baseline and grid lines
-        var gridPen = new Pen(ZoneTheme.Brush("#1E2D42"), 1) { DashStyle = DashStyles.Dash };
+        const double left = 16;
+        const double top = 22;
+        double right = ActualWidth - left;
+        double baseline = ActualHeight - 20;
+        double plotHeight = baseline - top;
+        double plotWidth = right - left;
         var axisPen = new Pen(ZoneTheme.Brush("#334155"), 1);
+        dc.DrawLine(axisPen, new Point(left, baseline), new Point(right, baseline));
+        double landingX = TimeToX(flight.FlightDuration);
+        dc.DrawLine(axisPen, new Point(landingX, top), new Point(landingX, baseline));
 
-        // Horizontal baseline (Y = 0)
-        double baselineY = padTop + plotH;
-        dc.DrawLine(axisPen, new Point(padX, baselineY), new Point(padX + plotW, baselineY));
+        var altitudeBrush = ZoneTheme.Brush("#38BDF8");
+        var panBrush = ZoneTheme.Brush("#34D399");
+        DrawCurve(altitudeBrush, seconds => 1 - flight.Sample(seconds).Zoom);
+        DrawCurve(panBrush, seconds => (flight.SampleFocalPoint(seconds).X - flight.FromFocalPoint.X) / flight.Distance);
 
-        // Mid vertical grid line (u = 0.5)
-        dc.DrawLine(gridPen, new Point(padX + plotW * 0.5, padTop), new Point(padX + plotW * 0.5, baselineY));
-
-        // Evaluate curves across 80 segments
-        const int steps = 80;
-        var altPoints = new Point[steps + 1];
-        var panPoints = new Point[steps + 1];
-
-        bool isPlanar = string.Equals(_profile, "Planar", StringComparison.OrdinalIgnoreCase);
-        double altScale = isPlanar ? 0.0 : Math.Clamp(_cruisingScale / 2.0, 0.25, 1.0);
-
-        for (int i = 0; i <= steps; i++)
+        void DrawCurve(Brush brush, Func<double, double> sample)
         {
-            double u = (double)i / steps;
-            double x = padX + u * plotW;
+            const int steps = 80;
+            var pen = new Pen(brush, 2);
+            var previous = new Point(left, baseline - sample(0) * plotHeight);
+            for (int i = 1; i <= steps; i++)
+            {
+                double seconds = flight.FlightDuration * i / steps;
+                var next = new Point(TimeToX(seconds), baseline - sample(seconds) * plotHeight);
+                dc.DrawLine(pen, previous, next);
+                previous = next;
+            }
 
-            // Altitude curve Z(u)
-            double altNorm = 0.0;
-            if (!isPlanar)
+            if (_elapsed.IsRunning)
             {
-                if (u <= 0.42)
-                {
-                    double t = u / 0.42;
-                    altNorm = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-                }
-                else if (u <= 0.50)
-                {
-                    altNorm = 1.0;
-                }
-                else
-                {
-                    double t = (u - 0.50) / 0.50;
-                    altNorm = 1.0 - t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-                }
+                double seconds = Math.Min(_elapsed.Elapsed.TotalSeconds, flight.FlightDuration);
+                dc.DrawEllipse(brush, new Pen(Brushes.White, 1), new Point(TimeToX(seconds), baseline - sample(seconds) * plotHeight), 4, 4);
             }
-            double altY = baselineY - (altNorm * altScale * plotH * 0.88);
-            altPoints[i] = new Point(x, altY);
-
-            // Lateral progress curve P(u)
-            double panNorm;
-            if (string.Equals(_profile, "Brisk", StringComparison.OrdinalIgnoreCase))
-            {
-                panNorm = u * u * u * u * (35.0 - 84.0 * u + 70.0 * u * u - 20.0 * u * u * u);
-            }
-            else if (string.Equals(_profile, "Cinematic", StringComparison.OrdinalIgnoreCase))
-            {
-                double u2 = u * u; double u3 = u2 * u; double u4 = u2 * u2; double u5 = u4 * u; double u6 = u3 * u3;
-                panNorm = u6 * (462.0 - 1980.0 * u + 3465.0 * u2 - 3080.0 * u3 + 1386.0 * u4 - 252.0 * u5);
-            }
-            else
-            {
-                panNorm = u * u * u * u * u * (126.0 - 420.0 * u + 540.0 * u * u - 315.0 * u * u * u + 70.0 * u * u * u * u);
-            }
-            double panY = baselineY - (panNorm * plotH * 0.88);
-            panPoints[i] = new Point(x, panY);
         }
 
-        // Draw curves
-        var altPen = new Pen(ZoneTheme.Brush("#38BDF8"), 2); // Sky blue
-        var panPen = new Pen(ZoneTheme.Brush("#34D399"), 2); // Emerald green
+        double TimeToX(double seconds) => left + plotWidth * seconds / _axisDuration;
 
-        for (int i = 0; i < steps; i++)
+        var axisBrush = ZoneTheme.Brush("#94A3B8");
+        DrawLabel("Zoom out", left, 5, altitudeBrush);
+        DrawLabel("Panning progress", right, 5, panBrush, alignRight: true);
+        DrawLabel("0 s", left, baseline + 4, axisBrush);
+        DrawLabel($"{_axisDuration:0.##} s", right, baseline + 4, axisBrush, alignRight: true);
+
+        void DrawLabel(string label, double x, double y, Brush brush, bool alignRight = false)
         {
-            dc.DrawLine(altPen, altPoints[i], altPoints[i + 1]);
-            dc.DrawLine(panPen, panPoints[i], panPoints[i + 1]);
+            var text = new FormattedText(label, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new Typeface("Segoe UI"), 10, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(text, new Point(alignRight ? x - text.Width : x, y));
         }
-
-        // Draw animated beads if simulation is running
-        if (_animProgress >= 0.0 && _animProgress <= 1.0)
-        {
-            double curX = padX + _animProgress * plotW;
-            var guidePen = new Pen(ZoneTheme.Brush("#F43F5E"), 1.5) { DashStyle = DashStyles.Dash };
-            dc.DrawLine(guidePen, new Point(curX, padTop), new Point(curX, baselineY));
-
-            int idx = (int)Math.Clamp(Math.Round(_animProgress * steps), 0, steps);
-            // Bead on altitude
-            dc.DrawEllipse(ZoneTheme.Brush("#38BDF8"), new Pen(Brushes.White, 1.5), altPoints[idx], 5, 5);
-            // Bead on lateral progress
-            dc.DrawEllipse(ZoneTheme.Brush("#34D399"), new Pen(Brushes.White, 1.5), panPoints[idx], 5, 5);
-        }
-
-        // Text labels: Legend & markers
-        var typeFace = new Typeface("Segoe UI");
-        void DrawLabel(string text, double lx, double ly, Brush brush, TextAlignment align = TextAlignment.Left)
-        {
-            var ft = new FormattedText(
-                text,
-                CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight,
-                typeFace,
-                10,
-                brush,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            if (align == TextAlignment.Right) lx -= ft.Width;
-            else if (align == TextAlignment.Center) lx -= ft.Width / 2.0;
-            dc.DrawText(ft, new Point(lx, ly));
-        }
-
-        DrawLabel("Altitude (Zoom out)", padX + 4, 3, ZoneTheme.Brush("#38BDF8"));
-        DrawLabel("Panning Progress", padX + plotW * 0.5, 3, ZoneTheme.Brush("#34D399"), TextAlignment.Center);
-        DrawLabel($"{_durationSeconds:0.0}s", padX + plotW, 3, ZoneTheme.Brush("#94A3B8"), TextAlignment.Right);
-
-        DrawLabel("0.0s Liftoff", padX, baselineY + 4, ZoneTheme.Brush("#64748B"));
-        DrawLabel("Cruising", padX + plotW * 0.5, baselineY + 4, ZoneTheme.Brush("#64748B"), TextAlignment.Center);
-        DrawLabel($"{_durationSeconds:0.0}s Landing", padX + plotW, baselineY + 4, ZoneTheme.Brush("#64748B"), TextAlignment.Right);
     }
 }
