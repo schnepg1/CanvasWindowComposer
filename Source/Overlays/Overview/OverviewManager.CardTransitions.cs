@@ -33,6 +33,13 @@ internal sealed partial class OverviewManager
 
     private void UpdateCardAnimationTimer()
     {
+        if (MotionActive)
+        {
+            // Camera frames already advance card fades. Drain queued image work
+            // on the settled timer instead of rendering a second time mid-motion.
+            _cardAnimationTimer?.Stop();
+            return;
+        }
         if (_cardTransitions.IsAnimating || _cardTransitions.HasPendingLiveSources || _cardImages.HasPending)
         {
             if (_cardAnimationTimer == null)
@@ -41,7 +48,8 @@ internal sealed partial class OverviewManager
                 _cardAnimationTimer.Tick += (_, _) =>
                 {
                     if (_disposed || CurrentMode == OverviewMode.Hidden) { ClearCardTransitions(); return; }
-                    if (!GesturePreviewsActive && !SmoothZoomActive && !_wm.OverviewUsesSimpleCards) _cardImages.Process(maxItems: MotionActive ? 1 : 2);
+                    if (MotionActive) { _cardAnimationTimer.Stop(); return; }
+                    if (!GesturePreviewsActive && !_wm.OverviewUsesSimpleCards) _cardImages.Process();
                     RefreshCardIdentities();
                     _thumbnails.Reconcile();
                     RefreshZoneAnnotations();

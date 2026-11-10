@@ -57,7 +57,7 @@ internal sealed class OverviewThumbnails
     private bool _settleActive;
     private int _settleBatchIndex;
     private List<IntPtr> _settleOrdered = new();
-    private readonly HashSet<IntPtr> _settleAllowed = new();
+    private readonly HashSet<IntPtr> _settleWaiting = new();
 
     public bool IsSettling => _settleActive;
     public int SettleBatchIndex => _settleBatchIndex;
@@ -68,7 +68,7 @@ internal sealed class OverviewThumbnails
         _settleActive = false;
         _settleBatchIndex = 0;
         _settleOrdered.Clear();
-        _settleAllowed.Clear();
+        _settleWaiting.Clear();
         InvalidateCameraCache();
     }
 
@@ -77,7 +77,7 @@ internal sealed class OverviewThumbnails
         _settleActive = false;
         _settleBatchIndex = 0;
         _settleOrdered.Clear();
-        _settleAllowed.Clear();
+        _settleWaiting.Clear();
 
         var list = new List<(IntPtr HWnd, double DistSq)>();
         double camX = camera.X, camY = camera.Y, zoom = camera.Zoom;
@@ -85,7 +85,10 @@ internal sealed class OverviewThumbnails
         for (int i = 0; i < _windows.Count; i++)
         {
             var entry = _windows.Windows[i];
-            if (_useCached(entry.HWnd) || entry.ScreenFixed) continue;
+            // Stagger newly needed live sources only. Re-hiding sources that
+            // were already requested on the last frame clips them again.
+            if (_liveSources.Contains(entry.HWnd) || _useCached(entry.HWnd) || entry.ScreenFixed
+                || !_useNativeSource(entry.HWnd)) continue;
 
             var screen = GetScreenRect(entry, camX, camY, zoom);
             int right = screen.X + screen.W, bottom = screen.Y + screen.H;
@@ -123,9 +126,8 @@ internal sealed class OverviewThumbnails
         _settleActive = true;
         _settleBatchIndex = 0;
 
-        int initialCount = Math.Min(SettleBatchSize, _settleOrdered.Count);
-        for (int i = 0; i < initialCount; i++)
-            _settleAllowed.Add(_settleOrdered[i]);
+        for (int i = SettleBatchSize; i < _settleOrdered.Count; i++)
+            _settleWaiting.Add(_settleOrdered[i]);
 
         InvalidateCameraCache();
     }
@@ -138,15 +140,14 @@ internal sealed class OverviewThumbnails
         if (allowedCount >= _settleOrdered.Count)
         {
             _settleActive = false;
-            _settleAllowed.Clear();
+            _settleWaiting.Clear();
             _settleOrdered.Clear();
             InvalidateCameraCache();
             return false;
         }
 
-        int targetLimit = Math.Min(allowedCount, _settleOrdered.Count);
-        for (int i = _settleAllowed.Count; i < targetLimit; i++)
-            _settleAllowed.Add(_settleOrdered[i]);
+        for (int i = _settleBatchIndex * SettleBatchSize; i < allowedCount; i++)
+            _settleWaiting.Remove(_settleOrdered[i]);
 
         InvalidateCameraCache();
         return true;
@@ -154,8 +155,7 @@ internal sealed class OverviewThumbnails
 
     private bool IsAllowedBySettle(IntPtr hwnd)
     {
-        if (!_settleActive || _settleAllowed.Count == 0) return true;
-        return _settleAllowed.Contains(hwnd);
+        return !_settleActive || !_settleWaiting.Contains(hwnd);
     }
 
     private IntPtr _cachedDesktopWallpaperHwnd;

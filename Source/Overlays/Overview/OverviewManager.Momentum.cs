@@ -63,13 +63,16 @@ internal sealed partial class OverviewManager
 
     public void CancelInertia()
     {
+        bool wasMoving = _inertia.IsActive;
         _momentumTimer?.Stop();
         _inertia.Cancel();
+        if (wasMoving && !_disposed && CurrentMode == OverviewMode.Zooming) _visualFrames.Request();
     }
 
     private void FinishMomentum()
     {
         CancelInertia();
+        if (!_disposed && CurrentMode == OverviewMode.Zooming && _wasMoving) _visualFrames.Request();
         if (!_disposed && CurrentMode == OverviewMode.Panning && _desktopStopSurface == null)
             TransitionTo(OverviewMode.Hidden);
     }

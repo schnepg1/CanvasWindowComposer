@@ -83,6 +83,11 @@ internal sealed class PerformanceDiagnostics
 
     public void ThumbnailUnregistered(IntPtr thumbnail) { lock (_gate) _thumbnails.Remove(thumbnail); }
 
+    public NativeOperationResult[] RecentFailures()
+    {
+        lock (_gate) return _failures.ToArray();
+    }
+
     public PerformanceSnapshot Snapshot()
     {
         lock (_gate)

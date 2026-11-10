@@ -22,6 +22,7 @@ public class OverviewThumbnailSettleTests
         public readonly OverviewWindowList Windows;
         public readonly OverviewThumbnails Thumbnails;
         public readonly HashSet<IntPtr> CachedHandles = new();
+        public IntPtr[] PreparedLiveSources = [];
 
         public CanvasCamera CurrentCamera => new(Camera.X, Camera.Y, Camera.Zoom);
 
@@ -32,7 +33,7 @@ public class OverviewThumbnailSettleTests
             Thumbnails = new([Pass], Windows, Camera, new(), Api, Screens,
                 handle => CachedHandles.Contains(handle),
                 handle => (IntPtr)(handle.ToInt64() + 10000),
-                Dwm);
+                Dwm, prepareLiveSources: handles => PreparedLiveSources = handles.ToArray());
         }
 
         public void AddWindow(int id, int worldX, int worldY, int width = 50, int height = 40, bool pinned = false)
@@ -158,6 +159,35 @@ public class OverviewThumbnailSettleTests
             {
                 Assert.Contains((IntPtr)id, r.VisibleAppSources);
             }
+        });
+
+    [Fact]
+    public void SettlePreservesExistingLiveSourcesWhileStaggeringNewOnes()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var r = new Rig();
+            var focal = new CanvasPoint(200, 200);
+            var alreadyLive = Enumerable.Range(1, 12).Select(id => (IntPtr)id).ToArray();
+            for (int id = 1; id <= 12; id++)
+                r.AddWindow(id, 490 + id * 15, 200, width: 15, height: 15);
+            r.RefreshWindows();
+            r.Thumbnails.Reconcile(r.CurrentCamera);
+            Assert.Equal(12, r.VisibleAppSources.Count());
+
+            for (int id = 13; id <= 24; id++)
+                r.AddWindow(id, 200 + (id - 13) * 15, 200, width: 15, height: 15);
+            r.RefreshWindows();
+            r.Thumbnails.BeginSettle(focal, r.CurrentCamera);
+            Assert.True(r.Thumbnails.IsSettling);
+            r.Thumbnails.Reconcile(r.CurrentCamera);
+
+            Assert.Equal(20, r.VisibleAppSources.Count());
+            Assert.All(alreadyLive, handle => Assert.Contains(handle, r.VisibleAppSources));
+            Assert.All(alreadyLive, handle => Assert.Contains(handle, r.PreparedLiveSources));
+
+            Assert.False(r.Thumbnails.AdvanceSettle());
+            r.Thumbnails.Reconcile(r.CurrentCamera);
+            Assert.Equal(24, r.VisibleAppSources.Count());
         });
 
     [Fact]

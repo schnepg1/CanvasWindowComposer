@@ -105,14 +105,12 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
     public static bool IsDistantLod(double zoom, Rect projectedRect)
         => IsDistantLod(zoom, projectedRect.Width, projectedRect.Height);
 
-    public static bool ShouldUseWireframeLod(bool motionActive, double zoom, double projectedSize)
-        => motionActive && IsDistantLod(zoom, projectedSize);
+    public static bool ShouldUseWireframeLod(bool simplifyDuringMotion, double zoom, double projectedSize)
+        => simplifyDuringMotion && IsDistantLod(zoom, projectedSize);
 
-    public static bool ShouldUseWireframeLod(bool motionActive, double zoom, double width, double height)
-        => motionActive && IsDistantLod(zoom, width, height);
-
-    public static bool ShouldUseWireframeLod(bool motionActive, double zoom, Rect projectedRect)
-        => motionActive && IsDistantLod(zoom, projectedRect);
+    internal static bool UsesWireframe(OverviewAnnotationContext context, WorldRect bounds)
+        => ShouldUseWireframeLod(context.MotionActive && context.Frame.SimplifyWindowCardsDuringMotion,
+            context.View.Zoom, Math.Max(bounds.W, bounds.H) * context.View.Zoom);
 
     public void Clear()
     {
@@ -135,7 +133,7 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
 
-            if (ShouldUseWireframeLod(context.MotionActive, context.View.Zoom, rect))
+            if (UsesWireframe(context, card.Bounds))
             {
                 WireframeCardCount++;
                 DrawWireframeCard(dc, card, rect, context);
@@ -283,7 +281,7 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             if (card.PeekProgress is not { } progress || card.Opacity <= 0) continue;
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
-            if (ShouldUseWireframeLod(context.MotionActive, context.View.Zoom, rect)) continue;
+            if (UsesWireframe(context, card.Bounds)) continue;
             dc.PushClip(VisibleCard(card, context));
             dc.PushOpacity(card.Opacity);
             double width = Math.Clamp(Math.Min(rect.Width, rect.Height) * .07, 2, 7);
@@ -344,17 +342,18 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
 
     private void DrawPlaceholderLabels(DrawingContext dc, OverviewAnnotationContext context)
     {
-        if (context.MotionActive && context.View.Zoom < DistantLodZoomThreshold)
+        bool simplifyDuringMotion = context.MotionActive && context.Frame.SimplifyWindowCardsDuringMotion;
+        if (simplifyDuringMotion && context.View.Zoom < DistantLodZoomThreshold)
         {
             Labels = Array.Empty<PlaceholderLabel>();
             return;
         }
 
         var placeholders = context.Frame.Placeholders;
-        if (context.MotionActive)
+        if (simplifyDuringMotion)
         {
             placeholders = placeholders
-                .Where(p => !ShouldUseWireframeLod(true, context.View.Zoom, context.Project(p.Bounds)))
+                .Where(p => !UsesWireframe(context, p.Bounds))
                 .ToList();
         }
 

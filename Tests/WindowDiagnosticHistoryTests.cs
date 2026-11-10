@@ -125,6 +125,30 @@ public class WindowDiagnosticHistoryTests : IDisposable
         });
 
     [Fact]
+    public void AutomaticHistoryDefersSnapshotsAndManualPreservationStillCaptures()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var store = new WindowDiagnosticHistoryStore(Samples, Reports);
+            int captures = 0;
+            bool moving = true;
+            using var rolling = new RollingWindowDiagnostics(store, () => new { Number = ++captures },
+                native: () => new { TestNative = true }, utcNow: () => Epoch, cameraMoving: () => moving);
+            for (int i = 0; i < 5; i++)
+                rolling.CaptureIfIdleAsync().GetAwaiter().GetResult();
+            Assert.Equal(0, captures);
+
+            var preservation = rolling.PreserveAsync();
+            PumpUntil(() => preservation.IsCompleted);
+            Assert.Contains("\"Number\":1", Assert.Single(ReadSamples(preservation.GetAwaiter().GetResult())));
+
+            rolling.CaptureIfIdleAsync().GetAwaiter().GetResult();
+            Assert.Equal(1, captures);
+            moving = false;
+            rolling.CaptureIfIdleAsync().GetAwaiter().GetResult();
+            Assert.Equal(2, captures);
+        });
+
+    [Fact]
     public void EventHistoryIsBoundedAndReportsDiscardedEvents()
     {
         var history = new WindowEventHistory(capacity: 3);

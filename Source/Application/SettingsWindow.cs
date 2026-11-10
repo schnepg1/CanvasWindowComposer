@@ -9,6 +9,7 @@ namespace CanvasDesktop;
 internal sealed class SettingsWindow : Window
 {
     private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation, _desktopMomentum, _canvasMomentum;
+    private readonly CheckBox _simplifyMovingCards;
     private readonly FlightSettingsControl? _flightSettings;
     private readonly ZoomSettingsControl _zoomSettings;
     internal bool ZoomOnly { get; }
@@ -72,6 +73,8 @@ internal sealed class SettingsWindow : Window
         Hint("Keeps the taskbar visible and clickable while panning and zooming. Applies immediately. Turn off auto-hide in Windows taskbar settings to keep it visible permanently.");
         _lowQuality = Option("Low quality mode", preferences.LowQualityMode);
         Hint("Uses a simple grid and cached previews or title cards while panning, zooming or dragging windows. Live previews return after movement stops. Applies immediately.");
+        _simplifyMovingCards = Option("Show plain rectangles for distant windows during motion", preferences.SimplifyWindowCardsDuringMotion);
+        Hint("Hides window images, icons and titles on distant or tiny cards while the camera moves. Optional for slower PCs. Applies immediately.");
         _flip = Option("Use flip-model presentation · Experimental", preferences.FlipRendering);
         Hint("Requires a restart. Keep off if overview previews or minimap opacity render incorrectly. Canvas uses the compatibility renderer if initialization fails.");
         if (zoomOnly) body.Children.Clear();
@@ -90,6 +93,7 @@ internal sealed class SettingsWindow : Window
                         AutomaticMinimization = _parking.IsChecked == true, FlipRendering = _flip.IsChecked == true,
                         StartupIntro = _intro.IsChecked == true, ReducedIntroMotion = _reducedMotion.IsChecked == true,
                         LowQualityMode = _lowQuality.IsChecked == true, ShowTaskbarInCanvas = _taskbar.IsChecked == true,
+                        SimplifyWindowCardsDuringMotion = _simplifyMovingCards.IsChecked == true,
                         AnimateWindowNavigation = _navigation.IsChecked == true,
                         DesktopPanMomentum = _desktopMomentum.IsChecked == true, CanvasPanMomentum = _canvasMomentum.IsChecked == true };
                     if (_flightSettings != null)

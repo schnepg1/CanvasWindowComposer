@@ -86,5 +86,6 @@ internal sealed partial class OverviewManager
         _visualFramePosted = false;
         _scheduledVisualFrame = null;
         _visualPanX = _visualPanY = 0;
+        _wasMoving = false;
     }
 }

@@ -2,6 +2,8 @@ using System;
 
 using System.Collections.Generic;
 
+using System.Diagnostics;
+
 using System.Drawing;
 
 using System.Windows.Forms;
@@ -44,13 +46,9 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     public OverviewMode CurrentMode { get { return _state.CurrentMode; } }
 
-    internal bool MotionActive => (SmoothZoomAllowed && IsZoomSettling)
-
-        || _tools.Kind == CanvasInteractionKind.Pan
-
-        || CurrentMode == OverviewMode.Panning
-
-        || MomentumActive;
+    internal bool MotionActive => !_disposed && CurrentMode != OverviewMode.Hidden
+        && (IsZoomSettling || _tools.Kind == CanvasInteractionKind.Pan || CurrentMode == OverviewMode.Panning
+            || MomentumActive || WindowNavigationActive || IsStartupIntroActive || _tourFlight != null);
 
     private OverviewModeConfig _cfg { get { return _state.CurrentConfig; } }
 
@@ -197,8 +195,19 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         // A synchronous frame can pump messages too. The scheduler defers
         // reentrant invalidations until this frame returns.
-        try { ReconcileVisualFrame(); }
-        finally { _sceneCamera = null; }
+        string operation = MotionActive ? "OverviewMotionFrameUi" : "OverviewSettledFrameUi";
+        long started = Stopwatch.GetTimestamp();
+        bool completed = false;
+        try
+        {
+            ReconcileVisualFrame();
+            completed = true;
+        }
+        finally
+        {
+            _sceneCamera = null;
+            PerformanceDiagnostics.Shared.Complete(operation, IntPtr.Zero, started, completed);
+        }
     }
 
     private bool _wasMoving;
@@ -218,16 +227,6 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         bool isMoving = MotionActive;
         if (!isMoving)
         {
-            if (_wasMoving)
-            {
-                var focal = GetTransitionFocalPoint(camera);
-                _thumbnails.BeginSettle(focal, camera);
-            }
-            else if (_thumbnails.IsSettling)
-            {
-                _thumbnails.AdvanceSettle();
-            }
-
             _wm.SetOverviewViewport(proximityCamera,
                 _passes.ConvertAll(p => (p.Screen.Bounds.X, p.Screen.Bounds.Y, p.Screen.Bounds.Width, p.Screen.Bounds.Height)));
             if (_placeholderWorkspace?.SetOverviewCardMode(_wm.OverviewUsesInfoCards) == true)
@@ -236,6 +235,10 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
                 RefreshOverviewWindows();
             }
             RefreshCardIdentities();
+            if (_wasMoving)
+                _thumbnails.BeginSettle(GetTransitionFocalPoint(camera), camera);
+            else if (_thumbnails.IsSettling)
+                _thumbnails.AdvanceSettle();
         }
         else
         {

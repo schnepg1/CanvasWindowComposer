@@ -154,11 +154,12 @@ internal sealed class TrayApp : ApplicationContext
                 CanvasMode = _overview.CurrentMode.ToString(), Taskbar = _overview.TaskbarDiagnostics,
                 Input = _input.Diagnostics, Interaction = _overview.InteractionDiagnostics,
                 Power = diagnosticPower.Snapshot(),
-                NativeFailures = PerformanceDiagnostics.Shared.Snapshot().RecentFailures };
+                NativeFailures = PerformanceDiagnostics.Shared.RecentFailures() };
             string diagnosticLogs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CanvasWindowComposer", "Logs");
             var windowHistory = _lifecycle.Own(new RollingWindowDiagnostics(new WindowDiagnosticHistoryStore(
-                Path.Combine(diagnosticLogs, "WindowHistory"), diagnosticLogs), CaptureWindowDiagnostics),
+                Path.Combine(diagnosticLogs, "WindowHistory"), diagnosticLogs), CaptureWindowDiagnostics,
+                cameraMoving: () => _overview.MotionActive),
                 ShutdownPhase.Quiesce, "Rolling window diagnostics");
             var preserveHistory = new ToolStripMenuItem("Save diagnostic history");
             foreach (int minutes in new[] { 1, 5, 10, 15, 30 })
@@ -280,7 +281,7 @@ internal sealed class TrayApp : ApplicationContext
         if (Program.ShutdownSignal?.WaitOne(0) == true) { OnExit(sender, e); return; }
         _updates?.CheckAutomatically(_clock.TickCount64);
         _wm.Tick();
-        _workspace.Tick();
+        _workspace.Tick(cameraMoving: _overview.MotionActive);
         _backgrounds.Tick();
     }
 

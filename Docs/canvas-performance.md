@@ -422,3 +422,37 @@ uses the same elapsed-time fractional momentum at the current zoom. Independent
 Desktop pan momentum and Canvas pan momentum settings default on. See
 [the delivery and validation record](pan-momentum.md) for the input handoff,
 regression coverage, benchmark coast phases, and target-hardware limits.
+
+## Camera motion and periodic work, 9 November 2026
+
+**Settings → Rendering → Show plain rectangles for distant windows during motion**
+is off by default, including for existing configurations and when Low quality
+mode is on. This option gates the wireframe drawing and the associated image
+request suppression together. The optional cutoffs are zoom below 25% or a
+projected longest edge under 40 physical pixels. With the option off, camera
+motion retains the current window representation, including cached imagery,
+icons and titles where the selected representation tier uses them.
+
+Window and camera flights, startup and tutorial travel, smooth and direct wheel
+zoom, held pans and momentum now share the camera motion signal. The existing
+viewport and card tier stay in use through movement, with tier reconciliation
+on the settled frame. Card fades advance on camera frames and queued card
+bitmaps are prepared after motion settles. Settle batching now applies only to
+newly needed native previews, so it no longer clips an already prepared window
+just to unclip it in the next batch.
+
+The two-second workspace scan and save pass waits for motion to settle. One
+due pass resumes on the next background tick, even after a long gesture. The
+five-second automatic history capture also waits for idle and retries the
+pending sample at up to two checks per second. Explicit saves and diagnostic
+captures still work during motion. Window discovery and restoration continue
+on their existing paths.
+
+The tray's **Export performance diagnostics** report includes
+`OverviewMotionFrameUi`, `OverviewSettledFrameUi`, `WorkspaceMaintenanceUi`
+and `WindowDiagnosticSnapshotUi` wall times, plus coalesced deferral counts.
+Measure these alongside displayed frame gaps during at least 30 seconds of
+pan, zoom, and window switching on the target workspace. The performance harness
+covers the render path with synthetic windows. Periodic workspace work requires
+an app-level trace. Review the retained annotation prototype and profile DWM and
+WPF presentation before choosing where to move more work onto retained textures.

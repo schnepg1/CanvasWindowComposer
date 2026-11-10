@@ -61,11 +61,12 @@ public class DynamicLodTests
         => RenderSurface([card], zoom, motionActive, out surface, 400, 300);
 
     private static byte[] RenderSurface(IReadOnlyList<PlaceholderAnnotation> cards, double zoom, bool motionActive,
-        out OverviewAnnotationSurface surface, int width = 400, int height = 300)
+        out OverviewAnnotationSurface surface, int width = 400, int height = 300, bool simplify = true)
     {
         surface = new OverviewAnnotationSurface();
         var snapshot = OverviewAnnotationSnapshot.Create([], 0, 0, zoom, new(0, 0, width, height),
-            null, false, placeholders: cards, showHints: false, motionActive: motionActive);
+            null, false, placeholders: cards, showHints: false, motionActive: motionActive)
+            with { SimplifyWindowCardsDuringMotion = simplify };
         surface.Update(snapshot);
         surface.Measure(new System.Windows.Size(width, height));
         surface.Arrange(new Rect(0, 0, width, height));
@@ -75,6 +76,27 @@ public class DynamicLodTests
         bitmap.CopyPixels(pixels, width * 4, 0);
         return pixels;
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DistantMotionShowsWindowContentUnlessSimplificationIsEnabled(bool simplify)
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var image = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null,
+                new byte[] { 0, 0, 255, 255 }, 4);
+            image.Freeze();
+            var preview = new PlaceholderAnnotation((IntPtr)1, "Snapshot",
+                new WorldRect { X = 200, Y = 200, W = 800, H = 400 }, Image: image, ImageOpacity: 1, LabelOpacity: 0);
+            var title = new PlaceholderAnnotation((IntPtr)2, "Editor",
+                new WorldRect { X = 1125, Y = 200, W = 800, H = 400 }, ImageOpacity: 0, LabelOpacity: 1);
+
+            var pixels = RenderSurface([preview, title], 0.16, true, out var surface, simplify: simplify);
+            int center = (64 * 400 + 96) * 4;
+            Assert.Equal(simplify ? 2 : 0, surface.Placeholders.WireframeCardCount);
+            Assert.Equal(simplify ? 0 : 1, surface.Placeholders.Labels.Count);
+            Assert.Equal(!simplify, pixels[center + 2] > 240);
+        });
 
     [Fact]
     public void InMotionDistantZoomBypassesLabelsAndIconsAndRendersWireframe()
@@ -266,7 +288,7 @@ public class DynamicLodTests
         });
 
     [Fact]
-    public void MultiMonitorMixedDpiScalingCorrectlyEvaluatesProjectedThresholdInDips()
+    public void MixedDpiProjectionUsesTheSamePhysicalSizeForWireframes()
         => WorkspaceViewTests.OnSta(() =>
         {
             var card = new PlaceholderAnnotation((IntPtr)1, "Mixed DPI Card",
@@ -277,23 +299,23 @@ public class DynamicLodTests
             // Projected size: 160 * 0.30 / 1.0 = 48.0 DIPs (>= 40px -> Standard motion, wireframe inactive)
             var transform96Dpi = new CanvasViewTransform(0, 0, 0.30, new CanvasRect(0, 0, 1920, 1080), dpiX: 1.0, dpiY: 1.0);
             var snapshot1 = OverviewAnnotationSnapshot.Create([], 0, 0, 0.30, new(0, 0, 1920, 1080), null, false,
-                placeholders: [card], motionActive: true);
+                placeholders: [card], motionActive: true) with { SimplifyWindowCardsDuringMotion = true };
             var context96Dpi = new OverviewAnnotationContext(snapshot1, transform96Dpi, new DpiScale(1.0, 1.0), new System.Windows.Size(1920, 1080));
             var rect96 = context96Dpi.Project(card.Bounds);
 
             Assert.Equal(48.0, rect96.Width);
-            Assert.False(PlaceholderAnnotationLayer.ShouldUseWireframeLod(context96Dpi.MotionActive, context96Dpi.View.Zoom, rect96));
+            Assert.False(PlaceholderAnnotationLayer.UsesWireframe(context96Dpi, card.Bounds));
 
             // On Monitor 2 with 200% DPI (DpiScale = 2.0):
-            // Projected size: 160 * 0.30 / 2.0 = 24.0 DIPs (< 40px -> Distant LOD wireframe active)
+            // The logical bounds shrink but the projected size remains 48 physical pixels.
             var transform192Dpi = new CanvasViewTransform(0, 0, 0.30, new CanvasRect(0, 0, 3840, 2160), dpiX: 2.0, dpiY: 2.0);
             var snapshot2 = OverviewAnnotationSnapshot.Create([], 0, 0, 0.30, new(0, 0, 3840, 2160), null, false,
-                placeholders: [card], motionActive: true);
+                placeholders: [card], motionActive: true) with { SimplifyWindowCardsDuringMotion = true };
             var context192Dpi = new OverviewAnnotationContext(snapshot2, transform192Dpi, new DpiScale(2.0, 2.0), new System.Windows.Size(1920, 1080));
             var rect192 = context192Dpi.Project(card.Bounds);
 
             Assert.Equal(24.0, rect192.Width);
-            Assert.True(PlaceholderAnnotationLayer.ShouldUseWireframeLod(context192Dpi.MotionActive, context192Dpi.View.Zoom, rect192));
+            Assert.False(PlaceholderAnnotationLayer.UsesWireframe(context192Dpi, card.Bounds));
         });
 
     [Fact]
@@ -405,7 +427,8 @@ public class DynamicLodTests
             {
                 // In motion at distant zoom (0.10)
                 var motionSnapshot = OverviewAnnotationSnapshot.Create([], 0, 0, 0.10, new(0, 0, 400, 300),
-                    null, false, placeholders: [card], showHints: false, motionActive: true);
+                    null, false, placeholders: [card], showHints: false, motionActive: true)
+                    with { SimplifyWindowCardsDuringMotion = true };
                 surface.Update(motionSnapshot);
                 surface.Measure(new System.Windows.Size(400, 300));
                 surface.Arrange(new Rect(0, 0, 400, 300));

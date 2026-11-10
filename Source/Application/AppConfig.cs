@@ -16,6 +16,7 @@ internal interface IAppConfig
     bool EnableAutomaticMinimization => false;
     bool EnableFlipRendering => false;
     bool LowQualityMode => false;
+    bool SimplifyWindowCardsDuringMotion => false;
     bool ShowTaskbarInCanvas => true;
     bool AnimateWindowNavigation => true;
     double FlightDurationSeconds => 3.0;
@@ -94,6 +95,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool EnableAutomaticMinimization { get; private set; }
     public bool EnableFlipRendering { get; private set; }
     public bool LowQualityMode { get; private set; }
+    public bool SimplifyWindowCardsDuringMotion { get; private set; }
     public bool ShowTaskbarInCanvas { get; private set; } = true;
     public bool AnimateWindowNavigation { get; private set; } = true;
     public double FlightDurationSeconds { get; private set; } = 3.0;
@@ -152,6 +154,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
             EnableFlipRendering = GetBool(values, "EnableFlipRendering", defaultValue: false);
             LowQualityMode = GetBool(values, "LowQualityMode", defaultValue: false);
+            SimplifyWindowCardsDuringMotion = GetBool(values, "SimplifyWindowCardsDuringMotion", defaultValue: false);
             ShowTaskbarInCanvas = GetBool(values, "ShowTaskbarInCanvas", defaultValue: true);
             AnimateWindowNavigation = GetBool(values, "AnimateWindowNavigation", defaultValue: true);
             FlightDurationSeconds = GetDouble(values, "FlightDurationSeconds", 3.0, min: 0.5, max: 10.0);
@@ -234,7 +237,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 EnableLivePreviewsTier, EnableDetailedCardsTier, EnableSimpleCardsTier,
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
                 EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
-                ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile, FlightFullDurationDistance, FlightFullClimbDistance);
+                ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile, FlightFullDurationDistance, FlightFullClimbDistance,
+                SimplifyWindowCardsDuringMotion);
         }
     }
 
@@ -258,6 +262,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["EnableStartupIntro"] = preferences.StartupIntro.ToString().ToLowerInvariant(),
                 ["ReduceStartupMotion"] = preferences.ReducedIntroMotion.ToString().ToLowerInvariant(),
                 ["LowQualityMode"] = preferences.LowQualityMode.ToString().ToLowerInvariant(),
+                ["SimplifyWindowCardsDuringMotion"] = preferences.SimplifyWindowCardsDuringMotion.ToString().ToLowerInvariant(),
                 ["ShowTaskbarInCanvas"] = preferences.ShowTaskbarInCanvas.ToString().ToLowerInvariant(),
                 ["AnimateWindowNavigation"] = preferences.AnimateWindowNavigation.ToString().ToLowerInvariant(),
                 ["DesktopPanMomentum"] = preferences.DesktopPanMomentum.ToString().ToLowerInvariant(),
@@ -367,6 +372,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Simple overview grid without the animated nebula or decorative effects
 ; Applies immediately from Settings; normal visual quality remains the default
 ;LowQualityMode=false
+;SimplifyWindowCardsDuringMotion=false
 
 ; Keep the real Windows taskbar visible and clickable in canvas view
 ; Windows taskbar auto-hide is still respected
@@ -542,4 +548,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     bool ZoomAcceleration = true,
     double FlightDurationSeconds = 3.0, double FlightCruisingScale = 1.0, string FlightProfile = "Helicopter",
     double FlightFullDurationDistance = WindowNavigationFlight.DefaultFullDurationDistance,
-    double FlightFullClimbDistance = WindowNavigationFlight.DefaultFullClimbDistance);
+    double FlightFullClimbDistance = WindowNavigationFlight.DefaultFullClimbDistance,
+    bool SimplifyWindowCardsDuringMotion = false);

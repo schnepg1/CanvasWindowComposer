@@ -76,6 +76,7 @@ internal sealed partial class OverviewManager
         if (CurrentMode != OverviewMode.Hidden)
         {
             RefreshOverviewWindows();
+            if (MotionActive) RefreshCardIdentities();
             ReconcileVisuals();
         }
     }
@@ -145,6 +146,7 @@ internal sealed partial class OverviewManager
         if (CurrentMode == OverviewMode.Hidden) return;
         var camera = SceneCamera;
         var focal = GetTransitionFocalPoint(camera);
+        bool simplifyDuringMotion = MotionActive && _appConfig.SimplifyWindowCardsDuringMotion;
         var inputs = new List<OverviewCardInput>();
         _cardImages.BeginFrame();
         List<PlaceholderAnnotation>? gestureCards = null;
@@ -204,7 +206,7 @@ internal sealed partial class OverviewManager
                     bool upgrade = image is System.Windows.Media.Imaging.BitmapSource bitmap
                         && dimension > Math.Max(bitmap.PixelWidth, bitmap.PixelHeight)
                         && projectedEdge > Math.Max(bitmap.PixelWidth, bitmap.PixelHeight) * 1.25;
-                    bool wireframeLod = MotionActive && (camera.Zoom < OverviewZoomDefaults.DistantLodZoomThreshold || projectedEdge < OverviewZoomDefaults.DistantLodProjectedSizeThreshold);
+                    bool wireframeLod = PlaceholderAnnotationLayer.ShouldUseWireframeLod(simplifyDuringMotion, camera.Zoom, projectedEdge);
                     if (!simple && !wireframeLod && (image == null || upgrade))
                         _cardImages.RequestImage(id, priority ? -1 : stagger, () =>
                         {
@@ -302,7 +304,9 @@ internal sealed partial class OverviewManager
                 _zoneTool.Gesture.Armed || _zoneTool.Gesture.Kind == ZoneGestureKind.Draw, _zoneTool.Gesture.Ghosts, _annotationCards,
                 !IsStartupIntroActive, _startupIntroFrame, p.Screen.Primary, _interactionError ?? _annotationError, reduceMotion: reduceMotion,
                 motionActive: MotionActive, selectedZoneId: _zoneTool.SelectedZoneId)
-                with { BackgroundOccluders = BackgroundOccluders(camera), WindowStats = WindowStats(), MinimizationStatus = _appConfig.EnableAutomaticMinimization
+                with { BackgroundOccluders = BackgroundOccluders(camera), WindowStats = WindowStats(),
+                    SimplifyWindowCardsDuringMotion = _appConfig.SimplifyWindowCardsDuringMotion,
+                    MinimizationStatus = _appConfig.EnableAutomaticMinimization
                     ? "Auto-minimize: on" : "Auto-minimize: off" };
                 var b = p.Screen.Bounds;
                 p.StageAnnotations(frame with { Screen = new(b.X, b.Y, b.Width, b.Height), ShowIntroTitle = p.Screen.Primary });

@@ -117,6 +117,7 @@ internal sealed partial class OverviewManager
         if (moving) CancelSmoothZoom();
         _tourFlight=null;_tourClock.Stop();
         var timer=_tourTimer;_tourTimer=null;timer?.Stop();timer?.Dispose();_tour?.Arrive();
+        if (moving && !_disposed && CurrentMode != OverviewMode.Hidden) _visualFrames.Request();
         return moving;
     }
     internal void NextTutorialStep()

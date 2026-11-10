@@ -24,9 +24,13 @@ internal sealed partial class OverviewManager
 
     internal void MarkZoomActive()
     {
+        bool wasSettling = _gestureClock.TickCount64 < _zoomSettleUntil;
         _zoomSettleUntil = _gestureClock.TickCount64 + GesturePreviewPolicy.SettleMs;
-        _cardTransitions.Clear();
-        _cardAnimationTimer?.Stop();
+        if (!wasSettling)
+        {
+            _cardTransitions.Clear();
+            _cardAnimationTimer?.Stop();
+        }
         SuspendParkingForMotion();
 
         _zoomSettleTimer ??= new Timer();

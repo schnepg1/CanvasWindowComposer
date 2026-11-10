@@ -17,6 +17,7 @@ internal sealed record OverviewAnnotationSnapshot(
     public IReadOnlyList<WorldRect> BackgroundOccluders { get; init; } = Array.Empty<WorldRect>();
     public string WindowStats { get; init; } = "Active: 0  ·  Minimized: 0 (auto: 0)";
     public string MinimizationStatus { get; init; } = "Auto-minimize: off";
+    public bool SimplifyWindowCardsDuringMotion { get; init; }
 
     public static OverviewAnnotationSnapshot Create(IReadOnlyList<ZoneView> zones,
         double x, double y, double zoom, System.Drawing.Rectangle screen, WorldRect? preview, bool drawing,

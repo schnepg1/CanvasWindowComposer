@@ -54,7 +54,7 @@ public class WindowNavigationIntegrationTests
 
     public void ShellSelectionZoomsToAppAndEntersDesktopView(bool animated)
 
-        => WithOverview(animated, (canvas, overview, api, input, screens) =>
+        => WithOverview(animated, (canvas, overview, api, input, _) =>
 
         {
 
@@ -100,7 +100,7 @@ public class WindowNavigationIntegrationTests
 
     public void DesktopShellSelectionAnimatesThroughCanvasViewAndLandsInDesktop()
 
-        => WithOverview(true, (canvas, overview, api, input, screens) =>
+        => WithOverview(true, (canvas, overview, api, input, _) =>
 
         {
 
@@ -146,7 +146,7 @@ public class WindowNavigationIntegrationTests
 
     public void TaskbarMinimizeSelectionRestoresAppAndNavigatesWithoutChangingSavedPosition()
 
-        => WithOverview(false, (canvas, overview, api, input, screens) =>
+        => WithOverview(false, (canvas, overview, api, input, _) =>
 
         {
 
@@ -182,7 +182,7 @@ public class WindowNavigationIntegrationTests
 
     public void AutomaticRestoreOrIncidentalFocusDoesNotMoveOverviewCamera()
 
-        => WithOverview(true, (canvas, overview, api, input, screens) =>
+        => WithOverview(true, (canvas, overview, api, input, _) =>
 
         {
 
@@ -206,7 +206,7 @@ public class WindowNavigationIntegrationTests
 
     public void SelectedMaximizedAppIsRepresentedAtItsSavedCanvasBounds()
 
-        => WithOverview(false, (canvas, overview, api, input, screens) =>
+        => WithOverview(false, (canvas, overview, api, input, _) =>
 
         {
 
@@ -238,7 +238,7 @@ public class WindowNavigationIntegrationTests
 
     public void NewSelectionReplacesFlightAndManualScrollCancelsIt()
 
-        => WithOverview(true, (canvas, overview, api, input, screens) =>
+        => WithOverview(true, (canvas, overview, api, input, _) =>
 
         {
 
@@ -288,12 +288,13 @@ public class WindowNavigationIntegrationTests
 
     public void ClosingCanvasOrLosingTheTargetStopsTheFlight()
 
-        => WithOverview(true, (canvas, overview, api, input, screens) =>
+        => WithOverview(true, (canvas, overview, api, input, _) =>
 
         {
 
             input.RaiseWindowSelected(App);
 
+            Assert.True(overview.MotionActive);
             input.RaiseWindowDestroyed(App);
 
             var camera = overview.ViewCamera;
@@ -301,6 +302,7 @@ public class WindowNavigationIntegrationTests
             overview.AdvanceWindowNavigation(.1);
 
             Assert.False(overview.WindowNavigationActive);
+            Assert.False(overview.MotionActive);
 
             Assert.Equal(camera, overview.ViewCamera);
 
@@ -322,9 +324,43 @@ public class WindowNavigationIntegrationTests
 
 
 
+    [Theory]
+    [InlineData(.07, .8, true, true)]
+    [InlineData(.25, .8, true, false)]
+    [InlineData(.8, .07, false, false)]
+    [Trait("Category", "NativeRendering")]
+    public void CameraFlightKeepsItsStartingTierUntilTheLandingFrame(
+        double startZoom, double landingZoom, bool startsWithCards, bool startsWithSimpleCards)
+    {
+        var dwm = new FakeDwmThumbnailApi();
+        WithOverview(true, (_, overview, _, _, wm) =>
+        {
+            var target = new CanvasCamera(6500, 3700, landingZoom);
+            Assert.Equal(startsWithCards, wm.OverviewUsesInfoCards);
+            Assert.Equal(startsWithSimpleCards, wm.OverviewUsesSimpleCards);
+            if (!startsWithCards) Assert.DoesNotContain(App, dwm.VisibleSources);
+
+            Assert.True(overview.NavigateToCamera(target));
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration / 2);
+            Assert.True(overview.MotionActive);
+            Assert.Equal(startsWithCards, wm.OverviewUsesInfoCards);
+            Assert.Equal(startsWithSimpleCards, wm.OverviewUsesSimpleCards);
+            if (!startsWithCards) Assert.Contains(App, dwm.VisibleSources);
+
+            overview.AdvanceWindowNavigation(WindowNavigationFlight.Duration);
+            Assert.False(overview.MotionActive);
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.Equal(target, overview.ViewCamera);
+            Assert.Equal(landingZoom < .1, wm.OverviewUsesInfoCards);
+            Assert.Equal(landingZoom < .1, wm.OverviewUsesSimpleCards);
+            Assert.Contains(App, dwm.VisibleSources);
+        }, startZoom, dwm);
+    }
+
     private static void WithOverview(bool animated,
 
-        Action<Canvas, OverviewManager, FakeWindowApi, FakeInputRouter, FakeScreens> action)
+        Action<Canvas, OverviewManager, FakeWindowApi, FakeInputRouter, WindowManager> action,
+        double startZoom = .25, FakeDwmThumbnailApi? dwm = null)
 
         => WorkspaceViewTests.OnSta(() =>
 
@@ -334,7 +370,7 @@ public class WindowNavigationIntegrationTests
 
             var canvas = new Canvas();
 
-            canvas.LoadState(new() { CamX = -1000, CamY = -500, Zoom = .25, Windows = new() });
+            canvas.LoadState(new() { CamX = -1000, CamY = -500, Zoom = startZoom, Windows = new() });
 
             var api = new FakeWindowApi(); var input = new FakeInputRouter(); var screens = new FakeScreens();
 
@@ -348,13 +384,13 @@ public class WindowNavigationIntegrationTests
 
             using var overview = new OverviewManager(canvas, wm, api, input, config, screens,
 
-                dwm: new FakeDwmThumbnailApi(), prefersReducedStartupMotion: () => false);
+                dwm: dwm ?? new FakeDwmThumbnailApi(), prefersReducedStartupMotion: () => false);
 
             using var foreground = new ForegroundCoordinator(canvas, overview, input, new FakeClock(10000), screens);
 
             overview.TransitionTo(OverviewMode.Zooming);
 
-            action(canvas, overview, api, input, screens);
+            action(canvas, overview, api, input, wm);
 
         });
 

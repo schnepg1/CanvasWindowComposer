@@ -220,6 +220,20 @@ public class CanvasPreferencesTests : IDisposable
     }
 
     [Fact]
+    public void MovingCardSimplificationIsAnIndependentOptIn()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "LowQualityMode=true\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.True(config.LowQualityMode);
+        Assert.False(config.SimplifyWindowCardsDuringMotion);
+        config.SavePreferences(config.Preferences with { LowQualityMode = false, SimplifyWindowCardsDuringMotion = true });
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.False(reopened.LowQualityMode);
+        Assert.True(reopened.SimplifyWindowCardsDuringMotion);
+    }
+
+    [Fact]
     public void SmoothZoomOption_RoundTripsThroughPreferences()
     {
         using var config = new AppConfig(directory: _directory); config.Load();

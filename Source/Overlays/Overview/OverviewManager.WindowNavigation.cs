@@ -122,7 +122,7 @@ internal sealed partial class OverviewManager
         if (!_appConfig.AnimateWindowNavigation) seconds = flightDuration;
         var frame = _windowFlight.Sample(seconds);
         bool complete = seconds >= flightDuration;
-        if (complete) StopWindowNavigation();
+        if (complete) StopWindowNavigation(requestSettledFrame: false);
         else ObserveGestureMotion();
         _camera.SetTo(frame.X, frame.Y, frame.Zoom);
         ReconcileVisuals();
@@ -141,11 +141,13 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private void StopWindowNavigation()
+    private void StopWindowNavigation(bool requestSettledFrame = true)
     {
+        bool wasFlying = _windowFlight != null;
         _windowFlight = null;
         _windowFlightClock.Stop();
         _windowFlightTimer?.Stop();
         if (CurrentMode == OverviewMode.Hidden) _navigationDisplayTarget = IntPtr.Zero;
+        else if (wasFlying && requestSettledFrame && !_disposed) _visualFrames.Request();
     }
 }

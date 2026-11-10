@@ -19,6 +19,33 @@ public class WorkspaceTests : IDisposable
     };
 
     [Fact]
+    public void PeriodicWorkspaceMaintenanceWaitsForMotionAndCatchesUpOnce()
+    {
+        using var h = new WorkspaceHarness();
+        h.Api.AddWindow((IntPtr)42, 40, 40, 500, 300, title: "Editor");
+        h.Workspace.Start();
+        int changes = 0;
+        h.Workspace.Changed += () => changes++;
+        int inspected = h.Identity.ProcessInspections;
+        for (int i = 0; i < 12; i++)
+        {
+            h.Clock.Advance(500);
+            h.Workspace.Tick(cameraMoving: true);
+        }
+        Assert.Equal(inspected, h.Identity.ProcessInspections);
+        Assert.Equal(0, changes);
+
+        Assert.True(h.Workspace.SaveNow());
+        Assert.True(h.Identity.ProcessInspections > inspected);
+        h.Workspace.Tick(cameraMoving: true);
+        Assert.Equal(0, changes);
+
+        h.Workspace.Tick(cameraMoving: false);
+        h.Workspace.Tick(cameraMoving: false);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
     public void RoundTrip_PreservesGeometryCameraAndLaunchPolicy_WithoutHandles()
     {
         var doc = new WorkspaceDocument();

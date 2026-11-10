@@ -77,6 +77,7 @@ internal sealed partial class OverviewManager
 
     public void CancelSmoothZoom()
     {
+        if (!_smoothZoom.IsActive && _zoomSettleUntil == 0) return;
         _smoothZoomTimer?.Stop();
         _smoothZoom.Cancel();
         _zoomSettleTimer?.Stop();

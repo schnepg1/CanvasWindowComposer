@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -24,6 +25,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private Dictionary<IntPtr, string> _folders = new();
     private Guid _desktop;
     private long _nextCapture;
+    private bool _periodicMaintenanceDeferred;
     private bool _switching, _disposed, _started;
     private bool _capturingStartup;
     private string? _status;
@@ -75,11 +77,32 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
         Save();
     }
 
-    public void Tick()
+    public void Tick(bool cameraMoving = false)
     {
-        if (!_started || _disposed || _switching || _clock.TickCount64 < _nextCapture) return;
-        _nextCapture = _clock.TickCount64 + 2000;
-        foreach (var id in _launching.Where(p => p.Value < _clock.TickCount64).Select(p => p.Key).ToArray())
+        long now = _clock.TickCount64;
+        if (!_started || _disposed || _switching || now < _nextCapture) return;
+        if (cameraMoving)
+        {
+            if (!_periodicMaintenanceDeferred)
+                PerformanceDiagnostics.Shared.Record(NativeOperationResult.Success("WorkspaceMaintenanceDeferred"));
+            _periodicMaintenanceDeferred = true;
+            return;
+        }
+        _periodicMaintenanceDeferred = false;
+        _nextCapture = now + 2000;
+        long started = Stopwatch.GetTimestamp();
+        bool completed = false;
+        try
+        {
+            RunPeriodicMaintenance(now);
+            completed = true;
+        }
+        finally { PerformanceDiagnostics.Shared.Complete("WorkspaceMaintenanceUi", IntPtr.Zero, started, completed); }
+    }
+
+    private void RunPeriodicMaintenance(long now)
+    {
+        foreach (var id in _launching.Where(p => p.Value < now).Select(p => p.Key).ToArray())
         {
             _launching.Remove(id);
             _launchBaselines.Remove(id);
