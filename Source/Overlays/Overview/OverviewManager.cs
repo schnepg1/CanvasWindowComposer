@@ -801,13 +801,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
 
 
-        _wm.SetLivePreviewWindows(Array.Empty<IntPtr>());
-
-        _wm.SetOverviewViewport(null);
-
-        _placeholderWorkspace?.SetOverviewCardMode(false);
-
-        _mainCanvas.Commit();
+        CommitOverviewHandoff();
 
         _wm.SuspendReconcile = false;
 
@@ -840,6 +834,24 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     }
 
 
+
+    private void CommitOverviewHandoff()
+    {
+        long started = Stopwatch.GetTimestamp();
+        bool completed = false;
+        try
+        {
+            _wm.ReleaseLivePreviewWindowsForHandoff();
+            _wm.SetOverviewViewport(null);
+            _placeholderWorkspace?.SetOverviewCardMode(false);
+            _mainCanvas.Commit();
+            completed = true;
+        }
+        finally
+        {
+            PerformanceDiagnostics.Shared.Complete("OverviewPlacementHandoffUi", IntPtr.Zero, started, completed);
+        }
+    }
 
     private void ApplyConfig()
 

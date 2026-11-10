@@ -740,6 +740,28 @@ internal sealed partial class WindowManager : IDisposable
         ReconcilePreviewRegions();
     }
 
+    // Called after the overview's final desktop camera is set and before its
+    // synchronous placement commit. Keep sources that the commit wants uncut
+    // in their already-unclipped native state.
+    public void ReleaseLivePreviewWindowsForHandoff()
+    {
+        _livePreviewWindows.Clear();
+        if (!_allPreviewsVisible && _previewUnclipped.Count > 0)
+        {
+            var screens = _win32.GetScreenWorkingAreas();
+            var camera = _canvas.Camera;
+            bool clipOffScreen = ClipOffScreen;
+            foreach (var handle in _previewUnclipped)
+            {
+                if (_parking.ContainsKey(handle) || !_clippedWindows.Contains(handle)
+                    || !_canvas.Windows.TryGetValue(handle, out var world)) continue;
+                var plan = WindowPlacementPlanner.Plan(world, camera, screens, clipOffScreen, wasClipped: true);
+                if (plan.RegionChange == WindowRegionChange.Unclip) _clippedWindows.Remove(handle);
+            }
+        }
+        ReconcilePreviewRegions();
+    }
+
     private void ReconcilePreviewRegions()
     {
         _previewUnclipped.RemoveWhere(handle =>
