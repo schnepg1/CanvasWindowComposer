@@ -80,8 +80,19 @@ public class PanMomentumIntegrationTests
             Assert.True(overview.MomentumActive); Assert.Empty(api.LastBatch);
             clock.Advance(16); overview.AdvanceMomentum();
             Assert.Empty(api.LastBatch);
+            int finalBatches = 0;
+            api.BeforeBatchMove = _ =>
+            {
+                finalBatches++;
+                Assert.True(pass.Visible);
+                var style = PInvoke.GetWindowLong((HWND)pass.Handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+                Assert.Equal(0, style & (int)WINDOW_EX_STYLE.WS_EX_TRANSPARENT);
+                Assert.True(wm.SuspendProjection);
+            };
             clock.Advance(5000); overview.AdvanceMomentum();
+            Assert.Equal(1, finalBatches);
             Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            Assert.False(pass.Visible);
             Assert.False(wm.SuspendProjection); Assert.False(wm.SuspendAutomaticParking);
             Assert.Equal(40, api.LastBatch.Count);
             Assert.True(canvas.CamX < -80);

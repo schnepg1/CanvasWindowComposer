@@ -130,6 +130,42 @@ public class WindowManagerPlacementTests
         Assert.Equal((1919, 1079, 800, 600), api.GetWindowRect((IntPtr)1));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OverviewHandoffReusesUnclippedPreviewAndStillClipsOffscreenWindows(bool previewUnclipped)
+    {
+        var canvas = new Canvas();
+        var api = new FakeWindowApi();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig(), new FakeInputRouter());
+        IntPtr landing = (IntPtr)1, offscreen = (IntPtr)2;
+        api.AddWindow(landing, 0, 0, 800, 600);
+        api.AddWindow(offscreen, 0, 0, 800, 600);
+        canvas.SetWindow(landing, 5000, 100, 800, 600);
+        canvas.SetWindow(offscreen, 5200, 5000, 800, 600);
+        wm.SuspendProjection = true;
+        canvas.Commit();
+        Assert.Equal(2, api.ClippedWindows.Count);
+
+        if (!previewUnclipped) api.FailedUnclips.Add(landing);
+        wm.SetLivePreviewWindows([landing, offscreen]);
+        Assert.Equal(!previewUnclipped, api.ClippedWindows.Contains(landing));
+        Assert.DoesNotContain(offscreen, api.ClippedWindows);
+        api.FailedUnclips.Clear();
+        api.ClipCalls.Clear();
+        api.UnclipCalls.Clear();
+
+        canvas.SetCamera(4800, 0);
+        wm.ReleaseLivePreviewWindowsForHandoff();
+        canvas.Commit();
+        Assert.Equal(offscreen, Assert.Single(api.ClipCalls));
+        if (previewUnclipped) Assert.Empty(api.UnclipCalls);
+        else Assert.Equal(landing, Assert.Single(api.UnclipCalls));
+        Assert.Equal(offscreen, Assert.Single(api.ClippedWindows));
+        Assert.Equal((200, 100, 800, 600), api.GetWindowRect(landing));
+        Assert.Equal(landing, Assert.Single(api.LastBatch).HWnd);
+    }
+
     [Fact]
     public void DisplayChange_ReparksClippedWindowsAndKeepsWorldLayout()
     {
