@@ -195,7 +195,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     {
         // A synchronous frame can pump messages too. The scheduler defers
         // reentrant invalidations until this frame returns.
-        string operation = MotionActive ? "OverviewMotionFrameUi" : "OverviewSettledFrameUi";
+        string operation = CameraActivityInProgress ? "OverviewMotionFrameUi" : "OverviewSettledFrameUi";
         long started = Stopwatch.GetTimestamp();
         bool completed = false;
         try

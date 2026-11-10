@@ -89,12 +89,11 @@ foreach ($present in $presents) {
     $last = [Math]::Max($last, $qpc)
 }
 
-$operations = @(Get-WinEvent -Path $etl -Oldest | Where-Object {
+$allOperations = @(Get-WinEvent -Path $etl -Oldest | Where-Object {
     $_.ProviderId -eq $provider -and $_.Id -eq 1 -and $_.Version -eq 0 -and $_.ProcessId -eq $app.Id
-} | ForEach-Object { Read-Operation $_ } | Where-Object {
-    $_.StartQpc -ge $first -and $_.StartQpc -le $last
-} | Sort-Object StartQpc)
-if ($operations.Count -gt 0) { $operations | Export-Csv -LiteralPath (Join-Path $out 'operations.csv') -NoTypeInformation }
+} | ForEach-Object { Read-Operation $_ } | Sort-Object StartQpc)
+if ($allOperations.Count -gt 0) { $allOperations | Export-Csv -LiteralPath (Join-Path $out 'operations.csv') -NoTypeInformation }
+$operations = @($allOperations.Where({ $_.StartQpc -ge $first -and $_.StartQpc -le $last }))
 
 $cameraFrames = @($operations.Where({ $_.Operation -in 'OverviewMotionFrameUi','OverviewSettledFrameUi' }))
 $gaps = for ($i = 1; $i -lt $cameraFrames.Count; $i++) {
