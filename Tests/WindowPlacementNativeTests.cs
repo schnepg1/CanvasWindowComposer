@@ -41,6 +41,37 @@ public class WindowPlacementNativeTests
 
     [Fact]
     [Trait("Category", "NativePlacement")]
+    public void OverviewHandoffMovesAnUnclippedPreviewToItsFinalNativePosition()
+        => OnSta(() =>
+        {
+            using var window = new Form { FormBorderStyle = FormBorderStyle.None, AutoScaleMode = AutoScaleMode.None };
+            var handle = window.Handle;
+            var diagnostics = new PerformanceDiagnostics();
+            var api = new Win32WindowApi(new FakeScreens(), diagnostics);
+            var canvas = new Canvas();
+            using var wm = new WindowManager(canvas, api, new FakeAppConfig(), new FakeInputRouter());
+            Assert.True(wm.RestorePlacement(handle, new WorldRect { X = 5000, Y = 100, W = 800, H = 600 }));
+            var parked = api.GetWindowRect(handle);
+            Assert.Equal(1, RegionType(handle));
+            wm.SetLivePreviewWindows([handle]);
+            Assert.Equal(0, RegionType(handle));
+            diagnostics.Reset();
+
+            wm.SuspendProjection = true;
+            canvas.SetCamera(4800, 0);
+            wm.ReleaseLivePreviewWindowsForHandoff();
+            Assert.Equal(parked, api.GetWindowRect(handle));
+            canvas.Commit();
+
+            Assert.Equal((200, 100, 800, 600), api.GetWindowRect(handle));
+            Assert.Equal(0, RegionType(handle));
+            var operations = diagnostics.Snapshot().Operations;
+            Assert.DoesNotContain(operations, op => op.Operation is "ClipWindow" or "UnclipWindow");
+            Assert.Equal(1, Assert.Single(operations, op => op.Operation == "EndDeferWindowPos").Succeeded);
+        });
+
+    [Fact]
+    [Trait("Category", "NativePlacement")]
     public void InvalidNativeWindow_ReportsFailuresInsteadOfSilentSuccess()
     {
         var diagnostics = new PerformanceDiagnostics();
