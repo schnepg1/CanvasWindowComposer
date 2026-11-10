@@ -361,6 +361,7 @@ internal sealed partial class OverviewManager
         }
         if (IsZoomSettling) CancelSmoothZoom();
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
+        _instantZoomActivityUntil = _gestureClock.TickCount64 + GesturePreviewPolicy.SettleMs;
         ObserveGestureMotion();
         if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
         _startupIntroLanded = false;

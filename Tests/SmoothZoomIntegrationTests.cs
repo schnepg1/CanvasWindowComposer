@@ -64,6 +64,13 @@ public class SmoothZoomIntegrationTests
             Assert.False(overview.SmoothZoomActive, "Smooth zoom should NOT be active when disabled");
             Assert.Equal(before.Zoom * 0.9, overview.ViewCamera.Zoom, 5);
             Assert.False(overview.MotionActive);
+            Assert.True(overview.CameraActivityInProgress);
+            clock.Advance(GesturePreviewPolicy.SettleMs - 1);
+            pass.OnWheel!(pass, 300, 300, -120, false, false, false);
+            clock.Advance(1);
+            Assert.True(overview.CameraActivityInProgress);
+            clock.Advance(GesturePreviewPolicy.SettleMs - 1);
+            Assert.False(overview.CameraActivityInProgress);
         });
 
     [Fact]

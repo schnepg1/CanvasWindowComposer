@@ -508,3 +508,30 @@ window positioning and region work. Investigate that path separately from
 WPF card painting. The input pump includes synthetic input and message
 processing. The harness omits the full workspace and its periodic
 maintenance, and does not time camera flights or displayed frame gaps.
+
+
+### Full-app trace collection
+
+On Windows, run the following from PowerShell 7 with the instrumented Canvas
+build already open and an official [PresentMon console executable](https://github.com/GameTechDev/PresentMon/releases)
+available. PresentMon and Logman need an account with permission to create
+ETW sessions. Use the actual monitor refresh rate for the gap thresholds.
+
+```powershell
+./Tools/Measure-CanvasMotion.ps1 -PresentMonPath C:/Tools/PresentMon-2.6.0-x64.exe -Scenario Pan -RefreshHz 60 -Seconds 30 -OutputDirectory ./trace-pan-01
+```
+
+Use a new output directory for each run. Repeat for Zoom and Flight using the
+same layout, monitor, refresh rate, DPI, renderer and background workload.
+Keep moving during the sample. Use the same two targets for repeated flights
+and annotate intentional pauses when reviewing the trace.
+
+`operations.etl` records QPC start times and wall times for app operations,
+including WPF drawing preparation, workspace maintenance and native calls.
+`presents.csv` contains the monitored process's presentation samples.
+`summary.json` separates UI camera callback gaps from observed display gaps
+per swap chain and reports p50/p95/p99/max and refresh-budget counts. A missing
+series means that source provided no samples. Swap-chain timings describe the
+tracked surfaces and cannot establish synchronization of all independent
+DWM, WPF, and Direct3D layers. Examine raw timestamps around outliers and
+exclude deliberate pauses or other activity from comparisons.

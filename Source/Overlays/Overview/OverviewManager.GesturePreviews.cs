@@ -14,13 +14,18 @@ internal sealed partial class OverviewManager
     private long _gestureRestoreUntil;
     private bool? _parkingBeforeGesture;
 
-    private long _zoomSettleUntil;
+    private long _zoomSettleUntil, _instantZoomActivityUntil;
     private Timer? _zoomSettleTimer;
 
     internal bool GesturePreviewsActive => _gesturePreviews.Active;
     internal IReadOnlyList<PlaceholderAnnotation> GesturePreviewCards => _annotationCards;
 
     internal bool IsZoomSettling => _gestureClock.TickCount64 < _zoomSettleUntil || _smoothZoom.IsActive;
+
+    // Instant wheel input commits the new representation tier immediately,
+    // but periodic work should still wait until the input burst ends.
+    internal bool CameraActivityInProgress => MotionActive
+        || (!_disposed && CurrentMode != OverviewMode.Hidden && _gestureClock.TickCount64 < _instantZoomActivityUntil);
 
     internal void MarkZoomActive()
     {
@@ -163,6 +168,7 @@ internal sealed partial class OverviewManager
         _thumbnails.CancelSettle();
         _zoomSettleTimer?.Stop();
         _zoomSettleUntil = 0;
+        _instantZoomActivityUntil = 0;
         if (_parkingBeforeGesture.HasValue)
         {
             _wm.SuspendAutomaticParking = _parkingBeforeGesture.Value;

@@ -42,6 +42,7 @@ internal sealed class PerformanceDiagnostics
             !success ? NativeOperationStatus.Failed : queued ? NativeOperationStatus.Queued : NativeOperationStatus.Succeeded,
             success ? null : error, Stopwatch.GetElapsedTime(started).TotalMilliseconds, itemCount);
         Record(result);
+        CanvasPerformanceEvents.Log.Operation(operation, started, result.DurationMs, (int)result.Status, itemCount);
         return result;
     }
 

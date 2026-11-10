@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
@@ -138,15 +139,25 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
     {
         base.OnRender(dc);
         if (_frame == null) return;
+        var trace = CanvasPerformanceEvents.Log;
+        bool tracing = trace.IsEnabled();
+        long started = tracing ? Stopwatch.GetTimestamp() : 0;
         var dpi = VisualTreeHelper.GetDpi(this);
         var context = new OverviewAnnotationContext(_frame, View(_frame, dpi), dpi, RenderSize) { Timestamp = _frame.Timestamp ?? Environment.TickCount64 };
         dc.PushClip(new RectangleGeometry(new Rect(RenderSize)));
         _backgroundLayer?.Draw(dc, context);
+        long cardsStarted = tracing ? Stopwatch.GetTimestamp() : 0;
         _placeholders.Draw(dc, context);
+        if (tracing)
+            trace.Operation("PlaceholderWpfDrawUi", cardsStarted, Stopwatch.GetElapsedTime(cardsStarted).TotalMilliseconds,
+                (int)NativeOperationStatus.Succeeded, context.Frame.Placeholders.Count);
         _zones.Draw(dc, context);
         foreach (var layer in _drawingLayers) layer.Draw(dc, context);
         _hud.Draw(dc, context);
         dc.Pop();
+        if (tracing)
+            trace.Operation("OverviewWpfDrawUi", started, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                (int)NativeOperationStatus.Succeeded, context.Frame.Placeholders.Count);
     }
 
     private static CanvasViewTransform View(OverviewAnnotationSnapshot frame, DpiScale dpi)
