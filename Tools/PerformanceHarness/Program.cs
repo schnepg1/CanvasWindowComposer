@@ -15,6 +15,11 @@ internal static class Program
     {
         try
         {
+            if (args is ["--placeholder-paint", var output])
+            {
+                PlaceholderPaintBenchmark.Run(output);
+                return 0;
+            }
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             if (args.Length > 0 && args[0] == "--target") { RunTarget(args); return 0; }

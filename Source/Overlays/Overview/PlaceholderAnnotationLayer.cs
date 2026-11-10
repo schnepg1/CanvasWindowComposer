@@ -93,6 +93,8 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
     private static readonly Pen WireframeMinimizedOutline = OutlinePen(Color.FromArgb(180, 45, 212, 191), 1);
 
     private static Pen OutlinePen(Color color, double width) { var pen = new Pen(FrozenBrush(color), width); pen.Freeze(); return pen; }
+    private readonly Dictionary<PlaceholderAnnotation, Geometry> _cardClips = new(ReferenceEqualityComparer.Instance);
+
     public IReadOnlyList<PlaceholderLabel> Labels { get; private set; } = Array.Empty<PlaceholderLabel>();
     public int WireframeCardCount { get; private set; }
 
@@ -121,9 +123,18 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
     public void Draw(DrawingContext dc, OverviewAnnotationContext context)
     {
         WireframeCardCount = 0;
-        DrawPlaceholderCards(dc, context);
-        DrawPlaceholderLabels(dc, context);
-        DrawPeekActivation(dc, context);
+        try
+        {
+            DrawPlaceholderCards(dc, context);
+            DrawPlaceholderLabels(dc, context);
+            DrawPeekActivation(dc, context);
+        }
+        finally
+        {
+            // Fill, title and Peek share a clip in this draw only. The next
+            // frame can have a different camera, DPI, stacking or fixed windows.
+            _cardClips.Clear();
+        }
     }
     private void DrawPlaceholderCards(DrawingContext dc, OverviewAnnotationContext context)
     {
@@ -171,7 +182,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
                 dc.Pop();
             }
 
-            dc.PushClip(VisibleCard(card, context));
+            var clip = CardClip(card, context);
+            if (ReferenceEquals(clip, Geometry.Empty)) continue;
+            dc.PushClip(clip);
             dc.PushOpacity(card.Opacity);
             if (imageOpacity < 1 || card.ImageIsOverlay)
             {
@@ -260,13 +273,15 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             : WireframeOutline;
 
         bool hasOccluders = card.Occluders is { Count: > 0 };
-        if (hasOccluders) dc.PushClip(VisibleCard(card, context));
+        var clip = hasOccluders ? CardClip(card, context) : null;
+        if (ReferenceEquals(clip, Geometry.Empty)) return;
+        if (clip != null) dc.PushClip(clip);
         if (card.Opacity < 1) dc.PushOpacity(card.Opacity);
 
         dc.DrawRectangle(fill, outline, rect);
 
         if (card.Opacity < 1) dc.Pop();
-        if (hasOccluders) dc.Pop();
+        if (clip != null) dc.Pop();
     }
 
     /// <summary>
@@ -282,7 +297,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             var rect = context.Project(card.Bounds);
             if (!rect.IntersectsWith(new Rect(context.Size))) continue;
             if (UsesWireframe(context, card.Bounds)) continue;
-            dc.PushClip(VisibleCard(card, context));
+            var clip = CardClip(card, context);
+            if (ReferenceEquals(clip, Geometry.Empty)) continue;
+            dc.PushClip(clip);
             dc.PushOpacity(card.Opacity);
             double width = Math.Clamp(Math.Min(rect.Width, rect.Height) * .07, 2, 7);
             dc.DrawGeometry(null, TrackPen(width * .6),
@@ -368,7 +385,9 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
             context.Dpi.DpiScaleX, context.Dpi.DpiScaleY);
         foreach (var label in Labels)
         {
-            dc.PushClip(VisibleCard(label.Card, context));
+            var clip = CardClip(label.Card, context);
+            if (ReferenceEquals(clip, Geometry.Empty)) continue;
+            dc.PushClip(clip);
             dc.PushOpacity(label.Card.Opacity * (label.Card.LabelOpacity ?? 1));
             var rect = label.Rect;
             var text = new FormattedText(label.Card.Title, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
@@ -392,49 +411,41 @@ internal sealed class PlaceholderAnnotationLayer : IOverviewAnnotationLayer
         }
     }
 
-    internal static Geometry VisibleCard(PlaceholderAnnotation card, OverviewAnnotationContext context)
+    private Geometry CardClip(PlaceholderAnnotation card, OverviewAnnotationContext context)
     {
-        var rect = context.Project(card.Bounds);
-        if (card.Occluders == null || card.Occluders.Count == 0)
+        if (!_cardClips.TryGetValue(card, out var clip))
         {
-            var r = new RectangleGeometry(rect);
-            r.Freeze();
-            return r;
+            clip = VisibleCard(card, context);
+            _cardClips.Add(card, clip);
         }
-        Geometry visible = new RectangleGeometry(rect);
-        foreach (var above in card.Occluders)
-        {
-            var covered = context.Project(above);
-            if (covered.IntersectsWith(rect))
-            {
-                var coverGeom = new RectangleGeometry(covered);
-                coverGeom.Freeze();
-                visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, coverGeom);
-            }
-        }
-        visible.Freeze();
-        return visible;
+        return clip;
     }
 
+    internal static Geometry VisibleCard(PlaceholderAnnotation card, OverviewAnnotationContext context)
+        => VisibleClip(card, context.Project(card.Bounds), context);
+
     internal static Geometry VisibleGlow(PlaceholderAnnotation card, Rect glowRect, OverviewAnnotationContext context)
+        => VisibleClip(card, glowRect, context);
+
+    private static Geometry VisibleClip(PlaceholderAnnotation card, Rect bounds, OverviewAnnotationContext context)
     {
-        if (card.Occluders == null || card.Occluders.Count == 0)
+        GeometryGroup? covers = null;
+        if (card.Occluders is { Count: > 0 } occluders)
         {
-            var r = new RectangleGeometry(glowRect);
-            r.Freeze();
-            return r;
-        }
-        Geometry visible = new RectangleGeometry(glowRect);
-        foreach (var above in card.Occluders)
-        {
-            var covered = context.Project(above);
-            if (covered.IntersectsWith(glowRect))
+            foreach (var above in occluders)
             {
-                var coverGeom = new RectangleGeometry(covered);
-                coverGeom.Freeze();
-                visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, coverGeom);
+                var covered = context.Project(above);
+                if (covered.Contains(bounds)) return Geometry.Empty;
+                covered.Intersect(bounds);
+                if (covered.IsEmpty || covered.Width == 0 || covered.Height == 0) continue;
+                // Nonzero combines the equally wound rectangles as a union.
+                // Exclude that union once, avoiding a chain of boolean operations.
+                covers ??= new GeometryGroup { FillRule = FillRule.Nonzero };
+                covers.Children.Add(new RectangleGeometry(covered));
             }
         }
+        Geometry visible = new RectangleGeometry(bounds);
+        if (covers != null) visible = new CombinedGeometry(GeometryCombineMode.Exclude, visible, covers);
         visible.Freeze();
         return visible;
     }

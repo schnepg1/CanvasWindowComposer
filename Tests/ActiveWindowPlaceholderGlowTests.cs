@@ -316,4 +316,24 @@ public class ActiveWindowPlaceholderGlowTests
         Assert.True(cardGeom.IsFrozen, "VisibleCard geometry must be frozen for WPF hardware performance");
         Assert.True(glowGeom.IsFrozen, "VisibleGlow geometry must be frozen for WPF hardware performance");
     }
+
+    [Fact]
+    public void CardClipExcludesTheUnionOfOverlappingWindows()
+    {
+        var bounds = new WorldRect { X = 100, Y = 100, W = 200, H = 100 };
+        var card = new PlaceholderAnnotation((IntPtr)1, "Window", bounds, Occluders:
+        [
+            new WorldRect { X = 80, Y = 90, W = 100, H = 110 },
+            new WorldRect { X = 150, Y = 90, W = 80, H = 110 }
+        ]);
+        var snapshot = OverviewAnnotationSnapshot.Create([], 0, 0, .5, new(0, 0, 400, 300), null, false);
+        var context = new OverviewAnnotationContext(snapshot,
+            new CanvasViewTransform(0, 0, .5, new CanvasRect(0, 0, 400, 300), 1.5, 1.5),
+            new DpiScale(1.5, 1.5), new System.Windows.Size(400, 300));
+        var clip = PlaceholderAnnotationLayer.VisibleCard(card, context);
+        Assert.False(clip.FillContains(new System.Windows.Point(55, 50))); // Both windows cover this point.
+        Assert.False(clip.FillContains(new System.Windows.Point(70, 50))); // Only the second window covers it.
+        Assert.True(clip.FillContains(new System.Windows.Point(85, 50)));
+        Assert.True(PlaceholderAnnotationLayer.VisibleCard(card with { Occluders = [bounds] }, context).IsEmpty());
+    }
 }
