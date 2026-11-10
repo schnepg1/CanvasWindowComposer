@@ -207,3 +207,18 @@ an automatic-minimization allowlist or safe default.
 
 The initial local measurements and their limitations are recorded in
 [the implementation plan](../../Docs/upgrade_window_visibility_performance.md).
+
+
+## Placeholder drawing benchmark
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --placeholder-paint Tools/PerformanceHarness/cards.json
+```
+
+This mode opens no windows. It records commands from the production WPF card
+painter for 96 cards with cached logos and titles at 96 DPI. Each layout has 40
+warm-up and 120 measured draws. The three layouts vary the spacing of identical
+cards while the camera pans and zooms. JSON reports the CPU wall time and bytes
+allocated on the drawing thread. Frame data preparation, WPF rendering and
+presentation, DWM previews, and real application workloads are outside the
+measurement.

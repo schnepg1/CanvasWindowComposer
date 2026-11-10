@@ -96,7 +96,8 @@ public class SettingsWindowTests
                 overview.TransitionTo(OverviewMode.Zooming);
                 overview.ShowSettings(zoomOnly);
                 var popup = overview.SettingsPopup!;
-                var sliders = WorkspaceViewTests.Descendants(popup).OfType<Slider>().Skip(1).Take(4).ToArray();
+                var zoomSettings = WorkspaceViewTests.Descendants(popup).OfType<ZoomSettingsControl>().Single();
+                var sliders = WorkspaceViewTests.Descendants(zoomSettings).OfType<Slider>().Skip(1).Take(4).ToArray();
                 sliders[0].Value = 35; sliders[1].Value = 43;
                 sliders[2].Value = 8; sliders[3].Value = 12;
                 int closings = 0;

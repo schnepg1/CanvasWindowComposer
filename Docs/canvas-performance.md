@@ -433,7 +433,7 @@ projected longest edge under 40 physical pixels. With the option off, camera
 motion retains the current window representation, including cached imagery,
 icons and titles where the selected representation tier uses them.
 
-Window and camera flights, startup and tutorial travel, smooth and direct wheel
+Window and camera flights, startup and tutorial travel, smooth wheel
 zoom, held pans and momentum now share the camera motion signal. The existing
 viewport and card tier stay in use through movement, with tier reconciliation
 on the settled frame. Card fades advance on camera frames and queued card
@@ -456,3 +456,55 @@ pan, zoom, and window switching on the target workspace. The performance harness
 covers the render path with synthetic windows. Periodic workspace work requires
 an app-level trace. Review the retained annotation prototype and profile DWM and
 WPF presentation before choosing where to move more work onto retained textures.
+
+
+### Placeholder drawing follow-up
+
+The earlier opt-in retained annotation prototype on
+`agent/stage1-retained-annotations` measured saved annotations. This pass measures
+placeholder cards because they account for more of the reported workspace.
+Card fill, title and Peek reuse one frozen clip per draw. Overlapping windows
+contribute to one exclusion instead of a chain of exclusions. Fully covered
+cards skip drawing, and glow uses its own expanded bounds. Clips are rebuilt
+from the current monitor and camera so movement, DPI and screen-fixed windows
+remain correct. Logo sizing still follows zoom continuously.
+
+Local RTX 4070 workstation, 96 synthetic title/logo cards, 120 sampled pan and
+zoom draws after 40 warm-up draws per layout. The harness records WPF drawing
+commands and allocations on the calling thread:
+
+| Layout | Median CPU time before → after | p95 before → after | Median allocated bytes before → after |
+| --- | ---: | ---: | ---: |
+| Separated | 22.29 → 23.98 ms | 43.14 → 39.26 ms | 1,717,696 → 1,703,232 |
+| Overlapping | 18.51 → 17.98 ms | 27.18 → 26.91 ms | 1,908,168 → 1,843,728 |
+| Stacked | 65.92 → 24.20 ms | 83.12 → 31.80 ms | 4,375,680 → 2,759,432 |
+
+The small changes in separated and moderate layouts are within the variation
+seen between local runs. The stacked result shows a substantial reduction in
+drawing preparation. These timings exclude WPF presentation, native windows,
+and the app's periodic work. They cannot establish displayed frame pacing.
+The remaining card work is to profile title layout and reuse stable artwork
+across camera frames, keeping the logo's own transform. See
+[the card benchmark](../Tools/PerformanceHarness/README.md).
+
+
+### Owned-window presentation comparison
+
+The 24-window harness ran two 3-second repetitions per phase at zoom 0.45,
+with full quality and the FlipDiscard backend, on a 1920 × 1080 display at 60 Hz.
+Compared with `c00e8e2`, the combined candidate `0ed843b` measured:
+
+| Phase | Input pump p95 before → after (two repeats) | Maximum before → after |
+| --- | ---: | ---: |
+| Overview pan | 21–33 → 15–18 ms | 45 → 29 ms |
+| Zoom bursts | 74–169 → 20–30 ms | 420 → 174 ms |
+| Canvas pan momentum | 9–28 → 12–13 ms | 3,138 → 30 ms |
+| Desktop pan momentum | 73–197 → 85–163 ms | 1,080 → 868 ms |
+
+The two zoom repetitions had 0 and 24 clip/unclip calls on the baseline and
+zero in both candidate repetitions. Canvas pan momentum went from 16 calls
+in each repetition to zero in both. The desktop handoff still incurs native
+window positioning and region work. Investigate that path separately from
+WPF card painting. The input pump includes synthetic input and message
+processing. The harness omits the full workspace and its periodic
+maintenance, and does not time camera flights or displayed frame gaps.
