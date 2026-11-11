@@ -10,6 +10,7 @@ internal static class DesktopHandoffProbe
 {
     private const uint Callback = 0x8001, CallbackReturned = 0x8002, Close = 0x0010;
     private const uint OrderTargetBehindCover = 0x8003, TargetOrdered = 0x8004;
+    private const uint BlockTargetQueue = 0x8005, TargetQueueBlocked = 0x8006, TargetQueueReleased = 0x8007;
     private const uint PositionChanging = 0x0046, LeftDown = 0x0201, LeftUp = 0x0202;
     private const uint PreserveGeometryAndActivation = 0x0013, NoPositionChanging = 0x0400;
     private const int Acknowledgement = 73, HoldMilliseconds = 450;
@@ -36,7 +37,9 @@ internal static class DesktopHandoffProbe
                 start.Y.ToString(CultureInfo.InvariantCulture) }
         };
         using var target = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned target.");
-        var worker = new ProjectionWorker(native);
+        var canvas = new Canvas();
+        var windows = new WindowManager(canvas, native, new BenchmarkConfig(), new BenchmarkInput(),
+            useAsyncProjection: true);
         nint window = 0;
         Exception? failure = null;
         object? report = null;
@@ -50,7 +53,7 @@ internal static class DesktopHandoffProbe
             {
                 string? handle = await target.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 window = (nint)long.Parse(handle ?? throw new InvalidOperationException("Target exited during startup."), CultureInfo.InvariantCulture);
-                var lane = new PlacementLane(worker, native, (uint)target.Id, close, cover);
+                var lane = new PlacementLane(windows, native, (uint)target.Id, close, cover);
                 var initial = Observed();
                 Check(native.GetWindowProcessId(window) == target.Id && initial.X == start.X && initial.Y == start.Y
                     && initial.W > 20 && initial.H > 20, $"Unexpected owned target bounds {initial} at {start}.");
@@ -111,18 +114,45 @@ internal static class DesktopHandoffProbe
                     $"Button-up left Visible={cover.Visible}, Capture={cover.Capture}, and hit {afterHit} (PID {native.GetWindowProcessId(afterHit)}), expected target {window}.");
                 Check(GetForegroundWindow() == foreground, "The handoff changed foreground activation.");
 
-                var nativeWait = diagnostics.Snapshot().Operations.SingleOrDefault(op => op.Operation == "EndDeferWindowPos");
+                var queued = final with { X = final.X - 60 };
+                Check(PostMessage(window, BlockTargetQueue, 0, 0), "Could not hold the target's message queue.");
+                await WaitFor(() => cover.OwnedTargetQueueBlocked, "The target did not hold its message queue.");
+                canvas.SetWindowFromScreen(window, queued.X, queued.Y, queued.W, queued.H);
+                windows.Reproject(isAsync: true, isTransient: true);
+                await WaitFor(() => diagnostics.Snapshot().Operations.Any(op => op.Operation == "SetWindowPos" && op.Queued == 1),
+                    "The projection worker did not queue the native move.");
+                var beforeDrain = Observed();
+                Check(!cover.OwnedTargetQueueReleased && (beforeDrain == final || beforeDrain == queued),
+                    $"Unexpected queued target state {beforeDrain} before release.");
+                CheckPlacementRejected("The manager reserved a target with a queued placement.");
+                release.Set();
+                await WaitFor(() => cover.OwnedTargetQueueReleased && Observed() == queued,
+                    "The earlier asynchronous placement did not reach the target.");
+                CheckPlacementRejected("Rectangle equality was treated as a native queue acknowledgement.");
+
+                var operations = diagnostics.Snapshot().Operations;
+                var queuedMove = operations.SingleOrDefault(op => op.Operation == "SetWindowPos");
+                Check(queuedMove?.Queued == 1, "Expected one queued native call.");
+                var nativeWait = operations.SingleOrDefault(op => op.Operation == "EndDeferWindowPos");
                 Check(nativeWait?.Succeeded == 3 && nativeWait.MaxMs >= HoldMilliseconds, "Expected three successful deferred native calls with a controlled wait.");
                 report = new { TargetPid = target.Id, HoldMilliseconds, Callbacks = cover.ReturnedCallbacks,
                     StaleCompletion = stale, StaleUiTimerTicks = obsoleteTicks,
                     CaptureLostCompletion = lost, CaptureLostUiTimerTicks = captureLostTicks,
                     FinalCompletion = completed, FinalUiTimerTicks = currentTicks, NativeWait = nativeWait,
+                    QueuedMove = queuedMove, PositionBeforeQueueRelease = beforeDrain, QueuedTarget = queued,
+                    QueuedTargetRejectedBeforeAndAfterObservation = true,
                     StaleCloseDecision = stale.CloseDecision.ToString(), FinalCloseDecision = completed.CloseDecision.ToString(),
                     CoveredThroughButtonUp = true, ForegroundPreserved = true };
 
                 Task<PlacementCompletion> Submit(WindowRect rectangle)
                     => inFlight = lane.TrySubmit(new(window, rectangle, PosOnly: true))
                         ?? throw new InvalidOperationException("Placement lane is occupied.");
+
+                void CheckPlacementRejected(string message)
+                {
+                    using var unexpected = windows.TryAcquireDesktopPlacementLease([window]);
+                    Check(unexpected == null, message);
+                }
 
                 async Task<int> HoldNativeCall(int callbacks, Task<PlacementCompletion> completion, WindowRect expected)
                 {
@@ -132,7 +162,7 @@ internal static class DesktopHandoffProbe
                     await Task.Delay(HoldMilliseconds);
                     Check(ticks > before && !completion.IsCompleted && lane.Busy, "The UI timer must tick while USER32 is blocked.");
                     Check(lane.TrySubmit(new(window, final, PosOnly: true)) == null, "The lane accepted a second native writer.");
-                    Check(worker.TryAcquirePlacementLease() == null, "The worker accepted a second lease.");
+                    CheckPlacementRejected("The manager accepted a second placement lease.");
                     Check(Observed() == expected && cover.Visible && WindowFromPoint(hitPoint) == cover.Handle,
                         "The cover or native position changed before the owner released placement.");
                     return ticks - before;
@@ -154,7 +184,7 @@ internal static class DesktopHandoffProbe
             }
         };
         Application.Run(cover);
-        if (inFlight is not { IsCompleted: false }) worker.Dispose();
+        if (inFlight is not { IsCompleted: false }) windows.Dispose();
         if (!target.WaitForExit(5000))
         {
             target.Kill();
@@ -210,7 +240,7 @@ internal static class DesktopHandoffProbe
 
     // The worker reads the immutable request and performs the synchronous foreign HWND move.
     // The WinForms thread verifies the result and decides whether to remove the cover.
-    private sealed class PlacementLane(ProjectionWorker worker, Win32WindowApi native, uint targetPid,
+    private sealed class PlacementLane(WindowManager windows, Win32WindowApi native, uint targetPid,
         DesktopHandoffClose close, Cover cover)
     {
         private readonly int _uiThread = Environment.CurrentManagedThreadId;
@@ -220,7 +250,7 @@ internal static class DesktopHandoffProbe
         {
             Check(Environment.CurrentManagedThreadId == _uiThread, "Only the UI thread may submit placement.");
             if (Busy || targetPid == Environment.ProcessId || native.GetWindowProcessId(item.HWnd) != targetPid) return null;
-            var lease = worker.TryAcquirePlacementLease();
+            var lease = windows.TryAcquireDesktopPlacementLease([item.HWnd]);
             if (lease == null) return null;
             if (close.TryBeginPlacement() is not long generation)
             {
@@ -276,6 +306,8 @@ internal static class DesktopHandoffProbe
         private readonly DesktopHandoffClose _close;
         public int ReturnedCallbacks { get; private set; }
         public bool OwnedTargetOrdered { get; private set; }
+        public bool OwnedTargetQueueBlocked { get; private set; }
+        public bool OwnedTargetQueueReleased { get; private set; }
         public bool StoppingClickHeld => _close.StoppingClickHeld;
 
         public Cover(Rectangle bounds, DesktopHandoffClose close) : base(bounds)
@@ -310,6 +342,12 @@ internal static class DesktopHandoffProbe
                 case TargetOrdered:
                     OwnedTargetOrdered = true;
                     return;
+                case TargetQueueBlocked:
+                    OwnedTargetQueueBlocked = true;
+                    return;
+                case TargetQueueReleased:
+                    OwnedTargetQueueReleased = true;
+                    return;
                 case LeftDown:
                     if (_close.HoldStoppingClick()) Capture = true;
                     return;
@@ -333,6 +371,14 @@ internal static class DesktopHandoffProbe
 
         protected override void WndProc(ref Message message)
         {
+            if (message.Msg == BlockTargetQueue)
+            {
+                _armed = false;
+                Failed = !PostMessage(cover, TargetQueueBlocked, 0, 0) || !release.WaitOne(TimeSpan.FromSeconds(5))
+                    || !PostMessage(cover, TargetQueueReleased, 0, 0);
+                if (Failed) BeginInvoke(Close);
+                return;
+            }
             if (message.Msg == OrderTargetBehindCover)
             {
                 Failed = !SetWindowPos(Handle, cover, 0, 0, 0, 0, PreserveGeometryAndActivation | NoPositionChanging)

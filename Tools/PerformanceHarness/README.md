@@ -30,17 +30,21 @@ Run with Canvas Desktop closed and the desktop test mutex held.
 & Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-probe TestResults/desktop-handoff-probe.json
 ```
 
-The probe reserves the production projection worker and moves one owned child
-HWND through its native batch mover. The UI holds the reservation through result
-verification.
-The child's window procedure sends a synchronous message back to the host UI,
-then waits for release. The report records whether the host answered and ran UI
-timer ticks during both waits, ignored an obsolete completion, and verified the
-current native position. A small WinForms cover holds a test click through button-up.
-Hit testing checks that the positioned child receives input after the cover hides.
-The probe exercises a controlled cover and a cooperative target. Production
-overview lifecycle, recovery from an unresponsive app, and display cadence need
-separate verification.
+The probe reserves final placement through WindowManager and moves one owned
+child HWND through the production native batch mover. The target sends a
+synchronous callback to the host UI during each controlled native wait. The
+report records UI timer ticks, placement, focus, and hit testing. The cover
+stays visible after invalidation or capture loss. The verified current
+placement exposes the child only after button-up.
+
+The probe also pauses the target's message pump while a regular projection
+queues an asynchronous move. It verifies that WindowManager declines another
+reservation before release and after observing the requested rectangle.
+The fixture records the rectangle seen while the target is still paused.
+
+The probe uses a controlled cover and a cooperative target. Production
+overview lifecycle, recovery from an unresponsive app, and display cadence
+need separate verification.
 
 ## Phases
 
