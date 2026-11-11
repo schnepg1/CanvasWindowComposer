@@ -575,7 +575,7 @@ That overlap needs compositor or scheduler evidence before assigning a cause.
 Flight settle reached 612 ms. The UI thread spent about 192 ms in workspace
 maintenance during that frame's 256 ms WPF flush. The follow-up guard keeps
 automatic maintenance outside active frame transactions as well as motion.
-This guard still needs a paired live trace. Workspace maintenance also took
+The paired verification is below. Workspace maintenance took
 up to 313 ms in this run, so deferral alone leaves an idle-to-input stall
 possible. Instant-wheel bursts extend the maintenance deadline while updating
 the new card tier immediately.
@@ -601,10 +601,8 @@ tracks the later snapshot pilot, coordinated scene, and optional live textures.
 
 ### Follow-up verification
 
-The user reported much smoother motion in their latest local testing, including
-camera flights. The installed build still needs a paired workspace trace to
-quantify the change in frame pacing and verify the maintenance guard during
-real movement. Offline reanalysis of the three earlier captures reproduced the
+The user reported much smoother motion in local testing, including camera
+flights. Offline reanalysis of the three baseline captures reproduced the
 motion coverage, UI gap statistics, and per-chain motion display statistics.
 
 The owned-window desktop handoff probe is now part of the performance harness.
@@ -621,3 +619,35 @@ The prototype remains on its branch. Production handoff still uses its
 synchronous placement path. Before connecting the worker to it, verify
 ordering of previously posted moves, fence direct native writers and desktop
 lifecycle transitions, and test recovery for a target that stops responding.
+
+### Paired workspace trace, 11 November 2026
+
+The normal main launcher rebuilt Canvas as `649be2e`. Its app source is
+identical to the `ed26a5d` maintenance-guard build. The comparison uses the
+earlier `e7a2c54` captures and one follow-up run per gesture on the RTX 4070
+at 1920 × 1080 and 60 Hz, with full visual quality and FlipDiscard. The grid
+swap chain was matched to the app's `GridPresentCall` intervals.
+
+| Activity | Detected motion before → after | Camera UI gap p95 | Grid display gap p95 | Grid gaps >2 refresh intervals | Longest settled UI frame |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Pan | 5.57 → 24.57 s | 43.34 → 33.67 ms | 100.00 → 33.63 ms | 35.2% → 16.1% | 278.92 → 106.22 ms |
+| Zoom | 17.80 → 35.01 s | 45.96 → 45.43 ms | 100.02 → 49.99 ms | 33.1% → 17.7% | 331.58 → 78.44 ms |
+| Flights | 18.43 → 28.89 s | 43.18 → 37.92 ms | 100.07 → 33.60 ms | 39.0% → 15.8% | 612.03 → 91.68 ms |
+
+The follow-up captured 83 timed workspace or diagnostic maintenance calls.
+None started inside a camera frame on the UI thread. The baseline flight
+trace recorded two workspace calls beginning inside settled frames,
+including the 192 ms call during the 612 ms frame. Periodic work can still
+delay later input. One workspace maintenance call in the follow-up flight
+run lasted 275 ms outside a camera frame.
+
+Typical displayed grid pacing improved across the three runs. Zoom still
+has a long UI gap tail. Its p99 went from 85 to 129 ms, with a 179 ms maximum.
+The leading frame in that 179 ms interval took 5.6 ms. The longest pan
+interval was 188 ms with 9.4 ms of leading-frame work. Timed UI drawing and
+native thumbnail calls did not account for those gaps. Input timing and
+UI scheduling traces would help distinguish pauses between inputs from
+delayed callbacks. The tracked grid is one display surface. These single
+runs cover different amounts of motion, and pan and flights fell short of
+30 seconds of active motion in the follow-up. Treat the results as a
+paired comparison with uneven coverage.
