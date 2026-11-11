@@ -598,3 +598,26 @@ images and fall back to live previews when a usable image is missing.
 
 The [retained canvas rendering plan](retained-canvas-rendering-plan.md)
 tracks the later snapshot pilot, coordinated scene, and optional live textures.
+
+### Follow-up verification
+
+The user reported much smoother motion in their latest local testing, including
+camera flights. The installed build still needs a paired workspace trace to
+quantify the change in frame pacing and verify the maintenance guard during
+real movement. Offline reanalysis of the three earlier captures reproduced the
+motion coverage, UI gap statistics, and per-chain motion display statistics.
+
+The owned-window desktop handoff probe is now part of the performance harness.
+A follow-up prototype on `agent/desktop-placement-lease` at `33ef136` reserves
+the existing projection worker for final placement. It passed 96 focused tests
+and three native probe runs. Each run used two placements with a controlled
+450 ms hold. The UI ran 17–19 timer ticks per hold and answered both synchronous
+callbacks from the target. An obsolete completion kept the cover in place.
+The current completion verified the final rectangle and waited for button-up
+before exposing the target. Foreground activation was preserved in all three
+runs. The maximum native call per run was 463–480 ms.
+
+The prototype remains on its branch. Production handoff still uses its
+synchronous placement path. Before connecting the worker to it, verify
+ordering of previously posted moves, fence direct native writers and desktop
+lifecycle transitions, and test recovery for a target that stops responding.
