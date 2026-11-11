@@ -21,6 +21,7 @@ AI Mission Control bridges this gap by turning your infinite spatial desktop int
 
 The delivered task-pod implementation was merged in [PR #33](https://github.com/schnepg1/CanvasWindowComposer/pull/33).
 For a shorter operational runbook, see [Agent team pods](team-pods.md).
+For deep multi-agent coordination theory, topology trade-offs, and the learning module architecture, see [AI Agent Orchestration Theory](ai-agents-orchestration-theory.md).
 
 ---
 

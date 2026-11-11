@@ -5,6 +5,7 @@ A company-agnostic, vendor-neutral multi-agent software engineering rig designed
 For automatic task pod registration, live status badges, and movable saved containers,
 see [Agent team pods](../Docs/team-pods.md). Agents report through
 [`Set-TeamTelemetry.ps1`](scripts/Set-TeamTelemetry.ps1) using a shared state path.
+For orchestration theory, topology comparisons (Hub-and-Spoke vs Daisy-Chain vs Blackboard), and the learning module blueprint, see [AI Agent Orchestration Theory](../Docs/ai-agents-orchestration-theory.md).
 
 This rig coordinates specialized AI agent roles across isolated git worktrees, enforces strict peer review loops, integrates automated merges with intelligent conflict resolution, and guarantees repository hygiene in compliance with [`AGENTS.md`](../AGENTS.md).
 
