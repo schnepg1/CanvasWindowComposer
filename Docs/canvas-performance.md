@@ -589,3 +589,6 @@ Its mixed whole-frame results and the live WPF measurements favor measuring
 DWM lifetime and compositor waits before expanding annotation retention.
 A retained preview experiment should reuse bounded, asynchronously prepared
 images and fall back to live previews when a usable image is missing.
+
+The [retained canvas rendering plan](retained-canvas-rendering-plan.md)
+tracks the later snapshot pilot, coordinated scene, and optional live textures.
