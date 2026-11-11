@@ -23,7 +23,8 @@ internal static class DesktopHandoffProbe
         var hitPoint = new Point(bounds.X + 320, start.Y + 20);
         string gateName = $@"Local\CanvasHandoff-{Guid.NewGuid():N}";
         using var release = new EventWaitHandle(false, EventResetMode.AutoReset, gateName);
-        using var cover = new Cover(bounds);
+        var close = new DesktopHandoffClose();
+        using var cover = new Cover(bounds, close);
         var diagnostics = new PerformanceDiagnostics();
         var native = new Win32WindowApi(diagnostics: diagnostics);
         var startInfo = new ProcessStartInfo(Path.ChangeExtension(typeof(Program).Assembly.Location, ".exe"))
@@ -49,7 +50,7 @@ internal static class DesktopHandoffProbe
             {
                 string? handle = await target.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 window = (nint)long.Parse(handle ?? throw new InvalidOperationException("Target exited during startup."), CultureInfo.InvariantCulture);
-                var lane = new PlacementLane(worker, native, (uint)target.Id);
+                var lane = new PlacementLane(worker, native, (uint)target.Id, close, cover);
                 var initial = Observed();
                 Check(native.GetWindowProcessId(window) == target.Id && initial.X == start.X && initial.Y == start.Y
                     && initial.W > 20 && initial.H > 20, $"Unexpected owned target bounds {initial} at {start}.");
@@ -66,23 +67,39 @@ internal static class DesktopHandoffProbe
 
                 var obsolete = Submit(intermediate);
                 int obsoleteTicks = await HoldNativeCall(1, obsolete, initial);
-                lane.Invalidate();
+                close.Invalidate();
                 release.Set();
                 var stale = await obsolete.WaitAsync(TimeSpan.FromSeconds(6));
-                Check(stale.NativeSucceeded && !stale.CanExpose && stale.Observed == intermediate,
-                    "An obsolete native move should land without authorizing cover removal.");
-                cover.Accept(stale.CanExpose);
+                Check(stale.PlacementVerified && stale.Observed == intermediate,
+                    "The obsolete native move did not land at the expected position.");
+                Check(stale.CloseDecision == DesktopHandoffCloseDecision.KeepCovered,
+                    "An obsolete native move authorized cover removal.");
                 Check(cover.Visible && WindowFromPoint(hitPoint) == cover.Handle, "An obsolete result exposed the desktop.");
 
-                var current = Submit(final);
-                int currentTicks = await HoldNativeCall(2, current, intermediate);
                 nint pointInCover = (hitPoint.X - bounds.X) | ((hitPoint.Y - bounds.Y) << 16);
+                var afterCaptureLoss = initial with { X = bounds.X + 220 };
+                var captureLost = Submit(afterCaptureLoss);
+                int captureLostTicks = await HoldNativeCall(2, captureLost, intermediate);
+                SendMessage(cover.Handle, LeftDown, 1, pointInCover);
+                Check(cover.StoppingClickHeld && cover.Capture, "The cover did not capture the test click.");
+                cover.Capture = false;
+                Check(!cover.StoppingClickHeld && !cover.Capture, "Losing capture did not invalidate the held click.");
+                release.Set();
+                var lost = await captureLost.WaitAsync(TimeSpan.FromSeconds(6));
+                Check(lost.PlacementVerified && lost.Observed == afterCaptureLoss
+                    && lost.CloseDecision == DesktopHandoffCloseDecision.KeepCovered,
+                    "Placement after capture loss authorized cover removal.");
+                Check(cover.Visible && WindowFromPoint(hitPoint) == cover.Handle, "Capture loss exposed the desktop.");
+
+                var current = Submit(final);
+                int currentTicks = await HoldNativeCall(3, current, afterCaptureLoss);
                 SendMessage(cover.Handle, LeftDown, 1, pointInCover);
                 Check(cover.StoppingClickHeld && cover.Capture, "The cover did not capture the stopping click.");
                 release.Set();
                 var completed = await current.WaitAsync(TimeSpan.FromSeconds(6));
-                Check(completed.CanExpose && completed.Observed == final, "Current completion did not confirm final placement.");
-                cover.Accept(completed.CanExpose);
+                Check(completed.PlacementVerified && completed.Observed == final, "Current completion did not confirm final placement.");
+                Check(completed.CloseDecision == DesktopHandoffCloseDecision.WaitForButtonUp,
+                    "Verified placement must wait for the held stopping click.");
                 // Keep the fixture in front of unrelated windows without activating
                 // either owned window or letting the target overtake the cover.
                 Check(PostMessage(window, OrderTargetBehindCover, 0, 0), "Could not request owned target ordering.");
@@ -95,10 +112,12 @@ internal static class DesktopHandoffProbe
                 Check(GetForegroundWindow() == foreground, "The handoff changed foreground activation.");
 
                 var nativeWait = diagnostics.Snapshot().Operations.SingleOrDefault(op => op.Operation == "EndDeferWindowPos");
-                Check(nativeWait?.Succeeded == 2 && nativeWait.MaxMs >= HoldMilliseconds, "Expected two successful deferred native calls with a controlled wait.");
+                Check(nativeWait?.Succeeded == 3 && nativeWait.MaxMs >= HoldMilliseconds, "Expected three successful deferred native calls with a controlled wait.");
                 report = new { TargetPid = target.Id, HoldMilliseconds, Callbacks = cover.ReturnedCallbacks,
                     StaleCompletion = stale, StaleUiTimerTicks = obsoleteTicks,
+                    CaptureLostCompletion = lost, CaptureLostUiTimerTicks = captureLostTicks,
                     FinalCompletion = completed, FinalUiTimerTicks = currentTicks, NativeWait = nativeWait,
+                    StaleCloseDecision = stale.CloseDecision.ToString(), FinalCloseDecision = completed.CloseDecision.ToString(),
                     CoveredThroughButtonUp = true, ForegroundPreserved = true };
 
                 Task<PlacementCompletion> Submit(WindowRect rectangle)
@@ -186,16 +205,16 @@ internal static class DesktopHandoffProbe
         return new(x, y, w, h);
     }
 
-    private sealed record PlacementCompletion(long Generation, bool NativeSucceeded, bool CanExpose, WindowRect Observed);
+    private sealed record PlacementCompletion(long Generation, bool PlacementVerified, WindowRect Observed,
+        DesktopHandoffCloseDecision CloseDecision);
 
-    // The WinForms thread owns the lane and generation. The worker only reads the
-    // immutable request and performs the synchronous foreign HWND move.
-    private sealed class PlacementLane(ProjectionWorker worker, Win32WindowApi native, uint targetPid)
+    // The worker reads the immutable request and performs the synchronous foreign HWND move.
+    // The WinForms thread verifies the result and decides whether to remove the cover.
+    private sealed class PlacementLane(ProjectionWorker worker, Win32WindowApi native, uint targetPid,
+        DesktopHandoffClose close, Cover cover)
     {
         private readonly int _uiThread = Environment.CurrentManagedThreadId;
-        private long _generation;
         public bool Busy { get; private set; }
-        public void Invalidate() => _generation++;
 
         public Task<PlacementCompletion>? TrySubmit(BatchMoveItem item)
         {
@@ -203,8 +222,13 @@ internal static class DesktopHandoffProbe
             if (Busy || targetPid == Environment.ProcessId || native.GetWindowProcessId(item.HWnd) != targetPid) return null;
             var lease = worker.TryAcquirePlacementLease();
             if (lease == null) return null;
+            if (close.TryBeginPlacement() is not long generation)
+            {
+                lease.Dispose();
+                return null;
+            }
             Busy = true;
-            return Execute(lease, item, ++_generation);
+            return Execute(lease, item, generation);
         }
 
         private async Task<PlacementCompletion> Execute(ProjectionWorker.PlacementLease lease, BatchMoveItem item, long generation)
@@ -215,10 +239,15 @@ internal static class DesktopHandoffProbe
                 var result = await lease.Submit([(item, targetPid)]);
                 Check(Environment.CurrentManagedThreadId == _uiThread, "Placement completion must run on the UI thread.");
                 var observed = ReadBounds(native, item.HWnd);
-                bool succeeded = result.Summary.Status == NativeOperationStatus.Succeeded;
-                bool canExpose = succeeded && _generation == generation && native.GetWindowProcessId(item.HWnd) == targetPid
-                    && observed == item.Rect;
-                return new(generation, succeeded, canExpose, observed);
+                bool verified = result.Summary.Status == NativeOperationStatus.Succeeded
+                    && native.GetWindowProcessId(item.HWnd) == targetPid && observed == item.Rect;
+                var decision = cover.Accept(generation, verified);
+                return new(generation, verified, observed, decision);
+            }
+            catch
+            {
+                close.CompletePlacement(generation, placementVerified: false);
+                throw;
             }
             finally { Busy = false; }
         }
@@ -244,20 +273,28 @@ internal static class DesktopHandoffProbe
 
     private sealed class Cover : OwnedWindow
     {
-        private bool _mayHide;
+        private readonly DesktopHandoffClose _close;
         public int ReturnedCallbacks { get; private set; }
         public bool OwnedTargetOrdered { get; private set; }
-        public bool StoppingClickHeld { get; private set; }
+        public bool StoppingClickHeld => _close.StoppingClickHeld;
 
-        public Cover(Rectangle bounds) : base(bounds)
+        public Cover(Rectangle bounds, DesktopHandoffClose close) : base(bounds)
         {
+            _close = close;
             BackColor = Color.MidnightBlue;
         }
 
-        public void Accept(bool canExpose)
+        public DesktopHandoffCloseDecision Accept(long generation, bool placementVerified)
         {
-            _mayHide = canExpose;
-            if (_mayHide && !StoppingClickHeld) Hide();
+            var decision = _close.CompletePlacement(generation, placementVerified);
+            if (decision == DesktopHandoffCloseDecision.ExposeDesktop) Hide();
+            return decision;
+        }
+
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            if (!Capture) _close.LoseStoppingClickCapture();
+            base.OnMouseCaptureChanged(e);
         }
 
         protected override void WndProc(ref Message message)
@@ -274,13 +311,12 @@ internal static class DesktopHandoffProbe
                     OwnedTargetOrdered = true;
                     return;
                 case LeftDown:
-                    StoppingClickHeld = true;
-                    Capture = true;
+                    if (_close.HoldStoppingClick()) Capture = true;
                     return;
                 case LeftUp when StoppingClickHeld:
-                    StoppingClickHeld = false;
+                    var decision = _close.ReleaseStoppingClick();
                     Capture = false;
-                    if (_mayHide) Hide();
+                    if (decision == DesktopHandoffCloseDecision.ExposeDesktop) Hide();
                     return;
                 default:
                     base.WndProc(ref message);
