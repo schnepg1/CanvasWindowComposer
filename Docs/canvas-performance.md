@@ -518,20 +518,26 @@ available. PresentMon and Logman need an account with permission to create
 ETW sessions. Use the actual monitor refresh rate for the gap thresholds.
 
 ```powershell
-./Tools/Measure-CanvasMotion.ps1 -PresentMonPath C:/Tools/PresentMon-2.6.0-x64.exe -Scenario Pan -RefreshHz 60 -Seconds 30 -OutputDirectory ./trace-pan-01
+./Tools/Measure-CanvasMotion.ps1 -PresentMonPath C:/Tools/PresentMon-2.6.0-x64.exe -Scenario Pan -RefreshHz 60 -Seconds 60 -OutputDirectory ./trace-pan-01
 ```
 
 Use a new output directory for each run. Repeat for Zoom and Flight using the
 same layout, monitor, refresh rate, DPI, renderer and background workload.
-Keep moving during the sample. Use the same two targets for repeated flights
-and annotate intentional pauses when reviewing the trace.
+Aim for at least 30 seconds of detected motion in each run. Use a longer
+capture when flights or other discrete movements have gaps. Use the same
+two targets for repeated flights and annotate intentional pauses.
 
 `operations.etl` records QPC start times and wall times for app operations,
 including WPF drawing preparation, workspace maintenance and native calls.
 `presents.csv` contains the monitored process's presentation samples.
 `summary.json` separates UI camera callback gaps from observed display gaps
-per swap chain and reports p50/p95/p99/max and refresh-budget counts. A missing
-series means that source provided no samples. Swap-chain timings describe the
+per swap chain and reports p50/p95/p99/max and refresh-budget counts.
+`ObservedMotionSeconds` sums spans between consecutive motion frames separated
+by settled frames. `DisplayGapDuringMotionMs` includes only display intervals
+fully inside those spans. A missing series means no samples met its criteria.
+To regenerate the motion statistics from a saved capture, run
+`./Tools/Measure-CanvasMotion.ps1 -AnalyzeDirectory ./trace-pan-01`. It writes
+`motion-summary.json` alongside the original files. Swap-chain timings describe the
 tracked surfaces and cannot establish synchronization of all independent
 DWM, WPF, and Direct3D layers. Examine raw timestamps around outliers and
 exclude deliberate pauses or other activity from comparisons.

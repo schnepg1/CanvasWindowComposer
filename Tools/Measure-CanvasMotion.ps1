@@ -1,19 +1,19 @@
 #Requires -Version 7.0
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Capture')]
 param(
-    [Parameter(Mandatory)][string]$PresentMonPath,
-    [Parameter(Mandatory)][string]$OutputDirectory,
-    [Parameter(Mandatory)][ValidateSet('Pan','Zoom','Flight','DesktopHandoff')][string]$Scenario,
-    [Parameter(Mandatory)][ValidateRange(20,1000)][double]$RefreshHz,
-    [ValidateRange(30,180)][int]$Seconds = 30,
-    [ValidateRange(0,60)][int]$DelaySeconds = 5
+    [Parameter(Mandatory, ParameterSetName = 'Capture')][string]$PresentMonPath,
+    [Parameter(Mandatory, ParameterSetName = 'Capture')][string]$OutputDirectory,
+    [Parameter(Mandatory, ParameterSetName = 'Analyze')][string]$AnalyzeDirectory,
+    [Parameter(Mandatory, ParameterSetName = 'Capture')][ValidateSet('Pan','Zoom','Flight','DesktopHandoff')][string]$Scenario,
+    [Parameter(Mandatory, ParameterSetName = 'Capture')][ValidateRange(20,1000)][double]$RefreshHz,
+    [Parameter(ParameterSetName = 'Capture')][ValidateRange(30,180)][int]$Seconds = 30,
+    [Parameter(ParameterSetName = 'Capture')][ValidateRange(0,60)][int]$DelaySeconds = 5
 )
 
 $ErrorActionPreference = 'Stop'
 $provider = [guid]'854023e4-c25a-4841-8d6e-7307c236be53'
 $invariant = [Globalization.CultureInfo]::InvariantCulture
 $frequency = [Diagnostics.Stopwatch]::Frequency
-$budgetMs = 1000.0 / $RefreshHz
 
 function Summarize([double[]]$Values) {
     $sorted = @($Values | Sort-Object)
@@ -58,26 +58,57 @@ function Read-Operation($event) {
     [pscustomobject]@{ Operation = $operation; StartQpc = $start; DurationMs = $duration; Status = $status; ItemCount = $items; ThreadId = $event.ThreadId }
 }
 
-$app = Get-Process -Name CanvasDesktop
-if (@($app).Count -ne 1) { throw 'Run exactly one Canvas Desktop instance.' }
-$exe = (Resolve-Path -LiteralPath $PresentMonPath).Path
-$out = [IO.Path]::GetFullPath($OutputDirectory)
-if (Test-Path -LiteralPath $out) { throw "Use a new output directory: $out" }
-New-Item -ItemType Directory -Path $out | Out-Null
-$etl = Join-Path $out 'operations.etl'
-$csv = Join-Path $out 'presents.csv'
-$session = 'CanvasMotion-' + [Guid]::NewGuid().ToString('N')
-& logman start "$session-operations" -p "{$provider}" 0xffffffffffffffff 4 -o $etl -ets | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Could not start the operation trace.' }
-try {
-    Write-Host "Start $Scenario in $DelaySeconds seconds and repeat for $Seconds seconds."
-    $arguments = @('--process_id', $app.Id, '--session_name', "$session-presents", '--delay', $DelaySeconds,
-        '--timed', $Seconds, '--terminate_after_timed', '--no_console_stats', '--no_track_input', '--v1_metrics', '--qpc_time', '--output_file', $csv)
-    & $exe @arguments
-    if ($LASTEXITCODE -ne 0) { throw "PresentMon failed with exit code $LASTEXITCODE." }
-} finally {
-    & logman stop "$session-operations" -ets | Out-Null
+if ($PSCmdlet.ParameterSetName -eq 'Analyze') {
+    $out = (Resolve-Path -LiteralPath $AnalyzeDirectory).Path
+    $original = Get-Content -Raw -LiteralPath (Join-Path $out 'summary.json') | ConvertFrom-Json
+    $Scenario = $original.Scenario
+    $RefreshHz = $original.RefreshHz
+    $Seconds = $original.RequestedSeconds
+    $frequency = $original.QpcFrequency
+    $processId = $original.ProcessId
+    $csv = Join-Path $out 'presents.csv'
+    $operationsCsv = Join-Path $out 'operations.csv'
+    $allOperations = @()
+    if (Test-Path -LiteralPath $operationsCsv) {
+        $allOperations = @(Import-Csv -LiteralPath $operationsCsv | ForEach-Object {
+            $_.StartQpc = [long]::Parse($_.StartQpc, $invariant)
+            # Early PowerShell captures on some systems wrote decimal commas.
+            $_.DurationMs = [double]::Parse($_.DurationMs.Replace(',', '.'), $invariant)
+            $_
+        } | Sort-Object StartQpc)
+    }
+    $summaryName = 'motion-summary.json'
+} else {
+    $app = Get-Process -Name CanvasDesktop
+    if (@($app).Count -ne 1) { throw 'Run exactly one Canvas Desktop instance.' }
+    $exe = (Resolve-Path -LiteralPath $PresentMonPath).Path
+    $out = [IO.Path]::GetFullPath($OutputDirectory)
+    if (Test-Path -LiteralPath $out) { throw "Use a new output directory: $out" }
+    New-Item -ItemType Directory -Path $out | Out-Null
+    $etl = Join-Path $out 'operations.etl'
+    $csv = Join-Path $out 'presents.csv'
+    $session = 'CanvasMotion-' + [Guid]::NewGuid().ToString('N')
+    & logman start "$session-operations" -p "{$provider}" 0xffffffffffffffff 4 -o $etl -ets | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not start the operation trace.' }
+    try {
+        Write-Host "Start $Scenario in $DelaySeconds seconds and repeat for $Seconds seconds."
+        $arguments = @('--process_id', $app.Id, '--session_name', "$session-presents", '--delay', $DelaySeconds,
+            '--timed', $Seconds, '--terminate_after_timed', '--no_console_stats', '--no_track_input', '--v1_metrics', '--qpc_time', '--output_file', $csv)
+        & $exe @arguments
+        if ($LASTEXITCODE -ne 0) { throw "PresentMon failed with exit code $LASTEXITCODE." }
+    } finally {
+        & logman stop "$session-operations" -ets | Out-Null
+    }
+    $processId = $app.Id
+    $allOperations = @(Get-WinEvent -Path $etl -Oldest | Where-Object {
+        $_.ProviderId -eq $provider -and $_.Id -eq 1 -and $_.Version -eq 0 -and $_.ProcessId -eq $processId
+    } | ForEach-Object { Read-Operation $_ } | Sort-Object StartQpc)
+    if ($allOperations.Count -gt 0) {
+        $allOperations | Export-Csv -LiteralPath (Join-Path $out 'operations.csv') -NoTypeInformation
+    }
+    $summaryName = 'summary.json'
 }
+
 if (!(Test-Path -LiteralPath $csv)) { throw 'No Canvas presentation samples were written.' }
 $presents = @(Import-Csv -LiteralPath $csv)
 if ($presents.Count -eq 0) { throw 'No Canvas presentation samples were recorded.' }
@@ -89,37 +120,75 @@ foreach ($present in $presents) {
     $last = [Math]::Max($last, $qpc)
 }
 
-$allOperations = @(Get-WinEvent -Path $etl -Oldest | Where-Object {
-    $_.ProviderId -eq $provider -and $_.Id -eq 1 -and $_.Version -eq 0 -and $_.ProcessId -eq $app.Id
-} | ForEach-Object { Read-Operation $_ } | Sort-Object StartQpc)
-if ($allOperations.Count -gt 0) { $allOperations | Export-Csv -LiteralPath (Join-Path $out 'operations.csv') -NoTypeInformation }
+$budgetMs = 1000.0 / $RefreshHz
+$ticksPerMs = $frequency / 1000.0
 $operations = @($allOperations.Where({ $_.StartQpc -ge $first -and $_.StartQpc -le $last }))
-
 $cameraFrames = @($operations.Where({ $_.Operation -in 'OverviewMotionFrameUi','OverviewSettledFrameUi' }))
-$gaps = for ($i = 1; $i -lt $cameraFrames.Count; $i++) {
-    if ($cameraFrames[$i].Operation -eq 'OverviewMotionFrameUi' -and $cameraFrames[$i-1].Operation -eq 'OverviewMotionFrameUi') {
-        1000.0 * ($cameraFrames[$i].StartQpc - $cameraFrames[$i-1].StartQpc) / $frequency
+$motionIntervals = [Collections.Generic.List[object]]::new()
+$gaps = [Collections.Generic.List[double]]::new()
+$activeInterval = $null
+foreach ($frame in $cameraFrames) {
+    if ($frame.Operation -eq 'OverviewSettledFrameUi') {
+        $activeInterval = $null
+        continue
     }
+    if ($null -eq $activeInterval) {
+        $activeInterval = [pscustomobject]@{ First = $frame.StartQpc; Last = $frame.StartQpc }
+        $motionIntervals.Add($activeInterval)
+        continue
+    }
+    $gaps.Add(($frame.StartQpc - $activeInterval.Last) / $ticksPerMs)
+    $activeInterval.Last = $frame.StartQpc
 }
+$motionIntervals = @($motionIntervals.Where({ $_.Last -gt $_.First }))
+$motionTicks = 0L
+foreach ($interval in $motionIntervals) { $motionTicks += $interval.Last - $interval.First }
+
+function Test-InMotion([double]$Start, [double]$End) {
+    $low = 0
+    $high = $motionIntervals.Count - 1
+    while ($low -le $high) {
+        $middle = $low + (($high - $low) -shr 1)
+        $interval = $motionIntervals[$middle]
+        if ($Start -lt $interval.First) { $high = $middle - 1 }
+        elseif ($Start -gt $interval.Last) { $low = $middle + 1 }
+        else { return $End -le $interval.Last }
+    }
+    return $false
+}
+
 $display = @($presents | Group-Object SwapChainAddress | ForEach-Object {
-    $displayGaps = foreach ($row in $_.Group) {
+    $displayGaps = [Collections.Generic.List[double]]::new()
+    $motionDisplayGaps = [Collections.Generic.List[double]]::new()
+    foreach ($row in $_.Group) {
         $ms = 0.0
-        if ($row.Dropped -eq '0' -and [double]::TryParse($row.MsBetweenDisplayChange,
-            [Globalization.NumberStyles]::Float, $invariant, [ref]$ms) -and $ms -gt 0) { $ms }
+        if ($row.Dropped -ne '0' -or ![double]::TryParse($row.MsBetweenDisplayChange,
+            [Globalization.NumberStyles]::Float, $invariant, [ref]$ms) -or $ms -le 0) { continue }
+
+        $displayGaps.Add($ms)
+        $untilDisplayed = 0.0
+        if (![double]::TryParse($row.MsUntilDisplayed,
+            [Globalization.NumberStyles]::Float, $invariant, [ref]$untilDisplayed)) { continue }
+
+        $end = [long]::Parse($row.QPCTime, $invariant) + $untilDisplayed * $ticksPerMs
+        if (Test-InMotion ($end - $ms * $ticksPerMs) $end) { $motionDisplayGaps.Add($ms) }
     }
     [ordered]@{
         SwapChain = $_.Name
         Presents = $_.Count
         Dropped = @($_.Group.Where({ $_.Dropped -eq '1' })).Count
         DisplayGapMs = Summarize $displayGaps
+        DisplayGapDuringMotionMs = Summarize $motionDisplayGaps
     }
 })
 $summary = [ordered]@{
     Scenario = $Scenario
-    ProcessId = $app.Id
+    ProcessId = $processId
     RefreshHz = $RefreshHz
     RequestedSeconds = $Seconds
     ObservedPresentSpanSeconds = ($last - $first) / $frequency
+    ObservedMotionSeconds = $motionTicks / $frequency
+    MotionIntervalCount = $motionIntervals.Count
     QpcFrequency = $frequency
     FirstQpc = $first
     LastQpc = $last
@@ -130,6 +199,10 @@ $summary = [ordered]@{
     })
     DisplayPerSwapChain = $display
 }
-$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $out 'summary.json') -Encoding utf8
+$summaryPath = Join-Path $out $summaryName
+$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 if ($operations.Count -eq 0) { Write-Warning 'No instrumented Canvas operation events matched this capture.' }
-Write-Output (Join-Path $out 'summary.json')
+if ($summary.ObservedMotionSeconds -lt 30 -and $Scenario -ne 'DesktopHandoff') {
+    Write-Warning ('Detected {0:F1} seconds of motion. Aim for at least 30 seconds of active movement when comparing runs.' -f $summary.ObservedMotionSeconds)
+}
+Write-Output $summaryPath
