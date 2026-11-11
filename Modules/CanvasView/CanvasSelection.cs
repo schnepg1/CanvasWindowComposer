@@ -3,7 +3,7 @@ namespace CanvasDesktop.CanvasView;
 public enum CanvasItemKind { Annotation, Window, Project }
 public readonly record struct CanvasItemId(CanvasItemKind Kind, Guid Id);
 public sealed record CanvasSelectionItem(CanvasItemId Key, CanvasRect Bounds, string Title = "",
-    IReadOnlyList<CanvasItemId>? Members = null, CanvasAnnotation? Annotation = null);
+    IReadOnlyList<CanvasItemId>? Members = null, CanvasAnnotation? Annotation = null, bool Ephemeral = false);
 public sealed record CanvasSelectionMove(IReadOnlyList<CanvasSelectionItem> Before, double Dx, double Dy);
 
 /// <summary>Desktop-scoped identities. Project membership combines explicit links and spatial contents.</summary>

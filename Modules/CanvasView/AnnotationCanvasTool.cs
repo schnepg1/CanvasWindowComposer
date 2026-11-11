@@ -1,6 +1,7 @@
 namespace CanvasDesktop.CanvasView;
 
-public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid> desktop, Func<CanvasAnnotation, CanvasAnnotation>? fitText = null) : ICanvasTool
+public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid> desktop, Func<CanvasAnnotation, CanvasAnnotation>? fitText = null,
+    Func<CanvasAnnotation, bool, CanvasAnnotation>? resolveConnections = null) : ICanvasTool
 {
     public const double DefaultTextCardWidth = 240;
     public const double DefaultTextCardHeight = 48;
@@ -98,7 +99,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     {
         if (!_active) return;
         PointerMove(p); if (!_active) return;
-        var result=Preview; bool creating=_creating;
+        var result=Preview; bool creating=_creating; int handle=_handle; var original=_original;
         Cancel();
         if (result is null) return;
         if (creating && result.Kind==AnnotationKind.Text)
@@ -107,6 +108,10 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         }
         // Reject accidental clicks or invalid/out-of-range previews without changing history.
         if (creating && AnnotationGeometry.Distance(result.A,result.B)*p.View.Zoom < 4) return;
+        // Dragging an arrow end decides what it is attached to: an item under the drop point
+        // re-targets that end, empty space detaches it into a free arrow.
+        if (!creating && handle is 0 or 1 && result.Kind==AnnotationKind.Arrow && original is { } before && result != before
+            && resolveConnections is { } resolve) result = resolve(result, handle == 0);
         try { AnnotationDocument.Validate([result]); } catch (ArgumentException) { return; }
         if (creating && document.Items.Count >= AnnotationDocument.MaximumItems) return;
         document.Put(result); SelectedId=result.Id;

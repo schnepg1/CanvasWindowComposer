@@ -55,7 +55,7 @@ internal sealed partial class OverviewManager
         _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
         _cameraBookmarks=new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path??Path.Combine(AppConfig.ConfigDir,"annotations.json")))!,"camera-bookmarks.json"));
         _annotationDocument=_annotationStore.Document;
-        _annotationTool=new(_annotationDocument,_annotationDesktop, item => AnnotationVisual.FitText(item));
+        _annotationTool=new(_annotationDocument,_annotationDesktop, item => AnnotationVisual.FitText(item), ResolveArrowEndpoint);
         _annotationTool.SetMode(AnnotationMode.Select);
         _connectionTool=new(_annotationDocument,_annotationDesktop,SelectionItems,Selection);
         _connectionTool.ConnectionCreated += OnConnectionCreated;
@@ -544,17 +544,24 @@ internal sealed partial class OverviewManager
         {
             bool sourceInvalid = arrow.SourceId.HasValue && !validIds.Contains(arrow.SourceId.Value);
             bool targetInvalid = arrow.TargetId.HasValue && !validIds.Contains(arrow.TargetId.Value);
-            if (sourceInvalid || targetInvalid)
-            {
-                _annotationDocument.Delete(currentDesktop, arrow.Id);
-                anyRemoved = true;
-            }
+            if (!sourceInvalid && !targetInvalid) continue;
+            // A live window has no durable identity after a restart. Keep the user's arrow
+            // and its shape instead of deleting the connector along with the window.
+            var kept = arrow;
+            if (sourceInvalid && arrow.SourceEphemeral) { kept = kept with { SourceId = null, SourcePort = ConnectionPort.Auto }; sourceInvalid = false; }
+            if (targetInvalid && arrow.TargetEphemeral) { kept = kept with { TargetId = null, TargetPort = ConnectionPort.Auto }; targetInvalid = false; }
+            if (sourceInvalid || targetInvalid) _annotationDocument.Delete(currentDesktop, arrow.Id);
+            else _annotationDocument.Put(kept);
+            anyRemoved = true;
         }
         if (anyRemoved)
         {
             _annotationStore?.Save();
         }
     }
+
+    private CanvasAnnotation ResolveArrowEndpoint(CanvasAnnotation arrow, bool sourceEndpoint)
+        => ConnectionRetarget.Resolve(arrow, sourceEndpoint, sourceEndpoint ? arrow.A : arrow.B, SelectionItems());
 
     internal void ReconcileConnectedArrows()
     {

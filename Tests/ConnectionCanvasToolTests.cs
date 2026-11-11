@@ -15,6 +15,136 @@ public class ConnectionCanvasToolTests
         => new(0, new(x, y), button, CanvasModifiers.None, new CanvasViewTransform(0, 0, 1.0, new(0, 0, 1920, 1080)));
 
     [Fact]
+    public void FindSnapTarget_OverlappingItems_PrefersTheSmallestUnderThePointer()
+    {
+        var doc = new AnnotationDocument();
+        var selection = new CanvasSelection();
+        var source = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new CanvasRect(100, 100, 400, 300), "Source");
+        var card = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new CanvasRect(700, 100, 600, 400), "Card");
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(900, 250), new CanvasPoint(1100, 450), Text: "Note");
+        var noteItem = new CanvasSelectionItem(new(CanvasItemKind.Annotation, note.Id), note.Bounds, note.Text, Annotation: note);
+
+        var tool = new ConnectionCanvasTool(doc, () => Desktop, () => [source, card, noteItem], selection);
+        selection.Replace([source.Key]);
+
+        tool.PointerDown(Pointer(500, 250, CanvasPointerButton.Left));
+        tool.PointerMove(Pointer(1000, 350));
+
+        // Both the card and the note contain the pointer; the smaller note must win.
+        Assert.NotNull(tool.SnapTarget);
+        Assert.Equal(noteItem.Key, tool.SnapTarget!.Item.Key);
+        tool.Cancel();
+    }
+
+    [Fact]
+    public void FindSnapTarget_VisiblePortWinsOverALargerBodyUnderThePointer()
+    {
+        var doc = new AnnotationDocument();
+        var selection = new CanvasSelection();
+        var source = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new CanvasRect(100, 100, 400, 300), "Source");
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(900, 250), new CanvasPoint(1100, 450), Text: "Note");
+        var noteItem = new CanvasSelectionItem(new(CanvasItemKind.Annotation, note.Id), note.Bounds, note.Text, Annotation: note);
+        var card = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new CanvasRect(700, 100, 600, 400), "Card");
+
+        var tool = new ConnectionCanvasTool(doc, () => Desktop, () => [source, noteItem, card], selection);
+        selection.Replace([source.Key]);
+
+        tool.PointerDown(Pointer(500, 250, CanvasPointerButton.Left));
+        tool.PointerMove(Pointer(900, 350));
+
+        // The note Left port is under the pointer even though the larger card body is too.
+        Assert.NotNull(tool.SnapTarget);
+        Assert.Equal(noteItem.Key, tool.SnapTarget!.Item.Key);
+        Assert.Equal(ConnectionPort.Left, tool.SnapTarget.Port);
+    }
+
+    [Fact]
+    public void PointerUp_RecordsEphemeralEndpointsForLiveWindows()
+    {
+        var doc = new AnnotationDocument();
+        var selection = new CanvasSelection();
+        var source = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new CanvasRect(100, 100, 400, 300), "Live", Ephemeral: true);
+        var target = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new CanvasRect(700, 100, 400, 300), "Live two", Ephemeral: true);
+        var tool = new ConnectionCanvasTool(doc, () => Desktop, () => [source, target], selection);
+        selection.Replace([source.Key]);
+
+        CanvasAnnotation? created = null;
+        tool.ConnectionCreated += arrow => created = arrow;
+        tool.PointerDown(Pointer(500, 250, CanvasPointerButton.Left));
+        tool.PointerMove(Pointer(695, 250));
+        tool.PointerUp(Pointer(695, 250, CanvasPointerButton.Left));
+
+        Assert.NotNull(created);
+        Assert.True(created!.SourceEphemeral);
+        Assert.True(created.TargetEphemeral);
+    }
+
+    [Fact]
+    public void Resolve_EndpointDrop_AttachesToSmallestItemAndDetachesInEmptySpace()
+    {
+        var cardId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var note = new CanvasAnnotation(noteId, Desktop, AnnotationKind.Text,
+            new CanvasPoint(900, 250), new CanvasPoint(1100, 450), Text: "Note");
+        var card = new CanvasSelectionItem(new(CanvasItemKind.Window, cardId), new CanvasRect(700, 100, 600, 400), "Card");
+        var noteItem = new CanvasSelectionItem(new(CanvasItemKind.Annotation, noteId), note.Bounds, note.Text, Annotation: note);
+        var arrow = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(100, 100), new CanvasPoint(910, 350), SourceId: cardId);
+
+        var attached = ConnectionRetarget.Resolve(arrow, false, new CanvasPoint(910, 350), [card, noteItem]);
+        Assert.Equal(noteId, attached.TargetId);
+        Assert.Equal(ConnectionPort.Left, attached.TargetPort);
+        Assert.Equal(900, attached.B.X);
+        Assert.Equal(350, attached.B.Y);
+
+        var detached = ConnectionRetarget.Resolve(attached, false, new CanvasPoint(2000, 2000), [card, noteItem]);
+        Assert.Null(detached.TargetId);
+        Assert.Equal(ConnectionPort.Auto, detached.TargetPort);
+
+        // The item already holding the other end is never chosen, so one end cannot fold onto it.
+        var freeArrow = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(100, 100), new CanvasPoint(400, 300), TargetId: noteId);
+        Assert.Equal(cardId, ConnectionRetarget.Resolve(freeArrow, true, new CanvasPoint(910, 350), [card, noteItem]).SourceId);
+    }
+
+    [Fact]
+    public void EndpointDrag_CommitsThroughTheResolver()
+    {
+        var doc = new AnnotationDocument();
+        var arrowId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        doc.Put(new CanvasAnnotation(arrowId, Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(100, 100), new CanvasPoint(400, 300)));
+
+        var tool = new AnnotationCanvasTool(doc, () => Desktop, null,
+            (item, sourceEndpoint) => item with { TargetId = targetId, TargetEphemeral = true });
+        tool.SetMode(AnnotationMode.Select);
+        tool.Select(arrowId);
+
+        tool.PointerDown(Pointer(400, 300, CanvasPointerButton.Left));
+        tool.PointerMove(Pointer(520, 380));
+        tool.PointerUp(Pointer(520, 380, CanvasPointerButton.Left));
+
+        var saved = Assert.Single(doc.Items);
+        Assert.Equal(targetId, saved.TargetId);
+        Assert.True(saved.TargetEphemeral);
+        Assert.Equal(520, saved.B.X);
+        Assert.Equal(380, saved.B.Y);
+    }
+
+    [Fact]
+    public void EphemeralAnchorsSurviveJsonRoundTrip()
+    {
+        var arrow = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(0, 0), new CanvasPoint(120, 90),
+            SourceId: Guid.NewGuid(), SourceEphemeral: true, TargetId: Guid.NewGuid(), TargetEphemeral: true);
+        var json = System.Text.Json.JsonSerializer.Serialize(arrow);
+        Assert.Equal(arrow, System.Text.Json.JsonSerializer.Deserialize<CanvasAnnotation>(json));
+    }
+
+    [Fact]
     public void FindHandleAt_UnselectedCard_DoesNotOfferHandles()
     {
         var doc = new AnnotationDocument();

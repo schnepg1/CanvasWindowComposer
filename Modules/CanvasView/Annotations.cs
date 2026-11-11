@@ -26,8 +26,10 @@ public sealed record CanvasAnnotation
     public bool InBackground { get; init; }
     public Guid? SourceId { get; init; }
     public ConnectionPort SourcePort { get; init; } = ConnectionPort.Auto;
+    public bool SourceEphemeral { get; init; }
     public Guid? TargetId { get; init; }
     public ConnectionPort TargetPort { get; init; } = ConnectionPort.Auto;
+    public bool TargetEphemeral { get; init; }
     public ConnectorRouting Routing { get; init; } = ConnectorRouting.Curved;
     public string AgentTaskId { get; init; } = "";
     public string AgentRole { get; init; } = "";
@@ -37,8 +39,8 @@ public sealed record CanvasAnnotation
         CanvasPoint A, CanvasPoint B, string Color = "#FBBF24", double Stroke = 3, string Text = "", double FontSize = 18,
         AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
         AnnotationCardFill CardFill = (AnnotationCardFill)(-1), bool InBackground = false,
-        Guid? SourceId = null, ConnectionPort SourcePort = ConnectionPort.Auto,
-        Guid? TargetId = null, ConnectionPort TargetPort = ConnectionPort.Auto,
+        Guid? SourceId = null, ConnectionPort SourcePort = ConnectionPort.Auto, bool SourceEphemeral = false,
+        Guid? TargetId = null, ConnectionPort TargetPort = ConnectionPort.Auto, bool TargetEphemeral = false,
         ConnectorRouting Routing = ConnectorRouting.Curved)
     {
         this.Id = Id;
@@ -58,8 +60,10 @@ public sealed record CanvasAnnotation
         this.InBackground = InBackground;
         this.SourceId = SourceId;
         this.SourcePort = SourcePort;
+        this.SourceEphemeral = SourceEphemeral;
         this.TargetId = TargetId;
         this.TargetPort = TargetPort;
+        this.TargetEphemeral = TargetEphemeral;
         this.Routing = Routing;
     }
 

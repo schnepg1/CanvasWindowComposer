@@ -78,7 +78,7 @@ internal sealed partial class OverviewManager
             uint pid = _win32.GetWindowProcessId(w.HWnd);
             if (!_selectionWindows.TryGetValue(w.HWnd,out var identity) || identity.Pid != pid)
                 _selectionWindows[w.HWnd] = identity = (Guid.NewGuid(),pid);
-            result.Add(new(new(CanvasItemKind.Window,identity.Id),Rect(w.World),_win32.GetWindowTitle(w.HWnd)));
+            result.Add(new(new(CanvasItemKind.Window,identity.Id),Rect(w.World),_win32.GetWindowTitle(w.HWnd), Ephemeral: true));
         }
         if (_zones != null)
         {
