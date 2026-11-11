@@ -87,8 +87,7 @@ internal sealed class Win32WindowApi : IWindowApi
     public unsafe uint GetWindowProcessId(IntPtr hWnd)
     {
         uint pid;
-        _ = PInvoke.GetWindowThreadProcessId((HWND)hWnd, &pid);
-        return pid;
+        return PInvoke.GetWindowThreadProcessId((HWND)hWnd, &pid) != 0 ? pid : 0;
     }
 
     public unsafe string GetWindowTitle(IntPtr hWnd)

@@ -50,9 +50,16 @@ internal sealed class ProjectionWorker : IDisposable
     internal sealed class PlacementLease : IDisposable
     {
         private readonly ProjectionWorker _worker;
+        private readonly HashSet<IntPtr>? _checkedTargets;
         private Task<WindowBatchResult>? _placement;
 
-        internal PlacementLease(ProjectionWorker worker) => _worker = worker;
+        internal PlacementLease(ProjectionWorker worker, ReadOnlySpan<IntPtr> checkedTargets)
+        {
+            _worker = worker;
+            if (checkedTargets.IsEmpty) return;
+            _checkedTargets = new(checkedTargets.Length);
+            foreach (IntPtr handle in checkedTargets) _checkedTargets.Add(handle);
+        }
 
         public Task<WindowBatchResult> Submit(IReadOnlyList<(BatchMoveItem Item, uint ProcessId)> moves)
         {
@@ -61,6 +68,10 @@ internal sealed class ProjectionWorker : IDisposable
                 throw new InvalidOperationException("A placement lease can submit one batch.");
 
             var snapshot = moves.ToArray();
+            if (_checkedTargets != null)
+                foreach (var (item, _) in snapshot)
+                    if (!_checkedTargets.Contains(item.HWnd))
+                        throw new InvalidOperationException("Placement targets must belong to the checked cohort.");
             _worker.ValidateTargets(snapshot);
             var completion = new TaskCompletionSource<WindowBatchResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             _placement = completion.Task;
@@ -123,16 +134,17 @@ internal sealed class ProjectionWorker : IDisposable
 
     /// <summary>
     /// Reserve an idle projection worker until the UI has processed its final placement result.
-    /// Callers must also resolve older moves already posted to target windows and fence direct native writers.
+    /// Supply the cohort checked for prior posted moves to restrict submission to those HWNDs.
+    /// The caller must also fence direct native writers.
     /// </summary>
-    public PlacementLease? TryAcquirePlacementLease()
+    public PlacementLease? TryAcquirePlacementLease(ReadOnlySpan<IntPtr> checkedTargets = default)
     {
         RequireOwnerThread();
         if (_disposed || _placementLease != null || !Monitor.TryEnter(_processLock)) return null;
         try
         {
             if (Volatile.Read(ref _pending) != null || !_completed.IsEmpty) return null;
-            var lease = new PlacementLease(this);
+            var lease = new PlacementLease(this, checkedTargets);
             Volatile.Write(ref _placementLease, lease);
             return lease;
         }

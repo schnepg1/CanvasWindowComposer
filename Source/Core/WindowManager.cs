@@ -159,6 +159,9 @@ internal sealed partial class WindowManager : IDisposable
     // Last observed or acknowledged placement, retained when a later request fails.
     private readonly Dictionary<IntPtr, (int x, int y, int w, int h)> _lastScreen = new();
     private readonly Dictionary<IntPtr, PendingMove> _pendingMoves = new();
+    // A queued USER32 request can outlive the model's pending move and even a canvas reset.
+    private readonly HashSet<IntPtr> _unresolvedQueuedMoves = new();
+    private int _directAsyncProjectionDepth;
     private long _nextMoveId;
     private readonly record struct PendingMove(BatchMoveItem Item, WindowRect Expected,
         List<WindowRect>? Superseded);
@@ -460,6 +463,9 @@ internal sealed partial class WindowManager : IDisposable
 
     private void OnWindowDestroyedEvent(IntPtr hWnd)
     {
+        // Destruction events can arrive late. Only forget the hazard if the HWND is gone.
+        if (_unresolvedQueuedMoves.Contains(hWnd) && _win32.GetWindowProcessId(hWnd) == 0)
+            _unresolvedQueuedMoves.Remove(hWnd);
         RemoveWindow(hWnd);
     }
 
@@ -507,7 +513,7 @@ internal sealed partial class WindowManager : IDisposable
         if (_projection != null)
             _projection.Schedule(batch, isAsync: isAsync, isTransient: isTransient);
         else
-            ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient));
+            ApplyDirectProjectionBatch(batch, isAsync, isTransient);
     }
 
     /// <summary>
@@ -522,7 +528,29 @@ internal sealed partial class WindowManager : IDisposable
     {
         _projection?.ClearPending();
         var batch = BuildReprojectBatch();
-        ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient));
+        ApplyDirectProjectionBatch(batch, isAsync, isTransient);
+    }
+
+    /// <summary>
+    /// On the UI thread, check the complete handoff cohort before native preparation
+    /// and reserve an idle worker. The caller still owns all direct-writer fences.
+    /// </summary>
+    internal ProjectionWorker.PlacementLease? TryAcquireDesktopPlacementLease(ReadOnlySpan<IntPtr> touchedWindows)
+    {
+        if (_disposed || _projection == null || _directAsyncProjectionDepth != 0 || touchedWindows.IsEmpty)
+            return null;
+        DrainProjectionResults();
+        foreach (IntPtr handle in touchedWindows)
+            if (_unresolvedQueuedMoves.Contains(handle)) return null;
+        return _projection.TryAcquirePlacementLease(touchedWindows);
+    }
+
+    private void ApplyDirectProjectionBatch(List<BatchMoveItem> batch, bool isAsync, bool isTransient)
+    {
+        // Even a direct async batch can reenter the UI before its result is available.
+        if (isAsync) _directAsyncProjectionDepth++;
+        try { ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync, isTransient)); }
+        finally { if (isAsync) _directAsyncProjectionDepth--; }
     }
 
     /// <summary>Re-evaluate clipping and edge parking against a fresh monitor layout.</summary>
@@ -1076,6 +1104,10 @@ internal sealed partial class WindowManager : IDisposable
 
     private void ApplyMoveResult(BatchMoveItem item, NativeOperationResult result)
     {
+        // Track native queue acceptance even for an already superseded model request.
+        // A matching rectangle cannot identify the request that produced it or prove
+        // that another posted request will not apply later.
+        if (result.Status == NativeOperationStatus.Queued) _unresolvedQueuedMoves.Add(item.HWnd);
         // Identical rectangles can belong to different requests. Compare revisions
         // so an older worker completion cannot consume a newer pending placement.
         if (!_pendingMoves.TryGetValue(item.HWnd, out var pending) || pending.Item.RequestId != item.RequestId) return;
