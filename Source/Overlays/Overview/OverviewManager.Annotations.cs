@@ -369,8 +369,7 @@ internal sealed partial class OverviewManager
         var selectedAnnotations = Selection.Ids.Where(id => id.Kind == CanvasItemKind.Annotation).Select(id => id.Id).ToArray();
         if (selectedAnnotations.Length > 0 && _annotationDocument != null)
         {
-            foreach (var id in selectedAnnotations)
-                _annotationDocument.Delete(_annotationDesktop(), id);
+            _annotationDocument.DeleteWithConnectors(_annotationDesktop(), selectedAnnotations);
             Selection.Replace(Selection.Ids.Where(id => id.Kind != CanvasItemKind.Annotation));
         }
         else
@@ -455,7 +454,7 @@ internal sealed partial class OverviewManager
                     {
                         if (item.Kind != AnnotationKind.Arrow)
                         {
-                            _annotationDocument!.Delete(item.DesktopId, item.Id);
+                            _annotationDocument!.DeleteWithConnectors(item.DesktopId, [item.Id]);
                             Selection.Clear(); _annotationTool?.ClearSelection();
                         }
                         else
@@ -505,7 +504,7 @@ internal sealed partial class OverviewManager
             if(_shapeEditor!=editor) return;
             if(result.Delete)
             {
-                _annotationDocument!.Delete(item.DesktopId, item.Id);
+                _annotationDocument!.DeleteWithConnectors(item.DesktopId, [item.Id]);
                 Selection.Clear(); _annotationTool?.ClearSelection();
             }
             else if(result.Save && item.DesktopId==_annotationDesktop())

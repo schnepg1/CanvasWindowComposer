@@ -452,4 +452,41 @@ public class ConnectionCanvasToolTests
         Assert.Null(tool.SnapTarget);
         Assert.Empty(doc.Items);
     }
+    [Fact]
+    public void DeleteWithConnectors_RemovesAnchoredArrowsAndKeepsUnrelatedOnes()
+    {
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(100, 100), new CanvasPoint(300, 200), Text: "Note");
+        var cardId = Guid.NewGuid();
+        var connected = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(300, 150), new CanvasPoint(700, 150), SourceId: note.Id, TargetId: cardId);
+        var unrelated = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(0, 0), new CanvasPoint(50, 50));
+        var doc = new AnnotationDocument([note, connected, unrelated]);
+
+        Assert.True(doc.DeleteWithConnectors(Desktop, [note.Id]));
+        Assert.DoesNotContain(doc.Items, a => a.Id == note.Id);
+        Assert.DoesNotContain(doc.Items, a => a.Id == connected.Id);
+        Assert.Contains(doc.Items, a => a.Id == unrelated.Id);
+
+        // One step: undo restores the note and its connector together.
+        Assert.True(doc.Undo(Desktop));
+        Assert.Contains(doc.Items, a => a.Id == note.Id);
+        Assert.Contains(doc.Items, a => a.Id == connected.Id);
+    }
+
+    [Fact]
+    public void DeleteWithConnectors_LeavesOtherDesktopsAlone()
+    {
+        var other = Guid.NewGuid();
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(100, 100), new CanvasPoint(300, 200), Text: "Note");
+        var foreign = new CanvasAnnotation(Guid.NewGuid(), other, AnnotationKind.Arrow,
+            new CanvasPoint(300, 150), new CanvasPoint(700, 150), SourceId: note.Id);
+        var doc = new AnnotationDocument([note, foreign]);
+
+        Assert.True(doc.DeleteWithConnectors(Desktop, [note.Id]));
+        Assert.DoesNotContain(doc.Items, a => a.Id == note.Id);
+        Assert.Contains(doc.Items, a => a.Id == foreign.Id);
+    }
 }

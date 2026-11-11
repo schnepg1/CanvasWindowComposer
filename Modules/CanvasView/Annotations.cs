@@ -161,6 +161,22 @@ public sealed class AnnotationDocument
         if (!_items.Any(a => a.Id == id && a.DesktopId == desktop)) return;
         Remember(desktop); _items.RemoveAll(a => a.Id == id); NotifyChanged(desktop);
     }
+    /// <summary>Deletes the items and every arrow anchored to one of them as one history step.</summary>
+    public bool DeleteWithConnectors(Guid desktop, IReadOnlyCollection<Guid> ids)
+    {
+        var removed = ids.Where(id => _items.Any(a => a.Id == id && a.DesktopId == desktop)).ToHashSet();
+        if (removed.Count == 0) return false;
+        // Arrows are not connectable anchors, so one pass cannot cascade further.
+        foreach (var arrow in _items.Where(a => a.DesktopId == desktop && a.Kind == AnnotationKind.Arrow).ToArray())
+        {
+            if ((arrow.SourceId is { } source && removed.Contains(source)) || (arrow.TargetId is { } target && removed.Contains(target)))
+                removed.Add(arrow.Id);
+        }
+        Remember(desktop);
+        _items.RemoveAll(a => a.DesktopId == desktop && removed.Contains(a.Id));
+        NotifyChanged(desktop);
+        return true;
+    }
     private CanvasAnnotation[] Snapshot(Guid desktop) => _items.Where(a => a.DesktopId == desktop).ToArray();
     private void Remember(Guid desktop, Func<bool, bool>? replay = null)
     {
