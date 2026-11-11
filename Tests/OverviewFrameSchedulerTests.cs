@@ -47,6 +47,7 @@ public class OverviewFrameSchedulerTests
         OverviewFrameScheduler frames = null!;
         frames = new(callbacks.Enqueue, () =>
         {
+            Assert.True(frames.IsDrawing);
             if (++draws == 1) { frames.Request(); frames.Flush(); Assert.Empty(callbacks); }
         });
         if (synchronous) frames.RequestAndFlush();
@@ -54,5 +55,6 @@ public class OverviewFrameSchedulerTests
         Assert.Equal(1, draws); Assert.Single(callbacks);
         callbacks.Dequeue()();
         Assert.Equal(2, draws); Assert.Empty(callbacks);
+        Assert.False(frames.IsDrawing);
     }
 }

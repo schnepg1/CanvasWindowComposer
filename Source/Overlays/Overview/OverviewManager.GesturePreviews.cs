@@ -27,6 +27,10 @@ internal sealed partial class OverviewManager
     internal bool CameraActivityInProgress => MotionActive
         || (!_disposed && CurrentMode != OverviewMode.Hidden && _gestureClock.TickCount64 < _instantZoomActivityUntil);
 
+    // The WPF render barrier can dispatch timers inside a settled frame.
+    // Start periodic maintenance only outside an active frame transaction.
+    internal bool DeferPeriodicMaintenance => CameraActivityInProgress || _visualFrames.IsDrawing;
+
     internal void MarkZoomActive()
     {
         bool wasSettling = _gestureClock.TickCount64 < _zoomSettleUntil;

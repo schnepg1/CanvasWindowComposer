@@ -159,7 +159,7 @@ internal sealed class TrayApp : ApplicationContext
                 "CanvasWindowComposer", "Logs");
             var windowHistory = _lifecycle.Own(new RollingWindowDiagnostics(new WindowDiagnosticHistoryStore(
                 Path.Combine(diagnosticLogs, "WindowHistory"), diagnosticLogs), CaptureWindowDiagnostics,
-                cameraMoving: () => _overview.CameraActivityInProgress),
+                cameraMoving: () => _overview.DeferPeriodicMaintenance),
                 ShutdownPhase.Quiesce, "Rolling window diagnostics");
             var preserveHistory = new ToolStripMenuItem("Save diagnostic history");
             foreach (int minutes in new[] { 1, 5, 10, 15, 30 })
@@ -281,7 +281,7 @@ internal sealed class TrayApp : ApplicationContext
         if (Program.ShutdownSignal?.WaitOne(0) == true) { OnExit(sender, e); return; }
         _updates?.CheckAutomatically(_clock.TickCount64);
         _wm.Tick();
-        _workspace.Tick(cameraMoving: _overview.CameraActivityInProgress);
+        _workspace.Tick(cameraMoving: _overview.DeferPeriodicMaintenance);
         _backgrounds.Tick();
     }
 

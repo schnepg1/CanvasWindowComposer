@@ -535,3 +535,57 @@ series means that source provided no samples. Swap-chain timings describe the
 tracked surfaces and cannot establish synchronization of all independent
 DWM, WPF, and Direct3D layers. Examine raw timestamps around outliers and
 exclude deliberate pauses or other activity from comparisons.
+
+
+### Full-workspace baseline and handoff, 10 November 2026
+
+Build `e7a2c54` ran on the local RTX 4070 workstation at 1920 × 1080 and
+60 Hz, with full visual quality and FlipDiscard. The user repeated each
+activity in the real workspace during a 35-second capture. The table excludes
+deliberate stops and shows start-to-start UI gaps within motion intervals.
+The grid chain was identified by matching present timestamps to the
+`GridPresentCall` intervals. Its display gaps include only intervals fully
+inside those motion periods. Raw per-chain summaries retain all samples.
+
+| Activity | Observed span / detected motion | UI p50 / p95 / p99 / max (ms) | UI >1 / >2 refresh | Grid display p50 / p95 / p99 / max (ms) | Display >1 / >2 refresh |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Pan | 30.49 s / 5.57 s | 21.84 / 43.34 / 143.77 / 172.26 | 147 / 32 | 16.77 / 100.00 / 200.01 / 283.27 | 99 / 50 |
+| Zoom | 34.14 s / 17.80 s | 20.67 / 45.96 / 84.98 / 168.36 | 511 / 107 | 33.26 / 100.02 / 183.35 / 299.92 | 348 / 148 |
+| Flights | 33.78 s / 18.43 s | 20.43 / 43.18 / 75.53 / 109.92 | 510 / 123 | 33.29 / 100.07 / 166.66 / 216.60 | 381 / 187 |
+
+One refresh is 16.67 ms. Small measurement variation near that threshold
+affects the first count. These are single captures per activity and represent
+different amounts of motion. Use them as a baseline for repeated comparisons.
+The grid is one tracked surface. WPF, native thumbnails, and the minimap
+still present separately.
+
+Placeholder WPF recording took 0.51, 0.60 and 1.33 ms at p95. The entire WPF
+painter was at or below 3.31 ms at p95. In contrast, DWM thumbnail calls on the
+UI thread overlapped some of the worst motion gaps: one zoom update occupied
+97.5 ms of a 110.9 ms gap, and flight registration occupied 84.7 ms of a
+109.9 ms gap. Grid Present waits overlapped long gaps on a separate worker.
+That overlap needs compositor or scheduler evidence before assigning a cause.
+
+Flight settle reached 612 ms. The UI thread spent about 192 ms in workspace
+maintenance during that frame's 256 ms WPF flush. The follow-up guard keeps
+automatic maintenance outside active frame transactions as well as motion.
+This guard still needs a paired live trace. Workspace maintenance also took
+up to 313 ms in this run, so deferral alone leaves an idle-to-input stall
+possible. Instant-wheel bursts extend the maintenance deadline while updating
+the new card tier immediately.
+
+The new desktop handoff keeps already-unclipped preview windows uncut when
+the final placement needs them visible. A previous synthetic handoff tail
+contained four clip/unclip pairs totaling 381 ms. The candidate tails
+contained required offscreen clips and no matching round trips. Its measured
+handoff still peaked at 826–828 ms across two runs, including up to 622 ms in
+`EndDeferWindowPos`. The live workspace runs exercised shorter handoffs
+(up to 26 ms) and did not reproduce that synthetic worst case.
+
+The retained annotation branch remains a separate experiment. Its reported
+annotation draw savings came from reusing world-space drawing commands,
+with immediate drawing on coverage misses and for editing/occlusion.
+Its mixed whole-frame results and the live WPF measurements favor measuring
+DWM lifetime and compositor waits before expanding annotation retention.
+A retained preview experiment should reuse bounded, asynchronously prepared
+images and fall back to live previews when a usable image is missing.

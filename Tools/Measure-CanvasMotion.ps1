@@ -55,7 +55,7 @@ function Read-Operation($event) {
         $status = [BitConverter]::ToInt32($bytes, $offset + 18)
         $items = [BitConverter]::ToInt32($bytes, $offset + 22)
     }
-    [pscustomobject]@{ Operation = $operation; StartQpc = $start; DurationMs = $duration; Status = $status; ItemCount = $items }
+    [pscustomobject]@{ Operation = $operation; StartQpc = $start; DurationMs = $duration; Status = $status; ItemCount = $items; ThreadId = $event.ThreadId }
 }
 
 $app = Get-Process -Name CanvasDesktop
@@ -72,7 +72,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not start the operation trace.' }
 try {
     Write-Host "Start $Scenario in $DelaySeconds seconds and repeat for $Seconds seconds."
     $arguments = @('--process_id', $app.Id, '--session_name', "$session-presents", '--delay', $DelaySeconds,
-        '--timed', $Seconds, '--terminate_after_timed', '--no_console_stats', '--v1_metrics', '--qpc_time', '--output_file', $csv)
+        '--timed', $Seconds, '--terminate_after_timed', '--no_console_stats', '--no_track_input', '--v1_metrics', '--qpc_time', '--output_file', $csv)
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "PresentMon failed with exit code $LASTEXITCODE." }
 } finally {

@@ -12,6 +12,8 @@ internal sealed class OverviewFrameScheduler(Action<Action> schedule, Action dra
     private bool _pending, _queued, _drawing;
     private long _generation;
 
+    internal bool IsDrawing => _drawing;
+
     public void Request()
     {
         _pending = true;
