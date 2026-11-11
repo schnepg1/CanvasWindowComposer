@@ -34,6 +34,7 @@ internal sealed partial class OverviewManager
     private AnnotationTextEditor? _annotationEditor;
     private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
+    private bool _reconcilingArrows;
     private string? _annotationError;
     public bool CanvasInputSuspended => BackgroundEditorVisible || CanvasEditorInputSuspended;
     public bool OverviewHotkeySuspended => CanvasEditorInputSuspended || _backgroundEditor?.IsChoosingImage == true;
@@ -134,6 +135,7 @@ internal sealed partial class OverviewManager
         var available=SelectionItems().Select(i=>i.Key).ToHashSet();
         Selection.Replace(Selection.Ids.Where(available.Contains).ToArray());
         _composerWindow?.CanvasChanged(CurrentComposerNotes(), CurrentComposerReferences(), Selection.Ids, Selection.Ids.Count == 0 ? _annotationTool?.SelectedId : null);
+        if (_annotationDocument!.LastChange==AnnotationChangeKind.Edit) ReconcileConnectedArrows();
         RefreshToolPreview();
     }
     private void OnAnnotationDesktopChanged()
@@ -556,7 +558,7 @@ internal sealed partial class OverviewManager
 
     internal void ReconcileConnectedArrows()
     {
-        if (_annotationDocument == null) return;
+        if (_annotationDocument == null || _reconcilingArrows) return;
         var currentDesktop = _annotationDesktop();
         var connectedArrows = _annotationDocument.Items
             .Where(a => a.DesktopId == currentDesktop && a.Kind == AnnotationKind.Arrow && (a.SourceId.HasValue || a.TargetId.HasValue))
@@ -601,14 +603,15 @@ internal sealed partial class OverviewManager
             }
         }
 
-        if (updated.Count > 0)
-        {
-            foreach (var arrow in updated)
-            {
-                _annotationDocument.Put(arrow);
-            }
-            _annotationStore?.Save();
-        }
+        if (updated.Count == 0) return;
+        // One history step for the whole refresh; the change it raises is ignored by the
+        // reentrancy guard above, so an edit cannot stack history or loop.
+        _reconcilingArrows = true;
+        try { _annotationDocument.ApplyBatch(_annotationDocument.Revision, currentDesktop, updated); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        { /* Degenerate connector geometry keeps its last valid anchors. */ }
+        finally { _reconcilingArrows = false; }
+        _annotationStore?.Save();
     }
 
     internal void ExportCurrentWorkflowToClipboard(Guid? contextEntityId = null)
@@ -1093,8 +1096,10 @@ internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotati
     {
         bool Begin(ICanvasTool tool) { if (!tool.PointerDown(p)) return false; _owner=tool; return true; }
         if (annotations.Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return Begin(annotations);
-        if (annotations.Mode==AnnotationMode.Select && !p.Modifiers.HasFlag(CanvasModifiers.Control) && annotations.HasHandleAt(p)) return Begin(annotations);
+        // Connection ports share the selected note's edge midpoints with edge resizing;
+        // the visible port dot starts a connection, the rest of the edge still resizes.
         if (annotations.Mode==AnnotationMode.Select && !p.Modifiers.HasFlag(CanvasModifiers.Control) && connections.FindHandleAt(p) != null && Begin(connections)) return true;
+        if (annotations.Mode==AnnotationMode.Select && !p.Modifiers.HasFlag(CanvasModifiers.Control) && annotations.HasHandleAt(p)) return Begin(annotations);
         if (zones.IsBoundaryGesture(p) && Begin(zones)) return true;
         return Begin(selection);
     }
@@ -1109,8 +1114,8 @@ internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotati
     {
         if (connections.HasPendingInteraction) return CanvasCursor.Crosshair;
         if (annotations.Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return annotations.CursorAt(p);
-        if (annotations.HasHandleAt(p)) return annotations.CursorAt(p);
         if (annotations.Mode==AnnotationMode.Select && connections.FindHandleAt(p) != null) return CanvasCursor.Crosshair;
+        if (annotations.HasHandleAt(p)) return annotations.CursorAt(p);
         var zoneCursor = zones.CursorAt(p);
         if (zoneCursor != CanvasCursor.Default) return zoneCursor;
         return annotations.CursorAt(p);

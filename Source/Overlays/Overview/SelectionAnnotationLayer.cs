@@ -32,7 +32,8 @@ internal sealed class SelectionAnnotationLayer(CanvasSelection selection, Func<I
 
             if (isSelected) dc.DrawRectangle(null, pen, Project(item.Bounds));
 
-            if (item.Key.Kind != CanvasItemKind.Annotation && (isSelected || isHovered))
+            // Only the focused item exposes ports; notes and shapes anchor like cards.
+            if (ConnectionCanvasTool.IsConnectable(item) && (isSelected || isHovered))
             {
                 foreach (var port in ports)
                 {

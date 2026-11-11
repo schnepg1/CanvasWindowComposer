@@ -46,19 +46,17 @@ public sealed class ConnectionCanvasTool : ICanvasTool
 
     public ConnectionTarget? FindHandleAt(CanvasPointer p)
     {
-        var allItems = _items();
         var selectedIds = _selection.Ids;
+        if (selectedIds.Count == 0) return null;
         ConnectionPort[] ports = [ConnectionPort.Top, ConnectionPort.Right, ConnectionPort.Bottom, ConnectionPort.Left];
-
-        // Check selected items first, then unselected non-annotation items
-        var selectedItems = allItems.Where(i => i.Key.Kind != CanvasItemKind.Annotation && selectedIds.Contains(i.Key));
-        var otherItems = allItems.Where(i => i.Key.Kind != CanvasItemKind.Annotation && !selectedIds.Contains(i.Key));
-        var candidateItems = selectedItems.Concat(otherItems);
 
         var pointerDip = p.View.LocalToDip(p.Position);
 
-        foreach (var item in candidateItems)
+        // Handles belong to the focused item only: an unselected border must fall through
+        // to normal selection instead of silently spawning a connection.
+        foreach (var item in _items())
         {
+            if (!selectedIds.Contains(item.Key) || !IsConnectable(item)) continue;
             if (!IsPointerNearBounds(item.Bounds, p.World, p.View.Zoom, 40)) continue;
 
             foreach (var port in ports)
@@ -170,6 +168,10 @@ public sealed class ConnectionCanvasTool : ICanvasTool
         return FindHandleAt(p) != null ? CanvasCursor.Crosshair : CanvasCursor.Default;
     }
 
+    /// <summary>Cards, projects and note/shape annotations can anchor connectors; arrows cannot.</summary>
+    public static bool IsConnectable(CanvasSelectionItem item)
+        => item.Key.Kind != CanvasItemKind.Annotation || item.Annotation is { Kind: not AnnotationKind.Arrow };
+
     private ConnectionTarget? FindSnapTarget(CanvasPointer p)
     {
         if (_sourceItem == null) return null;
@@ -182,7 +184,7 @@ public sealed class ConnectionCanvasTool : ICanvasTool
 
         foreach (var item in allItems)
         {
-            if (item.Key == _sourceItem.Key || item.Key.Kind == CanvasItemKind.Annotation) continue;
+            if (item.Key == _sourceItem.Key || !IsConnectable(item)) continue;
             if (!IsPointerNearBounds(item.Bounds, p.World, p.View.Zoom, 80)) continue;
 
             foreach (var port in ports)

@@ -15,6 +15,91 @@ public class ConnectionCanvasToolTests
         => new(0, new(x, y), button, CanvasModifiers.None, new CanvasViewTransform(0, 0, 1.0, new(0, 0, 1920, 1080)));
 
     [Fact]
+    public void FindHandleAt_UnselectedCard_DoesNotOfferHandles()
+    {
+        var doc = new AnnotationDocument();
+        var selection = new CanvasSelection();
+        var window = new CanvasSelectionItem(
+            new CanvasItemId(CanvasItemKind.Window, Guid.NewGuid()),
+            new CanvasRect(100, 100, 400, 300),
+            "Unfocused Window");
+
+        var tool = new ConnectionCanvasTool(doc, () => Desktop, () => [window], selection);
+
+        Assert.Null(tool.FindHandleAt(Pointer(302, 101)));
+        Assert.Null(tool.FindHandleAt(Pointer(500, 250)));
+        Assert.False(tool.PointerDown(Pointer(500, 250, CanvasPointerButton.Left)));
+        Assert.False(tool.HasPendingInteraction);
+
+        // Focused once: the same border now starts a connection.
+        selection.Replace([window.Key]);
+        Assert.NotNull(tool.FindHandleAt(Pointer(500, 250)));
+        Assert.True(tool.PointerDown(Pointer(500, 250, CanvasPointerButton.Left)));
+    }
+
+    [Fact]
+    public void SelectedNoteAnnotation_ConnectsFromNoteBorderToCard()
+    {
+        var doc = new AnnotationDocument();
+        var selection = new CanvasSelection();
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(100, 100), new CanvasPoint(300, 200), Text: "Note");
+        var noteItem = new CanvasSelectionItem(new(CanvasItemKind.Annotation, note.Id), note.Bounds, note.Text, Annotation: note);
+        var window = new CanvasSelectionItem(
+            new CanvasItemId(CanvasItemKind.Window, Guid.NewGuid()),
+            new CanvasRect(700, 100, 400, 300),
+            "Target Window");
+
+        var tool = new ConnectionCanvasTool(doc, () => Desktop, () => [noteItem, window], selection);
+        CanvasAnnotation? createdArrow = null;
+        tool.ConnectionCreated += arrow => createdArrow = arrow;
+
+        // Unfocused note borders are inert.
+        Assert.Null(tool.FindHandleAt(Pointer(300, 150)));
+
+        selection.Replace([noteItem.Key]);
+        var right = tool.FindHandleAt(Pointer(300, 150));
+        Assert.NotNull(right);
+        Assert.Equal(noteItem.Key, right.Item.Key);
+        Assert.Equal(ConnectionPort.Right, right.Port);
+
+        tool.PointerDown(Pointer(300, 150, CanvasPointerButton.Left));
+        tool.PointerMove(Pointer(695, 250));
+        tool.PointerUp(Pointer(695, 250, CanvasPointerButton.Left));
+
+        Assert.NotNull(createdArrow);
+        Assert.Equal(note.Id, createdArrow.SourceId);
+        Assert.Equal(ConnectionPort.Right, createdArrow.SourcePort);
+        Assert.Equal(window.Key.Id, createdArrow.TargetId);
+        Assert.Equal(ConnectionPort.Left, createdArrow.TargetPort);
+    }
+
+    [Fact]
+    public void PointerMove_SnapsToSelectedCardAndNoteTargets()
+    {
+        var doc = new AnnotationDocument();
+        var selection = new CanvasSelection();
+        var source = new CanvasSelectionItem(
+            new CanvasItemId(CanvasItemKind.Window, Guid.NewGuid()),
+            new CanvasRect(100, 100, 400, 300),
+            "Source Window");
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(700, 100), new CanvasPoint(900, 200), Text: "Target note");
+        var noteItem = new CanvasSelectionItem(new(CanvasItemKind.Annotation, note.Id), note.Bounds, note.Text, Annotation: note);
+
+        var tool = new ConnectionCanvasTool(doc, () => Desktop, () => [source, noteItem], selection);
+        selection.Replace([source.Key]);
+
+        tool.PointerDown(Pointer(500, 250, CanvasPointerButton.Left));
+        tool.PointerMove(Pointer(800, 150));
+
+        Assert.NotNull(tool.SnapTarget);
+        Assert.Equal(noteItem.Key, tool.SnapTarget.Item.Key);
+        Assert.Equal(ConnectionPort.Left, tool.SnapTarget.Port);
+        Assert.Equal(700, tool.SnapTarget.Point.X);
+    }
+
+    [Fact]
     public void FindHandleAt_ReturnsCardinalPorts_WhenPointerNearHandle()
     {
         var doc = new AnnotationDocument();
