@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace CanvasDesktop;
 
@@ -18,9 +20,10 @@ namespace CanvasDesktop;
 internal sealed class ProjectionWorker : IDisposable
 {
     private readonly IWindowApi _win32;
+    private readonly int _ownerThread = Environment.CurrentManagedThreadId;
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _signal = new(false);
-    // Held while the worker is inside _win32.BatchMove. ClearPending grabs
+    // Held during the ordinary projection batch. ClearPending grabs
     // this briefly after cancelling so the follow-up sync BatchMove can't
     // race the in-flight worker batch on the same HWNDs.
     private readonly object _processLock = new();
@@ -30,6 +33,8 @@ internal sealed class ProjectionWorker : IDisposable
     private CancellationTokenSource _cts = new();
     private volatile bool _disposed;
     private Job? _pending;
+    private PlacementLease? _placementLease;
+    private PlacementJob? _pendingPlacement;
     private readonly ConcurrentQueue<(List<BatchMoveItem> Items, WindowBatchResult Result)> _completed = new();
 
     private sealed class Job
@@ -37,6 +42,41 @@ internal sealed class ProjectionWorker : IDisposable
         public required List<BatchMoveItem> Items;
         public bool IsTransient;
         public bool IsAsync;
+    }
+
+    private sealed record PlacementJob((BatchMoveItem Item, uint ProcessId)[] Moves,
+        TaskCompletionSource<WindowBatchResult> Completion);
+
+    internal sealed class PlacementLease : IDisposable
+    {
+        private readonly ProjectionWorker _worker;
+        private Task<WindowBatchResult>? _placement;
+
+        internal PlacementLease(ProjectionWorker worker) => _worker = worker;
+
+        public Task<WindowBatchResult> Submit(IReadOnlyList<(BatchMoveItem Item, uint ProcessId)> moves)
+        {
+            _worker.RequireOwnerThread();
+            if (!ReferenceEquals(_worker._placementLease, this) || _placement != null)
+                throw new InvalidOperationException("A placement lease can submit one batch.");
+
+            var snapshot = moves.ToArray();
+            _worker.ValidateTargets(snapshot);
+            var completion = new TaskCompletionSource<WindowBatchResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _placement = completion.Task;
+            Volatile.Write(ref _worker._pendingPlacement, new PlacementJob(snapshot, completion));
+            _worker._signal.Set();
+            return _placement;
+        }
+
+        public void Dispose()
+        {
+            _worker.RequireOwnerThread();
+            if (!ReferenceEquals(_worker._placementLease, this)) return;
+            if (_placement is { IsCompleted: false })
+                throw new InvalidOperationException("Keep the lease until native placement completes.");
+            Volatile.Write(ref _worker._placementLease, null);
+        }
     }
 
     public ProjectionWorker(IWindowApi win32)
@@ -56,6 +96,7 @@ internal sealed class ProjectionWorker : IDisposable
         bool isAsync,
         bool isTransient)
     {
+        RequireUnreservedWorker();
         Volatile.Write(ref _pending, new Job { Items = items, IsAsync = isAsync, IsTransient = isTransient });
         _signal.Set();
     }
@@ -67,6 +108,7 @@ internal sealed class ProjectionWorker : IDisposable
     /// </summary>
     public void ClearPending()
     {
+        RequireUnreservedWorker();
         var prev = Interlocked.Exchange(ref _cts, new CancellationTokenSource());
         prev.Cancel();
         prev.Dispose();
@@ -78,6 +120,54 @@ internal sealed class ProjectionWorker : IDisposable
 
     public bool TryTakeCompleted(out (List<BatchMoveItem> Items, WindowBatchResult Result) completed)
         => _completed.TryDequeue(out completed);
+
+    /// <summary>
+    /// Reserve an idle projection worker until the UI has processed its final placement result.
+    /// Callers must also resolve older moves already posted to target windows and fence direct native writers.
+    /// </summary>
+    public PlacementLease? TryAcquirePlacementLease()
+    {
+        RequireOwnerThread();
+        if (_disposed || _placementLease != null || !Monitor.TryEnter(_processLock)) return null;
+        try
+        {
+            if (Volatile.Read(ref _pending) != null || !_completed.IsEmpty) return null;
+            var lease = new PlacementLease(this);
+            Volatile.Write(ref _placementLease, lease);
+            return lease;
+        }
+        finally { Monitor.Exit(_processLock); }
+    }
+
+    private void RequireOwnerThread()
+    {
+        if (Environment.CurrentManagedThreadId != _ownerThread)
+            throw new InvalidOperationException("Placement leases belong to the worker's owner thread.");
+    }
+
+    private void RequireUnreservedWorker()
+    {
+        if (Volatile.Read(ref _placementLease) != null)
+            throw new InvalidOperationException("The placement lease must be released before using the ordinary projection worker.");
+    }
+
+    private void ValidateTargets((BatchMoveItem Item, uint ProcessId)[] moves)
+    {
+        foreach (var (item, processId) in moves)
+            if (processId == 0 || processId == Environment.ProcessId || _win32.GetWindowProcessId(item.HWnd) != processId)
+                throw new InvalidOperationException("Placement targets must belong to their expected foreign process.");
+    }
+
+    private void Place(PlacementJob placement)
+    {
+        try
+        {
+            ValidateTargets(placement.Moves);
+            var items = placement.Moves.Select(move => move.Item).ToList();
+            placement.Completion.SetResult(_win32.BatchMove(items, isAsync: false, isTransient: false));
+        }
+        catch (Exception ex) { placement.Completion.SetException(ex); }
+    }
 
     private void Loop()
     {
@@ -101,17 +191,22 @@ internal sealed class ProjectionWorker : IDisposable
             }
             _signal.Reset();
             if (_disposed) break;
+            PlacementJob? placement;
             lock (_processLock)
             {
+                placement = Interlocked.Exchange(ref _pendingPlacement, null);
                 Job? job = Interlocked.Exchange(ref _pending, null);
                 if (job != null && !token.IsCancellationRequested && !_disposed)
                     _completed.Enqueue((job.Items, _win32.BatchMove(job.Items, isAsync: job.IsAsync, isTransient: job.IsTransient, ct: token)));
             }
+            // The UI lease keeps other projection work out while USER32 is running.
+            if (placement != null) Place(placement);
         }
     }
 
     public void Dispose()
     {
+        RequireUnreservedWorker();
         _disposed = true;
         _cts.Cancel();
         if (_thread.Join(TimeSpan.FromSeconds(1)))

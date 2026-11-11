@@ -30,7 +30,9 @@ Run with Canvas Desktop closed and the desktop test mutex held.
 & Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-probe TestResults/desktop-handoff-probe.json
 ```
 
-The probe moves one owned child HWND through the production native batch mover.
+The probe reserves the production projection worker and moves one owned child
+HWND through its native batch mover. The UI holds the reservation through result
+verification.
 The child's window procedure sends a synchronous message back to the host UI,
 then waits for release. The report records whether the host answered and ran UI
 timer ticks during both waits, ignored an obsolete completion, and verified the

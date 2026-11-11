@@ -35,9 +35,11 @@ internal static class DesktopHandoffProbe
                 start.Y.ToString(CultureInfo.InvariantCulture) }
         };
         using var target = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned target.");
+        var worker = new ProjectionWorker(native);
         nint window = 0;
         Exception? failure = null;
         object? report = null;
+        Task<PlacementCompletion>? inFlight = null;
         int ticks = 0;
         using var heartbeat = new System.Windows.Forms.Timer { Interval = 16 };
         heartbeat.Tick += (_, _) => ticks++;
@@ -47,7 +49,7 @@ internal static class DesktopHandoffProbe
             {
                 string? handle = await target.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 window = (nint)long.Parse(handle ?? throw new InvalidOperationException("Target exited during startup."), CultureInfo.InvariantCulture);
-                var lane = new PlacementLane(native, (uint)target.Id);
+                var lane = new PlacementLane(worker, native, (uint)target.Id);
                 var initial = Observed();
                 Check(native.GetWindowProcessId(window) == target.Id && initial.X == start.X && initial.Y == start.Y
                     && initial.W > 20 && initial.H > 20, $"Unexpected owned target bounds {initial} at {start}.");
@@ -100,7 +102,8 @@ internal static class DesktopHandoffProbe
                     CoveredThroughButtonUp = true, ForegroundPreserved = true };
 
                 Task<PlacementCompletion> Submit(WindowRect rectangle)
-                    => lane.TrySubmit(new(window, rectangle, PosOnly: true)) ?? throw new InvalidOperationException("Placement lane is occupied.");
+                    => inFlight = lane.TrySubmit(new(window, rectangle, PosOnly: true))
+                        ?? throw new InvalidOperationException("Placement lane is occupied.");
 
                 async Task<int> HoldNativeCall(int callbacks, Task<PlacementCompletion> completion, WindowRect expected)
                 {
@@ -110,6 +113,7 @@ internal static class DesktopHandoffProbe
                     await Task.Delay(HoldMilliseconds);
                     Check(ticks > before && !completion.IsCompleted && lane.Busy, "The UI timer must tick while USER32 is blocked.");
                     Check(lane.TrySubmit(new(window, final, PosOnly: true)) == null, "The lane accepted a second native writer.");
+                    Check(worker.TryAcquirePlacementLease() == null, "The worker accepted a second lease.");
                     Check(Observed() == expected && cover.Visible && WindowFromPoint(hitPoint) == cover.Handle,
                         "The cover or native position changed before the owner released placement.");
                     return ticks - before;
@@ -122,10 +126,16 @@ internal static class DesktopHandoffProbe
                 release.Set();
                 if (window != 0 && native.GetWindowProcessId(window) == target.Id)
                     PostMessage(window, Close, 0, 0);
+                if (inFlight is { IsCompleted: false })
+                {
+                    try { await inFlight.WaitAsync(TimeSpan.FromSeconds(6)); }
+                    catch (Exception ex) { failure ??= ex; }
+                }
                 cover.Close();
             }
         };
         Application.Run(cover);
+        if (inFlight is not { IsCompleted: false }) worker.Dispose();
         if (!target.WaitForExit(5000))
         {
             target.Kill();
@@ -180,7 +190,7 @@ internal static class DesktopHandoffProbe
 
     // The WinForms thread owns the lane and generation. The worker only reads the
     // immutable request and performs the synchronous foreign HWND move.
-    private sealed class PlacementLane(Win32WindowApi native, uint targetPid)
+    private sealed class PlacementLane(ProjectionWorker worker, Win32WindowApi native, uint targetPid)
     {
         private readonly int _uiThread = Environment.CurrentManagedThreadId;
         private long _generation;
@@ -191,20 +201,18 @@ internal static class DesktopHandoffProbe
         {
             Check(Environment.CurrentManagedThreadId == _uiThread, "Only the UI thread may submit placement.");
             if (Busy || targetPid == Environment.ProcessId || native.GetWindowProcessId(item.HWnd) != targetPid) return null;
+            var lease = worker.TryAcquirePlacementLease();
+            if (lease == null) return null;
             Busy = true;
-            return Execute(item, ++_generation);
+            return Execute(lease, item, ++_generation);
         }
 
-        private async Task<PlacementCompletion> Execute(BatchMoveItem item, long generation)
+        private async Task<PlacementCompletion> Execute(ProjectionWorker.PlacementLease lease, BatchMoveItem item, long generation)
         {
+            using var reservation = lease;
             try
             {
-                var result = await Task.Run(() =>
-                {
-                    Check(Environment.CurrentManagedThreadId != _uiThread && native.GetWindowProcessId(item.HWnd) == targetPid,
-                        "Target ownership changed or the native move ran on the UI thread.");
-                    return native.BatchMove([item], isAsync: false, isTransient: false);
-                });
+                var result = await lease.Submit([(item, targetPid)]);
                 Check(Environment.CurrentManagedThreadId == _uiThread, "Placement completion must run on the UI thread.");
                 var observed = ReadBounds(native, item.HWnd);
                 bool succeeded = result.Summary.Status == NativeOperationStatus.Succeeded;

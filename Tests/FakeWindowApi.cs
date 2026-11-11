@@ -105,8 +105,9 @@ internal sealed class FakeWindowApi : IWindowApi
         return (0, 0, 0, 0);
     }
 
+    public Func<IntPtr, uint>? ReadProcessId;
     public uint GetWindowProcessId(IntPtr hWnd) =>
-        Windows.TryGetValue(hWnd, out var w) ? w.ProcessId : 0;
+        ReadProcessId?.Invoke(hWnd) ?? (Windows.TryGetValue(hWnd, out var w) ? w.ProcessId : 0);
 
     public string GetWindowTitle(IntPtr hWnd) =>
         Windows.TryGetValue(hWnd, out var w) ? w.Title : "";
