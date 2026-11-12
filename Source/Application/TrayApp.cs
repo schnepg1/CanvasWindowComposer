@@ -66,7 +66,8 @@ internal sealed class TrayApp : ApplicationContext
             _wm = new WindowManager(_canvas, winApi, _config, _input, _clock, _vds, useAsyncProjection: true);
             _lifecycle.Register(ShutdownPhase.RecoverWindows, "Restore desktop windows", _wm.RestoreDesktopViewport);
             _lifecycle.Register(ShutdownPhase.ReleaseUi, "Window manager fallback disposal", _wm.Dispose);
-            _overview = new OverviewManager(_canvas, _wm, winApi, _input, _config, _screens);
+            _overview = new OverviewManager(_canvas, _wm, winApi, _input, _config, _screens,
+                requestDesktopPlacement: RequestDesktopPlacement);
             _lifecycle.Register(ShutdownPhase.FinalizeLayout, "Close overview", () => _overview.TransitionTo(OverviewMode.Hidden));
             _lifecycle.Register(ShutdownPhase.FinalizeLayout, "Overview resources", _overview.Dispose);
             _overview.Warmup();
@@ -280,6 +281,15 @@ internal sealed class TrayApp : ApplicationContext
             _lifecycle.Shutdown();
             throw;
         }
+    }
+
+    private System.Threading.Tasks.Task<bool>? RequestDesktopPlacement()
+    {
+        if (!_config.EnableAsyncDesktopHandoff || !_lifecycle.StartupCompleted || _exitRequested || _desktops.HasPendingSwitch) return null;
+        var placement = _wm.TryStartDesktopHandoffPlacement();
+        PerformanceDiagnostics.Shared.Record(NativeOperationResult.Success(
+            placement == null ? "DesktopHandoffPilotFallback" : "DesktopHandoffPilotStarted"));
+        return placement;
     }
 
     private void OnBgTick(object? sender, EventArgs e)

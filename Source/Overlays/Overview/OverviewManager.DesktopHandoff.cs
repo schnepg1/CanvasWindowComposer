@@ -37,7 +37,6 @@ internal sealed partial class OverviewManager
         _desktopPlacementFinished = false;
         _desktopHandoffReturningToOverview = false;
         _desktopHandoffDesktop = _wm.DesktopHandoffNavigationDesktop;
-        CancelVisualFrame();
 
         Task<bool>? placement;
         try { placement = _requestDesktopPlacement(); }
@@ -59,6 +58,7 @@ internal sealed partial class OverviewManager
             return;
         }
 
+        CancelVisualFrame();
         if (!placement.IsCompleted && _desktopHandoffRecoveryPass == null)
             foreach (var pass in _passes)
                 pass.ShowDesktopHandoffRecovery(() => OpenDesktopHandoffRecovery(pass));

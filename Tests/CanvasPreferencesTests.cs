@@ -220,6 +220,22 @@ public class CanvasPreferencesTests : IDisposable
     }
 
     [Fact]
+    public void AsyncDesktopHandoffIsAnIndependentOptIn()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "LowQualityMode=false\n");
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.False(config.EnableAsyncDesktopHandoff);
+        config.SavePreferences(config.Preferences with { AsyncDesktopHandoff = true });
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.True(reopened.EnableAsyncDesktopHandoff);
+        Assert.False(reopened.LowQualityMode);
+        reopened.SavePreferences(reopened.Preferences with { AsyncDesktopHandoff = false });
+        config.Load();
+        Assert.False(config.EnableAsyncDesktopHandoff);
+    }
+
+    [Fact]
     public void MovingCardSimplificationIsAnIndependentOptIn()
     {
         Directory.CreateDirectory(_directory);

@@ -50,7 +50,9 @@ writer and lifecycle entries in the table are activation requirements.
 ## Overview close integration
 
 The desktop pan release and stopping-click paths accept a controlled placement
-task. The normal launcher supplies no task and follows the synchronous path.
+task. The normal launcher offers the experimental Responsive desktop pan
+handoff setting. It defaults off and uses synchronous placement when disabled
+or when the move-only plan declines the window cohort.
 The controlled path keeps Panning and its existing cover while placement is
 pending. It suppresses new camera input and visual reconciliation. A verified
 placement closes the cover after any held stopping click finishes, with one
@@ -79,11 +81,8 @@ verification, the synchronous path when placement is declined, and shutdown
 ordering. This fixture does not yet feed a real production placement batch
 into Overview.
 
-Production activation still needs a read-only complete cohort plan and
-observed window identity/geometry, plus coordination of explicit navigation,
-saved-layout and inventory actions, Peek, virtual
-desktop transitions and update restart. Input recovery for a target that
-never returns remains a separate requirement.
+The integrated path below adds a read-only cohort plan, native geometry and
+identity verification, and coordination with other placement commands.
 
 ## Controlled native batch and command ordering
 
@@ -113,9 +112,9 @@ the UI handled 17–20 timer ticks during the controlled waits, which reached
 verified geometry matched, and focus remained unchanged. The normal handoff
 and recovery probes also passed.
 
-The normal launcher still uses synchronous placement. The controlled
-cohort excludes workspaces needing clipping, parking, pinned or minimized
-window handling. The owned stall probes use the real Overview and WindowManager
+The trial is limited to verified move-only cohorts. Workspaces needing clipping,
+parking, pinned or minimized window handling fall back to synchronous placement.
+The owned stall probes use the real Overview and WindowManager
 with a target that waits without a timeout. They route clicks through Windows
 to open the recovery map and zoom it, then keep the target stalled for another
 two seconds. The probes check foreground, input cover, native geometry and
@@ -126,8 +125,8 @@ controls or sign out.
 
 The read-only path provides partial recovery while the app stays stalled.
 A timer cannot withdraw a batch already executing inside USER32. Full desktop
-input recovery for an indefinitely blocked app and broader window and display
-verification remain activation requirements.
+input recovery for an indefinitely blocked app remains open. Daily use of the
+opt-in on main will cover a wider range of window and display transitions.
 
 Release built with zero warnings or errors. All 1,762 non-native tests
 passed. The native suite passed 243 of 281 tests, including all 39 targeted
