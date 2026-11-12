@@ -162,6 +162,8 @@ internal sealed partial class WindowManager : IDisposable
     // A queued USER32 request can outlive the model's pending move and even a canvas reset.
     private readonly HashSet<IntPtr> _unresolvedQueuedMoves = new();
     private int _directAsyncProjectionDepth;
+    private Action? _deferredPlacementShutdown;
+    internal bool DesktopPlacementShutdownRequested { get; private set; }
     private long _nextMoveId;
     private readonly record struct PendingMove(BatchMoveItem Item, WindowRect Expected,
         List<WindowRect>? Superseded);
@@ -171,6 +173,8 @@ internal sealed partial class WindowManager : IDisposable
     private readonly HashSet<IntPtr> _livePreviewWindows = new();
     private readonly HashSet<IntPtr> _previewUnclipped = new();
     private bool _allPreviewsVisible;
+    private int _previewRegionReconcileDepth;
+    private bool _previewRegionsDeferred;
     // Clipping can succeed before a move is failed, cancelled or superseded.
     // Keep retrying edge placement until a native move has been accepted.
     private readonly HashSet<IntPtr> _unconfirmedMoves = new();
@@ -533,16 +537,42 @@ internal sealed partial class WindowManager : IDisposable
 
     /// <summary>
     /// On the UI thread, check the complete handoff cohort before native preparation
-    /// and reserve an idle worker. The caller still owns all direct-writer fences.
+    /// and reserve an idle worker. The caller still owns direct writers other than
+    /// the preview-region reconciliation pass.
     /// </summary>
     internal ProjectionWorker.PlacementLease? TryAcquireDesktopPlacementLease(ReadOnlySpan<IntPtr> touchedWindows)
     {
-        if (_disposed || _projection == null || _directAsyncProjectionDepth != 0 || touchedWindows.IsEmpty)
+        if (_disposed || DesktopPlacementShutdownRequested || _projection == null || _directAsyncProjectionDepth != 0
+            || _previewRegionReconcileDepth != 0 || touchedWindows.IsEmpty)
             return null;
         DrainProjectionResults();
         foreach (IntPtr handle in touchedWindows)
             if (_unresolvedQueuedMoves.Contains(handle)) return null;
-        return _projection.TryAcquirePlacementLease(touchedWindows);
+        return _projection.TryAcquirePlacementLease(touchedWindows, OnDesktopPlacementReleased);
+    }
+
+    /// <summary>Keep the first shutdown continuation until the UI owner releases the reservation.</summary>
+    internal bool TryDeferShutdownForDesktopPlacement(Action continuation)
+    {
+        ArgumentNullException.ThrowIfNull(continuation);
+        if (_projection?.HasReservedPlacement != true) return false;
+        DesktopPlacementShutdownRequested = true;
+        _deferredPlacementShutdown ??= continuation;
+        return true;
+    }
+
+    private void OnDesktopPlacementReleased()
+    {
+        if (_deferredPlacementShutdown is { } continuation)
+        {
+            _deferredPlacementShutdown = null;
+            _previewRegionsDeferred = false;
+            continuation();
+        }
+        else if (_previewRegionsDeferred && !_disposed)
+        {
+            ReconcilePreviewRegions();
+        }
     }
 
     private void ApplyDirectProjectionBatch(List<BatchMoveItem> batch, bool isAsync, bool isTransient)
@@ -792,16 +822,31 @@ internal sealed partial class WindowManager : IDisposable
 
     private void ReconcilePreviewRegions()
     {
-        _previewUnclipped.RemoveWhere(handle =>
+        if (DesktopPlacementShutdownRequested) return;
+
+        // Even a window outside the batch can share a target's input queue.
+        if (_projection?.HasSubmittedPlacement == true)
         {
-            if (!_clippedWindows.Contains(handle)) return true;
-            if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle))) return false;
-            return _win32.ClipWindow(handle).Accepted;
-        });
-        foreach (var handle in _clippedWindows)
-            if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
-                && _win32.UnclipWindow(handle).Accepted)
-                _previewUnclipped.Add(handle);
+            _previewRegionsDeferred = true;
+            return;
+        }
+
+        _previewRegionsDeferred = false;
+        _previewRegionReconcileDepth++;
+        try
+        {
+            _previewUnclipped.RemoveWhere(handle =>
+            {
+                if (!_clippedWindows.Contains(handle)) return true;
+                if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle))) return false;
+                return _win32.ClipWindow(handle).Accepted;
+            });
+            foreach (var handle in _clippedWindows)
+                if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
+                    && _win32.UnclipWindow(handle).Accepted)
+                    _previewUnclipped.Add(handle);
+        }
+        finally { _previewRegionReconcileDepth--; }
     }
 
     /// <summary>

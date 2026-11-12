@@ -51,11 +51,13 @@ internal sealed class ProjectionWorker : IDisposable
     {
         private readonly ProjectionWorker _worker;
         private readonly HashSet<IntPtr>? _checkedTargets;
+        private readonly Action? _onReleased;
         private Task<WindowBatchResult>? _placement;
 
-        internal PlacementLease(ProjectionWorker worker, ReadOnlySpan<IntPtr> checkedTargets)
+        internal PlacementLease(ProjectionWorker worker, ReadOnlySpan<IntPtr> checkedTargets, Action? onReleased)
         {
             _worker = worker;
+            _onReleased = onReleased;
             if (checkedTargets.IsEmpty) return;
             _checkedTargets = new(checkedTargets.Length);
             foreach (IntPtr handle in checkedTargets) _checkedTargets.Add(handle);
@@ -80,6 +82,8 @@ internal sealed class ProjectionWorker : IDisposable
             return _placement;
         }
 
+        internal bool IsSubmitted => _placement != null;
+
         public void Dispose()
         {
             _worker.RequireOwnerThread();
@@ -87,6 +91,7 @@ internal sealed class ProjectionWorker : IDisposable
             if (_placement is { IsCompleted: false })
                 throw new InvalidOperationException("Keep the lease until native placement completes.");
             Volatile.Write(ref _worker._placementLease, null);
+            _onReleased?.Invoke();
         }
     }
 
@@ -137,19 +142,32 @@ internal sealed class ProjectionWorker : IDisposable
     /// Supply the cohort checked for prior posted moves to restrict submission to those HWNDs.
     /// The caller must also fence direct native writers.
     /// </summary>
-    public PlacementLease? TryAcquirePlacementLease(ReadOnlySpan<IntPtr> checkedTargets = default)
+    public PlacementLease? TryAcquirePlacementLease(ReadOnlySpan<IntPtr> checkedTargets = default, Action? onReleased = null)
     {
         RequireOwnerThread();
         if (_disposed || _placementLease != null || !Monitor.TryEnter(_processLock)) return null;
         try
         {
             if (Volatile.Read(ref _pending) != null || !_completed.IsEmpty) return null;
-            var lease = new PlacementLease(this, checkedTargets);
+            var lease = new PlacementLease(this, checkedTargets, onReleased);
             Volatile.Write(ref _placementLease, lease);
             return lease;
         }
         finally { Monitor.Exit(_processLock); }
     }
+
+    // Owner thread only. Reservation also covers preparation before submission.
+    public bool HasReservedPlacement
+    {
+        get
+        {
+            RequireOwnerThread();
+            return _placementLease != null;
+        }
+    }
+
+    // Owner thread only. This remains true until the owner releases the completed lease.
+    public bool HasSubmittedPlacement => _placementLease?.IsSubmitted == true;
 
     private void RequireOwnerThread()
     {
