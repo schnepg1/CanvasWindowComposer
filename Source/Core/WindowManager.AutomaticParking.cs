@@ -63,8 +63,16 @@ internal sealed partial class WindowManager
 
     private void ProcessAutomaticParking(bool cameraOnly = false)
     {
-        if (_disposed || SuspendAutomaticParking) return;
+        if (_disposed || SuspendAutomaticParking || DefersPeriodicPlacementWork) return;
         if (_parking.Count == 0 && !_config.EnableAutomaticMinimization) return;
+
+        _implicitPlacementWriterDepth++;
+        try { ApplyAutomaticParking(cameraOnly); }
+        finally { _implicitPlacementWriterDepth--; }
+    }
+
+    private void ApplyAutomaticParking(bool cameraOnly)
+    {
         long now = _clock.TickCount64;
         foreach (var (handle, record) in new List<KeyValuePair<IntPtr, ParkingRecord>>(_parking))
         {

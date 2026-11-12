@@ -81,7 +81,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         long now = _clock.TickCount64;
         if (!_started || _disposed || _switching || now < _nextCapture) return;
-        if (cameraMoving)
+        if (cameraMoving || !_wm.TryBeginPeriodicWorkspacePlacementWork())
         {
             if (!_periodicMaintenanceDeferred)
                 PerformanceDiagnostics.Shared.Record(NativeOperationResult.Success("WorkspaceMaintenanceDeferred"));
@@ -97,7 +97,11 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             RunPeriodicMaintenance(now);
             completed = true;
         }
-        finally { PerformanceDiagnostics.Shared.Complete("WorkspaceMaintenanceUi", IntPtr.Zero, started, completed); }
+        finally
+        {
+            _wm.EndPeriodicWorkspacePlacementWork();
+            PerformanceDiagnostics.Shared.Complete("WorkspaceMaintenanceUi", IntPtr.Zero, started, completed);
+        }
     }
 
     private void RunPeriodicMaintenance(long now)
