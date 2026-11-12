@@ -9,6 +9,20 @@ namespace CanvasDesktop;
 
 internal sealed partial class WindowManager
 {
+    private ProjectionWorker.PlacementLease? _verifiedDesktopHandoffLease;
+    private DesktopPlacementPlan? _verifiedDesktopHandoffPlan;
+
+    internal bool DesktopHandoffGeometryStillVerified()
+        => _verifiedDesktopHandoffPlan is not { } plan || DesktopPlacementPlanIsCurrent(plan, verifyDestinations: true);
+
+    internal void ReleaseVerifiedDesktopHandoffPlacement()
+    {
+        var lease = _verifiedDesktopHandoffLease;
+        _verifiedDesktopHandoffLease = null;
+        _verifiedDesktopHandoffPlan = null;
+        lease?.Dispose();
+    }
+
     private sealed record DesktopPlacementTarget(AutomaticParkingToken Token, WorldRect World,
         WindowRect Start, WindowRect Destination);
 
@@ -116,7 +130,8 @@ internal sealed partial class WindowManager
 
     private async Task<bool> PlaceDesktopHandoff(DesktopPlacementPlan plan, ProjectionWorker.PlacementLease lease)
     {
-        using (lease)
+        bool retainForCover = false;
+        try
         {
             var moves = new List<(BatchMoveItem Item, uint ProcessId)>();
             foreach (var target in plan.Targets)
@@ -137,7 +152,6 @@ internal sealed partial class WindowManager
                         entry.item.Status == NativeOperationStatus.Succeeded
                         && entry.item.Window == moves[entry.index].Item.HWnd.ToInt64())
                     && DesktopPlacementPlanIsCurrent(plan, verifyDestinations: true);
-                return verified;
             }
             finally
             {
@@ -147,6 +161,18 @@ internal sealed partial class WindowManager
                     ApplyMoveResult(item, new("DesktopHandoffPlacement", item.HWnd.ToInt64(), status, null, 0));
                 }
             }
+
+            if (verified)
+            {
+                _verifiedDesktopHandoffLease = lease;
+                _verifiedDesktopHandoffPlan = plan;
+                retainForCover = true;
+            }
+            return verified;
+        }
+        finally
+        {
+            if (!retainForCover) lease.Dispose();
         }
     }
 }

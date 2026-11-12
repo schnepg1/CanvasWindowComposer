@@ -92,11 +92,15 @@ internal static class DesktopHandoffProbe
                         && Observed() == initial && overlay.Visible && plannedOverview.CurrentMode == OverviewMode.Panning,
                         "The planned placement did not retain the responsive Overview cover.");
                     int uiTicks = ticks - before;
+                    overlay.OnMouseButtonDown!(overlay, new(MouseButtons.Left, 1, 200, 200, 0));
+                    Check(overlay.Capture, "Overview did not capture the stopping click.");
                     release.Set();
                     Check(await managerPlacement!.WaitAsync(TimeSpan.FromSeconds(6)) && Observed() == final
-                        && !windows.HasDesktopPlacementReservation, "The planned native placement did not verify its final geometry.");
-                    await WaitFor(() => plannedOverview.CurrentMode == OverviewMode.Hidden && !overlay.Visible,
-                        "The verified placement did not close the real Overview.");
+                        && windows.HasDesktopPlacementReservation && overlay.Visible,
+                        "The verified placement did not stay reserved under the held click.");
+                    overlay.OnMouseButtonUp!(overlay, new(MouseButtons.Left, 1, 200, 200, 0));
+                    await WaitFor(() => plannedOverview.CurrentMode == OverviewMode.Hidden && !overlay.Visible
+                        && !windows.HasDesktopPlacementReservation, "The verified placement did not close the real Overview.");
                     report = new { TargetPid = target.Id, Initial = initial, Verified = final, UiTimerTicks = uiTicks,
                         RealOverviewClosedAfterVerification = true,
                         ForegroundPreserved = GetForegroundWindow() == foreground,
@@ -291,7 +295,11 @@ internal static class DesktopHandoffProbe
                     try { await pending.WaitAsync(TimeSpan.FromSeconds(6)); }
                     catch (Exception ex) { failure ??= ex; }
                 }
-                try { plannedOverview?.Dispose(); }
+                try
+                {
+                    windows.ReleaseVerifiedDesktopHandoffPlacement();
+                    plannedOverview?.Dispose();
+                }
                 catch (Exception ex) { failure ??= ex; }
                 finally { cover.Close(); }
             }

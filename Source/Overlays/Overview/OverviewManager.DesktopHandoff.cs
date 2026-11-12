@@ -98,11 +98,27 @@ internal sealed partial class OverviewManager
 
     private void ApplyDesktopHandoffDecision(DesktopHandoffCloseDecision decision)
     {
-        if (decision == DesktopHandoffCloseDecision.ExposeDesktop)
+        if (decision == DesktopHandoffCloseDecision.ExposeDesktop && !_wm.DesktopHandoffGeometryStillVerified())
+        {
+            _desktopHandoffReturningToOverview = true;
+            decision = DesktopHandoffCloseDecision.KeepCovered;
+        }
+
+        if (_wm.DesktopPlacementShutdownRequested)
         {
             ClearDesktopHandoff();
-            TransitionToCore(OverviewMode.Hidden, syncCameraOnClose: false, zoomOutOnOpen: false,
-                desktopPlacementVerified: true);
+            return;
+        }
+
+        if (decision == DesktopHandoffCloseDecision.ExposeDesktop)
+        {
+            ClearDesktopHandoff(releasePlacement: false);
+            try
+            {
+                TransitionToCore(OverviewMode.Hidden, syncCameraOnClose: false, zoomOutOnOpen: false,
+                    desktopPlacementVerified: true);
+            }
+            finally { _wm.ReleaseVerifiedDesktopHandoffPlacement(); }
         }
         else if (_desktopPlacementFinished && _desktopHandoffReturningToOverview && _desktopStopSurface == null)
         {
@@ -118,10 +134,11 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private void ClearDesktopHandoff()
+    private void ClearDesktopHandoff(bool releasePlacement = true)
     {
         _desktopHandoff = null;
         _navigationAfterDesktopHandoff = null;
         foreach (var pass in _passes) pass.HideDesktopHandoffRecovery();
+        if (releasePlacement) _wm.ReleaseVerifiedDesktopHandoffPlacement();
     }
 }

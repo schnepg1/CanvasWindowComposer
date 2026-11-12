@@ -352,6 +352,38 @@ public class PanMomentumIntegrationTests
         }, () => placement.Task);
     }
 
+    [Fact]
+    public void VerifiedPlacementIsRecheckedAfterTheStoppingClick()
+    {
+        WindowManager? manager = null;
+        Task<bool>? placement = null;
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var target = (IntPtr)42;
+            manager = wm;
+            config.DesktopPanMomentum = false;
+            api.AddWindow(target, 150, 150, 640, 480);
+            wm.RegisterWindow(target);
+            input.RaiseDragStarted();
+            input.QueuePanAndRaise(60, 0);
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.NotNull(placement);
+            pass.OnMouseButtonDown!(pass, new(MouseButtons.Left, 1, 300, 300, 0));
+            PumpUntil(() => placement.IsCompleted);
+            Assert.True(placement.GetAwaiter().GetResult());
+            Assert.True(wm.HasDesktopPlacementReservation);
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+
+            api.Windows[target].X += 20;
+            pass.OnMouseButtonUp!(pass, new(MouseButtons.Left, 1, 300, 300, 0));
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            Assert.True(pass.Visible);
+            Assert.False(wm.HasDesktopPlacementReservation);
+        }, () => placement = manager!.TryStartDesktopHandoffPlacement(), useAsyncProjection: true);
+    }
+
     private static void PumpUntil(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(2);

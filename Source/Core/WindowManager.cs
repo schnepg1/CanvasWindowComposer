@@ -600,6 +600,7 @@ internal sealed partial class WindowManager : IDisposable
         if (!HasDesktopPlacementReservation) return false;
         DesktopPlacementShutdownRequested = true;
         _deferredPlacementShutdown ??= continuation;
+        ReleaseVerifiedDesktopHandoffPlacement();
         return true;
     }
 
