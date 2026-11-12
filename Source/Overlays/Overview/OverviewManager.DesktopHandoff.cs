@@ -13,6 +13,7 @@ internal sealed partial class OverviewManager
     private bool _desktopPlacementFinished;
     private bool _desktopHandoffReturningToOverview;
     private bool _displayChangedDuringDesktopHandoff;
+    private Action? _navigationAfterDesktopHandoff;
 
     private bool DesktopHandoffPending => _desktopHandoff != null;
 
@@ -105,6 +106,7 @@ internal sealed partial class OverviewManager
         }
         else if (_desktopPlacementFinished && _desktopHandoffReturningToOverview && _desktopStopSurface == null)
         {
+            var navigate = _navigationAfterDesktopHandoff;
             ClearDesktopHandoff();
             TransitionTo(OverviewMode.Zooming);
             if (_displayChangedDuringDesktopHandoff)
@@ -112,12 +114,14 @@ internal sealed partial class OverviewManager
                 _displayChangedDuringDesktopHandoff = false;
                 OnDisplaySettingsChanged(this, EventArgs.Empty);
             }
+            navigate?.Invoke();
         }
     }
 
     private void ClearDesktopHandoff()
     {
         _desktopHandoff = null;
+        _navigationAfterDesktopHandoff = null;
         foreach (var pass in _passes) pass.HideDesktopHandoffRecovery();
     }
 }

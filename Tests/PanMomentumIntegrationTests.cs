@@ -316,6 +316,42 @@ public class PanMomentumIntegrationTests
         }, () => placement = manager!.TryStartDesktopHandoffPlacement(), useAsyncProjection: true);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ShellNavigationWaitsForPlacementAndRevalidatesReusedHandle(bool replaceTarget)
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var target = (IntPtr)42;
+            config.DesktopPanMomentum = false;
+            config.AnimateWindowNavigation = true;
+            api.AddWindow(target, 150, 150, 640, 480);
+            wm.RegisterWindow(target);
+            api.Windows[target].Style |= (int)WINDOW_STYLE.WS_MINIMIZE;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.True(overview.NavigateToWindow(target));
+            Assert.Empty(api.NavigationRestores);
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            if (replaceTarget)
+            {
+                wm.RemoveWindow(target);
+                api.AddWindow(target, 160, 160, 640, 480);
+                wm.RegisterWindow(target);
+                api.Windows[target].Style |= (int)WINDOW_STYLE.WS_MINIMIZE;
+            }
+
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            if (replaceTarget) Assert.Empty(api.NavigationRestores);
+            else Assert.Equal(target, Assert.Single(api.NavigationRestores));
+        }, () => placement.Task);
+    }
+
     private static void PumpUntil(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(2);

@@ -44,6 +44,15 @@ internal sealed partial class WindowManager
         return null;
     }
 
+    internal AutomaticParkingToken? GetDesktopHandoffNavigationIdentity(IntPtr handle)
+        => _visibility.GetToken(handle);
+
+    internal bool IsDesktopHandoffNavigationIdentityCurrent(AutomaticParkingToken token)
+        => _visibility.IsCurrent(token) && IsParkingIdentityCurrent(token)
+            && (_vds == null || _vds.IsOnCurrentDesktop(token.Identity.Handle));
+
+    internal Guid DesktopHandoffNavigationDesktop => _vds?.CurrentDesktopId ?? Guid.Empty;
+
     private bool SupportsMoveOnlyDesktopHandoff()
         => !_disposed && !DesktopPlacementShutdownRequested && _vds == null
             && _parking.Count == 0 && _clippedWindows.Count == 0 && _previewUnclipped.Count == 0;
