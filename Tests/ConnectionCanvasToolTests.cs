@@ -544,3 +544,40 @@ public class CanvasPointerRoutingTests
     }
 }
 
+public class AnnotationDocumentDerivedChangeTests
+{
+    private static readonly Guid Desktop = Guid.NewGuid();
+
+    [Fact]
+    public void ApplyDerivedChange_FoldsIntoThePreviousUndoStep()
+    {
+        var noteId = Guid.NewGuid();
+        var arrowId = Guid.NewGuid();
+        var note = new CanvasAnnotation(noteId, Desktop, AnnotationKind.Text,
+            new CanvasPoint(100, 100), new CanvasPoint(300, 200), Text: "Note");
+        var arrow = new CanvasAnnotation(arrowId, Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(300, 150), new CanvasPoint(700, 150), SourceId: noteId);
+        var doc = new AnnotationDocument([note, arrow]);
+
+        doc.Put(note with { B = new CanvasPoint(400, 300) });
+        Assert.True(doc.ApplyDerivedChange(Desktop, [arrow with { A = new CanvasPoint(400, 150) }]));
+        Assert.Equal(400, doc.Items.Single(a => a.Id == arrowId).A.X);
+
+        // One undo reverts the edit and the re-anchor together.
+        Assert.True(doc.Undo(Desktop));
+        Assert.Equal(300, doc.Items.Single(a => a.Id == noteId).B.X);
+        Assert.Equal(300, doc.Items.Single(a => a.Id == arrowId).A.X);
+    }
+
+    [Fact]
+    public void ApplyDerivedChange_IsANoOpWhenNothingChanged()
+    {
+        var arrow = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(0, 0), new CanvasPoint(100, 100));
+        var doc = new AnnotationDocument([arrow]);
+        Assert.False(doc.ApplyDerivedChange(Desktop, [arrow]));
+        Assert.Single(doc.Items);
+    }
+}
+
+

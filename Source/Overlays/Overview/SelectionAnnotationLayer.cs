@@ -28,12 +28,11 @@ internal sealed class SelectionAnnotationLayer(CanvasSelection selection, Func<I
         foreach (var item in items())
         {
             bool isSelected = selected.Contains(item.Key);
-            bool isHovered = hoveredTarget?.Item.Key == item.Key;
 
             if (isSelected) dc.DrawRectangle(null, pen, Project(item.Bounds));
 
             // Only the focused item exposes ports; notes and shapes anchor like cards.
-            if (ConnectionCanvasTool.IsConnectable(item) && (isSelected || isHovered))
+            if (ConnectionCanvasTool.IsConnectable(item) && isSelected)
             {
                 foreach (var port in ports)
                 {

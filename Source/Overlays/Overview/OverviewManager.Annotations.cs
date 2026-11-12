@@ -165,7 +165,7 @@ internal sealed partial class OverviewManager
         ? "Interacting: mouse and keyboard go to app  ·  Drag header: move  ·  Ctrl+click: select  ·  Esc: Arrange"
         : _interactionError ?? (_interactMode && InteractionToolReady ? "Interact: click live content  ·  Drag header: move window  ·  Ctrl+click: select  ·  Esc: Arrange" : null) ?? (_annotationTool?.Mode switch
     {
-        AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
+        AnnotationMode.Select => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Border dot: connect  ·  Space / Right drag: pan  ·  Middle drag: pan",
         AnnotationMode.Arrow => "Drag to draw an arrow  ·  Shift: constrain direction  ·  Middle drag: pan  ·  Esc: Select mode",
         AnnotationMode.Rectangle or AnnotationMode.Ellipse => "Drag to draw a shape  ·  Shift: equal sides  ·  Middle drag: pan  ·  Esc: Select mode",
         AnnotationMode.Text => "Click and type to add a note  \u00b7  Click outside: finish  \u00b7  Corners: scale text  \u00b7  Esc: cancel  \u00b7  Middle drag: pan",
@@ -610,10 +610,10 @@ internal sealed partial class OverviewManager
         }
 
         if (updated.Count == 0) return;
-        // One history step for the whole refresh; the change it raises is ignored by the
-        // reentrancy guard above, so an edit cannot stack history or loop.
+        // A consequence of the edit it follows, so it adds no history step of its own; the
+        // change it raises is ignored by the reentrancy guard, keeping undo to one step.
         _reconcilingArrows = true;
-        try { _annotationDocument.ApplyBatch(_annotationDocument.Revision, currentDesktop, updated); }
+        try { _annotationDocument.ApplyDerivedChange(currentDesktop, updated); }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         { /* Degenerate connector geometry keeps its last valid anchors. */ }
         finally { _reconcilingArrows = false; }

@@ -8,7 +8,8 @@ public sealed record ConnectionTarget(CanvasSelectionItem Item, ConnectionPort P
 
 public sealed class ConnectionCanvasTool : ICanvasTool
 {
-    public const double HandleHitRadiusDip = 14.0;
+    // Shares the radius of the note edge handle the port dot sits on.
+    public const double HandleHitRadiusDip = AnnotationGeometry.HandleHitRadius;
     public const double MagneticSnapRadiusDip = 32.0;
 
     private readonly AnnotationDocument _document;
