@@ -19,7 +19,9 @@ internal sealed partial class WorkspaceService
     public bool PlaceFromTemporaryArea(Guid id, ArrivalViewport viewport, double? x = null, double? y = null)
     {
         if (_disposed || !_started || _switching || TemporaryZone is not { } zone || Find(id) is not { } item
-            || !IsTemporaryAreaMember(item, zone) || BoundWindow(id) is not { } live || !StillCurrent(live)) return false;
+            || !IsTemporaryAreaMember(item, zone)) return false;
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue || BoundWindow(id) is not { } live || !StillCurrent(live)) return false;
         var source = item.Bounds;
         if (!TryPreviewTemporaryDrop(id, viewport, out var placed, x, y))
         { _status = "No clear landing space here. Pan to open canvas and try again."; Changed?.Invoke(); return false; }
@@ -54,6 +56,8 @@ internal sealed partial class WorkspaceService
     {
         if (_disposed || !_started || _switching || Find(id) is not { } item
             || !item.Bounds.InInventory || item.DesktopId != _desktop) return false;
+        using var writer = BeginExplicitPlacement(inventory: true);
+        if (!writer.HasValue) return false;
         if (BoundWindow(id) is not { } live || !StillCurrent(live))
         {
             _inventoryStatus = _status = "Only open windows can move to the temporary area.";

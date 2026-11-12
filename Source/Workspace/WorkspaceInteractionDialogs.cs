@@ -119,6 +119,8 @@ internal static partial class WorkspaceInteractionDialogs
         {
             if (list.SelectedItem is not WorkspaceLinkCandidate candidate) return;
             if (workspace.LinkWindow(id, candidate.Token)) dialog.DialogResult = true;
+            else if (workspace.Status == WorkspaceService.PlacementRetryMessage)
+                status.Text = workspace.Status;
             else
             {
                 status.Text = "That window is no longer available. Choose another window or try again.";

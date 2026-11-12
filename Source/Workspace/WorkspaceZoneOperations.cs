@@ -21,6 +21,8 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
     public bool MoveZone(Guid id, double dx, double dy)
     {
         if (_disposed || !_started || _switching) return false;
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) return false;
         Capture();
         if (!Zones.TryPlanMove(id, dx, dy, out var plan))
         { _status = "The area could not move: its members or destination are no longer valid."; return false; }
@@ -33,6 +35,8 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
     public bool ResizeZone(Guid id, WorldRect bounds)
     {
         if (_disposed || !_started || _switching) return false;
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) return false;
         if (!Zones.TryPlanResize(id, bounds, out var plan))
         { _status = "The area could not resize: its boundary is no longer valid."; return false; }
         var before = Zones.Snapshot(plan!);
@@ -49,6 +53,8 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
         if (_disposed || !_started || _switching) return false;
         var edit = _zoneHistory.Peek(_desktop, redo);
         if (edit == null) return false;
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) return false;
         Capture();
         if (!Zones.TryReplay(edit, redo, out var plan))
         {

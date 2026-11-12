@@ -192,9 +192,12 @@ internal sealed partial class WorkspaceService
         RemoveCard(id);
     }
 
-    public void KeepPlace(Guid id)
+    public void KeepPlace(Guid id) => RunItemCommand(id, KeepPlace);
+
+    private void KeepPlace(WorkspaceItem item)
     {
-        if (Find(id) is not { Placement: WorkspacePlacement.Temporary } item || BoundWindow(id) == null) return;
+        Guid id = item.Id;
+        if (item.Placement != WorkspacePlacement.Temporary || BoundWindow(id) == null) return;
         if (_cards.TryGetValue(id, out var card)) SyncCardGeometry(item, card);
         else if (BoundWindow(id) is { } live && _canvas.Windows.TryGetValue(live.Identity.Handle, out var world)) item.Bounds = world;
         item.Placement = WorkspacePlacement.Deliberate;

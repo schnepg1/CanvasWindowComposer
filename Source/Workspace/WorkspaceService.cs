@@ -80,7 +80,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     public void Tick(bool cameraMoving = false)
     {
         long now = _clock.TickCount64;
-        if (!_started || _disposed || _switching || now < _nextCapture) return;
+        if (!_started || _disposed || _switching || (now < _nextCapture && _pendingItemCommands.Count == 0)) return;
         if (cameraMoving || !_wm.TryBeginPeriodicWorkspacePlacementWork())
         {
             if (!_periodicMaintenanceDeferred)
@@ -89,12 +89,16 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             return;
         }
         _periodicMaintenanceDeferred = false;
-        _nextCapture = now + 2000;
         long started = Stopwatch.GetTimestamp();
         bool completed = false;
         try
         {
-            RunPeriodicMaintenance(now);
+            if (_pendingItemCommands.Count > 0) ReplayPendingItemCommands();
+            if (!_disposed && !_switching && now >= _nextCapture)
+            {
+                _nextCapture = now + 2000;
+                RunPeriodicMaintenance(now);
+            }
             completed = true;
         }
         finally
@@ -153,6 +157,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         InvalidateOverviewSnapshot();
         if (!_started || _disposed) return;
+        _desktopGeneration++;
         foreach (var (id, card) in _cards)
             if (Document.Items.FirstOrDefault(i => i.Id == id) is { } item) SyncCardGeometry(item, card);
         // The virtual-desktop service has already reported the new desktop.
@@ -208,7 +213,16 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     private WorkspaceItem? Find(Guid id) => _disposed ? null : Document.Items.FirstOrDefault(i => i.Id == id);
 
     public bool SaveNow()
-    { if (_disposed) return false; Capture(); EnsureCards(); return Save(); }
+    {
+        if (_disposed) return false;
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue)
+        {
+            _nextCapture = 0;
+            return false;
+        }
+        Capture(); EnsureCards(); return Save();
+    }
 
     private bool Save()
         => _persistence.Save();
@@ -230,6 +244,7 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
             catch (Exception ex) { failures.Add(ex); }
         }
         _disposed = true;
+        _pendingItemCommands.Clear();
         _wm.IsAutomaticMinimizationExcluded = null;
         _wm.WindowRemoving -= OnRemoving;
         _wm.WindowStateChanged -= OnWindowStateChanged;
