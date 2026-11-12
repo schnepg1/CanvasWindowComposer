@@ -92,7 +92,7 @@ internal sealed class MinimapOverlay : Form
         TopMost = true;
         Size = new Size(MapWidth + InnerPadding * 2, MapHeight + InnerPadding * 2);
         BackColor = Color.Black;
-        Opacity = MinimapOpacity;
+        ApplyOpacity(MinimapOpacity);
 
         PositionOnScreen();
         Cursor = Cursors.Cross;
@@ -130,9 +130,7 @@ internal sealed class MinimapOverlay : Form
         _fadeTimer.Stop();
         _fadeTimer.Interval = (int)HoldMs;
         _fadeTimer.Start();
-        Opacity = MinimapOpacity;
-        _lastAppliedOpacity = MinimapOpacity;
-        RaiseWithoutActivation();
+        ApplyOpacity(MinimapOpacity);
         if (!Visible)
         {
             Show();
@@ -142,7 +140,6 @@ internal sealed class MinimapOverlay : Form
         else
         {
             _renderer.Start();
-            RaiseWithoutActivation();
             _renderer.RequestFrame();
         }
     }
@@ -197,15 +194,13 @@ internal sealed class MinimapOverlay : Form
         if (isMouseOver && !_hovered)
         {
             _hovered = true;
-            Opacity = MinimapOpacity;
-            _lastAppliedOpacity = MinimapOpacity;
+            ApplyOpacity(MinimapOpacity);
         }
 
         if (_overview?.WindowNavigationActive == true)
         {
             _touchTicks = Environment.TickCount64;
-            Opacity = MinimapOpacity;
-            _lastAppliedOpacity = MinimapOpacity;
+            ApplyOpacity(MinimapOpacity);
             _fadeTimer.Stop();
             return;
         }
@@ -217,17 +212,24 @@ internal sealed class MinimapOverlay : Form
 
         if (target > 0.0 && Math.Abs(target - _lastAppliedOpacity) < OpacityQuantum) return;
 
-        _lastAppliedOpacity = target;
         if (target <= 0.0)
         {
+            _lastAppliedOpacity = target;
             if (Visible) Hide();
             _renderer.Stop();
             _fadeTimer.Stop();
         }
         else
         {
-            Opacity = target;
+            ApplyOpacity(target);
         }
+    }
+
+    private void ApplyOpacity(double value)
+    {
+        if (Math.Abs(value - _lastAppliedOpacity) < 0.001) return;
+        Opacity = value;
+        _lastAppliedOpacity = value;
     }
 
     private void PositionOnScreen()
@@ -310,7 +312,7 @@ internal sealed class MinimapOverlay : Form
     protected override void OnMouseEnter(EventArgs e)
     {
         base.OnMouseEnter(e); _hovered = true; _fadeTimer.Stop();
-        Opacity = MinimapOpacity; _lastAppliedOpacity = MinimapOpacity;
+        ApplyOpacity(MinimapOpacity);
         RaiseWithoutActivation();
     }
 
@@ -337,8 +339,7 @@ internal sealed class MinimapOverlay : Form
         {
             _hovered = true;
             _fadeTimer.Stop();
-            Opacity = MinimapOpacity;
-            _lastAppliedOpacity = MinimapOpacity;
+            ApplyOpacity(MinimapOpacity);
         }
         if (_dragProjection.HasValue && Capture) Navigate(e.Location);
     }

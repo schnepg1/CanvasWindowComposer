@@ -1,9 +1,11 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CanvasDesktop.Tests;
 
@@ -208,6 +210,85 @@ public class MinimapNavigationTests
             Assert.True(map.Visible);
             Assert.Equal(0.75, map.Opacity, 2);
         });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void MinimapCameraChangeDoesNotReapplyUnchangedAlphaOrRaiseVisibleWindow()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+            using var wm = new WindowManager(canvas, api, new FakeAppConfig(), input);
+            using var cache = new DesktopStateCache(canvas, wm, new FakeOverviewController(), new FakeVirtualDesktops());
+            using var map = new MinimapOverlay(canvas, input, cache, new FakeScreens());
+            map.NotifyCanvasChanged();
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity);
+            Assert.True(GetLayeredWindowAttributes(map.Handle, out _, out var initialAlpha, out _));
+            Assert.Equal((byte)191, initialAlpha);
+
+            using var above = new Form { TopMost = true, ShowInTaskbar = false };
+            above.Show();
+            AssertAbove(above.Handle, map.Handle);
+            Assert.True(PInvoke.SetLayeredWindowAttributes((HWND)map.Handle, default, 100,
+                LAYERED_WINDOW_ATTRIBUTES_FLAGS.LWA_ALPHA));
+
+            map.NotifyCanvasChanged();
+
+            Assert.True(GetLayeredWindowAttributes(map.Handle, out _, out var alpha, out _));
+            Assert.Equal((byte)100, alpha);
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity);
+            AssertAbove(above.Handle, map.Handle);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void MinimapRemainsAboveOverviewPassesAfterPanAndPanelRaise()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            Assert.True(GridRenderer.CompileShaders());
+            var canvas = new Canvas(); var input = new FakeInputRouter(); var api = new FakeWindowApi();
+            var screens = new FakeScreens(); var desktops = new FakeVirtualDesktops();
+            var config = new FakeAppConfig { EnableStartupIntro = false };
+            using var wm = new WindowManager(canvas, api, config, input);
+            using var overview = new OverviewManager(canvas, wm, api, input, config, screens);
+            using var cache = new DesktopStateCache(canvas, wm, overview, desktops);
+            using var map = new MinimapOverlay(canvas, input, cache, screens, overview: overview);
+            overview.TransitionTo(OverviewMode.Zooming);
+            map.NotifyCanvasChanged();
+            Assert.NotEmpty(overview.MonitorHandles);
+            foreach (var pass in overview.MonitorHandles) AssertAbove(map.Handle, pass);
+
+            canvas.Pan(120, -80);
+            Assert.True(map.Visible);
+            Assert.Equal(0.75, map.Opacity);
+            foreach (var pass in overview.MonitorHandles) AssertAbove(map.Handle, pass);
+
+            // Model an overview pass being raised, then exercise the existing panel-raise notification.
+            var raisedPass = overview.MonitorHandles[0];
+            Assert.True(PInvoke.SetWindowPos((HWND)raisedPass, (HWND)new IntPtr(-1), 0, 0, 0, 0,
+                SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
+            AssertAbove(raisedPass, map.Handle);
+            typeof(OverviewManager).GetMethod("RaiseCanvasPanels", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(overview, null);
+            foreach (var pass in overview.MonitorHandles) AssertAbove(map.Handle, pass);
+        });
+
+    private static void AssertAbove(IntPtr upper, IntPtr lower)
+    {
+        var current = PInvoke.GetWindow((HWND)lower, GET_WINDOW_CMD.GW_HWNDPREV);
+        while (current != HWND.Null)
+        {
+            if ((IntPtr)current == upper) return;
+            current = PInvoke.GetWindow(current, GET_WINDOW_CMD.GW_HWNDPREV);
+        }
+        Assert.Fail($"Expected window {upper} above {lower}.");
+    }
+
+    // GetLayeredWindowAttributes is not included in the production CsWin32 bindings.
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLayeredWindowAttributes(IntPtr hwnd, out uint colorKey, out byte alpha, out uint flags);
 
     private static void ForceForeground(IntPtr hWnd)
     {
