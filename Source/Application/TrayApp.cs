@@ -38,6 +38,11 @@ internal sealed class TrayApp : ApplicationContext
     private AppUpdateController? _updates;
     private UpdateWindow? _updateWindow;
     private Action? _pendingUpdate;
+    private Action? _updateRestartAfterHandoff;
+    private bool _refreshAfterHandoff;
+
+    private bool HandoffBlocksTrayPlacement
+        => _overview.DesktopHandoffPending || _wm.HasDesktopPlacementReservation || _desktops.HasPendingSwitch;
     private string? _notifiedUpdate;
 
     public TrayApp(IClock? clock = null, IScreens? screens = null)
@@ -284,6 +289,8 @@ internal sealed class TrayApp : ApplicationContext
         _updates?.CheckAutomatically(_clock.TickCount64);
         _desktops.ApplyPendingSwitch();
         if (_desktops.HasPendingSwitch) return;
+        ReplayTrayPlacementActions();
+        if (_exitRequested) return;
         _wm.Tick();
         _workspace.Tick(cameraMoving: _overview.DeferPeriodicMaintenance);
         _backgrounds.Tick();
@@ -310,7 +317,24 @@ internal sealed class TrayApp : ApplicationContext
 
     private void OnRefresh(object? sender, EventArgs e)
     {
-        _wm.RefreshAllWindows();
+        if (_exitRequested || _lifecycle.IsStopping) return;
+        if (HandoffBlocksTrayPlacement) _refreshAfterHandoff = true;
+        else _wm.RefreshAllWindows();
+    }
+
+    private void ReplayTrayPlacementActions()
+    {
+        if (HandoffBlocksTrayPlacement) return;
+        if (_updateRestartAfterHandoff is { } apply)
+        {
+            _updateRestartAfterHandoff = null;
+            if (_updates?.ApplyAfterExit == apply) CompleteUpdateRestart(apply);
+        }
+        if (!_exitRequested && _refreshAfterHandoff)
+        {
+            _refreshAfterHandoff = false;
+            OnRefresh(this, EventArgs.Empty);
+        }
     }
 
     private void OnToggleScreenFixedWindowsDuringPan(object? sender, EventArgs e)
@@ -354,6 +378,17 @@ internal sealed class TrayApp : ApplicationContext
     private void RequestUpdateRestart()
     {
         if (_updates?.ApplyAfterExit is not {} apply || _exitRequested || _lifecycle.IsStopping) return;
+        if (HandoffBlocksTrayPlacement)
+        {
+            _updateRestartAfterHandoff = apply;
+            return;
+        }
+        _updateRestartAfterHandoff = null;
+        CompleteUpdateRestart(apply);
+    }
+
+    private void CompleteUpdateRestart(Action apply)
+    {
         // Leave the running session intact if the user has unfinished editing or saving fails.
         if (!_backgrounds.PrepareForUpdate(out var message) || !_overview.PrepareForUpdate(out message) || !_workspace.SaveNow())
         {

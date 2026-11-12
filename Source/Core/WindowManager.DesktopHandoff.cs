@@ -26,7 +26,7 @@ internal sealed partial class WindowManager
     private sealed record DesktopPlacementTarget(AutomaticParkingToken Token, WorldRect World,
         WindowRect Start, WindowRect Destination);
 
-    private sealed record DesktopPlacementPlan(CanvasCamera Camera, long Topology,
+    private sealed record DesktopPlacementPlan(CanvasCamera Camera, long Topology, Guid Desktop,
         DesktopPlacementTarget[] Targets);
 
     /// <summary>
@@ -68,14 +68,15 @@ internal sealed partial class WindowManager
     internal Guid DesktopHandoffNavigationDesktop => _vds?.CurrentDesktopId ?? Guid.Empty;
 
     private bool SupportsMoveOnlyDesktopHandoff()
-        => !_disposed && !DesktopPlacementShutdownRequested && _vds == null
+        => !_disposed && !DesktopPlacementShutdownRequested
             && _parking.Count == 0 && _clippedWindows.Count == 0 && _previewUnclipped.Count == 0;
 
     private DesktopPlacementPlan? PlanDesktopHandoff()
     {
         var camera = _canvas.Camera;
         long topology = _win32.ScreenTopologyVersion;
-        if (topology < 0) return null;
+        var desktop = DesktopHandoffNavigationDesktop;
+        if (topology < 0 || (_vds != null && desktop == Guid.Empty)) return null;
         var screens = _win32.GetScreenWorkingAreas();
         var snapshot = _canvas.Windows.ToArray();
         var targets = new DesktopPlacementTarget[snapshot.Length];
@@ -95,20 +96,21 @@ internal sealed partial class WindowManager
                 new(plan.TargetRect.X, plan.TargetRect.Y, width, height));
         }
 
-        return new(camera, topology, targets);
+        return new(camera, topology, desktop, targets);
     }
 
     private bool DesktopPlacementIdentityIsCurrent(AutomaticParkingToken token)
     {
         var handle = token.Identity.Handle;
-        return _visibility.IsCurrent(token) && IsParkingIdentityCurrent(token)
+        return IsDesktopHandoffNavigationIdentityCurrent(token)
             && _win32.IsManageable(handle, (uint)Environment.ProcessId);
     }
 
     private bool DesktopPlacementPlanIsCurrent(DesktopPlacementPlan plan, bool verifyDestinations)
     {
         if (!SupportsMoveOnlyDesktopHandoff() || _canvas.Camera != plan.Camera
-            || _win32.ScreenTopologyVersion != plan.Topology || _canvas.Windows.Count != plan.Targets.Length) return false;
+            || _win32.ScreenTopologyVersion != plan.Topology || DesktopHandoffNavigationDesktop != plan.Desktop
+            || _canvas.Windows.Count != plan.Targets.Length) return false;
 
         foreach (var target in plan.Targets)
         {
@@ -123,7 +125,8 @@ internal sealed partial class WindowManager
         }
 
         return SupportsMoveOnlyDesktopHandoff() && _canvas.Camera == plan.Camera
-            && _win32.ScreenTopologyVersion == plan.Topology && _canvas.Windows.Count == plan.Targets.Length
+            && _win32.ScreenTopologyVersion == plan.Topology && DesktopHandoffNavigationDesktop == plan.Desktop
+            && _canvas.Windows.Count == plan.Targets.Length
             && plan.Targets.All(target => _visibility.IsCurrent(target.Token)
                 && _canvas.Windows.TryGetValue(target.Token.Identity.Handle, out var world) && world.Equals(target.World));
     }
