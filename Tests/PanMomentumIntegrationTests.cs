@@ -14,9 +14,10 @@ public class PanMomentumIntegrationTests
         Func<Task<bool>?>? requestDesktopPlacement = null, bool useAsyncProjection = false)
         => WorkspaceViewTests.OnSta(() =>
         {
-            var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+            var canvas = new Canvas(); var api = new FakeWindowApi { ScreenTopologyVersion = 1 }; var input = new FakeInputRouter();
             var clock = new FakeClock(1000); var config = new FakeAppConfig { EnableStartupIntro = false };
-            using var wm = new WindowManager(canvas, api, config, input, clock, useAsyncProjection: useAsyncProjection);
+            using var wm = new WindowManager(canvas, api, config, input, clock, useAsyncProjection: useAsyncProjection,
+                inspectProcess: pid => new WorkspaceProcessIdentity(pid, 1, "test.exe"));
             using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: new FakeDwmThumbnailApi(),
                 requestDesktopPlacement: requestDesktopPlacement);
             overview.TransitionTo(OverviewMode.Zooming);
@@ -271,6 +272,48 @@ public class PanMomentumIntegrationTests
             lease = Assert.IsType<ProjectionWorker.PlacementLease>(manager!.TryAcquireDesktopPlacementLease([(IntPtr)42]));
             return placement.Task;
         }, useAsyncProjection: true);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void RealPlacementBatchOnlyExposesVerifiedGeometry(bool nativeMoveSucceeds, bool nativeAppAdjustsPosition)
+    {
+        WindowManager? manager = null;
+        Task<bool>? placement = null;
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var target = (IntPtr)42;
+            manager = wm;
+            config.DesktopPanMomentum = false;
+            api.AddWindow(target, 150, 150, 640, 480);
+            wm.RegisterWindow(target);
+            if (!nativeMoveSucceeds) api.FailedMoves.Add(target);
+            if (nativeAppAdjustsPosition) api.AfterBatchMove = () => api.Windows[target].X += 20;
+            bool verified = nativeMoveSucceeds && !nativeAppAdjustsPosition;
+
+            int commits = 0;
+            canvas.Committed += () => commits++;
+            input.RaiseDragStarted();
+            input.QueuePanAndRaise(60, 0);
+            var expected = canvas.WorldToScreen(canvas.Windows[target]);
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.NotNull(placement);
+            Assert.True(pass.Visible);
+            PumpUntil(() => overview.CurrentMode != OverviewMode.Panning);
+            Assert.Equal(verified, placement.GetAwaiter().GetResult());
+            Assert.Equal(0, commits);
+            Assert.Equal(verified ? OverviewMode.Hidden : OverviewMode.Zooming, overview.CurrentMode);
+            var move = Assert.Single(api.LastBatch);
+            Assert.Equal(target, move.HWnd);
+            Assert.Equal(expected.X, move.Rect.X);
+            Assert.Equal(nativeMoveSucceeds ? expected.X + (nativeAppAdjustsPosition ? 20 : 0) : 150,
+                api.GetWindowRect(target).x);
+            Assert.False(wm.HasDesktopPlacementReservation);
+        }, () => placement = manager!.TryStartDesktopHandoffPlacement(), useAsyncProjection: true);
     }
 
     private static void PumpUntil(Func<bool> condition)

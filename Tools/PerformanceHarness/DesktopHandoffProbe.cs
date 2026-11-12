@@ -16,7 +16,7 @@ internal static class DesktopHandoffProbe
     private const uint PreserveGeometryAndActivation = 0x0013, NoPositionChanging = 0x0400;
     private const int Acknowledgement = 73, HoldMilliseconds = 450;
 
-    public static void Run(string output, bool verifyRecovery = false)
+    public static void Run(string output, bool verifyRecovery = false, bool verifyPlacement = false)
     {
         var work = Screen.PrimaryScreen!.WorkingArea;
         Check(work.Width >= 500 && work.Height >= 260, "The probe needs a 500 by 260 pixel working area.");
@@ -35,7 +35,7 @@ internal static class DesktopHandoffProbe
             RedirectStandardOutput = true,
             ArgumentList = { "--desktop-handoff-target", cover.Handle.ToString(), gateName,
                 Environment.ProcessId.ToString(CultureInfo.InvariantCulture), start.X.ToString(CultureInfo.InvariantCulture),
-                start.Y.ToString(CultureInfo.InvariantCulture) }
+                start.Y.ToString(CultureInfo.InvariantCulture), verifyPlacement.ToString(CultureInfo.InvariantCulture) }
         };
         using var target = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned target.");
         var canvas = new Canvas();
@@ -46,6 +46,7 @@ internal static class DesktopHandoffProbe
         object? report = null;
         bool targetTerminated = false;
         Task<PlacementCompletion>? inFlight = null;
+        Task<bool>? managerPlacement = null;
         int ticks = 0;
         using var heartbeat = new System.Windows.Forms.Timer { Interval = 16 };
         heartbeat.Tick += (_, _) => ticks++;
@@ -69,6 +70,32 @@ internal static class DesktopHandoffProbe
                 Check(hit == cover.Handle, $"Hit point {hitPoint} returned {hit} (PID {native.GetWindowProcessId(hit)}), expected cover {cover.Handle} at {ReadBounds(native, cover.Handle)}. Visible={cover.Visible}.");
                 nint foreground = GetForegroundWindow();
                 heartbeat.Start();
+
+                if (verifyPlacement)
+                {
+                    windows.RegisterWindow(window);
+                    Check(canvas.HasWindow(window), "The owned target was not enrolled in the placement model.");
+                    windows.SuspendProjection = true;
+                    windows.SuspendAutomaticParking = true;
+                    canvas.Pan(final.X - initial.X, 0);
+                    managerPlacement = windows.TryStartDesktopHandoffPlacement();
+                    Check(managerPlacement != null, "WindowManager declined the owned placement cohort.");
+
+                    await WaitFor(() => cover.ReturnedCallbacks == 1, "The planned native placement did not call back into the UI.");
+                    int before = ticks;
+                    await Task.Delay(HoldMilliseconds);
+                    Check(ticks > before && managerPlacement is { IsCompleted: false } && windows.HasDesktopPlacementReservation
+                        && Observed() == initial && cover.Visible, "The planned placement did not retain the responsive cover.");
+                    int uiTicks = ticks - before;
+                    release.Set();
+                    Check(await managerPlacement!.WaitAsync(TimeSpan.FromSeconds(6)) && Observed() == final
+                        && !windows.HasDesktopPlacementReservation, "The planned native placement did not verify its final geometry.");
+                    report = new { TargetPid = target.Id, Initial = initial, Verified = final, UiTimerTicks = uiTicks,
+                        ForegroundPreserved = GetForegroundWindow() == foreground,
+                        NativeWait = diagnostics.Snapshot().Operations.Single(op => op.Operation == "EndDeferWindowPos") };
+                    Check(GetForegroundWindow() == foreground, "The planned placement changed foreground activation.");
+                    return;
+                }
 
                 if (verifyRecovery)
                 {
@@ -250,16 +277,17 @@ internal static class DesktopHandoffProbe
                 release.Set();
                 if (window != 0 && native.GetWindowProcessId(window) == target.Id)
                     PostMessage(window, Close, 0, 0);
-                if (inFlight is { IsCompleted: false })
+                Task? pending = managerPlacement ?? (Task?)inFlight;
+                if (pending is { IsCompleted: false })
                 {
-                    try { await inFlight.WaitAsync(TimeSpan.FromSeconds(6)); }
+                    try { await pending.WaitAsync(TimeSpan.FromSeconds(6)); }
                     catch (Exception ex) { failure ??= ex; }
                 }
                 cover.Close();
             }
         };
         Application.Run(cover);
-        if (inFlight is not { IsCompleted: false }) windows.Dispose();
+        if (inFlight is not { IsCompleted: false } && managerPlacement is not { IsCompleted: false }) windows.Dispose();
         if (!target.WaitForExit(5000))
         {
             target.Kill();
@@ -283,7 +311,7 @@ internal static class DesktopHandoffProbe
         using var parent = Process.GetProcessById(int.Parse(args[2], CultureInfo.InvariantCulture));
         Check(new Win32WindowApi().GetWindowProcessId(cover) == parent.Id, "The cover belongs to a different process.");
         var bounds = new Rectangle(int.Parse(args[3], CultureInfo.InvariantCulture), int.Parse(args[4], CultureInfo.InvariantCulture), 100, 100);
-        using var target = new Target(cover, release, bounds);
+        using var target = new Target(cover, release, bounds, bool.Parse(args[5]));
         using var checkParent = new System.Windows.Forms.Timer { Interval = 100 };
         checkParent.Tick += (_, _) => { if (parent.HasExited) target.Close(); };
         target.Shown += (_, _) =>
@@ -452,8 +480,18 @@ internal static class DesktopHandoffProbe
         }
     }
 
-    private sealed class Target(nint cover, EventWaitHandle release, Rectangle bounds) : OwnedWindow(bounds)
+    private sealed class Target(nint cover, EventWaitHandle release, Rectangle bounds, bool enrollInCanvas) : OwnedWindow(bounds)
     {
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var parameters = base.CreateParams;
+                if (enrollInCanvas) parameters.ExStyle |= 0x00040000; // WS_EX_APPWINDOW
+                return parameters;
+            }
+        }
+
         private bool _armed;
         public bool Failed { get; private set; }
         public void Arm() => _armed = true;
