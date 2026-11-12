@@ -268,7 +268,8 @@ public class MinimapNavigationTests
             var raisedPass = overview.MonitorHandles[0];
             Assert.True(PInvoke.SetWindowPos((HWND)raisedPass, (HWND)new IntPtr(-1), 0, 0, 0, 0,
                 SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE));
-            AssertAbove(raisedPass, map.Handle);
+            // Do not assert intermediate ordering: an asynchronous overview frame can already re-raise the minimap.
+            // Assert the panel-raise contract below instead.
             typeof(OverviewManager).GetMethod("RaiseCanvasPanels", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                 .Invoke(overview, null);
             foreach (var pass in overview.MonitorHandles) AssertAbove(map.Handle, pass);
