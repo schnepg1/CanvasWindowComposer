@@ -36,6 +36,14 @@ internal sealed class FakeOverviewController : IOverviewController
     public long? ReleasedAt;
     public List<OverviewMode> Transitions = new();
     public bool WindowNavigationActive { get; set; }
+    public bool DesktopHandoffPending { get; set; }
+    public int DesktopHandoffRecoveryRequests { get; private set; }
+    public bool TryRecoverDesktopHandoff()
+    {
+        if (!DesktopHandoffPending) return false;
+        DesktopHandoffRecoveryRequests++;
+        return true;
+    }
     public List<IntPtr> NavigatedWindows = new();
     public bool NavigateToWindowResult { get; set; } = true;
     public Action<IntPtr>? OnNavigateToWindow { get; set; }

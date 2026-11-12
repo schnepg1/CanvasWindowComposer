@@ -19,9 +19,13 @@ internal sealed class DesktopStateCache : IDisposable
     private readonly IVirtualDesktops _vds;
     private Guid _lastDesktopId;
     private bool _disposed;
+    private bool _switchPending;
+    private bool _applyingSwitch;
 
     public event Action? AfterStateLoaded;
     public event Action? BeforeStateSaved;
+    internal Guid CurrentDesktopId => _lastDesktopId;
+    internal bool HasPendingSwitch => _switchPending || _applyingSwitch || _vds.CurrentDesktopId != _lastDesktopId;
 
     public DesktopStateCache(Canvas canvas, WindowManager wm, IOverviewController overview, IVirtualDesktops vds)
     {
@@ -36,7 +40,31 @@ internal sealed class DesktopStateCache : IDisposable
 
     private void OnDesktopChanged()
     {
-        if (_disposed) return;
+        if (_disposed || _wm.DesktopPlacementShutdownRequested) return;
+        if (!_switchPending)
+        {
+            _switchPending = true;
+            // Recovery invalidates the old close immediately and keeps any held stopping click owned.
+            _overview.TryRecoverDesktopHandoff();
+        }
+        ApplyPendingSwitch();
+    }
+
+    internal void ApplyPendingSwitch()
+    {
+        if (_disposed || !_switchPending || _applyingSwitch || _wm.DesktopPlacementShutdownRequested
+            || _wm.HasDesktopPlacementReservation || _overview.DesktopHandoffPending) return;
+
+        _switchPending = false;
+        if (_lastDesktopId == _vds.CurrentDesktopId) return;
+
+        _applyingSwitch = true;
+        try { SwitchToCurrentDesktop(); }
+        finally { _applyingSwitch = false; }
+    }
+
+    private void SwitchToCurrentDesktop()
+    {
         _overview.CancelStartupIntro();
         _overview.CancelInertia();
         _overview.CancelInteraction();
@@ -55,11 +83,13 @@ internal sealed class DesktopStateCache : IDisposable
         _canvas.Commit();
 
         AfterStateLoaded?.Invoke();
+        _overview.SyncCamera();
     }
 
     public void Dispose()
     {
         _disposed = true;
+        _switchPending = false;
         _vds.DesktopChanged -= OnDesktopChanged;
     }
 }

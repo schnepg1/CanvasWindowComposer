@@ -24,6 +24,7 @@ internal sealed partial class OverviewManager
     internal bool IsAiTeamsActive => _isAiTeamsActive;
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
     private IVirtualDesktops? _annotationDesktops;
+    private DesktopStateCache? _annotationDesktopState;
     private AnnotationToolbar? _annotationToolbar;
     private UnifiedDockWindow? _unifiedDock;
     internal UnifiedDockWindow? UnifiedDock => _unifiedDock;
@@ -47,11 +48,12 @@ internal sealed partial class OverviewManager
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
     internal AnnotationShapeEditor? ShapeEditor => _shapeEditor;
 
-    public void AttachAnnotations(IVirtualDesktops desktops,string? path=null)
+    public void AttachAnnotations(IVirtualDesktops desktops,string? path=null, DesktopStateCache? stateCache=null)
     {
         if(_annotationDocument!=null) throw new InvalidOperationException("Annotations are already attached.");
-        _annotationDesktop=()=>desktops.CurrentDesktopId;
-        _annotationDesktops=desktops;
+        _annotationDesktop=()=>stateCache?.CurrentDesktopId ?? desktops.CurrentDesktopId;
+        _annotationDesktopState=stateCache;
+        _annotationDesktops=stateCache == null ? desktops : null;
         _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
         _cameraBookmarks=new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path??Path.Combine(AppConfig.ConfigDir,"annotations.json")))!,"camera-bookmarks.json"));
         _annotationDocument=_annotationStore.Document;
@@ -101,7 +103,8 @@ internal sealed partial class OverviewManager
         _tools.SetTool(_annotationRouter);
         _annotationDocument.Changed+=OnAnnotationsChanged;
         _annotationTool.EditTextRequested+=QueueAnnotationTextEdit;
-        desktops.DesktopChanged+=OnAnnotationDesktopChanged;
+        if (_annotationDesktopState != null) _annotationDesktopState.AfterStateLoaded += OnAnnotationDesktopChanged;
+        else desktops.DesktopChanged += OnAnnotationDesktopChanged;
         AfterModeChanged += OnTeamTelemetryModeChanged;
         RefreshTeamTelemetry();
     }
@@ -743,6 +746,7 @@ internal sealed partial class OverviewManager
         CancelCanvasComposer();
         CancelAnnotationEdit();
         _wm.WindowRemoving-=OnSelectionWindowRemoving;
+        if (_annotationDesktopState != null) _annotationDesktopState.AfterStateLoaded -= OnAnnotationDesktopChanged;
         if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
         if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
         _annotationToolbar?.Dispose(); _annotationToolbar=null;

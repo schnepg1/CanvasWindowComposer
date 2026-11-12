@@ -15,7 +15,8 @@ internal sealed partial class OverviewManager
     private bool _displayChangedDuringDesktopHandoff;
     private Action? _navigationAfterDesktopHandoff;
 
-    private bool DesktopHandoffPending => _desktopHandoff != null;
+    public bool DesktopHandoffPending => _desktopHandoff != null;
+    internal event Action? DesktopHandoffRecovered;
 
     private void RequestDesktopPanClose()
     {
@@ -130,6 +131,7 @@ internal sealed partial class OverviewManager
                 _displayChangedDuringDesktopHandoff = false;
                 OnDisplaySettingsChanged(this, EventArgs.Empty);
             }
+            DesktopHandoffRecovered?.Invoke();
             navigate?.Invoke();
         }
     }

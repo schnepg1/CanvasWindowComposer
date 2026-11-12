@@ -182,19 +182,20 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     {
         InvalidateOverviewSnapshot();
         if (!_started || _disposed) return;
-        if (_desktop == Guid.Empty && _desktops.CurrentDesktopId != Guid.Empty)
+        var desktop = _cache.CurrentDesktopId;
+        if (_desktop == Guid.Empty && desktop != Guid.Empty)
         {
             // Initial desktop detection may complete after startup.
             foreach (var item in Document.Items.Where(i => i.DesktopId == Guid.Empty))
-                item.DesktopId = _desktops.CurrentDesktopId;
+                item.DesktopId = desktop;
             foreach (var zone in Document.Zones.Where(i => i.DesktopId == Guid.Empty))
-                zone.DesktopId = _desktops.CurrentDesktopId;
+                zone.DesktopId = desktop;
             if (Document.Cameras.Remove(Guid.Empty, out var camera))
-                Document.Cameras[_desktops.CurrentDesktopId] = camera;
+                Document.Cameras[desktop] = camera;
             if (Document.TemporaryAreas.Remove(Guid.Empty, out var area))
-                Document.TemporaryAreas[_desktops.CurrentDesktopId] = area;
+                Document.TemporaryAreas[desktop] = area;
         }
-        _desktop = _desktops.CurrentDesktopId;
+        _desktop = desktop;
         Zones.NotifyDesktopChanged();
         _switching = false;
         RestoreCamera();

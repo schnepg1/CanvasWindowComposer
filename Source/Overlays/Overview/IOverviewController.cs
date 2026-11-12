@@ -19,6 +19,7 @@ internal interface IOverviewController
     bool RecallBookmark(int slot) => false;
     void HandleEscape();
     bool TryRecoverDesktopHandoff() => false;
+    bool DesktopHandoffPending => false;
     bool CanvasInputSuspended => false;
     bool OverviewHotkeySuspended => CanvasInputSuspended;
     bool GuidedTutorialActive => false;

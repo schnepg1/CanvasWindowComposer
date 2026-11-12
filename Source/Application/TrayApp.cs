@@ -69,6 +69,7 @@ internal sealed class TrayApp : ApplicationContext
                 ShutdownPhase.Quiesce, "Foreground subscriptions");
             _desktops = _lifecycle.Own(new DesktopStateCache(_canvas, _wm, _overview, _vds),
                 ShutdownPhase.StopServices, "Desktop cache subscriptions");
+            _overview.DesktopHandoffRecovered += _desktops.ApplyPendingSwitch;
             _workspace = WorkspaceComposition.Create(_canvas, _wm, winApi, _vds, _desktops, screens: _screens, clock: _clock);
             _lifecycle.Register(ShutdownPhase.SaveWorkspace, "Save workspace and remove placeholders",
                 () => _workspace.Stop(save: _lifecycle.StartupCompleted));
@@ -80,7 +81,7 @@ internal sealed class TrayApp : ApplicationContext
             });
             _zoneUi = _lifecycle.Own(new ZoneUi(_workspace, _overview), ShutdownPhase.ReleaseUi, "Project area UI");
 
-            _overview.AttachAnnotations(_vds);
+            _overview.AttachAnnotations(_vds, stateCache: _desktops);
             _overview.AttachTutorial();
             _backgrounds = _lifecycle.Own(new BackgroundCoordinator(_canvas, _overview, _vds, _workspace.Zones, _config), ShutdownPhase.FinalizeLayout, "Background surfaces");
 
@@ -281,6 +282,8 @@ internal sealed class TrayApp : ApplicationContext
         if (_exitRequested || _lifecycle.IsStopping) return;
         if (Program.ShutdownSignal?.WaitOne(0) == true) { OnExit(sender, e); return; }
         _updates?.CheckAutomatically(_clock.TickCount64);
+        _desktops.ApplyPendingSwitch();
+        if (_desktops.HasPendingSwitch) return;
         _wm.Tick();
         _workspace.Tick(cameraMoving: _overview.DeferPeriodicMaintenance);
         _backgrounds.Tick();
