@@ -9,7 +9,7 @@ namespace CanvasDesktop;
 internal sealed class SettingsWindow : Window
 {
     private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation, _desktopMomentum, _canvasMomentum;
-    private readonly CheckBox _simplifyMovingCards;
+    private readonly CheckBox _simplifyMovingCards, _asyncDesktopHandoff;
     private readonly FlightSettingsControl? _flightSettings;
     private readonly ZoomSettingsControl _zoomSettings;
     internal bool ZoomOnly { get; }
@@ -50,6 +50,8 @@ internal sealed class SettingsWindow : Window
         _desktopMomentum = Option("Desktop pan momentum", preferences.DesktopPanMomentum);
         _canvasMomentum = Option("Canvas pan momentum", preferences.CanvasPanMomentum);
         Hint("Continue gliding after releasing a pan. Turn either off to stop that view on release. Dragging still follows the pointer. Applies immediately. During desktop panning, click to stop, then click again to interact.");
+        _asyncDesktopHandoff = Option("Responsive desktop pan handoff · Experimental", preferences.AsyncDesktopHandoff);
+        Hint("Keeps Canvas responsive while Windows places eligible windows after a desktop pan. Turn off to return to the standard handoff.");
         _fixed = Option("Show pinned and fullscreen windows while panning", preferences.ScreenFixedWindows);
         _navigation = Option("Animate navigation to apps selected with Alt+Tab or the taskbar", preferences.AnimateWindowNavigation);
         Hint("Stays in Canvas view at the current zoom. Turn off for an immediate jump with less rendering work.");
@@ -95,6 +97,7 @@ internal sealed class SettingsWindow : Window
                         LowQualityMode = _lowQuality.IsChecked == true, ShowTaskbarInCanvas = _taskbar.IsChecked == true,
                         SimplifyWindowCardsDuringMotion = _simplifyMovingCards.IsChecked == true,
                         AnimateWindowNavigation = _navigation.IsChecked == true,
+                        AsyncDesktopHandoff = _asyncDesktopHandoff.IsChecked == true,
                         DesktopPanMomentum = _desktopMomentum.IsChecked == true, CanvasPanMomentum = _canvasMomentum.IsChecked == true };
                     if (_flightSettings != null)
                     {

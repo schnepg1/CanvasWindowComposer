@@ -22,6 +22,8 @@ internal sealed partial class WorkspaceService
 
     private readonly Dictionary<Guid, IWorkspacePlaceholder> _cards = new();
 
+    private readonly HashSet<Guid> _deferredCardMoves = new();
+
 
 
     // Only actual cards on the current desktop are annotated. Their geometry is
@@ -94,6 +96,13 @@ internal sealed partial class WorkspaceService
 
     {
 
+        if (!_wm.TryBeginPeriodicWorkspacePlacementWork())
+        {
+            _nextCapture = 0;
+            return;
+        }
+        using var writer = new PlacementWriter(_wm);
+
         InvalidateOverviewSnapshot();
 
         foreach (var id in _cards.Keys.Where(id => !Document.Items.Any(i => i.Id == id)).ToArray()) RemoveCard(id);
@@ -152,6 +161,14 @@ internal sealed partial class WorkspaceService
 
                 if (_disposed || _switching) return;
 
+                if (!_wm.TryBeginPeriodicWorkspacePlacementWork())
+                {
+                    _deferredCardMoves.Add(item.Id);
+                    _nextCapture = 0;
+                    return;
+                }
+                using var callbackWriter = new PlacementWriter(_wm);
+                _deferredCardMoves.Remove(item.Id);
                 _wm.ReconcileWindow(form.Handle);
 
                 SyncCardGeometry(item, form);
@@ -192,12 +209,24 @@ internal sealed partial class WorkspaceService
 
         InvalidateOverviewSnapshot();
 
+        _deferredCardMoves.Remove(id);
         if (!_cards.Remove(id, out var card)) return;
 
         try { _wm.RemoveWindow(card.Handle); }
 
         finally { card.Dispose(); }
 
+    }
+
+    private void ReconcileDeferredCardMoves()
+    {
+        foreach (var id in _deferredCardMoves.ToArray())
+        {
+            _deferredCardMoves.Remove(id);
+            if (!_cards.TryGetValue(id, out var card) || Find(id) is not { } item) continue;
+            _wm.ReconcileWindow(card.Handle);
+            SyncCardGeometry(item, card);
+        }
     }
 
 

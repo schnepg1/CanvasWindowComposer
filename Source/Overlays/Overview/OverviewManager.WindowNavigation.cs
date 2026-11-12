@@ -20,6 +20,20 @@ internal sealed partial class OverviewManager
 
     public bool NavigateToWindow(IntPtr window)
     {
+        if (!_disposed && DesktopHandoffPending)
+        {
+            // Claim the selection so the shell coordinator cannot commit its
+            // synchronous fallback during the pending native placement.
+            var identity = _wm.GetDesktopHandoffNavigationIdentity(window);
+            var desktop = _wm.DesktopHandoffNavigationDesktop;
+            _navigationAfterDesktopHandoff = () =>
+            {
+                if (identity is { } token && _wm.DesktopHandoffNavigationDesktop == desktop
+                    && _wm.IsDesktopHandoffNavigationIdentityCurrent(token))
+                    NavigateToWindow(window);
+            };
+            return TryRecoverDesktopHandoff();
+        }
         if (!_disposed && _wm.NavigateInventoryWindow(window)) return true;
         if (_disposed
             || !_mainCanvas.Windows.TryGetValue(window, out var world) || world.PinnedToScreen
@@ -70,6 +84,16 @@ internal sealed partial class OverviewManager
     public bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false)
     {
         if (_disposed) return false;
+        if (DesktopHandoffPending)
+        {
+            var desktop = _wm.DesktopHandoffNavigationDesktop;
+            _navigationAfterDesktopHandoff = () =>
+            {
+                if (_wm.DesktopHandoffNavigationDesktop == desktop)
+                    NavigateToCamera(target, landInDesktopView);
+            };
+            return TryRecoverDesktopHandoff();
+        }
         if (IsStartupIntroActive) FinishStartupIntro(refresh: false);
         PauseGuidedTutorial();
         CancelInertia();

@@ -94,6 +94,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DisableGreedyDraw { get; private set; } = true;
     public bool EnableAutomaticMinimization { get; private set; }
     public bool EnableFlipRendering { get; private set; }
+    public bool EnableAsyncDesktopHandoff { get; private set; }
     public bool LowQualityMode { get; private set; }
     public bool SimplifyWindowCardsDuringMotion { get; private set; }
     public bool ShowTaskbarInCanvas { get; private set; } = true;
@@ -153,6 +154,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DisableGreedyDraw = GetBool(values, "DisableGreedyDraw", defaultValue: true);
             EnableAutomaticMinimization = GetBool(values, "EnableAutomaticMinimization", defaultValue: false);
             EnableFlipRendering = GetBool(values, "EnableFlipRendering", defaultValue: false);
+            EnableAsyncDesktopHandoff = GetBool(values, "EnableAsyncDesktopHandoff", defaultValue: false);
             LowQualityMode = GetBool(values, "LowQualityMode", defaultValue: false);
             SimplifyWindowCardsDuringMotion = GetBool(values, "SimplifyWindowCardsDuringMotion", defaultValue: false);
             ShowTaskbarInCanvas = GetBool(values, "ShowTaskbarInCanvas", defaultValue: true);
@@ -238,7 +240,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
                 EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
                 ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile, FlightFullDurationDistance, FlightFullClimbDistance,
-                SimplifyWindowCardsDuringMotion);
+                SimplifyWindowCardsDuringMotion, EnableAsyncDesktopHandoff);
         }
     }
 
@@ -259,6 +261,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["DisableGreedyDraw"] = (!preferences.ClipOffscreen).ToString().ToLowerInvariant(),
                 ["EnableAutomaticMinimization"] = preferences.AutomaticMinimization.ToString().ToLowerInvariant(),
                 ["EnableFlipRendering"] = preferences.FlipRendering.ToString().ToLowerInvariant(),
+                ["EnableAsyncDesktopHandoff"] = preferences.AsyncDesktopHandoff.ToString().ToLowerInvariant(),
                 ["EnableStartupIntro"] = preferences.StartupIntro.ToString().ToLowerInvariant(),
                 ["ReduceStartupMotion"] = preferences.ReducedIntroMotion.ToString().ToLowerInvariant(),
                 ["LowQualityMode"] = preferences.LowQualityMode.ToString().ToLowerInvariant(),
@@ -368,6 +371,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ; Experimental flip-model rendering; restart Canvas after changing
 ; Keep disabled until DWM thumbnails and layered overlays are visually validated
 ;EnableFlipRendering=false
+;EnableAsyncDesktopHandoff=false
 
 ; Simple overview grid without the animated nebula or decorative effects
 ; Applies immediately from Settings; normal visual quality remains the default
@@ -549,4 +553,4 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     double FlightDurationSeconds = 3.0, double FlightCruisingScale = 1.0, string FlightProfile = "Helicopter",
     double FlightFullDurationDistance = WindowNavigationFlight.DefaultFullDurationDistance,
     double FlightFullClimbDistance = WindowNavigationFlight.DefaultFullClimbDistance,
-    bool SimplifyWindowCardsDuringMotion = false);
+    bool SimplifyWindowCardsDuringMotion = false, bool AsyncDesktopHandoff = false);

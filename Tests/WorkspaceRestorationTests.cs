@@ -69,6 +69,36 @@ public class WorkspaceRestorationTests
         Assert.Empty(rig.Launcher.Opened);
     }
 
+    [Fact]
+    public void PeriodicMatchingRestoresASavedSlotAfterPlacementReservationReleases()
+    {
+        var item = Item(@"C:\Apps\WhatsApp.exe", "WhatsApp");
+        var saved = item.Bounds;
+        using var rig = new WorkspaceHarness(new() { Items = new() { item } }, useAsyncProjection: true);
+        rig.Identity.Exe = item.ExecutablePath;
+        rig.Workspace.Start();
+        IntPtr handle = (IntPtr)42;
+        rig.Api.AddWindow(handle, 100, 200, 800, 600, title: item.Title);
+        using var lease = Assert.IsType<ProjectionWorker.PlacementLease>(rig.Wm.TryAcquireDesktopPlacementLease([handle]));
+
+        rig.Input.RaiseWindowShown(handle);
+        Assert.True(rig.Canvas.HasWindow(handle));
+        rig.Workspace.Tick();
+        Assert.Empty(rig.Api.NativeStateCalls);
+        Assert.False(rig.Workspace.IsOpen(item));
+
+        lease.Dispose();
+        rig.Api.BeforeSetPosition = target =>
+        {
+            using var reentrant = rig.Wm.TryAcquireDesktopPlacementLease([target]);
+            Assert.Null(reentrant);
+        };
+        rig.Workspace.Tick(); // The original maintenance deadline is still due.
+        Assert.Single(rig.Api.NativeStateCalls);
+        Assert.True(rig.Workspace.IsOpen(item));
+        Assert.Equal(saved, rig.Canvas.Windows[handle]);
+    }
+
     private const string OldChatGpt = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.1016.8622.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe";
     private const string NewChatGpt = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.1022.10000.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe";
     private static WorkspaceItem Item(string exe, string title, double y = -8126) => new()

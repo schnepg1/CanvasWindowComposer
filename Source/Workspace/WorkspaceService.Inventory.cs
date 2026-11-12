@@ -22,6 +22,8 @@ internal sealed partial class WorkspaceService
     public bool CollectInInventory(Guid id)
     {
         if (_disposed || !_started || _switching || Find(id) is not { } item || item.DesktopId != _desktop) return false;
+        using var writer = BeginExplicitPlacement(inventory: true);
+        if (!writer.HasValue) return false;
         Capture();
         if (Find(id) != item) return false;
         var live = BoundWindow(id);
@@ -42,6 +44,8 @@ internal sealed partial class WorkspaceService
     public bool DropFromInventory(Guid id, double? worldX = null, double? worldY = null)
     {
         if (_disposed || !_started || _switching || Find(id) is not { } item || !item.Bounds.InInventory || item.DesktopId != _desktop) return false;
+        using var writer = BeginExplicitPlacement(inventory: true);
+        if (!writer.HasValue) return false;
         var view = ArrivalViewportProvider?.Invoke() ?? new ArrivalViewport(_canvas.Camera, [_windowActions.Viewport]);
         var source = item.Bounds;
         if (!TryPreviewInventoryDrop(id, view, out var dropped, worldX, worldY))

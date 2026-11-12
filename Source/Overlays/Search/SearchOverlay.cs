@@ -18,6 +18,7 @@ internal sealed class SearchOverlay : Form
     private readonly TextBox _searchBox;
     private readonly Label _hintLabel;
     private readonly ListBox _resultsList;
+    private readonly ToolTip _placementFeedback = new();
 
     // Current search results
     private readonly List<SearchResult> _results = new();
@@ -374,7 +375,20 @@ internal sealed class SearchOverlay : Form
         if (idx < 0 || idx >= _results.Count)
             return;
 
-        var result = _results[idx];
+        if (!TryBeginSearchPlacement()) return;
+        try { SelectResult(_results[idx]); }
+        finally { _wm.EndPeriodicWorkspacePlacementWork(); }
+    }
+
+    private bool TryBeginSearchPlacement()
+    {
+        if (_overview?.DesktopHandoffPending != true && _wm.TryBeginPeriodicWorkspacePlacementWork()) return true;
+        _placementFeedback.Show(WorkspaceService.PlacementRetryMessage, _searchBox, 2500);
+        return false;
+    }
+
+    private void SelectResult(SearchResult result)
+    {
         var hWnd = result.HWnd;
         var world = result.World;
         HWND h = (HWND)hWnd;
@@ -410,10 +424,15 @@ internal sealed class SearchOverlay : Form
         if (idx < 0 || idx >= _results.Count)
             return;
 
-        var hWnd = _results[idx].HWnd;
-        bool nextPinned = !_canvas.IsPinnedToScreen(hWnd);
-        _wm.SetWindowPinnedToScreen(hWnd, nextPinned);
-        _resultsList.Invalidate(_resultsList.GetItemRectangle(idx));
+        if (!TryBeginSearchPlacement()) return;
+        try
+        {
+            var hWnd = _results[idx].HWnd;
+            bool nextPinned = !_canvas.IsPinnedToScreen(hWnd);
+            _wm.SetWindowPinnedToScreen(hWnd, nextPinned);
+            _resultsList.Invalidate(_resultsList.GetItemRectangle(idx));
+        }
+        finally { _wm.EndPeriodicWorkspacePlacementWork(); }
     }
 
     private void UpdateResultsLayout()
@@ -491,7 +510,11 @@ internal sealed class SearchOverlay : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _input.SearchHotkey -= OnSearchHotkey;
+        if (disposing)
+        {
+            _input.SearchHotkey -= OnSearchHotkey;
+            _placementFeedback.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

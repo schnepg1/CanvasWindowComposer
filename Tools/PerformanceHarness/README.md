@@ -30,15 +30,62 @@ Run with Canvas Desktop closed and the desktop test mutex held.
 & Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-probe TestResults/desktop-handoff-probe.json
 ```
 
-The probe moves one owned child HWND through the production native batch mover.
-The child's window procedure sends a synchronous message back to the host UI,
-then waits for release. The report records whether the host answered and ran UI
-timer ticks during both waits, ignored an obsolete completion, and verified the
-current native position. A small WinForms cover holds a test click through button-up.
-Hit testing checks that the positioned child receives input after the cover hides.
-The probe exercises a controlled cover and a cooperative target. Production
-overview lifecycle, recovery from an unresponsive app, and display cadence need
-separate verification.
+The probe reserves final placement through WindowManager and moves one owned
+child HWND through the production native batch mover. The target sends a
+synchronous callback to the host UI during each controlled native wait. The
+report records UI timer ticks, placement, focus, and hit testing. The cover
+stays visible after invalidation or capture loss. The verified current
+placement exposes the child only after button-up.
+
+The probe also pauses the target's message pump while a regular projection
+queues an asynchronous move. It verifies that WindowManager declines another
+reservation before release and after observing the requested rectangle.
+The fixture records the rectangle seen while the target is still paused.
+
+The probe uses a controlled cover and a cooperative target. Production
+overview lifecycle, recovery from an unresponsive app, and display cadence
+need separate verification.
+
+Run the recovery variant under the same desktop test mutex.
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-recovery TestResults/desktop-handoff-recovery.json
+```
+
+This variant exercises a cover control that abandons the close while native
+placement remains reserved. It sends query, cancelled, and committed sign-out
+messages to the test cover, then terminates the owned stalled child. The report
+checks that shutdown recovery waits for placement to drain and runs once.
+The variant does not sign out of Windows.
+
+Run the move-only placement variant to exercise the real Overview and native
+WindowManager batch together.
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-placement TestResults/desktop-handoff-placement.json
+```
+
+The fixture enrolls one owned foreign window, drives a pan, and holds the
+window procedure during the real batch. It checks that Overview stays visible
+and processes messages, then closes only after WindowManager verifies native
+geometry. The controlled cohort supports visible, normal foreign windows
+that need only positional changes. The launcher continues to use the existing
+synchronous close.
+
+Run the stall variants with the desktop test mutex and Canvas closed. They
+send left-clicks to verified owned controls and restore the cursor position.
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-stall-recovery TestResults/desktop-handoff-stall-recovery.json
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-stall-shutdown TestResults/desktop-handoff-stall-shutdown.json
+```
+
+The owned target's first placement message waits on the fixture gate without
+a timeout. The fixture opens the real read-only Overview, zooms the map, and
+keeps the target stalled for two more seconds. The recovery variant checks
+that a late move leaves Overview covered and retains the recovered camera.
+The shutdown variant requests cleanup while the target is blocked and checks
+that cleanup runs once after the gate is released.
 
 ## Phases
 

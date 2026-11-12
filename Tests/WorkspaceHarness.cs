@@ -20,12 +20,12 @@ internal sealed class WorkspaceHarness : IDisposable
     public WorkspaceService Workspace { get; }
 
     public WorkspaceHarness(WorkspaceDocument? document = null, IWorkspaceStore? store = null, FakeWindowApi? api = null,
-        FakeAppConfig? config = null, IWorkspacePlaceholderFactory? placeholders = null)
+        FakeAppConfig? config = null, IWorkspacePlaceholderFactory? placeholders = null, bool useAsyncProjection = false)
     {
         Api = api ?? new();
         if (document != null) Store.Document = document;
         Cards = new(Api);
-        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), Input, Clock, Desktops,
+        Wm = new(Canvas, Api, config ?? new FakeAppConfig(), Input, Clock, Desktops, useAsyncProjection: useAsyncProjection,
             inspectProcess: Identity.InspectProcess);
         Cache = new(Canvas, Wm, new FakeOverviewController(), Desktops);
         Workspace = new(Canvas, Wm, Api, Desktops, Cache, store ?? Store, placeholders ?? Cards,

@@ -159,6 +159,16 @@ internal sealed partial class WindowManager : IDisposable
     // Last observed or acknowledged placement, retained when a later request fails.
     private readonly Dictionary<IntPtr, (int x, int y, int w, int h)> _lastScreen = new();
     private readonly Dictionary<IntPtr, PendingMove> _pendingMoves = new();
+    // A queued USER32 request can outlive the model's pending move and even a canvas reset.
+    private readonly HashSet<IntPtr> _unresolvedQueuedMoves = new();
+    private int _directAsyncProjectionDepth;
+    private int _implicitPlacementWriterDepth;
+    private bool _cameraReprojectionDeferred;
+    private bool _displayReprojectionDeferred;
+    private Action? _deferredPlacementShutdown;
+    internal bool DesktopPlacementShutdownRequested { get; private set; }
+    internal bool HasDesktopPlacementReservation => _projection?.HasReservedPlacement == true;
+    private bool DefersPeriodicPlacementWork => DesktopPlacementShutdownRequested || HasDesktopPlacementReservation;
     private long _nextMoveId;
     private readonly record struct PendingMove(BatchMoveItem Item, WindowRect Expected,
         List<WindowRect>? Superseded);
@@ -168,6 +178,8 @@ internal sealed partial class WindowManager : IDisposable
     private readonly HashSet<IntPtr> _livePreviewWindows = new();
     private readonly HashSet<IntPtr> _previewUnclipped = new();
     private bool _allPreviewsVisible;
+    private int _previewRegionReconcileDepth;
+    private bool _previewRegionsDeferred;
     // Clipping can succeed before a move is failed, cancelled or superseded.
     // Keep retrying edge placement until a native move has been accepted.
     private readonly HashSet<IntPtr> _unconfirmedMoves = new();
@@ -228,7 +240,8 @@ internal sealed partial class WindowManager : IDisposable
             if (_suspendProjection == value) return;
             _suspendProjection = value;
             if (!value) return;
-            _projection?.ClearPending();
+            // A reserved worker has already drained ordinary projection work.
+            if (!HasDesktopPlacementReservation) _projection?.ClearPending();
             DrainProjectionResults();
         }
     }
@@ -298,13 +311,17 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Background tick for window discovery + stale removal.</summary>
     public void Tick()
     {
+        if (_disposed || DesktopPlacementShutdownRequested) return;
         long topology = _win32.ScreenTopologyVersion;
-        if (topology >= 0 && topology != _lastScreenTopologyVersion)
+        if (_displayReprojectionDeferred || (topology >= 0 && topology != _lastScreenTopologyVersion))
             ReprojectForDisplayChange();
+        else if (_cameraReprojectionDeferred && !SuspendProjection && !DefersPeriodicPlacementWork)
+            OnCameraChanged();
         DiscoverNewWindows();
         RemoveStale();
         UpdateRuntimeVisibility();
         Previews.DrainCompleted();
+        ReplayDeferredWindowEvents();
         ProcessAutomaticParking();
     }
 
@@ -403,6 +420,19 @@ internal sealed partial class WindowManager : IDisposable
         // Visible overlays evaluate proximity once per coalesced visual frame.
         // Do not scan every window again for every raw input sample.
         if (SuspendProjection && _overviewViewport.HasValue) return;
+        if (DefersPeriodicPlacementWork)
+        {
+            _cameraReprojectionDeferred |= !SuspendProjection;
+            return;
+        }
+
+        _implicitPlacementWriterDepth++;
+        try { ApplyCameraProjection(); }
+        finally { _implicitPlacementWriterDepth--; }
+    }
+
+    private void ApplyCameraProjection()
+    {
         UpdateRuntimeVisibility(refreshIdentity: false);
         ProcessAutomaticParking(cameraOnly: true);
         if (SuspendProjection) return;
@@ -417,10 +447,14 @@ internal sealed partial class WindowManager : IDisposable
         {
             Reproject(isAsync: true, isTransient: true);
             _lastReprojectTick = now;
+            _cameraReprojectionDeferred = false;
         }
     }
 
     private void OnReprojectWindowEvent(IntPtr hWnd)
+        => DispatchWindowPlacementEvent(hWnd, WindowPlacementEvent.Reproject);
+
+    private void ApplyWindowStateProjection(IntPtr hWnd)
     {
         if (_parking.ContainsKey(hWnd) && _canvas.Windows.TryGetValue(hWnd, out var world)
             && world.State == WindowState.Minimized)
@@ -444,6 +478,9 @@ internal sealed partial class WindowManager : IDisposable
     }
 
     private void OnWindowRestoredEvent(IntPtr hWnd)
+        => DispatchWindowPlacementEvent(hWnd, WindowPlacementEvent.Restored);
+
+    private void ApplyWindowRestored(IntPtr hWnd)
     {
         if (_parking.TryGetValue(hWnd, out var parked))
         {
@@ -460,6 +497,9 @@ internal sealed partial class WindowManager : IDisposable
 
     private void OnWindowDestroyedEvent(IntPtr hWnd)
     {
+        // Destruction events can arrive late. Only forget the hazard if the HWND is gone.
+        if (_unresolvedQueuedMoves.Contains(hWnd) && _win32.GetWindowProcessId(hWnd) == 0)
+            _unresolvedQueuedMoves.Remove(hWnd);
         RemoveWindow(hWnd);
     }
 
@@ -482,6 +522,9 @@ internal sealed partial class WindowManager : IDisposable
     }
 
     private void OnWindowFocusedEvent(IntPtr hWnd)
+        => DispatchWindowPlacementEvent(hWnd, WindowPlacementEvent.Focused);
+
+    private void ApplyWindowFocused(IntPtr hWnd, bool replay)
     {
         if (IsCarried(hWnd))
         {
@@ -494,7 +537,7 @@ internal sealed partial class WindowManager : IDisposable
             HandleManualParkingRestore(hWnd);
         if (_parkingExcluded.TryGetValue(hWnd, out var excluded) && _visibility.GetToken(hWnd) == excluded)
             CenterManuallyRestoredWindow(hWnd);
-        _canvas.BringToForeground(hWnd);
+        if (!replay) _canvas.BringToForeground(hWnd);
     }
 
     /// <summary>
@@ -507,7 +550,7 @@ internal sealed partial class WindowManager : IDisposable
         if (_projection != null)
             _projection.Schedule(batch, isAsync: isAsync, isTransient: isTransient);
         else
-            ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient));
+            ApplyDirectProjectionBatch(batch, isAsync, isTransient);
     }
 
     /// <summary>
@@ -522,16 +565,90 @@ internal sealed partial class WindowManager : IDisposable
     {
         _projection?.ClearPending();
         var batch = BuildReprojectBatch();
-        ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: isAsync, isTransient: isTransient));
+        ApplyDirectProjectionBatch(batch, isAsync, isTransient);
+    }
+
+    internal bool TryBeginPeriodicWorkspacePlacementWork()
+    {
+        if (_disposed || DefersPeriodicPlacementWork) return false;
+        _implicitPlacementWriterDepth++;
+        return true;
+    }
+
+    internal void EndPeriodicWorkspacePlacementWork() => _implicitPlacementWriterDepth--;
+
+    /// <summary>
+    /// On the UI thread, check the complete handoff cohort before native preparation
+    /// and reserve an idle worker. The caller still owns explicit actions and
+    /// the surrounding display and virtual-desktop transitions.
+    /// </summary>
+    internal ProjectionWorker.PlacementLease? TryAcquireDesktopPlacementLease(ReadOnlySpan<IntPtr> touchedWindows)
+    {
+        if (_disposed || DesktopPlacementShutdownRequested || _projection == null || _directAsyncProjectionDepth != 0
+            || _implicitPlacementWriterDepth != 0 || _previewRegionReconcileDepth != 0 || touchedWindows.IsEmpty)
+            return null;
+        DrainProjectionResults();
+        foreach (IntPtr handle in touchedWindows)
+            if (_unresolvedQueuedMoves.Contains(handle)) return null;
+        return _projection.TryAcquirePlacementLease(touchedWindows, OnDesktopPlacementReleased);
+    }
+
+    /// <summary>Keep the first shutdown continuation until the UI owner releases the reservation.</summary>
+    internal bool TryDeferShutdownForDesktopPlacement(Action continuation)
+    {
+        ArgumentNullException.ThrowIfNull(continuation);
+        if (!HasDesktopPlacementReservation) return false;
+        DesktopPlacementShutdownRequested = true;
+        _deferredPlacementShutdown ??= continuation;
+        ReleaseVerifiedDesktopHandoffPlacement();
+        return true;
+    }
+
+    private void OnDesktopPlacementReleased()
+    {
+        if (_deferredPlacementShutdown is { } continuation)
+        {
+            _deferredPlacementShutdown = null;
+            _previewRegionsDeferred = false;
+            _cameraReprojectionDeferred = false;
+            _displayReprojectionDeferred = false;
+            ClearDeferredWindowEvents();
+            continuation();
+        }
+        else if (_previewRegionsDeferred && !_disposed)
+        {
+            ReconcilePreviewRegions();
+        }
+    }
+
+    private void ApplyDirectProjectionBatch(List<BatchMoveItem> batch, bool isAsync, bool isTransient)
+    {
+        // Even a direct async batch can reenter the UI before its result is available.
+        if (isAsync) _directAsyncProjectionDepth++;
+        try { ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync, isTransient)); }
+        finally { if (isAsync) _directAsyncProjectionDepth--; }
     }
 
     /// <summary>Re-evaluate clipping and edge parking against a fresh monitor layout.</summary>
     public void ReprojectForDisplayChange()
     {
         if (_disposed) return;
-        _projection?.ClearPending();
-        var batch = BuildReprojectBatch(repositionClipped: true);
-        ApplyBatchResult(batch, _win32.BatchMove(batch, isAsync: false, isTransient: false));
+        if (DefersPeriodicPlacementWork)
+        {
+            _displayReprojectionDeferred = true;
+            return;
+        }
+
+        _implicitPlacementWriterDepth++;
+        try
+        {
+            _projection?.ClearPending();
+            var batch = BuildReprojectBatch(repositionClipped: true);
+            ApplyDirectProjectionBatch(batch, isAsync: false, isTransient: false);
+            _displayReprojectionDeferred = false;
+            _cameraReprojectionDeferred = false;
+        }
+        finally { _implicitPlacementWriterDepth--; }
     }
 
     private bool ClipOffScreen => !_config.DisableGreedyDraw && !SuspendGreedyDraw;
@@ -701,6 +818,8 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Drop a single window from canvas and internal tracking.</summary>
     public void RemoveWindow(IntPtr hWnd)
     {
+        _deferredWindowEvents.Remove(hWnd);
+        if (_deferredWindowFocus?.Token.Identity.Handle == hWnd) _deferredWindowFocus = null;
         ForgetParking(hWnd);
         _parkingExcluded.Remove(hWnd);
         _parkingRetry.Remove(hWnd);
@@ -764,16 +883,31 @@ internal sealed partial class WindowManager : IDisposable
 
     private void ReconcilePreviewRegions()
     {
-        _previewUnclipped.RemoveWhere(handle =>
+        if (DesktopPlacementShutdownRequested) return;
+
+        // Even a window outside the batch can share a target's input queue.
+        if (_projection?.HasSubmittedPlacement == true)
         {
-            if (!_clippedWindows.Contains(handle)) return true;
-            if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle))) return false;
-            return _win32.ClipWindow(handle).Accepted;
-        });
-        foreach (var handle in _clippedWindows)
-            if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
-                && _win32.UnclipWindow(handle).Accepted)
-                _previewUnclipped.Add(handle);
+            _previewRegionsDeferred = true;
+            return;
+        }
+
+        _previewRegionsDeferred = false;
+        _previewRegionReconcileDepth++;
+        try
+        {
+            _previewUnclipped.RemoveWhere(handle =>
+            {
+                if (!_clippedWindows.Contains(handle)) return true;
+                if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle))) return false;
+                return _win32.ClipWindow(handle).Accepted;
+            });
+            foreach (var handle in _clippedWindows)
+                if (!IsCarried(handle) && (_allPreviewsVisible || _livePreviewWindows.Contains(handle)) && !_previewUnclipped.Contains(handle)
+                    && _win32.UnclipWindow(handle).Accepted)
+                    _previewUnclipped.Add(handle);
+        }
+        finally { _previewRegionReconcileDepth--; }
     }
 
     /// <summary>
@@ -874,6 +1008,8 @@ internal sealed partial class WindowManager : IDisposable
         _clippedWindows.Clear();
 
         _canvas.ResetCamera();
+        _cameraReprojectionDeferred = false;
+        ClearDeferredWindowEvents();
 
         var batch = new List<BatchMoveItem>();
 
@@ -1076,6 +1212,10 @@ internal sealed partial class WindowManager : IDisposable
 
     private void ApplyMoveResult(BatchMoveItem item, NativeOperationResult result)
     {
+        // Track native queue acceptance even for an already superseded model request.
+        // A matching rectangle cannot identify the request that produced it or prove
+        // that another posted request will not apply later.
+        if (result.Status == NativeOperationStatus.Queued) _unresolvedQueuedMoves.Add(item.HWnd);
         // Identical rectangles can belong to different requests. Compare revisions
         // so an older worker completion cannot consume a newer pending placement.
         if (!_pendingMoves.TryGetValue(item.HWnd, out var pending) || pending.Item.RequestId != item.RequestId) return;

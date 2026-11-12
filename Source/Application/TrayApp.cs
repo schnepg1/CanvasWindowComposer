@@ -34,9 +34,15 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ApplicationLifecycle _lifecycle = new(failure => Log($"Shutdown step '{failure.Step}' failed: {failure.Error}"));
     private readonly Control _dispatcher;
     private bool _enabled = true;
+    private bool _exitRequested;
     private AppUpdateController? _updates;
     private UpdateWindow? _updateWindow;
     private Action? _pendingUpdate;
+    private Action? _updateRestartAfterHandoff;
+    private bool _refreshAfterHandoff;
+
+    private bool HandoffBlocksTrayPlacement
+        => _overview.DesktopHandoffPending || _wm.HasDesktopPlacementReservation || _desktops.HasPendingSwitch;
     private string? _notifiedUpdate;
 
     public TrayApp(IClock? clock = null, IScreens? screens = null)
@@ -60,7 +66,8 @@ internal sealed class TrayApp : ApplicationContext
             _wm = new WindowManager(_canvas, winApi, _config, _input, _clock, _vds, useAsyncProjection: true);
             _lifecycle.Register(ShutdownPhase.RecoverWindows, "Restore desktop windows", _wm.RestoreDesktopViewport);
             _lifecycle.Register(ShutdownPhase.ReleaseUi, "Window manager fallback disposal", _wm.Dispose);
-            _overview = new OverviewManager(_canvas, _wm, winApi, _input, _config, _screens);
+            _overview = new OverviewManager(_canvas, _wm, winApi, _input, _config, _screens,
+                requestDesktopPlacement: RequestDesktopPlacement);
             _lifecycle.Register(ShutdownPhase.FinalizeLayout, "Close overview", () => _overview.TransitionTo(OverviewMode.Hidden));
             _lifecycle.Register(ShutdownPhase.FinalizeLayout, "Overview resources", _overview.Dispose);
             _overview.Warmup();
@@ -68,6 +75,7 @@ internal sealed class TrayApp : ApplicationContext
                 ShutdownPhase.Quiesce, "Foreground subscriptions");
             _desktops = _lifecycle.Own(new DesktopStateCache(_canvas, _wm, _overview, _vds),
                 ShutdownPhase.StopServices, "Desktop cache subscriptions");
+            _overview.DesktopHandoffRecovered += _desktops.ApplyPendingSwitch;
             _workspace = WorkspaceComposition.Create(_canvas, _wm, winApi, _vds, _desktops, screens: _screens, clock: _clock);
             _lifecycle.Register(ShutdownPhase.SaveWorkspace, "Save workspace and remove placeholders",
                 () => _workspace.Stop(save: _lifecycle.StartupCompleted));
@@ -79,7 +87,7 @@ internal sealed class TrayApp : ApplicationContext
             });
             _zoneUi = _lifecycle.Own(new ZoneUi(_workspace, _overview), ShutdownPhase.ReleaseUi, "Project area UI");
 
-            _overview.AttachAnnotations(_vds);
+            _overview.AttachAnnotations(_vds, stateCache: _desktops);
             _overview.AttachTutorial();
             _backgrounds = _lifecycle.Own(new BackgroundCoordinator(_canvas, _overview, _vds, _workspace.Zones, _config), ShutdownPhase.FinalizeLayout, "Background surfaces");
 
@@ -250,10 +258,10 @@ internal sealed class TrayApp : ApplicationContext
 
             _workspace.Start();
             _wm.Reproject();
-            // Normal Windows logoff/shutdown also uses the save-and-recover exit path.
-            _lifecycle.Register(ShutdownPhase.Quiesce, "Session ending subscription",
-                () => Microsoft.Win32.SystemEvents.SessionEnding -= OnSessionEnding);
-            Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
+            // Wait for committed logoff/shutdown. The query can still be cancelled.
+            _lifecycle.Register(ShutdownPhase.Quiesce, "Session ended subscription",
+                () => Microsoft.Win32.SystemEvents.SessionEnded -= OnSessionEnded);
+            Microsoft.Win32.SystemEvents.SessionEnded += OnSessionEnded;
             _lifecycle.CompleteStartup();
             _bgTimer.Start();
             // Run only after the message loop starts, workspace restore and graphics warmup finish.
@@ -275,11 +283,24 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
+    private System.Threading.Tasks.Task<bool>? RequestDesktopPlacement()
+    {
+        if (!_config.EnableAsyncDesktopHandoff || !_lifecycle.StartupCompleted || _exitRequested || _desktops.HasPendingSwitch) return null;
+        var placement = _wm.TryStartDesktopHandoffPlacement();
+        PerformanceDiagnostics.Shared.Record(NativeOperationResult.Success(
+            placement == null ? "DesktopHandoffPilotFallback" : "DesktopHandoffPilotStarted"));
+        return placement;
+    }
+
     private void OnBgTick(object? sender, EventArgs e)
     {
-        if (_lifecycle.IsStopping) return;
+        if (_exitRequested || _lifecycle.IsStopping) return;
         if (Program.ShutdownSignal?.WaitOne(0) == true) { OnExit(sender, e); return; }
         _updates?.CheckAutomatically(_clock.TickCount64);
+        _desktops.ApplyPendingSwitch();
+        if (_desktops.HasPendingSwitch) return;
+        ReplayTrayPlacementActions();
+        if (_exitRequested) return;
         _wm.Tick();
         _workspace.Tick(cameraMoving: _overview.DeferPeriodicMaintenance);
         _backgrounds.Tick();
@@ -306,7 +327,24 @@ internal sealed class TrayApp : ApplicationContext
 
     private void OnRefresh(object? sender, EventArgs e)
     {
-        _wm.RefreshAllWindows();
+        if (_exitRequested || _lifecycle.IsStopping) return;
+        if (HandoffBlocksTrayPlacement) _refreshAfterHandoff = true;
+        else _wm.RefreshAllWindows();
+    }
+
+    private void ReplayTrayPlacementActions()
+    {
+        if (HandoffBlocksTrayPlacement) return;
+        if (_updateRestartAfterHandoff is { } apply)
+        {
+            _updateRestartAfterHandoff = null;
+            if (_updates?.ApplyAfterExit == apply) CompleteUpdateRestart(apply);
+        }
+        if (!_exitRequested && _refreshAfterHandoff)
+        {
+            _refreshAfterHandoff = false;
+            OnRefresh(this, EventArgs.Empty);
+        }
     }
 
     private void OnToggleScreenFixedWindowsDuringPan(object? sender, EventArgs e)
@@ -322,7 +360,16 @@ internal sealed class TrayApp : ApplicationContext
 
     private void OnExit(object? sender, EventArgs e)
     {
-        if (_lifecycle.IsStopping) return;
+        if (_exitRequested || _lifecycle.IsStopping) return;
+        _exitRequested = true;
+        // The reservation may still own native placement. Let its UI completion
+        // unwind before closing the overview and restoring the real windows.
+        if (_wm.TryDeferShutdownForDesktopPlacement(() => _dispatcher.BeginInvoke((Action)CompleteExit))) return;
+        CompleteExit();
+    }
+
+    private void CompleteExit()
+    {
         Shutdown();
         ExitThread();
     }
@@ -340,7 +387,18 @@ internal sealed class TrayApp : ApplicationContext
 
     private void RequestUpdateRestart()
     {
-        if (_updates?.ApplyAfterExit is not {} apply || _lifecycle.IsStopping) return;
+        if (_updates?.ApplyAfterExit is not {} apply || _exitRequested || _lifecycle.IsStopping) return;
+        if (HandoffBlocksTrayPlacement)
+        {
+            _updateRestartAfterHandoff = apply;
+            return;
+        }
+        _updateRestartAfterHandoff = null;
+        CompleteUpdateRestart(apply);
+    }
+
+    private void CompleteUpdateRestart(Action apply)
+    {
         // Leave the running session intact if the user has unfinished editing or saving fails.
         if (!_backgrounds.PrepareForUpdate(out var message) || !_overview.PrepareForUpdate(out message) || !_workspace.SaveNow())
         {
@@ -371,7 +429,7 @@ internal sealed class TrayApp : ApplicationContext
         base.Dispose(disposing);
     }
 
-    private void OnSessionEnding(object sender, Microsoft.Win32.SessionEndingEventArgs e)
+    private void OnSessionEnded(object sender, Microsoft.Win32.SessionEndedEventArgs e)
     {
         // SystemEvents may arrive off-thread; marshal onto the WinForms thread.
         if (_lifecycle.IsStopping || !_dispatcher.IsHandleCreated || _dispatcher.IsDisposed) return;

@@ -158,6 +158,124 @@ public class WindowManagerMoveTrackingTests
         Assert.Equal(saved.Y + 50, item.Bounds.Y);
     }
 
+    [Fact]
+    public void DesktopPlacementDeclinesEvenAfterMatchingGeometryAndSynchronousPlacement()
+    {
+        var api = new FakeWindowApi { QueueAsyncMoves = true };
+        var canvas = new Canvas(); var input = new FakeInputRouter();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig { DisableGreedyDraw = true }, input,
+            useAsyncProjection: true);
+        IntPtr handle = (IntPtr)42;
+        api.AddWindow(handle, 100, 100, 800, 600);
+        wm.RegisterWindow(handle);
+
+        canvas.SetWindow(handle, 300, 100, 800, 600);
+        wm.ReprojectSync(isAsync: true, isTransient: true);
+        canvas.SetWindow(handle, 500, 100, 800, 600);
+        wm.ReprojectSync(isAsync: true, isTransient: true);
+
+        // The application can reach the target independently of either request.
+        api.Windows[handle].X = 500;
+        input.RaiseWindowMoved(handle);
+        Assert.Null(wm.TryAcquireDesktopPlacementLease([handle]));
+
+        canvas.SetWindow(handle, 600, 100, 800, 600);
+        wm.ReprojectSync();
+        Assert.Equal((600, 100, 800, 600), api.GetWindowRect(handle));
+        Assert.Null(wm.TryAcquireDesktopPlacementLease([handle]));
+    }
+
+    [Fact]
+    public void DesktopPlacementRemembersQueuedMovesAcrossResetUntilTheHandleIsGone()
+    {
+        var api = new FakeWindowApi { QueueAsyncMoves = true };
+        var canvas = new Canvas(); var input = new FakeInputRouter();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig { DisableGreedyDraw = true }, input,
+            useAsyncProjection: true);
+        IntPtr handle = (IntPtr)42;
+        api.AddWindow(handle, 100, 100, 800, 600);
+        wm.RegisterWindow(handle);
+        canvas.SetWindow(handle, 300, 100, 800, 600);
+        wm.ReprojectSync(isAsync: true, isTransient: true);
+
+        wm.Reset();
+        wm.RegisterWindow(handle);
+        Assert.Null(wm.TryAcquireDesktopPlacementLease([handle]));
+
+        input.RaiseWindowDestroyed(handle); // A delayed notification while the HWND is live.
+        wm.RegisterWindow(handle);
+        Assert.Null(wm.TryAcquireDesktopPlacementLease([handle]));
+
+        api.Windows.Remove(handle);
+        input.RaiseWindowDestroyed(handle);
+        api.AddWindow(handle, 100, 100, 800, 600);
+        wm.RegisterWindow(handle);
+        using var lease = Assert.IsType<ProjectionWorker.PlacementLease>(wm.TryAcquireDesktopPlacementLease([handle]));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DesktopPlacementChecksSupersededWorkerResultsBeforeReserving(bool failed)
+    {
+        var api = new FakeWindowApi { QueueAsyncMoves = true };
+        var canvas = new Canvas(); var input = new FakeInputRouter();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig { DisableGreedyDraw = true }, input,
+            useAsyncProjection: true);
+        IntPtr handle = (IntPtr)42, other = (IntPtr)43;
+        api.AddWindow(handle, 100, 100, 800, 600);
+        api.AddWindow(other, 100, 100, 800, 600);
+        wm.RegisterWindow(handle);
+        wm.RegisterWindow(other);
+        canvas.SetWindow(handle, 300, 100, 800, 600);
+        if (failed) api.FailedMoves.Add(handle);
+        api.BeforeBatchMove = _ => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
+        wm.Reproject(isAsync: true, isTransient: true);
+        try
+        {
+            Assert.True(entered.Wait(5000));
+            Assert.Null(wm.TryAcquireDesktopPlacementLease([other]));
+            wm.RemoveWindow(handle);
+            wm.RegisterWindow(handle);
+        }
+        finally { release.Set(); }
+
+        ProjectionWorker.PlacementLease? disjoint = null;
+        Assert.True(SpinWait.SpinUntil(() => (disjoint = wm.TryAcquireDesktopPlacementLease([other])) != null, 5000));
+        using (var lease = Assert.IsType<ProjectionWorker.PlacementLease>(disjoint))
+        {
+            var uncheckedMove = new BatchMoveItem(handle, new(500, 100, 800, 600), PosOnly: true);
+            Assert.Throws<InvalidOperationException>(() => { _ = lease.Submit([(uncheckedMove, 1u)]); });
+        }
+
+        // The removed model request does not consume the old native acknowledgement.
+        using var cohort = wm.TryAcquireDesktopPlacementLease([other, handle]);
+        Assert.Equal(failed, cohort != null);
+    }
+
+    [Fact]
+    public void DesktopPlacementDeclinesDuringReentrantDirectAsyncProjection()
+    {
+        var api = new FakeWindowApi { QueueAsyncMoves = true };
+        var canvas = new Canvas(); var input = new FakeInputRouter();
+        using var wm = new WindowManager(canvas, api, new FakeAppConfig { DisableGreedyDraw = true }, input,
+            useAsyncProjection: true);
+        IntPtr handle = (IntPtr)42;
+        api.AddWindow(handle, 100, 100, 800, 600);
+        wm.RegisterWindow(handle);
+        canvas.SetWindow(handle, 300, 100, 800, 600);
+        api.BeforeBatchMove = _ =>
+        {
+            using var lease = wm.TryAcquireDesktopPlacementLease([handle]);
+            Assert.Null(lease);
+        };
+
+        wm.ReprojectSync(isAsync: true, isTransient: true);
+        Assert.Null(wm.TryAcquireDesktopPlacementLease([handle]));
+    }
+
     private static (double, double, double, double) Bounds(WorldRect world)
         => (world.X, world.Y, world.W, world.H);
 }

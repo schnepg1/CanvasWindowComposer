@@ -7,10 +7,10 @@ namespace CanvasDesktop;
 // User actions on saved places and explicit window linking.
 internal sealed partial class WorkspaceService
 {
-    public void Open(Guid id) { if (Find(id) is { } item) Open(item, focusPlaceholder: true); }
-    public void FocusItem(Guid id) { if (Find(id) is { } item) FocusItem(item); }
-    public void CloseToPlaceholder(Guid id) { if (Find(id) is { } item) CloseToPlaceholder(item); }
-    public void Forget(Guid id) { if (Find(id) is { } item) Forget(item); }
+    public void Open(Guid id) => RunItemCommand(id, item => Open(item, focusPlaceholder: true));
+    public void FocusItem(Guid id) => RunItemCommand(id, FocusItem);
+    public void CloseToPlaceholder(Guid id) => RunItemCommand(id, CloseToPlaceholder);
+    public void Forget(Guid id) => RunItemCommand(id, Forget);
 
     private void FocusItem(WorkspaceItem item)
     {
@@ -29,9 +29,9 @@ internal sealed partial class WorkspaceService
 
     private void CloseToPlaceholder(WorkspaceItem item)
     {
-        if (!IsOpen(item)) return;
-        Capture(); Save();
         if (BoundWindow(item.Id) is not { } live) return;
+        Capture(); Save();
+        if (Find(item.Id) != item || BoundWindow(item.Id) != live) return;
         // Normal close: application save prompts and cancellation still work.
         _windowActions.RequestClose(live.Identity.Handle);
     }
@@ -88,6 +88,8 @@ internal sealed partial class WorkspaceService
 
     public bool LinkWindow(Guid id, Guid candidateToken)
     {
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) return false;
         if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item)
             || _bindings.ForToken(candidateToken) is not { } live || !CanLink(live, item)
             || _windowInspector.Inspect(live.Identity.Handle) is not { } observed || observed.Identity != live.Identity) return false;

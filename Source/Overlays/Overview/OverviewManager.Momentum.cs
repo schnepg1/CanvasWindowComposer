@@ -74,7 +74,7 @@ internal sealed partial class OverviewManager
         CancelInertia();
         if (!_disposed && CurrentMode == OverviewMode.Zooming && _wasMoving) _visualFrames.Request();
         if (!_disposed && CurrentMode == OverviewMode.Panning && _desktopStopSurface == null)
-            TransitionTo(OverviewMode.Hidden);
+            RequestDesktopPanClose();
     }
 
     private void UpdateDesktopPanResources()
@@ -97,8 +97,15 @@ internal sealed partial class OverviewManager
     private void StopDesktopPanWithClick(OverviewOverlay pass, MouseEventArgs e)
     {
         if (e.Button is MouseButtons.None or MouseButtons.Middle || _desktopStopSurface != null) return;
-        CancelInertia();
-        _visualFrames.Flush();
+        if (_desktopHandoff is { } close)
+        {
+            if (!close.HoldStoppingClick()) return;
+        }
+        else
+        {
+            CancelInertia();
+            _visualFrames.Flush();
+        }
         _desktopStopSurface = pass;
         _desktopStopButton = e.Button;
         // Consume the complete stopping click. Holding capture through release
@@ -110,7 +117,8 @@ internal sealed partial class OverviewManager
     {
         if (_desktopStopSurface != pass || e.Button != _desktopStopButton) return false;
         ClearDesktopStoppingClick();
-        TransitionTo(OverviewMode.Hidden);
+        if (_desktopHandoff is { } close) ApplyDesktopHandoffDecision(close.ReleaseStoppingClick());
+        else RequestDesktopPanClose();
         return true;
     }
 

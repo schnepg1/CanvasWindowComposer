@@ -10,13 +10,16 @@ namespace CanvasDesktop.Tests;
 [Trait("Category", "NativeRendering")]
 public class PanMomentumIntegrationTests
 {
-    private static void Run(Action<Canvas, FakeWindowApi, FakeInputRouter, FakeClock, FakeAppConfig, WindowManager, OverviewManager, OverviewOverlay> check)
+    private static void Run(Action<Canvas, FakeWindowApi, FakeInputRouter, FakeClock, FakeAppConfig, WindowManager, OverviewManager, OverviewOverlay> check,
+        Func<Task<bool>?>? requestDesktopPlacement = null, bool useAsyncProjection = false)
         => WorkspaceViewTests.OnSta(() =>
         {
-            var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+            var canvas = new Canvas(); var api = new FakeWindowApi { ScreenTopologyVersion = 1 }; var input = new FakeInputRouter();
             var clock = new FakeClock(1000); var config = new FakeAppConfig { EnableStartupIntro = false };
-            using var wm = new WindowManager(canvas, api, config, input, clock);
-            using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: new FakeDwmThumbnailApi());
+            using var wm = new WindowManager(canvas, api, config, input, clock, useAsyncProjection: useAsyncProjection,
+                inspectProcess: pid => new WorkspaceProcessIdentity(pid, 1, "test.exe"));
+            using var overview = new OverviewManager(canvas, wm, api, input, config, gestureClock: clock, dwm: new FakeDwmThumbnailApi(),
+                requestDesktopPlacement: requestDesktopPlacement);
             overview.TransitionTo(OverviewMode.Zooming);
             var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
             check(canvas, api, input, clock, config, wm, overview, pass);
@@ -121,6 +124,326 @@ public class PanMomentumIntegrationTests
             pass.OnMouseButtonUp!(pass, new(button, 1, 300, 300, 0));
             Assert.Equal(OverviewMode.Hidden, overview.CurrentMode); Assert.False(pass.Capture);
         });
+
+    [Fact]
+    public void VerifiedPendingPlacementKeepsCoverThroughButtonUpWithoutCommittingAgain()
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.DesktopPanMomentum = false;
+            int commits = 0;
+            canvas.Committed += () => commits++;
+            var hidden = new List<bool>();
+            overview.AfterModeChanged += (_, mode) => { if (mode == OverviewMode.Hidden) hidden.Add(pass.Visible); };
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            Assert.True(pass.Visible);
+            Assert.True(overview.CanvasInputSuspended);
+            pass.OnMouseButtonDown!(pass, new(MouseButtons.Left, 1, 300, 300, 0));
+            Assert.True(pass.Capture);
+            placement.SetResult(true);
+            Application.DoEvents();
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            Assert.Empty(hidden);
+
+            pass.OnMouseButtonUp!(pass, new(MouseButtons.Left, 1, 300, 300, 0));
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Hidden);
+            Assert.Equal(new[] { false }, hidden);
+            Assert.Equal(0, commits);
+            Assert.False(pass.Visible);
+            Assert.False(pass.Capture);
+            Assert.False(wm.SuspendProjection);
+        }, () => placement.Task);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PendingDesktopCloseOpensReadOnlyOverviewThroughButtonOrHotkey(bool useButton)
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.DesktopPanMomentum = false;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            var frozen = canvas.Camera;
+            input.RaiseDragStarted();
+            input.QueuePanAndRaise(80, 0);
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+            pass.OnWheel!(pass, 300, 300, 120, false, false, false);
+            Assert.Equal(frozen, canvas.Camera);
+
+            var recovery = Assert.Single(pass.OwnedForms.OfType<DesktopHandoffRecoveryWindow>());
+            var button = Assert.Single(recovery.Controls.OfType<Button>());
+            Assert.True(recovery.Visible);
+            if (useButton)
+            {
+                var center = button.PointToScreen(new(button.Width / 2, button.Height / 2));
+                var hit = (IntPtr)PInvoke.WindowFromPoint(center);
+                Assert.True(hit == button.Handle || hit == recovery.Handle,
+                    $"Expected recovery window or button at {center}, got {Control.FromHandle(hit)?.GetType().Name ?? hit.ToString()}.");
+                button.PerformClick();
+            }
+            else input.RaiseOverviewHotkey();
+            Assert.False(button.Visible);
+            Assert.True(pass.Visible);
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            Assert.True(overview.DesktopHandoffPending);
+            var layout = Assert.Single(recovery.Controls.OfType<TableLayoutPanel>());
+            var map = Assert.Single(layout.Controls.OfType<DesktopHandoffRecoveryMap>());
+            var mapButtons = Assert.Single(layout.Controls.OfType<FlowLayoutPanel>());
+            var initialView = map.Camera;
+            mapButtons.Controls.OfType<Button>().Single(b => b.Text == "Zoom out").PerformClick();
+            Assert.True(map.Camera.Zoom < initialView.Zoom);
+            mapButtons.Controls.OfType<Button>().Single(b => b.Text == "Reset view").PerformClick();
+            Assert.Equal(initialView, map.Camera);
+            mapButtons.Controls.OfType<Button>().Single(b => b.Text == "Zoom out").PerformClick();
+            var recoveredView = map.Camera;
+            Assert.False(placement.Task.IsCompleted);
+            Assert.Equal(frozen, canvas.Camera);
+            Assert.Equal(initialView, overview.ViewCamera);
+
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            Assert.Equal(frozen, canvas.Camera);
+            Assert.Equal(recoveredView, overview.ViewCamera);
+            Assert.True(pass.Visible);
+            Assert.True(recovery.IsDisposed);
+            Assert.False(overview.CanvasInputSuspended);
+        }, () => placement.Task);
+    }
+
+    [Fact]
+    public void UnverifiedPlacementReturnsToOverviewWithCoverVisible()
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.DesktopPanMomentum = false;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+            placement.SetResult(false);
+
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            Assert.True(pass.Visible);
+            Assert.False(overview.CanvasInputSuspended);
+        }, () => placement.Task);
+    }
+
+    [Fact]
+    public void DeclinedPlacementUsesTheExistingSynchronousClose()
+        => Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.DesktopPanMomentum = false;
+            int commits = 0;
+            canvas.Committed += () => commits++;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            Assert.Equal(1, commits);
+            Assert.False(pass.Visible);
+        }, () => null);
+
+    [Fact]
+    public void DeferredShutdownCanCloseOverviewBeforePlacementCallbackIsPosted()
+    {
+        WindowManager? manager = null;
+        ProjectionWorker.PlacementLease? lease = null;
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            manager = wm;
+            config.DesktopPanMomentum = false;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.NotNull(lease);
+            input.RaiseOverviewHotkey();
+            Assert.NotNull(pass.DesktopHandoffRecoveryCamera);
+            Assert.True(wm.TryDeferShutdownForDesktopPlacement(
+                () => overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false)));
+            overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+            input.RaiseOverviewHotkey();
+            Assert.True(pass.Visible);
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            Assert.True(overview.DesktopHandoffPending);
+            Assert.NotNull(pass.DesktopHandoffRecoveryCamera);
+            lease.Dispose();
+
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            Assert.False(pass.Visible);
+            placement.SetResult(true);
+            Application.DoEvents();
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+        }, () =>
+        {
+            lease = Assert.IsType<ProjectionWorker.PlacementLease>(manager!.TryAcquireDesktopPlacementLease([(IntPtr)42]));
+            return placement.Task;
+        }, useAsyncProjection: true);
+    }
+
+    [Fact]
+    public void ASecondHandoffOffersRecoveryAfterTheFirstMapIsClosed()
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.DesktopPanMomentum = false;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+            input.RaiseOverviewHotkey();
+            var first = Assert.Single(pass.OwnedForms.OfType<DesktopHandoffRecoveryWindow>());
+            Assert.NotNull(first.RecoveryCamera);
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            Assert.True(first.IsDisposed);
+
+            placement = new TaskCompletionSource<bool>();
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+            var second = Assert.Single(pass.OwnedForms.OfType<DesktopHandoffRecoveryWindow>());
+            var button = Assert.Single(second.Controls.OfType<Button>());
+            Assert.True(button.Enabled && button.Visible);
+            Assert.Null(second.RecoveryCamera);
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Hidden);
+        }, () => placement.Task);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void RealPlacementBatchOnlyExposesVerifiedGeometry(bool nativeMoveSucceeds, bool nativeAppAdjustsPosition)
+    {
+        WindowManager? manager = null;
+        Task<bool>? placement = null;
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var target = (IntPtr)42;
+            manager = wm;
+            config.DesktopPanMomentum = false;
+            api.AddWindow(target, 150, 150, 640, 480);
+            wm.RegisterWindow(target);
+            if (!nativeMoveSucceeds) api.FailedMoves.Add(target);
+            if (nativeAppAdjustsPosition) api.AfterBatchMove = () => api.Windows[target].X += 20;
+            bool verified = nativeMoveSucceeds && !nativeAppAdjustsPosition;
+
+            int commits = 0;
+            canvas.Committed += () => commits++;
+            input.RaiseDragStarted();
+            input.QueuePanAndRaise(60, 0);
+            var expected = canvas.WorldToScreen(canvas.Windows[target]);
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.NotNull(placement);
+            Assert.True(pass.Visible);
+            PumpUntil(() => overview.CurrentMode != OverviewMode.Panning);
+            Assert.Equal(verified, placement.GetAwaiter().GetResult());
+            Assert.Equal(0, commits);
+            Assert.Equal(verified ? OverviewMode.Hidden : OverviewMode.Zooming, overview.CurrentMode);
+            var move = Assert.Single(api.LastBatch);
+            Assert.Equal(target, move.HWnd);
+            Assert.Equal(expected.X, move.Rect.X);
+            Assert.Equal(nativeMoveSucceeds ? expected.X + (nativeAppAdjustsPosition ? 20 : 0) : 150,
+                api.GetWindowRect(target).x);
+            Assert.False(wm.HasDesktopPlacementReservation);
+        }, () => placement = manager!.TryStartDesktopHandoffPlacement(), useAsyncProjection: true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ShellNavigationWaitsForPlacementAndRevalidatesReusedHandle(bool replaceTarget)
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var target = (IntPtr)42;
+            config.DesktopPanMomentum = false;
+            config.AnimateWindowNavigation = true;
+            api.AddWindow(target, 150, 150, 640, 480);
+            wm.RegisterWindow(target);
+            api.Windows[target].Style |= (int)WINDOW_STYLE.WS_MINIMIZE;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.True(overview.NavigateToWindow(target));
+            Assert.Empty(api.NavigationRestores);
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            if (replaceTarget)
+            {
+                wm.RemoveWindow(target);
+                api.AddWindow(target, 160, 160, 640, 480);
+                wm.RegisterWindow(target);
+                api.Windows[target].Style |= (int)WINDOW_STYLE.WS_MINIMIZE;
+            }
+
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            if (replaceTarget) Assert.Empty(api.NavigationRestores);
+            else Assert.Equal(target, Assert.Single(api.NavigationRestores));
+        }, () => placement.Task);
+    }
+
+    [Fact]
+    public void VerifiedPlacementIsRecheckedAfterTheStoppingClick()
+    {
+        WindowManager? manager = null;
+        Task<bool>? placement = null;
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            var target = (IntPtr)42;
+            manager = wm;
+            config.DesktopPanMomentum = false;
+            api.AddWindow(target, 150, 150, 640, 480);
+            wm.RegisterWindow(target);
+            input.RaiseDragStarted();
+            input.QueuePanAndRaise(60, 0);
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+
+            Assert.NotNull(placement);
+            pass.OnMouseButtonDown!(pass, new(MouseButtons.Left, 1, 300, 300, 0));
+            PumpUntil(() => placement.IsCompleted);
+            Assert.True(placement.GetAwaiter().GetResult());
+            Assert.True(wm.HasDesktopPlacementReservation);
+            Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+
+            api.Windows[target].X += 20;
+            pass.OnMouseButtonUp!(pass, new(MouseButtons.Left, 1, 300, 300, 0));
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            Assert.True(pass.Visible);
+            Assert.False(wm.HasDesktopPlacementReservation);
+        }, () => placement = manager!.TryStartDesktopHandoffPlacement(), useAsyncProjection: true);
+    }
+
+    private static void PumpUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            Application.DoEvents();
+            Thread.Sleep(1);
+        }
+        Assert.True(condition(), "The Overview UI did not process the placement result.");
+    }
 
     [Fact]
     public void MomentumSwitchesAreIndependentAndApplyDuringCoast()

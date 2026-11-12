@@ -10,6 +10,7 @@ internal sealed partial class WorkspaceService
     private void Capture()
     {
         InvalidateOverviewSnapshot();
+        ReconcileDeferredCardMoves();
         _ambiguous.Clear();
         _folders = _identity.ReadExplorerFolders();
         SynchronizeCapturedCards();

@@ -14,6 +14,8 @@ internal sealed partial class WorkspaceService
 {
     internal WorkspaceSelectionPlacement SelectionSnapshot(IEnumerable<Guid> itemIds, IEnumerable<Guid> areaIds)
     {
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) throw new InvalidOperationException(PlacementRetryMessage);
         Capture();
         var items = itemIds.ToHashSet(); var areas = areaIds.ToHashSet();
         return new(_desktop, Document.Items.Where(i => i.DesktopId == _desktop && items.Contains(i.Id))
@@ -27,6 +29,8 @@ internal sealed partial class WorkspaceService
     internal bool ApplySelectionPlacement(WorkspaceSelectionPlacement expected, WorkspaceSelectionPlacement target)
     {
         if (_disposed || !_started || _switching || expected.Desktop != _desktop || target.Desktop != _desktop) return false;
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) return false;
         Capture();
         bool Valid(IReadOnlyList<ZoneItemPlacement> before, IReadOnlyList<ZoneItemPlacement> after,
             IReadOnlyDictionary<Guid, WorldRect> current, bool area = false)

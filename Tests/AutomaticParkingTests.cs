@@ -28,10 +28,10 @@ public class AutomaticParkingTests
         public long Started = 100;
         public int ProcessInspections;
         public readonly IntPtr Handle = (IntPtr)42;
-        public Harness()
+        public Harness(bool useAsyncProjection = false)
         {
             var cache = new WindowPreviewCache(Capture);
-            Manager = new(Canvas, Api, Config, Input, Clock, Desktops,
+            Manager = new(Canvas, Api, Config, Input, Clock, Desktops, useAsyncProjection: useAsyncProjection,
                 inspectProcess: pid => { ProcessInspections++; return new(pid, Started, "app.exe"); }, previews: cache);
             Api.AddWindow(Handle, 5000, 100, 400, 300, pid: 7);
             Manager.RegisterWindow(Handle);
@@ -99,6 +99,68 @@ public class AutomaticParkingTests
         Assert.Single(h.Api.ParkingRestoreCalls);
         h.Tick(12000);
         Assert.Single(h.Api.MinimizeCalls);
+    }
+
+    [Fact]
+    public void CompletedParkingCaptureWaitsUntilTheReservationReleases()
+    {
+        using var h = new Harness(useAsyncProjection: true);
+        h.Tick(1500);
+        h.FinishCapture();
+        using var lease = Assert.IsType<ProjectionWorker.PlacementLease>(h.Manager.TryAcquireDesktopPlacementLease([h.Handle]));
+
+        h.Tick(1501);
+        Assert.Empty(h.Api.MinimizeCalls);
+        Assert.False(h.IsMinimized);
+        lease.Dispose();
+        h.Tick(1502);
+
+        Assert.Single(h.Api.MinimizeCalls);
+        Assert.True(h.IsMinimized);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeferredParkingRecoveryRechecksTheCurrentWindowLifetime(bool recycled)
+    {
+        using var h = new Harness(useAsyncProjection: true);
+        h.Park();
+        using var lease = Assert.IsType<ProjectionWorker.PlacementLease>(h.Manager.TryAcquireDesktopPlacementLease([h.Handle]));
+        h.Manager.SuspendProjection = true;
+        h.Manager.SetOverviewViewport(new CanvasCamera(5000, 0, 1));
+        h.Manager.RefreshAutomaticParking();
+        h.Tick(2000);
+        Assert.Empty(h.Api.ParkingRestoreCalls);
+        Assert.True(h.IsMinimized);
+
+        if (recycled) h.Started++;
+        lease.Dispose();
+        h.Tick(2001);
+
+        Assert.Equal(recycled, h.IsMinimized);
+        Assert.Equal(recycled ? 0 : 1, h.Api.ParkingRestoreCalls.Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeferredParkedWindowFocusOnlyRecentersTheCurrentForegroundWindow(bool stillForeground)
+    {
+        using var h = new Harness(useAsyncProjection: true);
+        h.Park();
+        using var lease = Assert.IsType<ProjectionWorker.PlacementLease>(h.Manager.TryAcquireDesktopPlacementLease([h.Handle]));
+        h.Api.Windows[h.Handle].Style = 0;
+        h.Api.Foreground = h.Handle;
+        h.Input.RaiseWindowFocused(h.Handle);
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.Empty(h.Api.SetPositionCalls);
+
+        if (!stillForeground) h.Api.Foreground = (IntPtr)999;
+        lease.Dispose();
+        h.Tick(2000);
+
+        Assert.Equal(stillForeground, h.Canvas.CamX > 0);
     }
 
     [Fact]

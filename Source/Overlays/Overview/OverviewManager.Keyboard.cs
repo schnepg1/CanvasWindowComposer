@@ -9,6 +9,12 @@ internal sealed partial class OverviewManager
 {
     private void HandleKeyDown(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (DesktopHandoffPending)
+        {
+            if (e.KeyCode == Keys.Escape) OpenDesktopHandoffRecovery(pass);
+            e.Handled = e.SuppressKeyPress = true;
+            return;
+        }
         if (PeekWorking) return;
         if (_peekWindow != null && e.KeyCode == Keys.Enter)
         {
@@ -112,6 +118,7 @@ internal sealed partial class OverviewManager
 
     private void HandleKeyUp(OverviewOverlay pass, KeyEventArgs e)
     {
+        if (DesktopHandoffPending) return;
         if (_peekEnterPending && e.KeyCode == Keys.Enter)
         {
             _peekEnterPending = false;

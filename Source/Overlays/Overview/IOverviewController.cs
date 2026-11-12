@@ -18,6 +18,9 @@ internal interface IOverviewController
     bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false) => false;
     bool RecallBookmark(int slot) => false;
     void HandleEscape();
+    bool TryRecoverDesktopHandoff() => false;
+    bool TryOpenDesktopHandoffRecovery() => TryRecoverDesktopHandoff();
+    bool DesktopHandoffPending => false;
     bool CanvasInputSuspended => false;
     bool OverviewHotkeySuspended => CanvasInputSuspended;
     bool GuidedTutorialActive => false;

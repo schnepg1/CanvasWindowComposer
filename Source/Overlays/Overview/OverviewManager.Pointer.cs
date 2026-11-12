@@ -9,6 +9,7 @@ internal sealed partial class OverviewManager
 {
     private void HandleMouseDown(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (DesktopHandoffPending) { StopDesktopPanWithClick(pass, e); return; }
         if (PeekWorking && RoutePeekMouse(new(new(e.X + pass.OriginX, e.Y + pass.OriginY), e.Button, true, false,
             Clicks: e.Clicks, Modifiers: InteractionKeys))) return;
         CloseWindowPeek();
@@ -120,6 +121,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseMove(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (DesktopHandoffPending) return;
         if (PeekWorking && RoutePeekMouse(new(new(e.X + pass.OriginX, e.Y + pass.OriginY), MouseButtons.None, false, false,
             Modifiers: InteractionKeys))) return;
         if (PlacingWebResource)
@@ -241,6 +243,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseUp(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (DesktopHandoffPending) { CompleteDesktopStoppingClick(pass, e); return; }
         if (PeekWorking && RoutePeekMouse(new(new(e.X + pass.OriginX, e.Y + pass.OriginY), e.Button, false, true,
             Modifiers: InteractionKeys))) return;
         if (PlacingWebResource) { CompleteWebResourcePlacement(pass, e); return; }
@@ -292,6 +295,7 @@ internal sealed partial class OverviewManager
 
     private void HandleMouseWheel(OverviewOverlay pass, int x, int y, int delta, bool horizontal, bool control, bool shift, bool isTouchpad = false)
     {
+        if (DesktopHandoffPending) return;
         if (PeekWorking && RoutePeekMouse(new(new(x + pass.OriginX, y + pass.OriginY), MouseButtons.None, false, false,
             Wheel: true, Delta: delta, Horizontal: horizontal, Modifiers: InteractionKeys))) return;
         CloseWindowPeek();
@@ -316,6 +320,7 @@ internal sealed partial class OverviewManager
 
     private void HandleGestureZoom(OverviewOverlay pass, int x, int y, double notches)
     {
+        if (DesktopHandoffPending) return;
         if (PeekWorking) CloseWindowPeek();
         ResetPeekHover();
         if (TrySkipStartupIntro()) return;
@@ -370,6 +375,7 @@ internal sealed partial class OverviewManager
 
     private void HandleDoubleClick(OverviewOverlay pass, MouseEventArgs e)
     {
+        if (DesktopHandoffPending) return;
         if (PlacingWebResource) return;
         CancelSmoothZoom();
         _visualFrames.RequestAndFlush();
