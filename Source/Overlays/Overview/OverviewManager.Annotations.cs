@@ -1102,12 +1102,16 @@ internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotati
     {
         bool Begin(ICanvasTool tool) { if (!tool.PointerDown(p)) return false; _owner=tool; return true; }
         if (annotations.Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return Begin(annotations);
-        // Connection ports share the selected note's edge midpoints with edge resizing;
-        // the visible port dot starts a connection, the rest of the edge still resizes.
-        if (annotations.Mode==AnnotationMode.Select && !p.Modifiers.HasFlag(CanvasModifiers.Control) && connections.FindHandleAt(p) != null && Begin(connections)) return true;
-        if (annotations.Mode==AnnotationMode.Select && !p.Modifiers.HasFlag(CanvasModifiers.Control) && annotations.HasHandleAt(p)) return Begin(annotations);
-        if (zones.IsBoundaryGesture(p) && Begin(zones)) return true;
-        return Begin(selection);
+        // Press ownership lives in CanvasPointerRouting so the port-dot-before-note-handle
+        // rule is covered by tests instead of only by this router.
+        return Begin(CanvasPointerRouting.Select(annotations.Mode, p.Modifiers.HasFlag(CanvasModifiers.Control),
+            () => connections.FindHandleAt(p) != null, () => annotations.HasHandleAt(p), () => zones.IsBoundaryGesture(p)) switch
+        {
+            CanvasPointerOwner.ConnectionTool => connections,
+            CanvasPointerOwner.AnnotationTool => annotations,
+            CanvasPointerOwner.ZoneTool => zones,
+            _ => selection
+        });
     }
     public void PointerMove(CanvasPointer p)
     {

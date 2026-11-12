@@ -490,3 +490,57 @@ public class ConnectionCanvasToolTests
         Assert.Contains(doc.Items, a => a.Id == foreign.Id);
     }
 }
+
+public class CanvasPointerRoutingTests
+{
+    private static CanvasPointerOwner Route(AnnotationMode mode, bool control = false,
+        bool connectionHandle = false, bool annotationHandle = false, bool zoneGesture = false)
+        => CanvasPointerRouting.Select(mode, control, () => connectionHandle, () => annotationHandle, () => zoneGesture);
+
+    [Fact]
+    public void Select_PortDotWinsOverTheSelectedNoteEdgeHandle()
+    {
+        // The selected note exposes both; the visible port dot is the connection gesture.
+        Assert.Equal(CanvasPointerOwner.ConnectionTool, Route(AnnotationMode.Select, connectionHandle: true, annotationHandle: true));
+    }
+
+    [Fact]
+    public void Select_AnnotationHandleWinsWithoutAPort()
+        => Assert.Equal(CanvasPointerOwner.AnnotationTool, Route(AnnotationMode.Select, annotationHandle: true, zoneGesture: true));
+
+    [Fact]
+    public void Select_ControlClickBypassesHandlesButNotZoneGestures()
+    {
+        Assert.Equal(CanvasPointerOwner.SelectionTool,
+            Route(AnnotationMode.Select, control: true, connectionHandle: true, annotationHandle: true));
+        // Ctrl suppresses the handle intentions only; a zone boundary gesture still applies.
+        Assert.Equal(CanvasPointerOwner.ZoneTool,
+            Route(AnnotationMode.Select, control: true, connectionHandle: true, annotationHandle: true, zoneGesture: true));
+    }
+
+    [Fact]
+    public void Navigate_IgnoresHandleProbes()
+    {
+        Assert.Equal(CanvasPointerOwner.SelectionTool, Route(AnnotationMode.Navigate, connectionHandle: true, annotationHandle: true));
+        Assert.Equal(CanvasPointerOwner.ZoneTool, Route(AnnotationMode.Navigate, zoneGesture: true));
+    }
+
+    [Fact]
+    public void CreatingModes_BelongToTheAnnotationTool()
+        => Assert.Equal(CanvasPointerOwner.AnnotationTool,
+            Route(AnnotationMode.Text, connectionHandle: true, annotationHandle: true, zoneGesture: true));
+
+    [Fact]
+    public void Select_ProbesStopOnceTheOwnerIsDecided()
+    {
+        int annotationProbes = 0, zoneProbes = 0;
+        var owner = CanvasPointerRouting.Select(AnnotationMode.Select, false,
+            () => true,
+            () => { annotationProbes++; return true; },
+            () => { zoneProbes++; return true; });
+        Assert.Equal(CanvasPointerOwner.ConnectionTool, owner);
+        Assert.Equal(0, annotationProbes);
+        Assert.Equal(0, zoneProbes);
+    }
+}
+

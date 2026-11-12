@@ -113,3 +113,27 @@ public sealed class CanvasToolController
         Kind = CanvasInteractionKind.None; CapturedSurface = null; _button = CanvasPointerButton.None;
     }
 }
+
+/// <summary>Which tool owns a canvas press.</summary>
+public enum CanvasPointerOwner { SelectionTool, AnnotationTool, ConnectionTool, ZoneTool }
+
+/// <summary>
+/// Press precedence for canvas select mode: a port dot wins over the selected note's edge
+/// handle, which wins over a zone boundary gesture, which wins over plain selection.
+/// Probes are only asked while their answer can still change the owner.
+/// </summary>
+public static class CanvasPointerRouting
+{
+    public static CanvasPointerOwner Select(AnnotationMode mode, bool control,
+        Func<bool> connectionHandle, Func<bool> annotationHandle, Func<bool> zoneGesture)
+    {
+        if (mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return CanvasPointerOwner.AnnotationTool;
+        if (mode == AnnotationMode.Select && !control)
+        {
+            if (connectionHandle()) return CanvasPointerOwner.ConnectionTool;
+            if (annotationHandle()) return CanvasPointerOwner.AnnotationTool;
+        }
+        return zoneGesture() ? CanvasPointerOwner.ZoneTool : CanvasPointerOwner.SelectionTool;
+    }
+}
+
