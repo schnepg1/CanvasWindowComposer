@@ -20,6 +20,11 @@ internal static class Program
                 PlaceholderPaintBenchmark.Run(output);
                 return 0;
             }
+            if (args is ["--hover-hit", var hoverOutput])
+            {
+                HoverHitBenchmark.Run(hoverOutput);
+                return 0;
+            }
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             if (args is ["--desktop-handoff-probe", var report]) { DesktopHandoffProbe.Run(report); return 0; }

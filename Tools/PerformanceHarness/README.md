@@ -240,3 +240,25 @@ cards while the camera pans and zooms. JSON reports the CPU wall time and bytes
 allocated on the drawing thread. Frame data preparation, WPF rendering and
 presentation, DWM previews, and real application workloads are outside the
 measurement.
+
+## Hover hit-test benchmark
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --hover-hit Tools/PerformanceHarness/results/hover-hit.json
+```
+
+This mode opens no windows and changes nothing. It measures one pointer move's
+worth of the canvas hover path with 60 saved cards and 40 notes: rebuilding the
+item list the way `SelectionItems()` does, scanning for port dots with one card
+focused, and timing `GetWindowTitle` / `GetWindowProcessId` for every window that
+has a caption. Hover and drag hit-testing rebuild that list and re-read window
+titles on every mouse move, so this mode exists to keep those costs visible.
+
+Measured on a Release build of this machine: list rebuild about 0.006 ms p50
+(3.9 KB per call), port scan about 0.010 ms p50 (360 B per call), window title
+about 0.004 ms and process id about 0.002 ms per window, roughly 0.08 ms per move
+with twelve windows. Treat that as the baseline: at this size the path sits well
+inside a frame budget, so caching the list or the titles is not warranted. Re-run
+this mode before changing that conclusion. An empty selection returns from the
+port scan immediately, so the measured scan cost only applies while a card or note
+is focused.
