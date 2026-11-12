@@ -99,7 +99,7 @@ public class TeamTelemetryTests
     }
 
     [Fact]
-    public void PollDiscoversLateFileAndMutexReleaseRestoresReportedStateWithoutAffectingTeams()
+    public void PollDiscoversLateFileAndMutexReleaseRestoresReportedStateAndKeepsTeamsRegistered()
     {
         var folder = Path.Combine(Path.GetTempPath(), "teams-late-" + Guid.NewGuid().ToString("N"));
         var path = Path.Combine(folder, "state.json");
@@ -111,9 +111,13 @@ public class TeamTelemetryTests
             provider.CheckHardwareAndState();
             held = true; provider.CheckHardwareAndState();
             Assert.Equal(AgentExecutionState.Testing, provider.Current.Roles["programmer"].State);
-            Assert.Equal(AgentExecutionState.Working, provider.GetReportForCard(Card("task-a"))!.State);
+            // The mutex marks a running suite on the team cards too; the registration itself
+            // has to survive both the hold and the release.
+            Assert.Equal(AgentExecutionState.Testing, provider.GetReportForCard(Card("task-a"))!.State);
+            Assert.Equal(2, provider.Current.Teams.Count);
             held = false; provider.CheckHardwareAndState();
             Assert.Equal(AgentExecutionState.Error, provider.Current.Roles["programmer"].State);
+            Assert.Equal(AgentExecutionState.Working, provider.GetReportForCard(Card("task-a"))!.State);
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
     }

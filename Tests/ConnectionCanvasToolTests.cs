@@ -119,7 +119,7 @@ public class ConnectionCanvasToolTests
             new CanvasPoint(100, 100), new CanvasPoint(400, 300)));
 
         var tool = new AnnotationCanvasTool(doc, () => Desktop, null,
-            (item, sourceEndpoint) => item with { TargetId = targetId, TargetEphemeral = true });
+            (item, sourceEndpoint, zoom) => item with { TargetId = targetId, TargetEphemeral = true });
         tool.SetMode(AnnotationMode.Select);
         tool.Select(arrowId);
 
@@ -578,6 +578,48 @@ public class AnnotationDocumentDerivedChangeTests
         Assert.False(doc.ApplyDerivedChange(Desktop, [arrow]));
         Assert.Single(doc.Items);
     }
+
+    [Fact]
+    public void Resolve_EndpointDrop_SnapsToAPortJustOutsideTheBorder()
+    {
+        var cardId = Guid.NewGuid();
+        var card = new CanvasSelectionItem(new(CanvasItemKind.Window, cardId), new CanvasRect(700, 100, 600, 400), "Card");
+        var arrow = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Arrow,
+            new CanvasPoint(100, 100), new CanvasPoint(200, 200));
+
+        // Twenty DIP outside the Left port is still a drop on that port, as it is when drawing.
+        var close = ConnectionRetarget.Resolve(arrow, false, new CanvasPoint(680, 300), [card]);
+        Assert.Equal(cardId, close.TargetId);
+        Assert.Equal(ConnectionPort.Left, close.TargetPort);
+        Assert.Equal(700, close.B.X);
+
+        // At half zoom the same physical reach applies, so sixty world units is still inside.
+        var zoomed = ConnectionRetarget.Resolve(arrow, false, new CanvasPoint(640, 300), [card], 0.5);
+        Assert.Equal(cardId, zoomed.TargetId);
+
+        // Beyond the magnet with no body underneath it detaches instead of guessing.
+        var far = ConnectionRetarget.Resolve(arrow, false, new CanvasPoint(640, 300), [card]);
+        Assert.Null(far.TargetId);
+        Assert.Equal(ConnectionPort.Auto, far.TargetPort);
+        Assert.False(far.TargetEphemeral);
+    }
+
+    [Fact]
+    public void ApplyDerivedChange_AddsNoHistoryStepAndRejectsAnInvalidBatch()
+    {
+        var note = new CanvasAnnotation(Guid.NewGuid(), Desktop, AnnotationKind.Text,
+            new CanvasPoint(100, 100), new CanvasPoint(300, 200), Text: "Note");
+        var doc = new AnnotationDocument([note]);
+
+        var moved = note with { A = new CanvasPoint(150, 150), B = new CanvasPoint(350, 250) };
+        Assert.True(doc.ApplyDerivedChange(Desktop, [moved]));
+        Assert.Equal(moved, Assert.Single(doc.Items));
+        // A consequence of an edit is never an edit of its own.
+        Assert.False(doc.Undo(Desktop));
+
+        var invalid = moved with { FontSize = AnnotationDocument.MinimumFontSize - 1 };
+        Assert.Throws<ArgumentException>(() => doc.ApplyDerivedChange(Desktop, [invalid]));
+        Assert.Equal(moved, Assert.Single(doc.Items));
+        Assert.False(doc.Undo(Desktop));
+    }
 }
-
-

@@ -10,6 +10,7 @@ public sealed class ConnectionCanvasTool : ICanvasTool
 {
     // Shares the radius of the note edge handle the port dot sits on.
     public const double HandleHitRadiusDip = AnnotationGeometry.HandleHitRadius;
+    // Port magnet reach in DIP, shared by drawing a connector and by dropping a dragged end.
     public const double MagneticSnapRadiusDip = 32.0;
 
     private readonly AnnotationDocument _document;
@@ -256,38 +257,69 @@ public sealed class ConnectionCanvasTool : ICanvasTool
 /// <summary>Dropping an arrow end decides what it attaches to; empty space detaches it.</summary>
 public static class ConnectionRetarget
 {
-    public static CanvasAnnotation Resolve(CanvasAnnotation arrow, bool sourceEndpoint, CanvasPoint point, IReadOnlyList<CanvasSelectionItem> items)
+    private static readonly ConnectionPort[] Ports = [ConnectionPort.Top, ConnectionPort.Right, ConnectionPort.Bottom, ConnectionPort.Left];
+
+    public static CanvasAnnotation Resolve(CanvasAnnotation arrow, bool sourceEndpoint, CanvasPoint point,
+        IReadOnlyList<CanvasSelectionItem> items, double zoom = 1)
     {
         var otherId = sourceEndpoint ? arrow.TargetId : arrow.SourceId;
+        // The magnet is a physical distance, so it reaches the same amount at every zoom level.
+        double reach = ConnectionCanvasTool.MagneticSnapRadiusDip / Math.Max(0.001, zoom);
+        double nearest = double.MaxValue;
         CanvasSelectionItem? target = null;
-        double smallest = double.MaxValue;
+        ConnectionPort port = ConnectionPort.Auto;
+
+        // A port dot is the same target whether the arrow is dropped on it or drawn towards it.
         foreach (var item in items)
         {
             if (!ConnectionCanvasTool.IsConnectable(item) || item.Key.Id == arrow.Id || item.Key.Id == otherId) continue;
-            if (!CanvasSelection.Contains(item.Bounds, point)) continue;
-            double area = item.Bounds.Width * item.Bounds.Height;
-            if (area >= smallest) continue;
-            smallest = area;
-            target = item;
+            if (!IsWithin(item.Bounds, point, reach)) continue;
+            foreach (var candidate in Ports)
+            {
+                double distance = AnnotationGeometry.Distance(point, AnnotationGeometry.PortPosition(item.Bounds, candidate));
+                if (distance > reach || distance >= nearest) continue;
+                nearest = distance;
+                target = item;
+                port = candidate;
+            }
+        }
+
+        if (target is null)
+        {
+            // Dropping inside an item still attaches: the smallest item under the pointer wins.
+            double smallest = double.MaxValue;
+            foreach (var item in items)
+            {
+                if (!ConnectionCanvasTool.IsConnectable(item) || item.Key.Id == arrow.Id || item.Key.Id == otherId) continue;
+                if (!CanvasSelection.Contains(item.Bounds, point)) continue;
+                double area = item.Bounds.Width * item.Bounds.Height;
+                if (area >= smallest) continue;
+                smallest = area;
+                target = item;
+            }
+            if (target != null) port = NearestPort(target.Bounds, point);
         }
 
         if (target is null)
             return sourceEndpoint
-                ? arrow with { SourceId = null, SourcePort = ConnectionPort.Auto }
-                : arrow with { TargetId = null, TargetPort = ConnectionPort.Auto };
+                ? arrow with { SourceId = null, SourcePort = ConnectionPort.Auto, SourceEphemeral = false }
+                : arrow with { TargetId = null, TargetPort = ConnectionPort.Auto, TargetEphemeral = false };
 
-        var port = NearestPort(target.Bounds, point);
         var anchor = AnnotationGeometry.PortPosition(target.Bounds, port);
         return sourceEndpoint
             ? arrow with { A = anchor, SourceId = target.Key.Id, SourcePort = port, SourceEphemeral = target.Ephemeral }
             : arrow with { B = anchor, TargetId = target.Key.Id, TargetPort = port, TargetEphemeral = target.Ephemeral };
     }
 
+    private static bool IsWithin(CanvasRect bounds, CanvasPoint point, double margin)
+        => point.X >= bounds.X - margin && point.X <= bounds.X + bounds.Width + margin
+        && point.Y >= bounds.Y - margin && point.Y <= bounds.Y + bounds.Height + margin;
+
     public static ConnectionPort NearestPort(CanvasRect bounds, CanvasPoint point)
     {
         ConnectionPort nearest = ConnectionPort.Top;
         double best = double.MaxValue;
-        foreach (var port in new[] { ConnectionPort.Top, ConnectionPort.Right, ConnectionPort.Bottom, ConnectionPort.Left })
+        foreach (var port in Ports)
         {
             double distance = AnnotationGeometry.Distance(point, AnnotationGeometry.PortPosition(bounds, port));
             if (distance < best) { best = distance; nearest = port; }

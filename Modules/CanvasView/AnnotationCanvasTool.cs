@@ -1,7 +1,7 @@
 namespace CanvasDesktop.CanvasView;
 
 public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid> desktop, Func<CanvasAnnotation, CanvasAnnotation>? fitText = null,
-    Func<CanvasAnnotation, bool, CanvasAnnotation>? resolveConnections = null) : ICanvasTool
+    Func<CanvasAnnotation, bool, double, CanvasAnnotation>? resolveConnections = null) : ICanvasTool
 {
     public const double DefaultTextCardWidth = 240;
     public const double DefaultTextCardHeight = 48;
@@ -111,7 +111,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         // Dragging an arrow end decides what it is attached to: an item under the drop point
         // re-targets that end, empty space detaches it into a free arrow.
         if (!creating && handle is 0 or 1 && result.Kind==AnnotationKind.Arrow && original is { } before && result != before
-            && resolveConnections is { } resolve) result = resolve(result, handle == 0);
+            && resolveConnections is { } resolve) result = resolve(result, handle == 0, p.View.Zoom);
         try { AnnotationDocument.Validate([result]); } catch (ArgumentException) { return; }
         if (creating && document.Items.Count >= AnnotationDocument.MaximumItems) return;
         document.Put(result); SelectedId=result.Id;

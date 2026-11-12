@@ -531,14 +531,18 @@ internal sealed partial class OverviewManager
     }
     internal void CleanOrphanedArrows()
     {
-        if (_annotationDocument == null) return;
+        // Without the workspace there are no card items to check against, so every card
+        // connector would look orphaned. Waiting for the workspace is always the safe answer.
+        if (_annotationDocument == null || _placeholderWorkspace == null) return;
         var validIds = SelectionItems().Select(i => i.Key.Id).ToHashSet();
         var currentDesktop = _annotationDesktop();
         var arrows = _annotationDocument.Items
             .Where(a => a.DesktopId == currentDesktop && a.Kind == AnnotationKind.Arrow)
             .ToList();
+        if (arrows.Count == 0) return;
 
-        bool anyRemoved = false;
+        var detached = new List<CanvasAnnotation>();
+        var orphaned = new List<Guid>();
         foreach (var arrow in arrows)
         {
             bool sourceInvalid = arrow.SourceId.HasValue && !validIds.Contains(arrow.SourceId.Value);
@@ -547,20 +551,28 @@ internal sealed partial class OverviewManager
             // A live window has no durable identity after a restart. Keep the user's arrow
             // and its shape instead of deleting the connector along with the window.
             var kept = arrow;
-            if (sourceInvalid && arrow.SourceEphemeral) { kept = kept with { SourceId = null, SourcePort = ConnectionPort.Auto }; sourceInvalid = false; }
-            if (targetInvalid && arrow.TargetEphemeral) { kept = kept with { TargetId = null, TargetPort = ConnectionPort.Auto }; targetInvalid = false; }
-            if (sourceInvalid || targetInvalid) _annotationDocument.Delete(currentDesktop, arrow.Id);
-            else _annotationDocument.Put(kept);
-            anyRemoved = true;
+            if (sourceInvalid && arrow.SourceEphemeral) { kept = kept with { SourceId = null, SourcePort = ConnectionPort.Auto, SourceEphemeral = false }; sourceInvalid = false; }
+            if (targetInvalid && arrow.TargetEphemeral) { kept = kept with { TargetId = null, TargetPort = ConnectionPort.Auto, TargetEphemeral = false }; targetInvalid = false; }
+            if (sourceInvalid || targetInvalid) orphaned.Add(arrow.Id);
+            else detached.Add(kept);
         }
-        if (anyRemoved)
+        if (detached.Count == 0 && orphaned.Count == 0) return;
+        // Losing a window is not an edit: the detach follows from it and must not leave
+        // phantom entries on the undo stack that the user never made.
+        if (detached.Count > 0)
         {
-            _annotationStore?.Save();
+            _reconcilingArrows = true;
+            try { _annotationDocument.ApplyDerivedChange(currentDesktop, detached); }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { }
+            finally { _reconcilingArrows = false; }
         }
+        // A connector to a deleted note or card is gone for good, so that stays undoable.
+        foreach (var id in orphaned) _annotationDocument.Delete(currentDesktop, id);
+        _annotationStore?.Save();
     }
 
-    private CanvasAnnotation ResolveArrowEndpoint(CanvasAnnotation arrow, bool sourceEndpoint)
-        => ConnectionRetarget.Resolve(arrow, sourceEndpoint, sourceEndpoint ? arrow.A : arrow.B, SelectionItems());
+    private CanvasAnnotation ResolveArrowEndpoint(CanvasAnnotation arrow, bool sourceEndpoint, double zoom)
+        => ConnectionRetarget.Resolve(arrow, sourceEndpoint, sourceEndpoint ? arrow.A : arrow.B, SelectionItems(), zoom);
 
     internal void ReconcileConnectedArrows()
     {
@@ -1124,11 +1136,18 @@ internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotati
     {
         if (connections.HasPendingInteraction) return CanvasCursor.Crosshair;
         if (annotations.Mode is not (AnnotationMode.Navigate or AnnotationMode.Select)) return annotations.CursorAt(p);
-        if (annotations.Mode==AnnotationMode.Select && connections.FindHandleAt(p) != null) return CanvasCursor.Crosshair;
-        if (annotations.HasHandleAt(p)) return annotations.CursorAt(p);
-        var zoneCursor = zones.CursorAt(p);
-        if (zoneCursor != CanvasCursor.Default) return zoneCursor;
-        return annotations.CursorAt(p);
+        CanvasCursor? zoneCursor = null;
+        // Evaluated at most once, and only when no handle claims the pointer, so the tested
+        // precedence in CanvasPointerRouting also decides which cursor is shown.
+        CanvasCursor Zone() => zoneCursor ??= zones.CursorAt(p);
+        return CanvasPointerRouting.Select(annotations.Mode, p.Modifiers.HasFlag(CanvasModifiers.Control),
+            () => connections.FindHandleAt(p) != null, () => annotations.HasHandleAt(p), () => Zone() != CanvasCursor.Default) switch
+        {
+            CanvasPointerOwner.ConnectionTool => CanvasCursor.Crosshair,
+            CanvasPointerOwner.AnnotationTool => annotations.CursorAt(p),
+            CanvasPointerOwner.ZoneTool => Zone(),
+            _ => annotations.CursorAt(p)
+        };
     }
 
 }
