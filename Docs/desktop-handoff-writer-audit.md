@@ -56,11 +56,18 @@ pending. It suppresses new camera input and visual reconciliation. A verified
 placement closes the cover after any held stopping click finishes, with one
 Hidden notification and no second synchronous commit.
 
-The recovery action is available from an owned control above the layered
-overlay and from the Overview hotkey. It invalidates the pending close and
-returns to the interactive Overview after the task drains. Failed verification
-also returns to Overview. The control reports the wait while placement remains
-reserved. It cannot make native input available if a target never returns.
+The owned **Open read-only overview** control and the Overview hotkey abandon
+the close and open a model-only Canvas map immediately. The user can pan,
+zoom, or reset this view even while the native call remains blocked. It uses
+Canvas geometry and cached labels. It leaves foreground focus, the input cover,
+and the placement reservation in place. Windows security controls remain
+available through the user's Ctrl+Alt+Delete shortcut. [Windows keyboard shortcuts](https://support.microsoft.com/en-au/accessibility/windows/keyboard-shortcuts-in-windows)
+
+Once placement drains, the full Overview takes over without exposing the
+desktop. The read-only camera carries over if the desktop and display layout
+are still current. Failed verification also returns to Overview. The read-only
+map does not activate apps or change their layout. Full desktop interaction
+and graceful Canvas shutdown still depend on the placement call returning.
 During a pending handoff, Overview records display changes and rebuilds the
 monitor passes after recovery. A deferred exit may close the cover after the
 reservation releases even if the completion callback has not reached Overview.
@@ -108,12 +115,19 @@ and recovery probes also passed.
 
 The normal launcher still uses synchronous placement. The controlled
 cohort excludes workspaces needing clipping, parking, pinned or minimized
-window handling. Recovery can abandon the close while preserving the cover.
-Returning to interactive Overview still depends on the native operation
-draining. A timer cannot withdraw a batch already executing inside USER32.
-Keep the async path in the harness until the app has a usable recovery path
-for a target that remains unresponsive, and until the broader window and
-display cases are verified.
+window handling. The owned stall probes use the real Overview and WindowManager
+with a target that waits without a timeout. They route clicks through Windows
+to open the recovery map and zoom it, then keep the target stalled for another
+two seconds. The probes check foreground, input cover, native geometry and
+writer fencing before release. The recovery probe verifies that a late result
+leaves Overview visible. The shutdown probe verifies that exit cleanup runs
+once after the worker drains. The probes do not invoke Windows security
+controls or sign out.
+
+The read-only path provides partial recovery while the app stays stalled.
+A timer cannot withdraw a batch already executing inside USER32. Full desktop
+input recovery for an indefinitely blocked app and broader window and display
+verification remain activation requirements.
 
 Release built with zero warnings or errors. All 1,762 non-native tests
 passed. The native suite passed 243 of 281 tests, including all 39 targeted

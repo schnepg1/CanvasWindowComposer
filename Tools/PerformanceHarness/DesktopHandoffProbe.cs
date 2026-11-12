@@ -16,7 +16,8 @@ internal static class DesktopHandoffProbe
     private const uint PreserveGeometryAndActivation = 0x0013, NoPositionChanging = 0x0400;
     private const int Acknowledgement = 73, HoldMilliseconds = 450;
 
-    public static void Run(string output, bool verifyRecovery = false, bool verifyPlacement = false)
+    public static void Run(string output, bool verifyRecovery = false, bool verifyPlacement = false,
+        bool verifyStallRecovery = false, bool requestShutdown = false)
     {
         var work = Screen.PrimaryScreen!.WorkingArea;
         Check(work.Width >= 500 && work.Height >= 260, "The probe needs a 500 by 260 pixel working area.");
@@ -35,7 +36,8 @@ internal static class DesktopHandoffProbe
             RedirectStandardOutput = true,
             ArgumentList = { "--desktop-handoff-target", cover.Handle.ToString(), gateName,
                 Environment.ProcessId.ToString(CultureInfo.InvariantCulture), start.X.ToString(CultureInfo.InvariantCulture),
-                start.Y.ToString(CultureInfo.InvariantCulture), verifyPlacement.ToString(CultureInfo.InvariantCulture) }
+                start.Y.ToString(CultureInfo.InvariantCulture), (verifyPlacement || verifyStallRecovery).ToString(CultureInfo.InvariantCulture),
+                verifyStallRecovery.ToString(CultureInfo.InvariantCulture) }
         };
         using var target = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned target.");
         var canvas = new Canvas();
@@ -73,7 +75,7 @@ internal static class DesktopHandoffProbe
                 nint foreground = GetForegroundWindow();
                 heartbeat.Start();
 
-                if (verifyPlacement)
+                if (verifyPlacement || verifyStallRecovery)
                 {
                     windows.RegisterWindow(window);
                     Check(canvas.HasWindow(window), "The owned target was not enrolled in the placement model.");
@@ -86,6 +88,11 @@ internal static class DesktopHandoffProbe
                     Check(managerPlacement != null, "WindowManager declined the owned placement cohort.");
 
                     await WaitFor(() => cover.ReturnedCallbacks == 1, "The planned native placement did not call back into the UI.");
+                    if (verifyStallRecovery)
+                    {
+                        report = await VerifyStallRecovery(plannedOverview, overlay, managerPlacement!, initial, final, foreground);
+                        return;
+                    }
                     int before = ticks;
                     await Task.Delay(HoldMilliseconds);
                     Check(ticks > before && managerPlacement is { IsCompleted: false } && windows.HasDesktopPlacementReservation
@@ -113,6 +120,98 @@ internal static class DesktopHandoffProbe
                 {
                     report = await VerifyRecovery();
                     return;
+                }
+
+                async Task<object> VerifyStallRecovery(OverviewManager overview, OverviewOverlay overlay, Task<bool> placement,
+                    WindowRect beforeMove, WindowRect destination, nint initialForeground)
+                {
+                    var recovery = overlay.OwnedForms.OfType<DesktopHandoffRecoveryWindow>().Single();
+                    var open = recovery.Controls.OfType<Button>().Single();
+                    var originalCursor = Cursor.Position;
+                    int hideCalls = 0;
+                    int shutdownCalls = 0;
+                    overview.AfterModeChanged += (_, mode) => { if (mode == OverviewMode.Hidden) hideCalls++; };
+                    var desktopCamera = canvas.Camera;
+                    var savedView = overview.ViewCamera;
+                    long startTime = Stopwatch.GetTimestamp();
+                    try
+                    {
+                        Click(open);
+                        await WaitFor(() => recovery.RecoveryCamera.HasValue, "The recovery button did not open the read-only map.");
+                        double openMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                        var layout = recovery.Controls.OfType<TableLayoutPanel>().Single();
+                        var zoomOut = layout.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>()
+                            .Single(button => button.Text == "Zoom out");
+                        Click(zoomOut);
+                        await WaitFor(() => recovery.RecoveryCamera is { } view && view.Zoom < savedView.Zoom,
+                            "The read-only map did not respond to the zoom button.");
+                        var recoveredView = recovery.RecoveryCamera;
+                        if (requestShutdown)
+                        {
+                            Check(windows.TryDeferShutdownForDesktopPlacement(() => cover.BeginInvoke(() =>
+                            {
+                                shutdownCalls++;
+                                overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+                            })), "Shutdown escaped the held placement reservation.");
+                            overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+                            Check(overview.TryOpenDesktopHandoffRecovery(), "A recovery request during shutdown reached normal commands.");
+                        }
+
+                        int beforeTicks = ticks;
+                        long holdStart = Stopwatch.GetTimestamp();
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                        double heldMs = Stopwatch.GetElapsedTime(holdStart).TotalMilliseconds;
+                        int uiTicks = ticks - beforeTicks;
+                        Check(uiTicks > 0 && !placement.IsCompleted && !target.HasExited
+                            && overview.DesktopHandoffPending && windows.HasDesktopPlacementReservation
+                            && overview.CurrentMode == OverviewMode.Panning && overlay.Visible && recovery.Visible
+                            && hideCalls == 0 && shutdownCalls == 0 && canvas.Camera == desktopCamera && overview.ViewCamera == savedView
+                            && Observed() == beforeMove && GetForegroundWindow() == initialForeground,
+                            "The recovery view changed placement, cover, shutdown ordering or foreground while the target was blocked.");
+                        CheckPlacementRejected("A second placement was accepted during recovery.");
+                        CheckCovered(beforeMove);
+                        CheckCovered(destination);
+
+                        release.Set();
+                        bool verified = await placement.WaitAsync(TimeSpan.FromSeconds(6));
+                        Check(verified != requestShutdown && Observed() == destination,
+                            "The native result or geometry did not match the expected drain.");
+                        await WaitFor(() => !overview.DesktopHandoffPending && !windows.HasDesktopPlacementReservation
+                            && overview.CurrentMode == (requestShutdown ? OverviewMode.Hidden : OverviewMode.Zooming),
+                            "The recovery view or shutdown did not complete after the target drained.");
+                        Check(recovery.IsDisposed, "The recovery window survived handoff cleanup.");
+                        if (requestShutdown)
+                            Check(shutdownCalls == 1 && hideCalls == 1 && !overlay.Visible,
+                                "Deferred shutdown did not finish once after placement drained.");
+                        else
+                        {
+                            Check(hideCalls == 0 && overlay.Visible && overview.ViewCamera == recoveredView,
+                                "Late placement bypassed the recovered Overview view.");
+                            CheckCovered(destination);
+                        }
+                        return new { TargetPid = target.Id, Initial = beforeMove, Landed = destination, OpenMs = openMs,
+                            HeldAfterActionMs = heldMs, UiTimerTicks = uiTicks, InputRoutedToRecovery = true,
+                            MapZoomedWhileTargetBlocked = true, PlacementFenceRetained = true, ForegroundPreservedWhileBlocked = true,
+                            LateCompletionKeptCover = !requestShutdown, ShutdownRequestedWhileBlocked = requestShutdown,
+                            ShutdownRecoveryCalls = shutdownCalls, HiddenTransitions = hideCalls,
+                            NativeWait = diagnostics.Snapshot().Operations.Single(op => op.Operation == "EndDeferWindowPos") };
+                    }
+                    finally { Cursor.Position = originalCursor; }
+
+                    void Click(Control control)
+                    {
+                        var point = control.PointToScreen(new(control.Width / 2, control.Height / 2));
+                        Check(WindowFromPoint(point) == control.Handle, $"The recovery control at {point} was not hit-testable.");
+                        Cursor.Position = point;
+                        MouseEvent(0x0002, 0, 0, 0, 0); // MOUSEEVENTF_LEFTDOWN
+                        MouseEvent(0x0004, 0, 0, 0, 0); // MOUSEEVENTF_LEFTUP
+                    }
+
+                    void CheckCovered(WindowRect rect)
+                    {
+                        nint hit = WindowFromPoint(new(rect.X + rect.W / 2, rect.Y + rect.H / 2));
+                        Check(native.GetWindowProcessId(hit) == Environment.ProcessId, "A native target position was exposed.");
+                    }
                 }
 
                 var obsolete = Submit(intermediate, out _);
@@ -329,7 +428,13 @@ internal static class DesktopHandoffProbe
         using var parent = Process.GetProcessById(int.Parse(args[2], CultureInfo.InvariantCulture));
         Check(new Win32WindowApi().GetWindowProcessId(cover) == parent.Id, "The cover belongs to a different process.");
         var bounds = new Rectangle(int.Parse(args[3], CultureInfo.InvariantCulture), int.Parse(args[4], CultureInfo.InvariantCulture), 100, 100);
-        using var target = new Target(cover, release, bounds, bool.Parse(args[5]));
+        bool waitIndefinitely = bool.Parse(args[6]);
+        using var target = new Target(cover, release, bounds, bool.Parse(args[5]), waitIndefinitely);
+        if (waitIndefinitely)
+        {
+            parent.Exited += (_, _) => release.Set();
+            parent.EnableRaisingEvents = true;
+        }
         using var checkParent = new System.Windows.Forms.Timer { Interval = 100 };
         checkParent.Tick += (_, _) => { if (parent.HasExited) target.Close(); };
         target.Shown += (_, _) =>
@@ -498,7 +603,7 @@ internal static class DesktopHandoffProbe
         }
     }
 
-    private sealed class Target(nint cover, EventWaitHandle release, Rectangle bounds, bool enrollInCanvas) : OwnedWindow(bounds)
+    private sealed class Target(nint cover, EventWaitHandle release, Rectangle bounds, bool enrollInCanvas, bool waitIndefinitely) : OwnedWindow(bounds)
     {
         protected override CreateParams CreateParams
         {
@@ -533,9 +638,12 @@ internal static class DesktopHandoffProbe
             }
             if (_armed && message.Msg == PositionChanging && !Failed)
             {
+                // The manager-planned probes own one controlled move. Cleanup can
+                // send further position messages after that move drains.
+                if (enrollInCanvas) _armed = false;
                 Failed = SendMessageTimeout(cover, Callback, 0, 0, 2, 3000, out nint response) == 0
                     || response != Acknowledgement || !PostMessage(cover, CallbackReturned, 0, 0)
-                    || !release.WaitOne(TimeSpan.FromSeconds(5));
+                    || !release.WaitOne(waitIndefinitely ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(5));
                 if (Failed) BeginInvoke(Close);
             }
             base.WndProc(ref message);
@@ -552,6 +660,9 @@ internal static class DesktopHandoffProbe
 
     [DllImport("user32.dll", ExactSpelling = true)]
     private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll", EntryPoint = "mouse_event")]
+    private static extern void MouseEvent(uint flags, uint dx, uint dy, uint data, nuint extraInfo);
 
     [DllImport("user32.dll", ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

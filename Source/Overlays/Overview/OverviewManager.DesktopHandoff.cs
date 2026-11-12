@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace CanvasDesktop;
@@ -13,6 +15,8 @@ internal sealed partial class OverviewManager
     private bool _desktopPlacementFinished;
     private bool _desktopHandoffReturningToOverview;
     private bool _displayChangedDuringDesktopHandoff;
+    private OverviewOverlay? _desktopHandoffRecoveryPass;
+    private Guid _desktopHandoffDesktop;
     private Action? _navigationAfterDesktopHandoff;
 
     public bool DesktopHandoffPending => _desktopHandoff != null;
@@ -32,6 +36,7 @@ internal sealed partial class OverviewManager
         _desktopHandoffGeneration = close.TryBeginPlacement()!.Value;
         _desktopPlacementFinished = false;
         _desktopHandoffReturningToOverview = false;
+        _desktopHandoffDesktop = _wm.DesktopHandoffNavigationDesktop;
         CancelVisualFrame();
 
         Task<bool>? placement;
@@ -54,9 +59,9 @@ internal sealed partial class OverviewManager
             return;
         }
 
-        if (!placement.IsCompleted)
+        if (!placement.IsCompleted && _desktopHandoffRecoveryPass == null)
             foreach (var pass in _passes)
-                pass.ShowDesktopHandoffRecovery(ReturnToOverview, waiting: _desktopHandoffReturningToOverview);
+                pass.ShowDesktopHandoffRecovery(() => OpenDesktopHandoffRecovery(pass));
         _ = ObserveDesktopPlacement(placement, close, _desktopHandoffGeneration, _passes[0]);
     }
 
@@ -90,12 +95,33 @@ internal sealed partial class OverviewManager
         if (_desktopHandoff is not { } close) return false;
         _desktopHandoffReturningToOverview = true;
         if (!close.TryAbandonPendingClose(_desktopHandoffGeneration)) close.Invalidate();
-        foreach (var pass in _passes) pass.ShowDesktopHandoffRecovery(ReturnToOverview, waiting: true);
         ApplyDesktopHandoffDecision(DesktopHandoffCloseDecision.KeepCovered);
         return true;
     }
 
-    private void ReturnToOverview() => TryRecoverDesktopHandoff();
+    public bool TryOpenDesktopHandoffRecovery()
+        => OpenDesktopHandoffRecovery(_passes.Find(pass => pass.Screen.Primary));
+
+    private bool OpenDesktopHandoffRecovery(OverviewOverlay? pass)
+    {
+        if (!TryRecoverDesktopHandoff()) return false;
+        if (!DesktopHandoffPending || _wm.DesktopPlacementShutdownRequested || _desktopHandoffRecoveryPass != null)
+            return true;
+        pass ??= _passes[0];
+        _desktopHandoffRecoveryPass = pass;
+        foreach (var other in _passes)
+            if (other != pass) other.HideDesktopHandoffRecovery();
+
+        // Only Canvas model state and already cached labels are used while the
+        // placement worker can be blocked in a foreign window procedure.
+        var cards = _mainCanvas.Windows.Where(entry => !entry.Value.PinnedToScreen && !entry.Value.InInventory)
+            .OrderBy(entry => entry.Value.ZOrder)
+            .Select(entry => (entry.Value, _gestureTitles.GetValueOrDefault(entry.Key)
+                ?? _placeholderTitles.GetValueOrDefault(entry.Key) ?? "Application window")).ToArray();
+        pass.ShowDesktopHandoffRecoveryMap(() => OpenDesktopHandoffRecovery(pass),
+            new(_screens, ViewCamera, _camera.MaxZoom, cards));
+        return true;
+    }
 
     private void ApplyDesktopHandoffDecision(DesktopHandoffCloseDecision decision)
     {
@@ -107,7 +133,7 @@ internal sealed partial class OverviewManager
 
         if (_wm.DesktopPlacementShutdownRequested)
         {
-            ClearDesktopHandoff();
+            if (_desktopPlacementFinished) ClearDesktopHandoff();
             return;
         }
 
@@ -124,7 +150,11 @@ internal sealed partial class OverviewManager
         else if (_desktopPlacementFinished && _desktopHandoffReturningToOverview && _desktopStopSurface == null)
         {
             var navigate = _navigationAfterDesktopHandoff;
+            var recoveryCamera = !_displayChangedDuringDesktopHandoff
+                && _desktopHandoffDesktop == _wm.DesktopHandoffNavigationDesktop
+                ? _desktopHandoffRecoveryPass?.DesktopHandoffRecoveryCamera : null;
             ClearDesktopHandoff();
+            if (recoveryCamera is { } camera) _camera.SetTo(camera.X, camera.Y, camera.Zoom);
             TransitionTo(OverviewMode.Zooming);
             if (_displayChangedDuringDesktopHandoff)
             {
@@ -139,6 +169,7 @@ internal sealed partial class OverviewManager
     private void ClearDesktopHandoff(bool releasePlacement = true)
     {
         _desktopHandoff = null;
+        _desktopHandoffRecoveryPass = null;
         _navigationAfterDesktopHandoff = null;
         foreach (var pass in _passes) pass.HideDesktopHandoffRecovery();
         if (releasePlacement) _wm.ReleaseVerifiedDesktopHandoffPlacement();

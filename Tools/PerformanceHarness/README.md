@@ -72,6 +72,21 @@ geometry. The controlled cohort supports visible, normal foreign windows
 that need only positional changes. The launcher continues to use the existing
 synchronous close.
 
+Run the stall variants with the desktop test mutex and Canvas closed. They
+send left-clicks to verified owned controls and restore the cursor position.
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-stall-recovery TestResults/desktop-handoff-stall-recovery.json
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-stall-shutdown TestResults/desktop-handoff-stall-shutdown.json
+```
+
+The owned target's first placement message waits on the fixture gate without
+a timeout. The fixture opens the real read-only Overview, zooms the map, and
+keeps the target stalled for two more seconds. The recovery variant checks
+that a late move leaves Overview covered and retains the recovered camera.
+The shutdown variant requests cleanup while the target is blocked and checks
+that cleanup runs once after the gate is released.
+
 ## Phases
 
 Each phase rebuilds the same layout, waits 300 ms before measurement, and resets

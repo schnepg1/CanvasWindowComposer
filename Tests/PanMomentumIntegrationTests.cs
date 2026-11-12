@@ -163,7 +163,7 @@ public class PanMomentumIntegrationTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void PendingDesktopCloseCanReturnToOverviewThroughButtonOrHotkey(bool useButton)
+    public void PendingDesktopCloseOpensReadOnlyOverviewThroughButtonOrHotkey(bool useButton)
     {
         var placement = new TaskCompletionSource<bool>();
         Run((canvas, api, input, clock, config, wm, overview, pass) =>
@@ -193,15 +193,30 @@ public class PanMomentumIntegrationTests
                 button.PerformClick();
             }
             else input.RaiseOverviewHotkey();
-            Assert.False(button.Enabled);
+            Assert.False(button.Visible);
             Assert.True(pass.Visible);
             Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            Assert.True(overview.DesktopHandoffPending);
+            var layout = Assert.Single(recovery.Controls.OfType<TableLayoutPanel>());
+            var map = Assert.Single(layout.Controls.OfType<DesktopHandoffRecoveryMap>());
+            var mapButtons = Assert.Single(layout.Controls.OfType<FlowLayoutPanel>());
+            var initialView = map.Camera;
+            mapButtons.Controls.OfType<Button>().Single(b => b.Text == "Zoom out").PerformClick();
+            Assert.True(map.Camera.Zoom < initialView.Zoom);
+            mapButtons.Controls.OfType<Button>().Single(b => b.Text == "Reset view").PerformClick();
+            Assert.Equal(initialView, map.Camera);
+            mapButtons.Controls.OfType<Button>().Single(b => b.Text == "Zoom out").PerformClick();
+            var recoveredView = map.Camera;
+            Assert.False(placement.Task.IsCompleted);
+            Assert.Equal(frozen, canvas.Camera);
+            Assert.Equal(initialView, overview.ViewCamera);
 
             placement.SetResult(true);
             PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
             Assert.Equal(frozen, canvas.Camera);
+            Assert.Equal(recoveredView, overview.ViewCamera);
             Assert.True(pass.Visible);
-            Assert.False(recovery.Visible);
+            Assert.True(recovery.IsDisposed);
             Assert.False(overview.CanvasInputSuspended);
         }, () => placement.Task);
     }
@@ -255,11 +270,16 @@ public class PanMomentumIntegrationTests
             input.RaiseInputAvailable();
 
             Assert.NotNull(lease);
+            input.RaiseOverviewHotkey();
+            Assert.NotNull(pass.DesktopHandoffRecoveryCamera);
             Assert.True(wm.TryDeferShutdownForDesktopPlacement(
                 () => overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false)));
             overview.TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+            input.RaiseOverviewHotkey();
             Assert.True(pass.Visible);
             Assert.Equal(OverviewMode.Panning, overview.CurrentMode);
+            Assert.True(overview.DesktopHandoffPending);
+            Assert.NotNull(pass.DesktopHandoffRecoveryCamera);
             lease.Dispose();
 
             Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
@@ -272,6 +292,36 @@ public class PanMomentumIntegrationTests
             lease = Assert.IsType<ProjectionWorker.PlacementLease>(manager!.TryAcquireDesktopPlacementLease([(IntPtr)42]));
             return placement.Task;
         }, useAsyncProjection: true);
+    }
+
+    [Fact]
+    public void ASecondHandoffOffersRecoveryAfterTheFirstMapIsClosed()
+    {
+        var placement = new TaskCompletionSource<bool>();
+        Run((canvas, api, input, clock, config, wm, overview, pass) =>
+        {
+            config.DesktopPanMomentum = false;
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+            input.RaiseOverviewHotkey();
+            var first = Assert.Single(pass.OwnedForms.OfType<DesktopHandoffRecoveryWindow>());
+            Assert.NotNull(first.RecoveryCamera);
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Zooming);
+            Assert.True(first.IsDisposed);
+
+            placement = new TaskCompletionSource<bool>();
+            input.RaiseDragStarted();
+            input.PendingDragEnded = true;
+            input.RaiseInputAvailable();
+            var second = Assert.Single(pass.OwnedForms.OfType<DesktopHandoffRecoveryWindow>());
+            var button = Assert.Single(second.Controls.OfType<Button>());
+            Assert.True(button.Enabled && button.Visible);
+            Assert.Null(second.RecoveryCamera);
+            placement.SetResult(true);
+            PumpUntil(() => overview.CurrentMode == OverviewMode.Hidden);
+        }, () => placement.Task);
     }
 
     [Theory]

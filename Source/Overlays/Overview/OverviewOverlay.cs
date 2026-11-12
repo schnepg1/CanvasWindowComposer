@@ -38,13 +38,25 @@ internal sealed class OverviewOverlay : Form
     }
     private DesktopHandoffRecoveryWindow? _desktopHandoffRecovery;
 
-    internal void ShowDesktopHandoffRecovery(Action recover, bool waiting = false)
+    internal void ShowDesktopHandoffRecovery(Action recover)
     {
         _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover);
-        _desktopHandoffRecovery.ShowFor(this, waiting);
+        _desktopHandoffRecovery.ShowFor(this);
     }
 
-    internal void HideDesktopHandoffRecovery() => _desktopHandoffRecovery?.Hide();
+    internal void ShowDesktopHandoffRecoveryMap(Action recover, DesktopHandoffRecoveryMap map)
+    {
+        _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover);
+        _desktopHandoffRecovery.ShowMap(this, map);
+    }
+
+    internal CanvasCamera? DesktopHandoffRecoveryCamera => _desktopHandoffRecovery?.RecoveryCamera;
+
+    internal void HideDesktopHandoffRecovery()
+    {
+        _desktopHandoffRecovery?.Dispose();
+        _desktopHandoffRecovery = null;
+    }
 
     private CanvasZoomControls? _zoomControls;
     internal CanvasZoomControls? ZoomControls => _zoomControls;

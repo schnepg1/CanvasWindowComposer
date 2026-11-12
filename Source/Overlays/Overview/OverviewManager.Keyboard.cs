@@ -11,7 +11,7 @@ internal sealed partial class OverviewManager
     {
         if (DesktopHandoffPending)
         {
-            if (e.KeyCode == Keys.Escape) TryRecoverDesktopHandoff();
+            if (e.KeyCode == Keys.Escape) OpenDesktopHandoffRecovery(pass);
             e.Handled = e.SuppressKeyPress = true;
             return;
         }
