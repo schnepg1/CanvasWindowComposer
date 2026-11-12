@@ -77,3 +77,46 @@ observed window identity/geometry, plus coordination of explicit navigation,
 saved-layout and inventory actions, Peek, virtual
 desktop transitions and update restart. Input recovery for a target that
 never returns remains a separate requirement.
+
+## Controlled native batch and command ordering
+
+The move-only planner reads the complete canvas cohort before reserving the
+worker. It records camera, monitor topology, virtual desktop, observation
+lifetime, process identity, and starting geometry. It declines mixed or
+unverified cohorts, prior queued placement, clipped or parked windows,
+inventory, pinned windows, and any batch that needs region changes. After
+acquiring the reservation it rechecks the snapshot, then submits only the
+windows that need to move. A successful native return must match observed
+geometry and identity. The reservation stays held through any stopping
+click, and the UI rechecks geometry before closing the cover.
+
+Restore and focus callbacks replay only when their original window identity
+and desktop are still current. An explicit window selection requests
+recovery and waits for the desktop switch, if one is pending. Saved-place
+commands that can replay retain the original item and binding. Synchronous
+workspace, search, and selection actions report when they need to be
+retried. A pending tray update restart or refresh waits for both the
+placement and desktop switch. The update still has to match the version
+the user requested.
+
+The owned-window fixture now drives the actual Overview pan and close
+through the real WindowManager and native batch. In three integrated runs
+the UI handled 17–20 timer ticks during the controlled waits, which reached
+499–508 ms per run. The overlay and reservation stayed through button-up,
+verified geometry matched, and focus remained unchanged. The normal handoff
+and recovery probes also passed.
+
+The normal launcher still uses synchronous placement. The controlled
+cohort excludes workspaces needing clipping, parking, pinned or minimized
+window handling. Recovery can abandon the close while preserving the cover.
+Returning to interactive Overview still depends on the native operation
+draining. A timer cannot withdraw a batch already executing inside USER32.
+Keep the async path in the harness until the app has a usable recovery path
+for a target that remains unresponsive, and until the broader window and
+display cases are verified.
+
+Release built with zero warnings or errors. All 1,762 non-native tests
+passed. The native suite passed 243 of 281 tests, including all 39 targeted
+pan, zoom, and flight cases. The same 38 cases failed on clean main
+`66bbdf8` out of 269 tests. Comparison used the test names and parameter
+values from both TRX runs. No new failing case was observed in the branch.
