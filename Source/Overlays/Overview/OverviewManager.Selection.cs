@@ -225,6 +225,16 @@ internal sealed partial class OverviewManager
             string? nativeWarning=null;
             bool Place(bool redo)
             {
+                if (DesktopHandoffPending || !_wm.TryBeginPeriodicWorkspacePlacementWork())
+                {
+                    nativeWarning = WorkspaceService.PlacementRetryMessage;
+                    return false;
+                }
+                try { return PlaceWindows(redo); }
+                finally { _wm.EndPeriodicWorkspacePlacementWork(); }
+            }
+            bool PlaceWindows(bool redo)
+            {
                 if (_annotationDesktop() != desktop) return false;
                 var mapped=_placeholderWorkspace?.GetOverviewItemIds();
                 foreach (var p in session)
