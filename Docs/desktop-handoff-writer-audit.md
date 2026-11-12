@@ -44,3 +44,34 @@ verified completion and released the lease. It also checks that the
 unverified result cannot expose the desktop or start another placement.
 The probe does not end the actual Windows session. The remaining native
 writer and lifecycle entries in the table are activation requirements.
+
+## Overview close integration
+
+The desktop pan release and stopping-click paths accept a controlled placement
+task. The normal launcher supplies no task and follows the synchronous path.
+The controlled path keeps Panning and its existing cover while placement is
+pending. It suppresses new camera input and visual reconciliation. A verified
+placement closes the cover after any held stopping click finishes, with one
+Hidden notification and no second synchronous commit.
+
+The recovery action is available from an owned control above the layered
+overlay and from the Overview hotkey. It invalidates the pending close and
+returns to the interactive Overview after the task drains. Failed verification
+also returns to Overview. The control reports the wait while placement remains
+reserved. It cannot make native input available if a target never returns.
+During a pending handoff, Overview records display changes and rebuilds the
+monitor passes after recovery. A deferred exit may close the cover after the
+reservation releases even if the completion callback has not reached Overview.
+
+The native Overview suite used a controllable placement task and real
+WinForms, WPF and monitor overlays. Tests verified Windows hit testing for the
+recovery control, button-up, raw camera input suppression, recovery from failed
+verification, the synchronous path when placement is declined, and shutdown
+ordering. This fixture does not yet feed a real production placement batch
+into Overview.
+
+Production activation still needs a read-only complete cohort plan and
+observed window identity/geometry, plus coordination of explicit navigation,
+saved-layout and inventory actions, restore/focus WinEvents, Peek, virtual
+desktop transitions and update restart. Input recovery for a target that
+never returns remains a separate requirement.

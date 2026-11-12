@@ -29,7 +29,7 @@ internal sealed partial class OverviewManager
 
     // The WPF render barrier can dispatch timers inside a settled frame.
     // Start periodic maintenance only outside an active frame transaction.
-    internal bool DeferPeriodicMaintenance => CameraActivityInProgress || _visualFrames.IsDrawing;
+    internal bool DeferPeriodicMaintenance => DesktopHandoffPending || CameraActivityInProgress || _visualFrames.IsDrawing;
 
     internal void MarkZoomActive()
     {

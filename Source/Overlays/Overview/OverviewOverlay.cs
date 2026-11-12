@@ -36,6 +36,16 @@ internal sealed class OverviewOverlay : Form
         _taskbarRegion.Apply(Handle, Bounds, Screen.WorkingArea, visible, _taskbarPreviews);
         _annotations?.SetTaskbarVisible(Screen.WorkingArea, visible, _taskbarPreviews);
     }
+    private DesktopHandoffRecoveryWindow? _desktopHandoffRecovery;
+
+    internal void ShowDesktopHandoffRecovery(Action recover, bool waiting = false)
+    {
+        _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover);
+        _desktopHandoffRecovery.ShowFor(this, waiting);
+    }
+
+    internal void HideDesktopHandoffRecovery() => _desktopHandoffRecovery?.Hide();
+
     private CanvasZoomControls? _zoomControls;
     internal CanvasZoomControls? ZoomControls => _zoomControls;
     public Action<OverviewOverlay, bool>? OnSettingsRequested;
@@ -347,6 +357,8 @@ internal sealed class OverviewOverlay : Form
     {
         if (disposing)
         {
+            _desktopHandoffRecovery?.Dispose();
+            _desktopHandoffRecovery = null;
             _zoomControls?.Dispose();
             _zoomControls = null;
             _annotations?.Close();

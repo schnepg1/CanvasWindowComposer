@@ -21,7 +21,7 @@ internal sealed partial class OverviewManager
 
     public bool RecallBookmark(int slot)
     {
-        if (_disposed || _cameraBookmarks == null) return false;
+        if (_disposed || DesktopHandoffPending || _cameraBookmarks == null) return false;
         if (!_cameraBookmarks.TryGet(_annotationDesktop(), slot, out var camera)) return false;
 
         // Decision 3: Option A

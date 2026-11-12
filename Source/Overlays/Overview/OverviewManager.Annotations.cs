@@ -36,7 +36,7 @@ internal sealed partial class OverviewManager
     private long _annotationEditGeneration;
     private bool _reconcilingArrows;
     private string? _annotationError;
-    public bool CanvasInputSuspended => BackgroundEditorVisible || CanvasEditorInputSuspended;
+    public bool CanvasInputSuspended => DesktopHandoffPending || BackgroundEditorVisible || CanvasEditorInputSuspended;
     public bool OverviewHotkeySuspended => CanvasEditorInputSuspended || _backgroundEditor?.IsChoosingImage == true;
     private bool CanvasEditorInputSuspended => PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true) || (_connectionTool?.HasPendingInteraction == true);
 

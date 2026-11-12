@@ -6,6 +6,8 @@ using System.Diagnostics;
 
 using System.Drawing;
 
+using System.Threading.Tasks;
+
 using System.Windows.Forms;
 
 
@@ -193,6 +195,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     private void DrawVisualFrame()
     {
+        if (DesktopHandoffPending) return;
         // A synchronous frame can pump messages too. The scheduler defers
         // reentrant invalidations until this frame returns.
         string operation = CameraActivityInProgress ? "OverviewMotionFrameUi" : "OverviewSettledFrameUi";
@@ -308,7 +311,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         Func<bool>? prefersReducedStartupMotion = null, IClock? gestureClock = null, IDwmThumbnailApi? dwm = null,
 
-        IWindowInteractionApi? interactionApi = null)
+        IWindowInteractionApi? interactionApi = null, Func<Task<bool>?>? requestDesktopPlacement = null)
 
     {
 
@@ -317,6 +320,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             foreach (var pass in _passes) pass.SetTaskbarPreviews(previews);
         });
         _mainCanvas = mainCanvas;
+        _requestDesktopPlacement = requestDesktopPlacement;
 
         _wm = wm;
 
@@ -379,6 +383,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     public void RefreshConfig()
 
     {
+        if (DesktopHandoffPending) return;
         _camera.MaxZoom = _appConfig.MaximumZoom;
         _smoothZoom.MaxZoom = _appConfig.MaximumZoom;
         _smoothZoom.AccelerationEnabled = _appConfig.ZoomAcceleration;
@@ -400,6 +405,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         if (_disposed) return;
 
+        if (DesktopHandoffPending)
+        {
+            _displayChangedDuringDesktopHandoff = true;
+            TryRecoverDesktopHandoff();
+            return;
+        }
         // Monitor topology changed — rebuild passes to match. If overview is
 
         // open, close it, rebuild, reopen in the previous mode.
@@ -569,7 +580,12 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
                 if (_desktopStopSurface == pass)
                 {
                     ClearDesktopStoppingClick();
-                    FinishMomentum();
+                    if (_desktopHandoff is { } close)
+                    {
+                        close.LoseStoppingClickCapture();
+                        TryRecoverDesktopHandoff();
+                    }
+                    else FinishMomentum();
                     return;
                 }
                 if (_tools.Kind == CanvasInteractionKind.Pan) CancelInertia();
@@ -597,7 +613,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         if (IsStartupIntroActive) { CancelStartupIntro(); return; }
 
-        if (CurrentMode == OverviewMode.Hidden) return;
+        if (CurrentMode == OverviewMode.Hidden || DesktopHandoffPending) return;
 
         CancelInteractionCore();
         _camera.SyncFrom(_mainCanvas);
@@ -613,6 +629,23 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
     /// <summary>Single entry point for every mode change.</summary>
 
     public void TransitionTo(OverviewMode target, bool syncCameraOnClose = true, bool zoomOutOnOpen = false)
+    {
+        if (DesktopHandoffPending)
+        {
+            // Exit cleanup can be posted by the lease owner before its placement
+            // task continuation reaches Overview.
+            if (target == OverviewMode.Hidden && _wm.DesktopPlacementShutdownRequested && !_wm.HasDesktopPlacementReservation)
+                ClearDesktopHandoff();
+            else
+            {
+                if (target == OverviewMode.Zooming) TryRecoverDesktopHandoff();
+                return;
+            }
+        }
+        TransitionToCore(target, syncCameraOnClose, zoomOutOnOpen);
+    }
+
+    private void TransitionToCore(OverviewMode target, bool syncCameraOnClose, bool zoomOutOnOpen, bool desktopPlacementVerified = false)
     {
 
         if (IsStartupIntroActive && !_openingStartupIntro)
@@ -647,7 +680,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         {
 
-            HideInternal(syncCamera: syncCameraOnClose && from != OverviewMode.Hidden && !_startupIntroLanded);
+            HideInternal(syncCamera: syncCameraOnClose && from != OverviewMode.Hidden && !_startupIntroLanded, desktopPlacementVerified);
 
             _startupIntroLanded = false;
 
@@ -744,7 +777,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
 
 
-    private void HideInternal(bool syncCamera)
+    private void HideInternal(bool syncCamera, bool desktopPlacementVerified)
 
     {
 
@@ -801,7 +834,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
 
 
-        CommitOverviewHandoff();
+        CommitOverviewHandoff(desktopPlacementVerified);
 
         _wm.SuspendReconcile = false;
 
@@ -835,7 +868,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
 
 
-    private void CommitOverviewHandoff()
+    private void CommitOverviewHandoff(bool desktopPlacementVerified)
     {
         long started = Stopwatch.GetTimestamp();
         bool completed = false;
@@ -844,7 +877,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             _wm.ReleaseLivePreviewWindowsForHandoff();
             _wm.SetOverviewViewport(null);
             _placeholderWorkspace?.SetOverviewCardMode(false);
-            _mainCanvas.Commit();
+            if (!desktopPlacementVerified) _mainCanvas.Commit();
             completed = true;
         }
         finally

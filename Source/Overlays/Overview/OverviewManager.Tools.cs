@@ -116,6 +116,7 @@ internal sealed partial class OverviewManager
 
     public void HandleEscape()
     {
+        if (TryRecoverDesktopHandoff()) return;
         if (BackgroundEditorVisible) return;
         if (_disposed || TrySkipStartupIntro() || CurrentMode != OverviewMode.Zooming || PeekWorking) return;
         if (CloseWindowPeek(focus: true)) return;
