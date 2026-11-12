@@ -28,6 +28,7 @@ internal static class Program
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             if (args is ["--desktop-handoff-probe", var report]) { DesktopHandoffProbe.Run(report); return 0; }
+            if (args is ["--desktop-handoff-recovery", var recovery]) { DesktopHandoffProbe.Run(recovery, verifyRecovery: true); return 0; }
             if (args is ["--desktop-handoff-target", .. var target]) { DesktopHandoffProbe.RunTarget(target); return 0; }
             if (args.Length > 0 && args[0] == "--target") { RunTarget(args); return 0; }
             return Run(args);

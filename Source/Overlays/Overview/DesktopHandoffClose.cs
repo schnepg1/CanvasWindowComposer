@@ -19,10 +19,12 @@ internal sealed class DesktopHandoffClose
     private bool _exposed;
 
     public bool StoppingClickHeld { get; private set; }
+    public bool ShutdownRequested { get; private set; }
+    public bool CanRunShutdownRecovery => ShutdownRequested && !_pendingGeneration.HasValue;
 
     public long? TryBeginPlacement()
     {
-        if (_pendingGeneration.HasValue || _placementVerified || _exposed) return null;
+        if (_pendingGeneration.HasValue || _placementVerified || _exposed || ShutdownRequested) return null;
         _pendingGeneration = ++_generation;
         return _pendingGeneration;
     }
@@ -31,6 +33,22 @@ internal sealed class DesktopHandoffClose
     {
         _generation++;
         _placementVerified = false;
+    }
+
+    // A timeout or a user cancel can revoke the close without cancelling a USER32 call.
+    public bool TryAbandonPendingClose(long generation)
+    {
+        if (_pendingGeneration != generation || _generation != generation) return false;
+        Invalidate();
+        return true;
+    }
+
+    // The session may end before placement drains. Never begin competing recovery writes.
+    public void RequestShutdown()
+    {
+        if (ShutdownRequested) return;
+        ShutdownRequested = true;
+        Invalidate();
     }
 
     public DesktopHandoffCloseDecision CompletePlacement(long generation, bool placementVerified)
@@ -47,7 +65,7 @@ internal sealed class DesktopHandoffClose
 
     public bool HoldStoppingClick()
     {
-        if (StoppingClickHeld || _exposed) return false;
+        if (StoppingClickHeld || _exposed || ShutdownRequested) return false;
         StoppingClickHeld = true;
         return true;
     }

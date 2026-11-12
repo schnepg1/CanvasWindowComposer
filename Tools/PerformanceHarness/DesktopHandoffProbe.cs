@@ -11,11 +11,12 @@ internal static class DesktopHandoffProbe
     private const uint Callback = 0x8001, CallbackReturned = 0x8002, Close = 0x0010;
     private const uint OrderTargetBehindCover = 0x8003, TargetOrdered = 0x8004;
     private const uint BlockTargetQueue = 0x8005, TargetQueueBlocked = 0x8006, TargetQueueReleased = 0x8007;
+    private const uint QueryEndSession = 0x0011, EndSession = 0x0016;
     private const uint PositionChanging = 0x0046, LeftDown = 0x0201, LeftUp = 0x0202;
     private const uint PreserveGeometryAndActivation = 0x0013, NoPositionChanging = 0x0400;
     private const int Acknowledgement = 73, HoldMilliseconds = 450;
 
-    public static void Run(string output)
+    public static void Run(string output, bool verifyRecovery = false)
     {
         var work = Screen.PrimaryScreen!.WorkingArea;
         Check(work.Width >= 500 && work.Height >= 260, "The probe needs a 500 by 260 pixel working area.");
@@ -43,6 +44,7 @@ internal static class DesktopHandoffProbe
         nint window = 0;
         Exception? failure = null;
         object? report = null;
+        bool targetTerminated = false;
         Task<PlacementCompletion>? inFlight = null;
         int ticks = 0;
         using var heartbeat = new System.Windows.Forms.Timer { Interval = 16 };
@@ -60,7 +62,7 @@ internal static class DesktopHandoffProbe
                 // USER32 may enlarge the requested form to its system minimum size.
                 var intermediate = initial with { X = bounds.X + 160 };
                 var final = initial with { X = bounds.X + 300 };
-                Check(lane.TrySubmit(new(cover.Handle, final, PosOnly: true)) == null,
+                Check(lane.TrySubmit(new(cover.Handle, final, PosOnly: true), out _) == null,
                     "A Canvas-owned window must stay on the UI thread.");
                 Check(SetWindowPos(cover.Handle, new nint(-1), 0, 0, 0, 0, PreserveGeometryAndActivation), "Could not raise the cover.");
                 nint hit = WindowFromPoint(hitPoint);
@@ -68,7 +70,13 @@ internal static class DesktopHandoffProbe
                 nint foreground = GetForegroundWindow();
                 heartbeat.Start();
 
-                var obsolete = Submit(intermediate);
+                if (verifyRecovery)
+                {
+                    report = await VerifyRecovery();
+                    return;
+                }
+
+                var obsolete = Submit(intermediate, out _);
                 int obsoleteTicks = await HoldNativeCall(1, obsolete, initial);
                 close.Invalidate();
                 release.Set();
@@ -81,7 +89,7 @@ internal static class DesktopHandoffProbe
 
                 nint pointInCover = (hitPoint.X - bounds.X) | ((hitPoint.Y - bounds.Y) << 16);
                 var afterCaptureLoss = initial with { X = bounds.X + 220 };
-                var captureLost = Submit(afterCaptureLoss);
+                var captureLost = Submit(afterCaptureLoss, out _);
                 int captureLostTicks = await HoldNativeCall(2, captureLost, intermediate);
                 SendMessage(cover.Handle, LeftDown, 1, pointInCover);
                 Check(cover.StoppingClickHeld && cover.Capture, "The cover did not capture the test click.");
@@ -94,7 +102,7 @@ internal static class DesktopHandoffProbe
                     "Placement after capture loss authorized cover removal.");
                 Check(cover.Visible && WindowFromPoint(hitPoint) == cover.Handle, "Capture loss exposed the desktop.");
 
-                var current = Submit(final);
+                var current = Submit(final, out _);
                 int currentTicks = await HoldNativeCall(3, current, afterCaptureLoss);
                 SendMessage(cover.Handle, LeftDown, 1, pointInCover);
                 Check(cover.StoppingClickHeld && cover.Capture, "The cover did not capture the stopping click.");
@@ -144,9 +152,76 @@ internal static class DesktopHandoffProbe
                     StaleCloseDecision = stale.CloseDecision.ToString(), FinalCloseDecision = completed.CloseDecision.ToString(),
                     CoveredThroughButtonUp = true, ForegroundPreserved = true };
 
-                Task<PlacementCompletion> Submit(WindowRect rectangle)
-                    => inFlight = lane.TrySubmit(new(window, rectangle, PosOnly: true))
+                Task<PlacementCompletion> Submit(WindowRect rectangle, out long generation)
+                    => inFlight = lane.TrySubmit(new(window, rectangle, PosOnly: true), out generation)
                         ?? throw new InvalidOperationException("Placement lane is occupied.");
+
+                async Task<object> VerifyRecovery()
+                {
+                    var pending = Submit(intermediate, out long pendingGeneration);
+                    int pendingTicks = await HoldNativeCall(1, pending, initial);
+
+                    // Exercise a UI action during the wait, without releasing the native writer.
+                    using var continueButton = new Button { Text = "Keep using Canvas", AutoSize = true, Location = new(8, 8) };
+                    cover.Controls.Add(continueButton);
+                    bool keptUsingCanvas = false;
+                    continueButton.Click += (_, _) => keptUsingCanvas = close.TryAbandonPendingClose(pendingGeneration);
+                    continueButton.PerformClick();
+                    Check(keptUsingCanvas && cover.Visible && !pending.IsCompleted,
+                        "The recovery action could not abandon the close while USER32 was blocked.");
+                    CheckPlacementRejected("The recovery action released an in-flight placement lease.");
+
+                    release.Set();
+                    var abandoned = await pending.WaitAsync(TimeSpan.FromSeconds(6));
+                    Check(abandoned.PlacementVerified && abandoned.Observed == intermediate
+                        && abandoned.CloseDecision == DesktopHandoffCloseDecision.KeepCovered,
+                        "Late completion of the abandoned placement exposed the desktop.");
+
+                    var ending = Submit(final, out _);
+                    int endingTicks = await HoldNativeCall(2, ending, intermediate);
+                    bool shutdownDeferred = false;
+                    int shutdownRecoveryCalls = 0;
+                    cover.CommittedShutdown += () => shutdownDeferred = windows.TryDeferShutdownForDesktopPlacement(() =>
+                    {
+                        Check(close.CanRunShutdownRecovery, "Manager invoked shutdown before the UI processed placement.");
+                        shutdownRecoveryCalls++;
+                    });
+                    long queryStarted = Stopwatch.GetTimestamp();
+                    nint queryResult = SendMessage(cover.Handle, QueryEndSession, 0, 0);
+                    double queryMs = Stopwatch.GetElapsedTime(queryStarted).TotalMilliseconds;
+                    Check(queryResult == 1 && !close.ShutdownRequested,
+                        "The fixture rejected sign-out or started irreversible work during the query.");
+                    SendMessage(cover.Handle, EndSession, 0, 0);
+                    Check(!close.ShutdownRequested, "A cancelled sign-out requested shutdown.");
+                    long endStarted = Stopwatch.GetTimestamp();
+                    SendMessage(cover.Handle, EndSession, 1, 0);
+                    double endMs = Stopwatch.GetElapsedTime(endStarted).TotalMilliseconds;
+                    Check(close.ShutdownRequested && shutdownDeferred && shutdownRecoveryCalls == 0
+                        && !close.CanRunShutdownRecovery && !ending.IsCompleted,
+                        "Sign-out started native recovery before the in-flight placement drained.");
+                    CheckPlacementRejected("A second placement was accepted during sign-out.");
+
+                    // This is the owned fixture target. Simulate its process exiting during sign-out.
+                    target.Kill();
+                    targetTerminated = true;
+                    await target.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(6));
+                    var drained = await ending.WaitAsync(TimeSpan.FromSeconds(6));
+                    Check(!drained.PlacementVerified && drained.CloseDecision == DesktopHandoffCloseDecision.KeepCovered
+                        && close.CanRunShutdownRecovery && shutdownRecoveryCalls == 1 && cover.Visible && !lane.Busy,
+                        "Target exit did not drain placement for safe shutdown recovery.");
+                    Check(close.TryBeginPlacement() == null, "A new close was accepted after committed sign-out.");
+                    CheckPlacementRejected("The manager accepted new native placement after committed sign-out.");
+                    Check(GetForegroundWindow() == foreground, "The recovery probe changed foreground activation.");
+
+                    return new
+                    {
+                        TargetPid = target.Id, HoldMilliseconds, PendingUiTimerTicks = pendingTicks,
+                        EndingUiTimerTicks = endingTicks, QueryEndSessionMs = queryMs, EndSessionMs = endMs,
+                        AbandonedPlacement = abandoned, DrainedPlacement = drained,
+                        RecoveryActionWhileBlocked = true, LateCompletionKeptCover = true,
+                        ShutdownRecoveryWaitedForTargetExit = true, ShutdownRecoveryCalls = shutdownRecoveryCalls
+                    };
+                }
 
                 void CheckPlacementRejected(string message)
                 {
@@ -161,7 +236,7 @@ internal static class DesktopHandoffProbe
                     int before = ticks;
                     await Task.Delay(HoldMilliseconds);
                     Check(ticks > before && !completion.IsCompleted && lane.Busy, "The UI timer must tick while USER32 is blocked.");
-                    Check(lane.TrySubmit(new(window, final, PosOnly: true)) == null, "The lane accepted a second native writer.");
+                    Check(lane.TrySubmit(new(window, final, PosOnly: true), out _) == null, "The lane accepted a second native writer.");
                     CheckPlacementRejected("The manager accepted a second placement lease.");
                     Check(Observed() == expected && cover.Visible && WindowFromPoint(hitPoint) == cover.Handle,
                         "The cover or native position changed before the owner released placement.");
@@ -192,7 +267,7 @@ internal static class DesktopHandoffProbe
             throw new InvalidOperationException("Owned target did not exit on request.", failure);
         }
         if (failure != null) throw new InvalidOperationException("Desktop handoff probe failed.", failure);
-        Check(target.ExitCode == 0 && report != null, "Owned target failed during the probe.");
+        Check((targetTerminated || target.ExitCode == 0) && report != null, "Owned target failed during the probe.");
         string path = Path.GetFullPath(output);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
@@ -246,19 +321,21 @@ internal static class DesktopHandoffProbe
         private readonly int _uiThread = Environment.CurrentManagedThreadId;
         public bool Busy { get; private set; }
 
-        public Task<PlacementCompletion>? TrySubmit(BatchMoveItem item)
+        public Task<PlacementCompletion>? TrySubmit(BatchMoveItem item, out long generation)
         {
+            generation = 0;
             Check(Environment.CurrentManagedThreadId == _uiThread, "Only the UI thread may submit placement.");
             if (Busy || targetPid == Environment.ProcessId || native.GetWindowProcessId(item.HWnd) != targetPid) return null;
             var lease = windows.TryAcquireDesktopPlacementLease([item.HWnd]);
             if (lease == null) return null;
-            if (close.TryBeginPlacement() is not long generation)
+            if (close.TryBeginPlacement() is not long request)
             {
                 lease.Dispose();
                 return null;
             }
+            generation = request;
             Busy = true;
-            return Execute(lease, item, generation);
+            return Execute(lease, item, request);
         }
 
         private async Task<PlacementCompletion> Execute(ProjectionWorker.PlacementLease lease, BatchMoveItem item, long generation)
@@ -309,6 +386,7 @@ internal static class DesktopHandoffProbe
         public bool OwnedTargetQueueBlocked { get; private set; }
         public bool OwnedTargetQueueReleased { get; private set; }
         public bool StoppingClickHeld => _close.StoppingClickHeld;
+        public event Action? CommittedShutdown;
 
         public Cover(Rectangle bounds, DesktopHandoffClose close) : base(bounds)
         {
@@ -333,6 +411,17 @@ internal static class DesktopHandoffProbe
         {
             switch ((uint)message.Msg)
             {
+                case QueryEndSession:
+                    message.Result = 1;
+                    return;
+                case EndSession:
+                    if (message.WParam != 0)
+                    {
+                        _close.RequestShutdown();
+                        CommittedShutdown?.Invoke();
+                    }
+                    message.Result = 0;
+                    return;
                 case Callback:
                     message.Result = Acknowledgement;
                     return;

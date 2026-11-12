@@ -46,6 +46,18 @@ The probe uses a controlled cover and a cooperative target. Production
 overview lifecycle, recovery from an unresponsive app, and display cadence
 need separate verification.
 
+Run the recovery variant under the same desktop test mutex.
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-recovery TestResults/desktop-handoff-recovery.json
+```
+
+This variant exercises a cover control that abandons the close while native
+placement remains reserved. It sends query, cancelled, and committed sign-out
+messages to the test cover, then terminates the owned stalled child. The report
+checks that shutdown recovery waits for placement to drain and runs once.
+The variant does not sign out of Windows.
+
 ## Phases
 
 Each phase rebuilds the same layout, waits 300 ms before measurement, and resets

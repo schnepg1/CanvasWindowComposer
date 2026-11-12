@@ -15,3 +15,31 @@ The normal close still performs synchronous placement. A future asynchronous clo
 | Refresh, reset and application exit | `RefreshAllWindows` unclips and redraws visible HWNDs. `Reset` and `RestoreDesktopViewport` clear the worker lane and move or restore windows. Desktop switch, refresh, update restart and session-ending paths need to invalidate the close and choose recovery before any of these operations start. The manager gate handles ordinary continuation ordering. A stalled call and OS session ending still require a separate recovery policy. |
 
 The current reprojection builder mutates regions, runtime visibility and parking before it returns its move batch. The caller must establish the touched cohort, including region-only targets, before running such preparation. The worker rejects a move outside the checked cohort, and the caller owns the rest of the writer and lifecycle fences before enabling asynchronous close.
+
+## Recovery verification
+
+The recovery probe uses an owned child and a WinForms cover. A cover command
+abandons the close while the child is blocking native placement. The close
+generation is invalidated, the reservation stays held, and a late completion
+keeps the cover in place. After the child drains, the fixture can submit a
+new close. Production still needs to route the same action back to usable
+overview controls and suppress native-mutating commands while the lane is
+occupied.
+
+Canvas's exit path on this branch waits for the placement owner to release
+the reservation before posting the existing shutdown cleanup. The Windows
+subscription now uses committed session ending. In .NET, the
+`SessionEnding` event corresponds to the query, which can be cancelled,
+while `SessionEnded` is raised for committed ending. A committed Windows
+session can end before a deferred callback runs. The app cannot rely on
+that callback to persist last-minute changes. [SystemEvents source](https://github.com/dotnet/runtime/blob/main/src/libraries/Microsoft.Win32.SystemEvents/src/Microsoft/Win32/SystemEvents.cs) · [WM_QUERYENDSESSION](https://learn.microsoft.com/en-us/windows/win32/shutdown/wm-queryendsession) · [WM_ENDSESSION](https://learn.microsoft.com/en-us/windows/win32/shutdown/wm-endsession)
+
+The owned fixture sends both session messages to its cover. A cancelled
+ending leaves the close alone. Committed ending invalidates the pending
+close and registers a manager continuation. The fixture then terminates its
+stalled child and checks that the continuation runs once, after the UI has
+verified completion and released the lease. It also checks that the
+unverified result cannot expose the desktop or start another placement.
+The probe does not end the actual Windows session. Only the preview-region
+writer and the exit gate are wired in this branch. The other native writer
+and lifecycle entries in the table remain activation requirements.

@@ -101,4 +101,55 @@ public sealed class DesktopHandoffCloseTests
         long retry = close.TryBeginPlacement()!.Value;
         Assert.Equal(DesktopHandoffCloseDecision.ExposeDesktop, close.CompletePlacement(retry, true));
     }
+
+    [Fact]
+    public void AbandoningWaitDoesNotReleaseThePlacementReservation()
+    {
+        var close = new DesktopHandoffClose();
+        long request = close.TryBeginPlacement()!.Value;
+
+        Assert.False(close.TryAbandonPendingClose(request + 1));
+        Assert.True(close.TryAbandonPendingClose(request));
+        Assert.False(close.TryAbandonPendingClose(request));
+        Assert.Null(close.TryBeginPlacement());
+        Assert.Equal(DesktopHandoffCloseDecision.KeepCovered, close.CompletePlacement(request, true));
+        Assert.NotNull(close.TryBeginPlacement());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ShutdownRecoveryWaitsForPendingPlacementEvenIfItWillFail(bool verified)
+    {
+        var close = new DesktopHandoffClose();
+        long request = close.TryBeginPlacement()!.Value;
+        Assert.True(close.HoldStoppingClick());
+
+        close.RequestShutdown();
+        close.RequestShutdown();
+        Assert.True(close.ShutdownRequested);
+        Assert.False(close.CanRunShutdownRecovery);
+        Assert.Null(close.TryBeginPlacement());
+        Assert.Equal(DesktopHandoffCloseDecision.KeepCovered, close.ReleaseStoppingClick());
+
+        Assert.False(close.HoldStoppingClick());
+
+        Assert.Equal(DesktopHandoffCloseDecision.KeepCovered, close.CompletePlacement(request, verified));
+        Assert.True(close.CanRunShutdownRecovery);
+        Assert.Null(close.TryBeginPlacement());
+    }
+
+    [Fact]
+    public void ShutdownRevokesVerifiedCloseWaitingForButtonUp()
+    {
+        var close = new DesktopHandoffClose();
+        long request = close.TryBeginPlacement()!.Value;
+        Assert.True(close.HoldStoppingClick());
+        Assert.Equal(DesktopHandoffCloseDecision.WaitForButtonUp, close.CompletePlacement(request, true));
+
+        close.RequestShutdown();
+        Assert.True(close.CanRunShutdownRecovery);
+        Assert.Equal(DesktopHandoffCloseDecision.KeepCovered, close.ReleaseStoppingClick());
+        Assert.Null(close.TryBeginPlacement());
+    }
 }
