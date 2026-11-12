@@ -39,14 +39,16 @@ internal static class DesktopHandoffProbe
         };
         using var target = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start owned target.");
         var canvas = new Canvas();
-        var windows = new WindowManager(canvas, native, new BenchmarkConfig(), new BenchmarkInput(),
-            useAsyncProjection: true);
+        var config = new BenchmarkConfig { DesktopPanMomentum = false };
+        var input = new BenchmarkInput();
+        var windows = new WindowManager(canvas, native, config, input, useAsyncProjection: true);
         nint window = 0;
         Exception? failure = null;
         object? report = null;
         bool targetTerminated = false;
         Task<PlacementCompletion>? inFlight = null;
         Task<bool>? managerPlacement = null;
+        OverviewManager? plannedOverview = null;
         int ticks = 0;
         using var heartbeat = new System.Windows.Forms.Timer { Interval = 16 };
         heartbeat.Tick += (_, _) => ticks++;
@@ -75,22 +77,28 @@ internal static class DesktopHandoffProbe
                 {
                     windows.RegisterWindow(window);
                     Check(canvas.HasWindow(window), "The owned target was not enrolled in the placement model.");
-                    windows.SuspendProjection = true;
-                    windows.SuspendAutomaticParking = true;
-                    canvas.Pan(final.X - initial.X, 0);
-                    managerPlacement = windows.TryStartDesktopHandoffPlacement();
+                    plannedOverview = new OverviewManager(canvas, windows, native, input, config,
+                        requestDesktopPlacement: () => managerPlacement = windows.TryStartDesktopHandoffPlacement());
+                    input.BeginPan();
+                    var overlay = (OverviewOverlay)Control.FromHandle(plannedOverview.MonitorHandles[0])!;
+                    input.Pan(final.X - initial.X, 0);
+                    input.ReleasePan();
                     Check(managerPlacement != null, "WindowManager declined the owned placement cohort.");
 
                     await WaitFor(() => cover.ReturnedCallbacks == 1, "The planned native placement did not call back into the UI.");
                     int before = ticks;
                     await Task.Delay(HoldMilliseconds);
                     Check(ticks > before && managerPlacement is { IsCompleted: false } && windows.HasDesktopPlacementReservation
-                        && Observed() == initial && cover.Visible, "The planned placement did not retain the responsive cover.");
+                        && Observed() == initial && overlay.Visible && plannedOverview.CurrentMode == OverviewMode.Panning,
+                        "The planned placement did not retain the responsive Overview cover.");
                     int uiTicks = ticks - before;
                     release.Set();
                     Check(await managerPlacement!.WaitAsync(TimeSpan.FromSeconds(6)) && Observed() == final
                         && !windows.HasDesktopPlacementReservation, "The planned native placement did not verify its final geometry.");
+                    await WaitFor(() => plannedOverview.CurrentMode == OverviewMode.Hidden && !overlay.Visible,
+                        "The verified placement did not close the real Overview.");
                     report = new { TargetPid = target.Id, Initial = initial, Verified = final, UiTimerTicks = uiTicks,
+                        RealOverviewClosedAfterVerification = true,
                         ForegroundPreserved = GetForegroundWindow() == foreground,
                         NativeWait = diagnostics.Snapshot().Operations.Single(op => op.Operation == "EndDeferWindowPos") };
                     Check(GetForegroundWindow() == foreground, "The planned placement changed foreground activation.");
@@ -283,7 +291,9 @@ internal static class DesktopHandoffProbe
                     try { await pending.WaitAsync(TimeSpan.FromSeconds(6)); }
                     catch (Exception ex) { failure ??= ex; }
                 }
-                cover.Close();
+                try { plannedOverview?.Dispose(); }
+                catch (Exception ex) { failure ??= ex; }
+                finally { cover.Close(); }
             }
         };
         Application.Run(cover);

@@ -58,6 +58,20 @@ messages to the test cover, then terminates the owned stalled child. The report
 checks that shutdown recovery waits for placement to drain and runs once.
 The variant does not sign out of Windows.
 
+Run the move-only placement variant to exercise the real Overview and native
+WindowManager batch together.
+
+```powershell
+& Tools/PerformanceHarness/bin/Release/net10.0-windows/CanvasDesktop.PerformanceHarness.exe --desktop-handoff-placement TestResults/desktop-handoff-placement.json
+```
+
+The fixture enrolls one owned foreign window, drives a pan, and holds the
+window procedure during the real batch. It checks that Overview stays visible
+and processes messages, then closes only after WindowManager verifies native
+geometry. The controlled cohort supports visible, normal foreign windows
+that need only positional changes. The launcher continues to use the existing
+synchronous close.
+
 ## Phases
 
 Each phase rebuilds the same layout, waits 300 ms before measurement, and resets
