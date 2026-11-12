@@ -142,6 +142,27 @@ public class AutomaticParkingTests
         Assert.Equal(recycled ? 0 : 1, h.Api.ParkingRestoreCalls.Count);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeferredParkedWindowFocusOnlyRecentersTheCurrentForegroundWindow(bool stillForeground)
+    {
+        using var h = new Harness(useAsyncProjection: true);
+        h.Park();
+        using var lease = Assert.IsType<ProjectionWorker.PlacementLease>(h.Manager.TryAcquireDesktopPlacementLease([h.Handle]));
+        h.Api.Windows[h.Handle].Style = 0;
+        h.Api.Foreground = h.Handle;
+        h.Input.RaiseWindowFocused(h.Handle);
+        Assert.Equal(0, h.Canvas.CamX);
+        Assert.Empty(h.Api.SetPositionCalls);
+
+        if (!stillForeground) h.Api.Foreground = (IntPtr)999;
+        lease.Dispose();
+        h.Tick(2000);
+
+        Assert.Equal(stillForeground, h.Canvas.CamX > 0);
+    }
+
     [Fact]
     public void DistantParkedWindowsDoNotInspectProcessesOrEnumerateOwnedWindowsDuringCameraBursts()
     {

@@ -321,6 +321,7 @@ internal sealed partial class WindowManager : IDisposable
         RemoveStale();
         UpdateRuntimeVisibility();
         Previews.DrainCompleted();
+        ReplayDeferredWindowEvents();
         ProcessAutomaticParking();
     }
 
@@ -451,6 +452,9 @@ internal sealed partial class WindowManager : IDisposable
     }
 
     private void OnReprojectWindowEvent(IntPtr hWnd)
+        => DispatchWindowPlacementEvent(hWnd, WindowPlacementEvent.Reproject);
+
+    private void ApplyWindowStateProjection(IntPtr hWnd)
     {
         if (_parking.ContainsKey(hWnd) && _canvas.Windows.TryGetValue(hWnd, out var world)
             && world.State == WindowState.Minimized)
@@ -474,6 +478,9 @@ internal sealed partial class WindowManager : IDisposable
     }
 
     private void OnWindowRestoredEvent(IntPtr hWnd)
+        => DispatchWindowPlacementEvent(hWnd, WindowPlacementEvent.Restored);
+
+    private void ApplyWindowRestored(IntPtr hWnd)
     {
         if (_parking.TryGetValue(hWnd, out var parked))
         {
@@ -515,6 +522,9 @@ internal sealed partial class WindowManager : IDisposable
     }
 
     private void OnWindowFocusedEvent(IntPtr hWnd)
+        => DispatchWindowPlacementEvent(hWnd, WindowPlacementEvent.Focused);
+
+    private void ApplyWindowFocused(IntPtr hWnd, bool replay)
     {
         if (IsCarried(hWnd))
         {
@@ -527,7 +537,7 @@ internal sealed partial class WindowManager : IDisposable
             HandleManualParkingRestore(hWnd);
         if (_parkingExcluded.TryGetValue(hWnd, out var excluded) && _visibility.GetToken(hWnd) == excluded)
             CenterManuallyRestoredWindow(hWnd);
-        _canvas.BringToForeground(hWnd);
+        if (!replay) _canvas.BringToForeground(hWnd);
     }
 
     /// <summary>
@@ -601,6 +611,7 @@ internal sealed partial class WindowManager : IDisposable
             _previewRegionsDeferred = false;
             _cameraReprojectionDeferred = false;
             _displayReprojectionDeferred = false;
+            ClearDeferredWindowEvents();
             continuation();
         }
         else if (_previewRegionsDeferred && !_disposed)
@@ -806,6 +817,8 @@ internal sealed partial class WindowManager : IDisposable
     /// <summary>Drop a single window from canvas and internal tracking.</summary>
     public void RemoveWindow(IntPtr hWnd)
     {
+        _deferredWindowEvents.Remove(hWnd);
+        if (_deferredWindowFocus?.Token.Identity.Handle == hWnd) _deferredWindowFocus = null;
         ForgetParking(hWnd);
         _parkingExcluded.Remove(hWnd);
         _parkingRetry.Remove(hWnd);
@@ -995,6 +1008,7 @@ internal sealed partial class WindowManager : IDisposable
 
         _canvas.ResetCamera();
         _cameraReprojectionDeferred = false;
+        ClearDeferredWindowEvents();
 
         var batch = new List<BatchMoveItem>();
 
