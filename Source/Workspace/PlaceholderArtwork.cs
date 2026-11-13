@@ -22,6 +22,23 @@ internal sealed class PlaceholderArtwork : Control
         BackColor = Color.FromArgb(28, 34, 46);
         ForeColor = Color.WhiteSmoke;
         AccessibleRole = AccessibleRole.StaticText;
+        WebLogoService.Default.ArtworkResolved += OnArtworkResolved;
+    }
+
+    private void OnArtworkResolved(string key)
+    {
+        if (_symbolKey != key || IsDisposed) return;
+        if (InvokeRequired)
+        {
+            try { BeginInvoke(new Action(() => OnArtworkResolved(key))); } catch { }
+            return;
+        }
+        if (PlaceholderArtworkCache.Default.TryGet(key, out var artwork) && artwork != null)
+        {
+            _symbol = artwork.Symbol;
+            _overviewLogo = artwork.OverviewLogo;
+            Invalidate();
+        }
     }
 
     public void UpdateItem(WorkspaceItemView item)
@@ -115,12 +132,20 @@ internal sealed class PlaceholderArtwork : Control
 
     private void DrawIcon(Graphics graphics, RectangleF bounds)
     {
-        if (_symbol == null || bounds.Width <= 0 || bounds.Height <= 0) return;
-        float scale = Math.Min(bounds.Width / _symbol.Width, bounds.Height / _symbol.Height);
-        float width = _symbol.Width * scale, height = _symbol.Height * scale;
-        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        graphics.DrawImage(_symbol, new RectangleF(bounds.X + (bounds.Width - width) / 2,
-            bounds.Y + (bounds.Height - height) / 2, width, height));
+        var sym = _symbol;
+        if (sym == null || bounds.Width <= 0 || bounds.Height <= 0) return;
+        try
+        {
+            float scale = Math.Min(bounds.Width / sym.Width, bounds.Height / sym.Height);
+            float width = sym.Width * scale, height = sym.Height * scale;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.DrawImage(sym, new RectangleF(bounds.X + (bounds.Width - width) / 2,
+                bounds.Y + (bounds.Height - height) / 2, width, height));
+        }
+        catch (ArgumentException)
+        {
+            // Defensive against GDI handle disposal during asynchronous transitions
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -205,7 +230,12 @@ internal sealed class PlaceholderArtwork : Control
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _symbol = null; _overviewLogo = null; }
+        if (disposing)
+        {
+            WebLogoService.Default.ArtworkResolved -= OnArtworkResolved;
+            _symbol = null;
+            _overviewLogo = null;
+        }
         base.Dispose(disposing);
     }
 }

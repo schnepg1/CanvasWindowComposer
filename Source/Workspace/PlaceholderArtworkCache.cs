@@ -55,6 +55,10 @@ internal sealed class PlaceholderArtworkCache : IDisposable
     public static string GetCacheKey(WorkspaceItemView item)
     {
         if (item.IsFolder) return "folder";
+        if (BrowserSupport.Supports(item.ExecutablePath) && WebDestinationParser.TryGetDestination(item, out _, out _))
+        {
+            return WebDestinationParser.GetCacheKey(item);
+        }
         return string.IsNullOrEmpty(item.ExecutablePath)
             ? "empty"
             : item.ExecutablePath.Trim().ToLowerInvariant();
@@ -63,7 +67,15 @@ internal sealed class PlaceholderArtworkCache : IDisposable
     public SharedArtwork GetArtwork(WorkspaceItemView item)
     {
         string key = GetCacheKey(item);
-        return _cache.GetOrCreate(key, _ => CreateArtwork(item));
+        if (!_cache.TryGet(key, out var artwork) || artwork == null)
+        {
+            artwork = _cache.GetOrCreate(key, _ => CreateArtwork(item));
+            if (BrowserSupport.Supports(item.ExecutablePath) && WebDestinationParser.TryGetDestination(item, out _, out _))
+            {
+                WebLogoService.Default.QueueResolution(item);
+            }
+        }
+        return artwork;
     }
 
     public bool TryGet(string key, out SharedArtwork? artwork)

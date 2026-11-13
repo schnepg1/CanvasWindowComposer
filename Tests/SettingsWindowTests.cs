@@ -441,7 +441,7 @@ public class SettingsWindowTests
                 foreach (var name in new[] { "settings-shell-preview.png", "settings-shell-small-150-preview.png" })
                     File.Copy(Path.Combine(AppContext.BaseDirectory, name), Path.Combine(renders, name), true);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(23, boxes.Length);
+                Assert.Equal(24, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Animate navigation to apps selected with Alt+Tab or the taskbar").IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Show Windows taskbar in canvas view").IsChecked = false;
