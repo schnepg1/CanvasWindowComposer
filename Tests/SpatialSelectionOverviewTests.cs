@@ -168,6 +168,44 @@ public class SpatialSelectionOverviewTests
 
     [Fact]
     [Trait("Category","NativeRendering")]
+    public void ClickingAProjectNameWithAWindowInsideFocusesItAndKeepsItsCornerHandles()
+        =>WorkspaceViewTests.OnSta(()=>
+        {
+            var folder=Path.Combine(Path.GetTempPath(),"project-focus-"+Guid.NewGuid().ToString("N"));
+            try
+            {
+                var item=new WorkspaceItem { Title="Editor",ExecutablePath=@"C:\Apps\Editor.exe",Bounds=new WorldRect { X=200,Y=300,W=600,H=400 } };
+                var tile=new WorkspaceZone { Name="Guardian",Bounds=new WorldRect { X=100,Y=200,W=1200,H=800 },ItemIds=[item.Id] };
+                var config=new FakeAppConfig { EnableStartupIntro=false };
+                using var rig=new WorkspaceHarness(new WorkspaceDocument { Items=[item],Zones=[tile] },config:config);rig.Workspace.Start();
+                using var overview=new OverviewManager(rig.Canvas,rig.Wm,rig.Api,rig.Input,config);
+                overview.AttachZones(rig.Workspace.Zones);overview.AttachPlaceholderWorkspace(rig.Workspace);
+                overview.AttachAnnotations(rig.Desktops,Path.Combine(folder,"annotations.json"));overview.TransitionTo(OverviewMode.Zooming);
+                var pass=(OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+                var screen=pass.Screen.Bounds;var dpi=pass.DeviceDpi/96.0;var camera=overview.ViewCamera;
+                var view=new CanvasViewTransform(camera.X,camera.Y,camera.Zoom,new(screen.X,screen.Y,screen.Width,screen.Height),dpi,dpi);
+                int X(double world)=>(int)Math.Round(world)-pass.OriginX;
+                int Y(double world)=>(int)Math.Round(world)-pass.OriginY;
+                var label=ZoneLabelLayout.Get(tile.Bounds,view)!.Value;
+                // Clicking the project name focuses it, although the window inside it is selected too.
+                pass.OnMouseButtonDown!(pass,new(MouseButtons.Left,1,X(label.X+label.Width/2),Y(label.Y+label.Height/2),0));
+                pass.OnMouseButtonUp!(pass,new(MouseButtons.Left,1,X(label.X+label.Width/2),Y(label.Y+label.Height/2),0));
+                Assert.Equal(tile.Id,overview.FocusedZoneId);
+                Assert.Contains(overview.Selection.Ids,i=>i.Kind==CanvasItemKind.Window);
+                // The corner handle of the focused project resizes it.
+                Guid? resized=null;overview.ZoneResizeRequested+=(id,bounds)=>resized=id;
+                var handle=ZoneResizeLayout.Get(tile.Bounds,view,true).First(h=>h.Corner==ZoneResizeCorner.TopLeft);
+                double hx=handle.Rect.X+handle.Rect.Width/2,hy=handle.Rect.Y+handle.Rect.Height/2;
+                pass.OnMouseButtonDown!(pass,new(MouseButtons.Left,1,X(hx),Y(hy),0));
+                pass.OnMouseMoved!(pass,new(MouseButtons.Left,X(hx)+40,Y(hy)+40,0,0));
+                pass.OnMouseButtonUp!(pass,new(MouseButtons.Left,1,X(hx)+40,Y(hy)+40,0));
+                Assert.Equal(tile.Id,resized);
+            }
+            finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
     public void SelectModeUsesMarqueeOnEmptyCanvasAndEscapeCancelsGhostMove()
         =>WorkspaceViewTests.OnSta(()=>
         {

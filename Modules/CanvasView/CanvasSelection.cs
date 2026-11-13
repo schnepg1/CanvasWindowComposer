@@ -62,6 +62,29 @@ public sealed class CanvasSelection
         }
         return result;
     }
+    /// <summary>
+    /// The focused project of a selection. Selecting a project also selects everything
+    /// inside it, so the focus is the outermost selected project: a nested project shares
+    /// its parent's focus and two unrelated projects share none.
+    /// </summary>
+    public static Guid? FocusedProject(IEnumerable<CanvasItemId> ids, Func<IReadOnlyDictionary<Guid, Guid?>> parents)
+    {
+        var projects = ids.Where(i => i.Kind == CanvasItemKind.Project).Select(i => i.Id).Distinct().ToArray();
+        if (projects.Length == 0) return null;
+        if (projects.Length == 1) return projects[0];
+        var hierarchy = parents();
+        bool Nested(Guid child, Guid ancestor)
+        {
+            while (hierarchy.TryGetValue(child, out var parent) && parent is { } id)
+            {
+                if (id == ancestor) return true;
+                child = id;
+            }
+            return false;
+        }
+        var roots = projects.Where(p => !projects.Any(q => q != p && Nested(p, q))).ToArray();
+        return roots.Length == 1 ? roots[0] : null;
+    }
     public static CanvasPoint Center(CanvasRect r) => new(r.X + r.Width/2, r.Y + r.Height/2);
     public static bool Contains(CanvasRect r, CanvasPoint p) => p.X>=r.X && p.Y>=r.Y && p.X<=r.X+r.Width && p.Y<=r.Y+r.Height;
     public static bool Intersects(CanvasRect a, CanvasRect b) => a.X<=b.X+b.Width && a.X+a.Width>=b.X && a.Y<=b.Y+b.Height && a.Y+a.Height>=b.Y;

@@ -31,7 +31,9 @@ internal sealed partial class OverviewManager
             var ids = Selection.Ids;
             if (ids.Count == 1 && ids.First().Kind == CanvasItemKind.Annotation) _annotationTool?.Select(ids.First().Id);
             else _annotationTool?.ClearSelection();
-            if (ids.Count == 1 && ids.First().Kind == CanvasItemKind.Project) _zoneTool.SelectZone(ids.First().Id);
+            // Selecting a project also selects everything inside it, so the focused
+            // project comes from the selected projects instead of the selection count.
+            if (CanvasSelection.FocusedProject(ids, ZoneParents) is { } projectId) _zoneTool.SelectZone(projectId);
             else _zoneTool.Deselect();
             if (_composerWindow is { IsDisposed: false } composer)
             {
@@ -40,6 +42,13 @@ internal sealed partial class OverviewManager
             }
         };
     }
+
+    /// <summary>The focused project, which owns the resize handles of its area.</summary>
+    internal Guid? FocusedZoneId => _zoneTool.SelectedZoneId;
+
+    /// <summary>The parent of every project area, used to resolve a nested focus.</summary>
+    private IReadOnlyDictionary<Guid, Guid?> ZoneParents()
+        => _zones?.Items.ToDictionary(z => z.Id, z => z.ParentId) ?? new Dictionary<Guid, Guid?>();
 
     private void OnSelectionWindowRemoving(IntPtr handle)
     {
