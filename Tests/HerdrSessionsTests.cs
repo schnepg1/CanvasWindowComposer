@@ -109,4 +109,32 @@ public class HerdrSessionsTests
         var ex = Assert.Throws<InvalidOperationException>(() => HerdrSessions.ReadTerminal(json.RootElement));
         Assert.Equal("Herdr did not return a local terminal ID.", ex.Message);
     }
+
+    [Fact]
+    public void SupportedAgentsIncludesCoreAgentsWithDefaults()
+    {
+        Assert.Contains(HerdrSessions.SupportedAgents, a => a.Id == "codex" && a.DisplayName == "Codex");
+        Assert.Contains(HerdrSessions.SupportedAgents, a => a.Id == "claude" && a.DisplayName == "Claude Code");
+        Assert.Contains(HerdrSessions.SupportedAgents, a => a.Id == "gemini" && a.DisplayName == "Gemini CLI");
+        Assert.Contains(HerdrSessions.SupportedAgents, a => a.Id == "aider" && a.DisplayName == "Aider");
+        Assert.Contains(HerdrSessions.SupportedAgents, a => a.Id == "opencode" && a.DisplayName == "OpenCode");
+
+        Assert.Equal("codex", HerdrSessions.DefaultAgent.Id);
+        Assert.Equal("claude", HerdrSessions.FindAgent("claude").Id);
+        Assert.Equal("codex", HerdrSessions.FindAgent("non_existent").Id);
+    }
+
+    [Fact]
+    public async Task StartAgentRejectsInvalidWorkingFolder()
+    {
+        var sessions = new HerdrSessions();
+        var agent = HerdrSessions.DefaultAgent;
+        var card = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sessions.StartAgent(agent, "relative\\path", card, default));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sessions.StartAgent(agent, "C:\\NonExistentFolder_123456789", card, default));
+    }
 }

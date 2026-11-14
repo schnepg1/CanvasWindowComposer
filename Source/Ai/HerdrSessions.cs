@@ -10,9 +10,31 @@ using System.Threading.Tasks;
 
 namespace CanvasDesktop;
 
+internal sealed record AgentProfile(
+    string Id,
+    string DisplayName,
+    string Subtitle,
+    string[] CandidateExecutables,
+    string[] DefaultArgs,
+    string AccentColorHex
+);
+
 internal sealed partial class HerdrSessions
 {
     private const string AgentLabel = "canvas_agent";
+
+    public static readonly IReadOnlyList<AgentProfile> SupportedAgents = [
+        new("codex", "Codex", "OpenAI Codex CLI", ["codex.cmd", "codex.exe", "codex.bat"], ["--no-daemon"], "#10B981"),
+        new("claude", "Claude Code", "Anthropic Claude Code CLI", ["claude.cmd", "claude.exe", "claude.bat"], [], "#EA580C"),
+        new("gemini", "Gemini CLI", "Google Gemini CLI / Antigravity", ["gemini.cmd", "gemini.exe", "gemini.bat", "agy.cmd", "agy.exe"], [], "#2563EB"),
+        new("aider", "Aider", "Aider AI Pair Programming", ["aider.exe", "aider.cmd", "aider.bat"], [], "#7C3AED"),
+        new("opencode", "OpenCode", "OpenCode Autonomous Agent", ["opencode.cmd", "opencode.exe", "opencode.bat"], [], "#DB2777"),
+    ];
+
+    public static AgentProfile DefaultAgent => SupportedAgents[0];
+
+    public static AgentProfile FindAgent(string? id) =>
+        SupportedAgents.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase)) ?? DefaultAgent;
 
     internal sealed record Terminal(string Address, string State, string? AgentState, string? WorkingDirectory)
     {
@@ -22,22 +44,29 @@ internal sealed partial class HerdrSessions
     [GeneratedRegex(@"\At[0-9a-z]+\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     internal static partial Regex LocalAddress();
 
-    public async Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null)
+    public async Task<Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null)
     {
         if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder))
             throw new InvalidOperationException("Choose an existing local working folder.");
+        var executable = FindCandidateOnPath(agent.CandidateExecutables)
+            ?? throw new InvalidOperationException($"{agent.DisplayName} ({agent.CandidateExecutables.FirstOrDefault() ?? agent.Id}) was not found on PATH.");
         var args = new List<string>
         {
             "run", "--json", "--bg", "--no-parent", "--cwd", folder,
             "--name", card.ToString("N"), "--label", "canvas_managed=1",
-            "--label", $"{AgentLabel}={card:N}", "--", FindOnPath("codex.cmd")
-                ?? throw new InvalidOperationException("Codex CLI (codex.cmd) was not found on PATH."), "--no-daemon"
+            "--label", $"{AgentLabel}={card:N}",
+            "--label", $"agent_type={agent.Id}",
+            "--", executable
         };
+        args.AddRange(agent.DefaultArgs);
         if (!string.IsNullOrWhiteSpace(prompt)) args.Add(prompt);
-        var reply = await Run(cancellation, args.ToArray());
+        var reply = await Run(cancellation, [.. args]);
         using var json = JsonDocument.Parse(reply);
         return ReadTerminal(json.RootElement);
     }
+
+    public Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
+        StartAgent(DefaultAgent, folder, card, cancellation, prompt);
 
     public async Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation)
     {
@@ -114,6 +143,16 @@ internal sealed partial class HerdrSessions
             if (string.IsNullOrWhiteSpace(directory)) continue;
             var path = Path.Combine(directory.Trim('"'), executable);
             if (Path.IsPathFullyQualified(path) && File.Exists(path)) return path;
+        }
+        return null;
+    }
+
+    internal static string? FindCandidateOnPath(IEnumerable<string> candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            var found = FindOnPath(candidate);
+            if (found != null) return found;
         }
         return null;
     }
