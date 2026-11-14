@@ -65,7 +65,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
             item.Tag = mode; _shapesButton.DropDownItems.Add(item);
         }
         _textButton = Button("Text", DockGlyph.Text, "Add a note · click or drag on the canvas", () => ModeRequested?.Invoke(AnnotationMode.Text), true);
-        _agentButton = Button("AI agent", DockGlyph.Agent, "Place an AI agent card", () => ModeRequested?.Invoke(AnnotationMode.Agent), true);
+        _agentButton = Button("AI agent", DockGlyph.Agent, "Place an AI agent card", () => ModeRequested?.Invoke(AnnotationMode.Agent));
         _undo = Button("Undo", DockGlyph.Undo, "Undo · Ctrl+Z", () => UndoRequested?.Invoke());
         _redo = Button("Redo", DockGlyph.Redo, "Redo · Ctrl+Y / Ctrl+Shift+Z", () => RedoRequested?.Invoke());
         _more = new("More", _image) { Name = "More", AccessibleName = "More canvas actions", Tag = DockGlyph.More, DisplayStyle = ToolStripItemDisplayStyle.Image, ShowDropDownArrow = false, ToolTipText = "More actions" };
@@ -174,10 +174,22 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         if (_availableWidth == width && !_layoutDirty) return;
         _availableWidth = width;
         _layoutDirty = false;
-        foreach (var item in new ToolStripItem[] { _selectButton, _shapesButton, _textButton, _agentButton }) item.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+        ToolStripItem[] labeledTools = [_selectButton, _shapesButton, _textButton];
+        foreach (var item in labeledTools) item.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+        foreach (var item in Strip.Items.OfType<ToolStripButton>().Append<ToolStripItem>(_shapesButton))
+        {
+            item.Padding = new Padding(9, 10, 9, 10);
+            item.Margin = new Padding(2, 0, 2, 0);
+        }
         _status.Available = false;
         if (Strip.GetPreferredSize(Size.Empty).Width + Pixel(14) > width)
-            foreach (var item in new ToolStripItem[] { _selectButton, _shapesButton, _textButton, _agentButton }) item.DisplayStyle = ToolStripItemDisplayStyle.Image;
+            foreach (var item in labeledTools) item.DisplayStyle = ToolStripItemDisplayStyle.Image;
+        if (Strip.GetPreferredSize(Size.Empty).Width + Pixel(14) > width)
+            foreach (var item in Strip.Items.OfType<ToolStripButton>().Append<ToolStripItem>(_shapesButton))
+            {
+                item.Padding = new Padding(6, 10, 6, 10);
+                item.Margin = new Padding(1, 0, 1, 0);
+            }
         _status.Available = _state?.Status != null || _state?.SelectedCount > 0 && Strip.GetPreferredSize(Size.Empty).Width + Pixel(90) < width;
         if (_state?.Status != null) _status.Text = Strip.GetPreferredSize(Size.Empty).Width + Pixel(14) > width ? "!" : "Not saved";
         FitToContents(width); _properties.FitToContents(width); PositionProperties();

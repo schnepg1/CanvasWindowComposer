@@ -81,8 +81,11 @@ public class AnnotationToolbarTests
             using var dock = new AnnotationToolbar();
             dock.ModeRequested += mode => dock.UpdateState(mode, null);
             var strip = dock.Strip;
-            Assert.Equal(new[] { "Select", "Shapes", "Text", "Undo", "Redo", "More" },
+            Assert.Equal(new[] { "Select", "Shapes", "Text", "AI agent", "Undo", "Redo", "More" },
                 strip.Items.Cast<ToolStripItem>().Where(i => i is ToolStripButton or ToolStripDropDownItem).Select(i => i.Name));
+            var agent = (ToolStripButton)strip.Items["AI agent"]!;
+            agent.PerformClick();
+            Assert.True(agent.Checked);
             var shapes = strip.Items.OfType<ToolStripSplitButton>().Single();
             shapes.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Arrow").PerformClick();
             strip.Items.OfType<ToolStripButton>().Single(i => i.Name == "Text").PerformClick();
