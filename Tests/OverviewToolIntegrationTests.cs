@@ -1,4 +1,5 @@
 using CanvasDesktop;
+using CanvasDesktop.CanvasView;
 using System.Windows.Forms;
 
 namespace CanvasDesktop.Tests;
@@ -84,6 +85,59 @@ public class OverviewToolIntegrationTests
             // CloseActiveMenus properly closes it
             Assert.True(overview.CloseActiveMenus());
             Assert.False(menu.Visible);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void RightClickingCanvasProjectAreaHeaderOpensContextMenuWithChooseProjectFolder()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var config = new FakeAppConfig { EnableStartupIntro = false };
+            var zone = new WorkspaceZone
+            {
+                Name = "Test Project",
+                Bounds = new WorldRect { X = 200, Y = 300, W = 800, H = 600 }
+            };
+            using var rig = new WorkspaceHarness(new WorkspaceDocument { Zones = [zone] }, config: config);
+            rig.Workspace.Start();
+
+            using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config);
+            overview.AttachPlaceholderWorkspace(rig.Workspace);
+            overview.AttachZones(rig.Workspace.Zones);
+            overview.TransitionTo(OverviewMode.Zooming);
+
+            string targetFolder = System.IO.Path.GetTempPath();
+            overview.ProjectFolderPickerOverride = _ => targetFolder;
+
+            var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+            var b = pass.Screen.Bounds;
+            double dpi = pass.DeviceDpi / 96.0;
+            var view = new CanvasViewTransform(overview.Camera.X, overview.Camera.Y, overview.Camera.Zoom,
+                new(b.X, b.Y, b.Width, b.Height), dpi, dpi);
+            var label = ZoneLabelLayout.Get(zone.Bounds, view);
+            Assert.NotNull(label);
+            int clickX = (int)(label.Value.X + label.Value.Width / 2);
+            int clickY = (int)(label.Value.Y + label.Value.Height / 2);
+
+            pass.OnMouseButtonDown!(pass, new MouseEventArgs(MouseButtons.Right, 1, clickX, clickY, 0));
+
+            var field = typeof(OverviewManager).GetField("_annotationContextMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var menu = Assert.IsType<ContextMenuStrip>(field.GetValue(overview));
+            Assert.True(menu.Visible);
+
+            var items = menu.Items.OfType<ToolStripMenuItem>().ToArray();
+            var chooseFolderItem = Assert.Single(items, i => i.Text == "Choose project folder…");
+            Assert.Contains(items, i => i.Text == "Put in backpack");
+
+            chooseFolderItem.PerformClick();
+            Application.DoEvents();
+
+            Assert.Equal(System.IO.Path.TrimEndingDirectorySeparator(targetFolder), zone.ProjectFolderPath);
+            var item = Assert.Single(rig.Workspace.Document.Items);
+            Assert.Equal(item.Id, Assert.Single(zone.ItemIds));
+
+            Assert.False(menu.Visible);
+            Assert.False(overview.CloseActiveMenus());
         });
 
     [Theory]
