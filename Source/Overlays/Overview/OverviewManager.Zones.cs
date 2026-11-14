@@ -272,6 +272,7 @@ internal sealed partial class OverviewManager
             return;
         }
         var camera = SceneCamera;
+        PositionAgentTerminal(camera);
         bool zooming = CurrentMode == OverviewMode.Zooming;
         _selectionRenderItems=zooming && _selectionLayer!=null?SelectionItems().Where(i=>i.Key.Kind!=CanvasItemKind.Annotation || !_composerPreviewIds.Contains(i.Key.Id)).ToArray():[];
         if (_annotationTool?.Preview is {} annotationPreview)

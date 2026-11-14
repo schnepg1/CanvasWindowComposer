@@ -20,12 +20,17 @@ namespace CanvasDesktop;
 internal sealed class MissionControlWindow : FluentWindow
 {
     private readonly StackPanel _body = new() { Margin = new(20, 12, 20, 20) };
+    private readonly Grid _content = new();
+    private readonly ScrollViewer _details = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly TextBlock _feedback = new() { TextWrapping = TextWrapping.Wrap };
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HerdrSessions _herdr;
     private TextBox? _initialInput;
+    private AgentTerminalPane? _terminalPane;
     internal event Action? TerminalChanged;
-    internal event Action? TerminalOpened;
+    internal event Action? TerminalLayoutChanged;
+    internal event Action? ExternalTerminalOpened;
+    internal bool HasExpandedTerminal => _terminalPane != null;
 
     public MissionControlWindow(IntPtr owner, HerdrSessions herdr)
     {
@@ -49,11 +54,15 @@ internal sealed class MissionControlWindow : FluentWindow
         var title = new TitleBar { Title = Title, ShowMaximize = false, ShowMinimize = false };
         DockPanel.SetDock(title, Dock.Top);
         root.Children.Add(title);
-        root.Children.Add(new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        _details.Content = _body;
+        _content.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        _content.RowDefinitions.Add(new() { Height = new(0) });
+        _content.Children.Add(_details);
+        root.Children.Add(_content);
         Content = root;
         System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(this);
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
-        Closed += (_, _) => { _lifetime.Cancel(); _lifetime.Dispose(); };
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && !HasExpandedTerminal) Close(); };
+        Closed += (_, _) => { _terminalPane?.Dispose(); _lifetime.Cancel(); _lifetime.Dispose(); };
     }
 
     public void Present()
@@ -122,21 +131,59 @@ internal sealed class MissionControlWindow : FluentWindow
             Note("Last workflow update " + timestamp.ToLocalTime().ToString("g"));
         var directory = new TextBox { Text = folder ?? "", PlaceholderText = "Local working folder", Margin = new(0, 10, 0, 5) };
         System.Windows.Automation.AutomationProperties.SetName(directory, "Local working folder");
-        _body.Children.Add(directory);
-        _body.Children.Add(ActionButton("Save working folder", () =>
+        var settings = new StackPanel();
+        settings.Children.Add(directory);
+        settings.Children.Add(ActionButton("Save working folder", () =>
         {
             _feedback.Text = saveFolder(directory.Text.Trim())
                 ? "Working folder saved for this mission." : "Choose an existing local working folder.";
         }));
+        settings.Children.Add(LockButton(mission.MissionPositionLocked, setLocked));
+        _body.Children.Add(settings);
         _body.Children.Add(_feedback);
         var actions = new WrapPanel();
         _body.Children.Add(actions);
         var launch = new Button { Content = "Start Codex", Appearance = ControlAppearance.Primary };
         var watch = new Button { Content = "Watch terminal", Margin = new(5, 0, 0, 0) };
-        var control = new Button { Content = "Open terminal", Margin = new(5, 0, 0, 0) };
+        var control = new Button { Content = "Take control", Margin = new(5, 0, 0, 0) };
         var refresh = new Button { Content = "Refresh", Margin = new(5, 0, 0, 0) };
-        foreach (var button in new[] { launch, watch, control, refresh }) actions.Children.Add(button);
-        _body.Children.Add(LockButton(mission.MissionPositionLocked, setLocked));
+        var external = new Button { Content = "Open externally", Margin = new(5, 0, 0, 0) };
+        var buttons = new[] { launch, watch, control, refresh, external };
+        foreach (var button in buttons) actions.Children.Add(button);
+        var collapse = new Button { Content = "Detach terminal", Margin = new(5, 0, 0, 0), Visibility = Visibility.Collapsed };
+        actions.Children.Add(collapse);
+        var terminalHost = new Border { Margin = new(10, 0, 10, 10) };
+        Grid.SetRow(terminalHost, 1);
+        _content.Children.Add(terminalHost);
+        void Expand(bool observe)
+        {
+            if (_terminalPane == null)
+            {
+                _terminalPane = new(_herdr, card.Id);
+                _terminalPane.StatusChanged += message => _feedback.Text = message;
+                terminalHost.Child = _terminalPane;
+                settings.Visibility = Visibility.Collapsed;
+                _content.RowDefinitions[0].Height = GridLength.Auto;
+                _details.MaxHeight = 190;
+                _content.RowDefinitions[1].Height = new(1, GridUnitType.Star);
+                collapse.Visibility = Visibility.Visible;
+                TerminalLayoutChanged?.Invoke();
+            }
+            _ = _terminalPane.Attach(observe);
+        }
+        collapse.Click += (_, _) =>
+        {
+            _terminalPane?.Dispose();
+            _terminalPane = null;
+            terminalHost.Child = null;
+            settings.Visibility = Visibility.Visible;
+            _content.RowDefinitions[0].Height = new(1, GridUnitType.Star);
+            _details.MaxHeight = double.PositiveInfinity;
+            _content.RowDefinitions[1].Height = new(0);
+            collapse.Visibility = Visibility.Collapsed;
+            _feedback.Text = "Detached. The agent session is still available.";
+            TerminalLayoutChanged?.Invoke();
+        };
         HerdrSessions.Terminal? terminal = null;
         async Task Load(CancellationToken token)
         {
@@ -153,7 +200,7 @@ internal sealed class MissionControlWindow : FluentWindow
         async Task Run(Func<CancellationToken, Task> action)
         {
             var token = _lifetime.Token;
-            foreach (var button in new[] { launch, watch, control, refresh }) button.IsEnabled = false;
+            foreach (var button in buttons) button.IsEnabled = false;
             _feedback.Text = "Checking Herdr…";
             bool checkedTerminal = false;
             try { await action(token); checkedTerminal = true; }
@@ -169,7 +216,7 @@ internal sealed class MissionControlWindow : FluentWindow
                 {
                     refresh.IsEnabled = true;
                     launch.IsEnabled = checkedTerminal && terminal?.IsLive != true;
-                    watch.IsEnabled = control.IsEnabled = checkedTerminal && terminal?.IsLive == true;
+                    watch.IsEnabled = control.IsEnabled = external.IsEnabled = checkedTerminal && terminal?.IsLive == true;
                     directory.IsEnabled = terminal?.IsLive != true;
                 }
             }
@@ -180,15 +227,12 @@ internal sealed class MissionControlWindow : FluentWindow
                 await _herdr.StartCodex(directory.Text.Trim(), card.Id, token);
             await Load(token);
         });
-        watch.Click += async (_, _) => await Run(async token =>
-        {
-            await _herdr.Open(card.Id, terminal!.Address, observe: true, token);
-            TerminalOpened?.Invoke();
-        });
-        control.Click += async (_, _) => await Run(async token =>
+        watch.Click += (_, _) => Expand(observe: true);
+        control.Click += (_, _) => Expand(observe: false);
+        external.Click += async (_, _) => await Run(async token =>
         {
             await _herdr.Open(card.Id, terminal!.Address, observe: false, token);
-            TerminalOpened?.Invoke();
+            ExternalTerminalOpened?.Invoke();
         });
         refresh.Click += async (_, _) => await Run(Load);
         Loaded += async (_, _) => await Run(Load);

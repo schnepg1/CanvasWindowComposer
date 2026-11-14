@@ -14,6 +14,8 @@ internal sealed partial class OverviewManager
     private CancellationTokenSource? _missionStatusRequest;
     private Dictionary<Guid, HerdrSessions.Terminal> _missionTerminals = new();
     private bool _herdrDisconnected;
+    private Guid? _terminalCard;
+    private bool _terminalWasAnchored;
 
     private IEnumerable<MissionAgentCard> MissionCards()
     {
@@ -136,6 +138,8 @@ internal sealed partial class OverviewManager
         window.ShowAgent(mission, card, MissionReport(card), folder,
             locked => _teamPods?.SetPositionLocked(mission.Id, locked) == true,
             directory => _teamPods?.SetWorkingFolder(mission.Id, directory) == true, () => ShowMission(mission));
+        _terminalCard = card.Id;
+        window.TerminalLayoutChanged += () => PositionAgentTerminal(SceneCamera, layoutChanged: true);
         window.Present();
     }
 
@@ -146,10 +150,12 @@ internal sealed partial class OverviewManager
         _missionControl = window;
         _isAiTeamsActive = true;
         window.TerminalChanged += RefreshMissionTerminals;
-        window.TerminalOpened += () => TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
+        window.ExternalTerminalOpened += () => TransitionTo(OverviewMode.Hidden, syncCameraOnClose: false);
         window.Closed += (_, _) =>
         {
             _missionControl = null;
+            _terminalCard = null;
+            _terminalWasAnchored = false;
             _isAiTeamsActive = false;
             _annotationToolbar?.SetAiTeamsActive(false);
             _unifiedDock?.Panel.SetAiTeamsActive(false);
@@ -157,6 +163,51 @@ internal sealed partial class OverviewManager
         _annotationToolbar?.SetAiTeamsActive(true);
         _unifiedDock?.Panel.SetAiTeamsActive(true);
         return window;
+    }
+
+    private void PositionAgentTerminal(CanvasCamera camera, bool layoutChanged = false)
+    {
+        if (_missionControl is not { IsVisible: true } window || !window.HasExpandedTerminal && !layoutChanged
+            || _terminalCard is not { } id) return;
+        bool collapse = !window.HasExpandedTerminal;
+        var card = MissionCards().FirstOrDefault(item => item.Id == id);
+        if (card == null) { CloseMissionControl(); return; }
+        var bounds = card.Bounds;
+        double left = (bounds.X - camera.X) * camera.Zoom;
+        double top = (bounds.Y - camera.Y) * camera.Zoom;
+        double width = bounds.Width * camera.Zoom;
+        double height = bounds.Height * camera.Zoom;
+        var pass = _passes.Where(p => p.Visible).Select(p =>
+        {
+            var area = p.Screen.WorkingArea;
+            double intersection = Math.Max(0, Math.Min(left + width, area.Right) - Math.Max(left, area.Left))
+                * Math.Max(0, Math.Min(top + height, area.Bottom) - Math.Max(top, area.Top));
+            return (Pass: p, Area: area, Intersection: intersection);
+        }).OrderByDescending(p => p.Intersection).FirstOrDefault();
+        if (pass.Pass == null) return;
+        if (pass.Intersection == 0)
+        {
+            if (_terminalWasAnchored && !collapse) { CloseMissionControl(); return; }
+            if (layoutChanged && !collapse)
+            {
+                var area = _screens.PrimaryWorkingArea;
+                var center = CanvasSelection.Center(bounds);
+                NavigateToCamera(new CanvasCamera(center.X - (area.Left + area.Width / 2.0) / camera.Zoom,
+                    center.Y - (area.Top + area.Height / 2.0) / camera.Zoom, camera.Zoom));
+            }
+            return;
+        }
+        _terminalWasAnchored = !collapse;
+        double dpi = pass.Pass.DeviceDpi / 96.0;
+        int w = Math.Min(pass.Area.Width, (int)Math.Round((collapse ? 460 : 760) * dpi));
+        int h = Math.Min(pass.Area.Height, (int)Math.Round((collapse ? 475 : 560) * dpi));
+        int x = (int)Math.Clamp(left, pass.Area.Left, pass.Area.Right - w);
+        int y = (int)Math.Clamp(top, pass.Area.Top, pass.Area.Bottom - h);
+        var hwnd = (HWND)new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        if (PInvoke.GetWindowRect(hwnd, out var current) && current.left == x && current.top == y
+            && current.right == x + w && current.bottom == y + h) return;
+        PInvoke.SetWindowPos(hwnd, default, x, y, w, h,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
     }
 
     private bool CloseMissionControl()

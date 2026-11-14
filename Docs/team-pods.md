@@ -16,10 +16,15 @@ from the existing external team workflow use its seven-role layout.
 Install Herdr Core (`hc.exe`), the Codex CLI (`codex.cmd`), and Windows Terminal.
 Enter an existing local path in **Local working folder**. Use **Save working
 folder** to make it the default for the mission. **Start Codex** launches a
-background Herdr terminal. Complete any Codex startup prompt in **Open terminal**.
-**Watch terminal** attaches read-only. Press **Ctrl+\\** in the viewer to detach.
-The role card remains in place and can find the same live Herdr terminal when
-Canvas reopens. Herdr reports the states emitted by the running program.
+background Herdr terminal. **Watch terminal** expands a read-only terminal at
+the card's position on the canvas. Choose **Take control** to type, including
+to complete a Codex startup prompt. **Detach terminal** collapses the view
+and leaves the session running. **Open externally** opens Windows Terminal
+when you need a separate viewer. The inline pane uses the Microsoft Edge
+WebView2 Runtime and Herdr Core 0.1.20 or newer.
+
+The role card can find the same live Herdr terminal when Canvas reopens.
+Herdr reports the states emitted by the running program.
 
 ## Register and report progress
 
@@ -94,10 +99,6 @@ At a distant zoom level, open the inspector from the Mission Control list.
 
 - Place a standalone agent from the toolbelt and link or unlink it from a
   mission while preserving its identity and any live session.
-- Expand an agent card in place into a Fluent shell with its status header and
-  a terminal pane connected to the same Herdr session. Prove streaming output,
-  resize, and keyboard input in Windows. Open in observation mode and offer
-  **Take control** for input. Collapsing the pane detaches the view.
 - Host the same agent view in a mission pop-out for Alt+Tab. Canvas and the
   pop-out share agent identity and session state. Opening the pop-out focuses
   an existing window for that mission.

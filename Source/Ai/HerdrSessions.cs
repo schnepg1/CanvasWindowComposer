@@ -99,7 +99,7 @@ internal sealed partial class HerdrSessions
         return null;
     }
 
-    private static string FindExecutable()
+    internal static string FindExecutable()
     {
         var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs", "herdr-core", "hc.exe");
