@@ -23,7 +23,11 @@ internal sealed partial class OverviewManager
         {
             PInvoke.SetForegroundWindow((HWND)pass.Handle);
             _activeCardMenu = card.ContextMenuStrip; // Borrowed; the card owns disposal.
-            if (_activeCardMenu != null) AddWindowPeekCommand(_activeCardMenu, pass, window, borrowed: true);
+            if (_activeCardMenu != null)
+            {
+                AddWindowPeekCommand(_activeCardMenu, pass, window, borrowed: true);
+                AddMainPlaceholderFlight(_activeCardMenu, pass, window);
+            }
             card.ShowContextMenu(pass, location);
         }
         else if (_placeholderWorkspace?.GetWindowContextItem(window) is { } id)
@@ -37,6 +41,22 @@ internal sealed partial class OverviewManager
         }
         else ShowWindowInteractionMenu(pass, window, location);
         return true;
+    }
+
+    private void AddMainPlaceholderFlight(ContextMenuStrip menu, OverviewOverlay pass, IntPtr window)
+    {
+        if (_placeholderWorkspace?.ResolveMainNavigationWindow(window) is not { } main || main == window) return;
+        var fly = new ToolStripMenuItem("Fly to main placeholder");
+        fly.Click += (_, _) => pass.BeginInvoke(() => NavigateToWindow(window));
+        menu.Items.Insert(0, fly);
+        menu.Closed += Remove;
+
+        void Remove(object? sender, ToolStripDropDownClosedEventArgs args)
+        {
+            menu.Closed -= Remove;
+            menu.Items.Remove(fly);
+            fly.Dispose();
+        }
     }
 
     private void ExportWorkflowFromWindow(Guid windowId)
