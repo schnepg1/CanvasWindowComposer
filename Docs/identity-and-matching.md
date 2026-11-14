@@ -28,7 +28,24 @@ incremental change to the existing C# application, not a replacement stack.
 - Launch intent is limited to HWNDs absent from a pre-launch enumeration. Even
   inaccessible pre-existing HWNDs are excluded. Same-app launches remain serialized.
   This is correlation, not proof that an arbitrary application opened the desired
-  document; uncertain/single-instance applications can still require manual linking.
+  document. A window that already existed keeps the evidence it has on its own: an
+  exact caption, target, profile or single saved place. Single-instance
+  applications that reveal the window they already own therefore claim that
+  saved place instead of arriving in the temporary area. Only windows with
+  identical, equally strong evidence for one saved place remain ambiguous and
+  require manual linking.
+- **Link open window…** lists every other open window of the same application
+  that is unbound, temporary, visible and on this desktop, with a compatible
+  browser profile. A saved place that still owns a window does not hide that
+  list; only its own window is left out. Linking then releases the window that
+  owned the place, so the chosen window takes it. The released window cannot
+  take the place back, because a bound place is never a candidate.
+- The identity of an executable ignores the build number of the folder that
+  carries it. Store packages (`WindowsApps\\Name_Version_…`) and self-updating
+  desktop programs (`…\\app-1.0.9265\\Program.exe`) keep the same identity
+  across an update, so a saved place still recognizes the program, still offers
+  its open windows for linking and still starts it. The saved launch path is
+  refreshed to the installed build as soon as the program is seen.
 
 ## Multiple VS Code projects
 

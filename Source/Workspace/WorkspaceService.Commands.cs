@@ -53,9 +53,13 @@ internal sealed partial class WorkspaceService
 
     public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id)
     {
-        if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item))
-            return Array.Empty<WorkspaceLinkCandidate>();
+        if (Find(id) is not { } item || item.DesktopId != _desktop) return Array.Empty<WorkspaceLinkCandidate>();
+        // The place's own window is already excluded: it is bound to a deliberate
+        // place, and a linked window cannot be linked twice. A place that still
+        // owns a window must not hide the other windows of the same application.
+        var own = BoundWindow(item.Id);
         return _bindings.Windows.Where(live => CanLink(live, item))
+            .Where(live => own == null || live.Identity.Handle != own.Identity.Handle)
             .Select(live => new WorkspaceLinkCandidate(live.Token,
                 $"{_api.GetWindowTitle(live.Identity.Handle)}  [PID {live.Identity.ProcessId}, window 0x{live.Identity.Handle.ToInt64():X}]"))
             .ToArray();
@@ -90,12 +94,21 @@ internal sealed partial class WorkspaceService
     {
         using var writer = BeginExplicitPlacement();
         if (!writer.HasValue) return false;
-        if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item)
+        if (Find(id) is not { } item || item.DesktopId != _desktop
             || _bindings.ForToken(candidateToken) is not { } live || !CanLink(live, item)
             || _windowInspector.Inspect(live.Identity.Handle) is not { } observed || observed.Identity != live.Identity) return false;
         DetachTemporary(live);
+        // The place may still own another window, for example a minimized one.
+        // Release it so the chosen window can take the place. The released window
+        // cannot take the place back: a bound place is never a candidate.
+        if (BoundWindow(item.Id) is { } previous && previous.Identity.Handle != live.Identity.Handle)
+        {
+            _bindings.Unbind(previous);
+            previous.NeedsInitialMatch = true;
+        }
         if (!_bindings.Bind(live, id)) return false;
         item.ExecutablePath = observed.Exe;
+        item.Title = _api.GetWindowTitle(live.Identity.Handle);
         if (item.CaptureChromeProfile && _windowInspector.ReadChromeProfile(live.Identity.Handle, item.ExecutablePath) is { } profile) item.ChromeProfilePath = profile;
         RestoreBinding(live, item);
         EnsureCards(); Save(); PublishTemporaryAreaChange(); Changed?.Invoke();
