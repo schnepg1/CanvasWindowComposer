@@ -246,6 +246,16 @@ internal sealed partial class OverviewManager
         if (point is { } screen && TryCrossDrawerDrop(id, inventory: true, screen)) return;
         if (_annotationDocument?.Items.FirstOrDefault(a => a.Id == id && a.Kind == AnnotationKind.Text) is { } note)
         {
+            if (point is { } dropPt)
+            {
+                var world = _camera.WorldFromVirtual((int)dropPt.X, (int)dropPt.Y);
+                var targetAgent = MissionCards().LastOrDefault(c => CanvasSelection.Contains(c.Bounds, new CanvasPoint(world.x, world.y)));
+                if (targetAgent != null && TryPromptAgentWithTextCard(note, targetAgent))
+                {
+                    RefreshInventory();
+                    return;
+                }
+            }
             if (!TryDrawerDropTarget(id, true, point, out var view, out var x, out var y)) return;
             var noteBounds = new WorldRect
             {

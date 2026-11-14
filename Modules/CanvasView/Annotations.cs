@@ -35,6 +35,7 @@ public sealed record CanvasAnnotation
     public string AgentTaskId { get; init; } = "";
     public string AgentRole { get; init; } = "";
     public string? AgentWorkingFolder { get; init; }
+    public string? AgentPrompt { get; init; }
 
     [System.Text.Json.Serialization.JsonConstructor]
     public CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
@@ -114,6 +115,7 @@ public sealed class AnnotationDocument
                 || !Enum.IsDefined(item.SourcePort) || !Enum.IsDefined(item.TargetPort) || !Enum.IsDefined(item.Routing)
                 || !ValidColor(item.Color) || item.Text is null || item.Text.Length > MaximumTextLength
                 || item.AgentTaskId is null || item.AgentTaskId.Length > 200 || item.AgentRole is null || item.AgentRole.Length > 80
+                || item.AgentPrompt?.Length > MaximumTextLength
                 || (item.Kind == AnnotationKind.Arrow ? AnnotationGeometry.Distance(item.A, item.B) < 1
                     : item.Bounds.Width < 1 || item.Bounds.Height < 1)
                 || (item.Kind == AnnotationKind.Text && string.IsNullOrWhiteSpace(item.Text)))
