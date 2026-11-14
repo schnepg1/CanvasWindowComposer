@@ -279,7 +279,8 @@ internal sealed partial class OverviewManager
             _unifiedDock.Panel.InteractionModeRequested += SetInteractMode;
             _unifiedDock.Panel.ControlsClicked += () => ToggleControlsPopup(pass);
             _unifiedDock.Panel.ModeRequested += SelectAnnotationMode;
-            _unifiedDock.Panel.ComposerRequested += () => OpenCanvasComposer();
+            _unifiedDock.Panel.ComposerRequested += () => OpenCanvasComposer();
+            _unifiedDock.Panel.AiTeamsToggled += () => ToggleAiTeams();
             _unifiedDock.Panel.WebResourceRequested += ShowAddWebResource;
             _unifiedDock.Panel.BackgroundsRequested += () => BackgroundsRequested?.Invoke();
             _unifiedDock.Panel.ProjectNavigatorRequested += () => ZoneNavigatorRequested?.Invoke();
@@ -306,7 +307,8 @@ internal sealed partial class OverviewManager
             };
         }
         _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
-        _unifiedDock.Panel.SetInteractMode(_interactMode);
+        _unifiedDock.Panel.SetInteractMode(_interactMode);
+        _unifiedDock.Panel.SetAiTeamsActive(_isAiTeamsActive);
         _unifiedDock.Panel.UpdateState(new AnnotationToolbarState(
             _annotationTool?.Mode ?? AnnotationMode.Select, _annotationError ?? _annotationStore?.Status, Selection.Ids.Count, _annotationTool?.Selected,
             _annotationTool?.Color ?? "#FBBF24", _annotationTool?.Stroke ?? 3, _annotationTool?.FontSize ?? 18, _annotationTool?.TextAlign ?? AnnotationTextAlign.Left,
@@ -776,7 +778,8 @@ internal sealed partial class OverviewManager
     public void SetAiTeamsActive(bool active, CanvasPoint? anchor = null)
     {
         _isAiTeamsActive = active;
-        _annotationToolbar?.SetAiTeamsActive(active);
+        _annotationToolbar?.SetAiTeamsActive(active);
+        _unifiedDock?.Panel.SetAiTeamsActive(active);
 
         if (_sectorManager == null || _placeholderWorkspace == null)
             return;
