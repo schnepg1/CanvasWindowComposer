@@ -19,7 +19,6 @@ internal sealed record WorkspaceMatch(WorkspaceItem? Item, IReadOnlyList<Guid> A
 
 internal sealed record WorkspaceMatchInput(Guid Token, string ExecutablePath, string Title, string Target, Guid? Requested)
 {
-    public IReadOnlyCollection<Guid> ExistingLaunches { get; init; } = Array.Empty<Guid>();
     public string? ChromeProfilePath { get; init; }
 }
 
@@ -142,9 +141,12 @@ internal static class WorkspaceMatcher
         var used = bound.ToArray();
         var results = windows.ToDictionary(w => w.Token,
             w => Evaluate(items, desktop, w.ExecutablePath, w.Title, w.Target, used, w.Requested, w.ChromeProfilePath));
-        foreach (var window in windows)
-            if (results[window.Token].Item is { } item && window.ExistingLaunches.Contains(item.Id))
-                results[window.Token] = WorkspaceMatch.Ambiguous(new[] { item });
+        // Launch intent is already limited to windows that were absent from the
+        // pre-launch enumeration, so a window that already existed can never be
+        // the launch result. Such a window keeps the evidence it does have: an
+        // exact caption, target, profile or single saved place. Single-instance
+        // applications reveal the window they already own, and that window is
+        // the one the saved place describes.
         // Resolve the batch before assigning anything: enumeration order cannot
         // choose a winner when two live windows claim one saved slot.
         foreach (var group in results.Where(p => p.Value.Item != null).GroupBy(p => p.Value.Item!.Id).ToArray())

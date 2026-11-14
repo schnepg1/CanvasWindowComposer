@@ -157,8 +157,6 @@ internal sealed partial class WorkspaceService
                 && _launchBaselines.TryGetValue(key, out var baseline) && !baseline.Contains(handle));
             var input = new WorkspaceMatchInput(live.Token, exe, title, target, requested == Guid.Empty ? null : requested)
             {
-                ExistingLaunches = _launching.Keys.Where(key => _launchBaselines.TryGetValue(key, out var baseline)
-                    && baseline.Contains(handle)).ToArray(),
                 ChromeProfilePath = chromeProfile
             };
             pending.Add(new(live, input, world, metadata));

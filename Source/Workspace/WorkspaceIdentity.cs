@@ -107,13 +107,20 @@ internal sealed class WorkspaceIdentity : IWorkspaceIdentity
             info.ArgumentList.Add(item.Target);
             return info;
         }
-        if (!Path.IsPathFullyQualified(item.ExecutablePath) || !File.Exists(item.ExecutablePath)
+        if (!Path.IsPathFullyQualified(item.ExecutablePath)
             || !string.Equals(Path.GetExtension(item.ExecutablePath), ".exe", StringComparison.OrdinalIgnoreCase))
             throw new IOException("The saved application is unavailable: " + item.ExecutablePath);
+        // A self-updating program replaced its versioned folder. Start the build
+        // that is installed now and keep the saved place on that executable.
+        string executable = File.Exists(item.ExecutablePath) ? item.ExecutablePath
+            : WorkspaceAppIdentity.CurrentBuild(item.ExecutablePath) ?? item.ExecutablePath;
+        if (!File.Exists(executable))
+            throw new IOException("The saved application is unavailable: " + item.ExecutablePath);
+        item.ExecutablePath = executable;
         if (item.WebResource is { } resource)
         {
-            var browser = new ProcessStartInfo(item.ExecutablePath)
-                { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(item.ExecutablePath)! };
+            var browser = new ProcessStartInfo(executable)
+                { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
             BrowserSupport.AddLaunchArguments(browser, resource);
             return browser;
         }
@@ -121,8 +128,8 @@ internal sealed class WorkspaceIdentity : IWorkspaceIdentity
             || (!File.Exists(item.Target) && !Directory.Exists(item.Target))))
             throw new IOException("Choose an existing file or folder, not command-line options or a URL, as the launch target.");
         // No associations, shell command string, runas verb, or UAC elevation.
-        var launch = new ProcessStartInfo(item.ExecutablePath)
-            { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(item.ExecutablePath)! };
+        var launch = new ProcessStartInfo(executable)
+            { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(executable)! };
         if (item.ChromeProfilePath.Length > 0) ChromeProfiles.AddLaunchArguments(launch, item.ChromeProfilePath);
         if (WorkspaceTargetIdentity.IsVsCode(item.ExecutablePath)) launch.ArgumentList.Add("--new-window");
         if (!string.IsNullOrEmpty(item.Target)) launch.ArgumentList.Add(item.Target);
