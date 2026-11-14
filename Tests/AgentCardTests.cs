@@ -1,4 +1,6 @@
 using CanvasDesktop.CanvasView;
+using System.Windows;
+using System.Windows.Media;
 
 namespace CanvasDesktop.Tests;
 
@@ -21,6 +23,7 @@ public class AgentCardTests
         var card = Assert.Single(document.Items);
         Assert.True(MissionAgentCard.IsCard(card));
         Assert.Equal(new CanvasRect(120, 180, 240, 112), card.Bounds);
+        Assert.Equal(card.Id, tool.SelectedId);
         Assert.Equal(AnnotationMode.Select, tool.Mode);
         Assert.True(document.Undo(desktop));
         Assert.Empty(document.Items);
@@ -59,4 +62,39 @@ public class AgentCardTests
         Assert.Same(inner, AgentCardContext.ProjectAt([outer, mission, temporary, otherDesktop, inner], card));
         Assert.Null(AgentCardContext.ProjectAt([outer, inner], card.Translate(2000, 0)));
     }
+
+    [Fact]
+    public void MissionCardLayerRendersAtBothNormalAndLowZoomLevels()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop = Guid.NewGuid();
+            var annotation = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(100, 100), new(340, 212), Text: "Scout Agent", AgentTaskId: "task-99", AgentRole: "Scout");
+            var card = new MissionAgentCard(annotation);
+            var layer = new MissionCardLayer(() => [card], _ => null, _ => null);
+
+            var snapshot = OverviewAnnotationSnapshot.Create([], 0, 0, 1, new(0, 0, 1920, 1080), null, false);
+
+            // Zoom 1.0 (240x112 DIPs): HasCardControls is true
+            var highTransform = new CanvasViewTransform(0, 0, 1.0, new CanvasRect(0, 0, 1920, 1080));
+            var highContext = new OverviewAnnotationContext(snapshot, highTransform, new DpiScale(1, 1), new Size(1920, 1080));
+            var highVisual = new DrawingVisual();
+            using (var dc = highVisual.RenderOpen())
+            {
+                layer.Draw(dc, highContext);
+            }
+            Assert.NotNull(highVisual.Drawing);
+            Assert.True(MissionCardLayer.HasCardControls(240, 112));
+
+            // Zoom 0.25 (60x28 DIPs): HasCardControls is false (previously skipped entirely), but now renders
+            var lowTransform = new CanvasViewTransform(0, 0, 0.25, new CanvasRect(0, 0, 1920, 1080));
+            var lowContext = new OverviewAnnotationContext(snapshot, lowTransform, new DpiScale(1, 1), new Size(1920, 1080));
+            var lowVisual = new DrawingVisual();
+            using (var dc = lowVisual.RenderOpen())
+            {
+                layer.Draw(dc, lowContext);
+            }
+            Assert.NotNull(lowVisual.Drawing);
+            Assert.False(MissionCardLayer.HasCardControls(60, 28));
+        });
 }

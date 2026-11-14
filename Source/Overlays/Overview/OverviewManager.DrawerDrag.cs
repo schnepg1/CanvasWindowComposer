@@ -74,6 +74,10 @@ internal sealed partial class OverviewManager
                 InInventory = true
             };
         }
+        else if (_placeholderWorkspace?.Document.Zones.FirstOrDefault(z => z.Id == id) is { } zone)
+        {
+            bounds = zone.Bounds with { InInventory = true };
+        }
         else return false;
 
         if (screen is not { } point) return true;
@@ -99,6 +103,16 @@ internal sealed partial class OverviewManager
                 InInventory = true
             };
             found = NearbyWindowPlacement.TryPlace(noteBounds, view, _placeholderWorkspace.InventoryPlacementObstacles(id), out placed, x, y);
+        }
+        else if (_placeholderWorkspace.Document.Zones.FirstOrDefault(z => z.Id == id) is { } zone)
+        {
+            var viewportScreen = view.Screens.FirstOrDefault();
+            double screenW = viewportScreen.Width > 0 ? viewportScreen.Width : 1920;
+            double screenH = viewportScreen.Height > 0 ? viewportScreen.Height : 1080;
+            double targetX = x ?? (view.Camera.X + (screenW / view.Camera.Zoom - zone.Bounds.W) / 2);
+            double targetY = y ?? (view.Camera.Y + (screenH / view.Camera.Zoom - zone.Bounds.H) / 2);
+            placed = zone.Bounds with { X = targetX, Y = targetY, InInventory = false };
+            found = true;
         }
         else
         {

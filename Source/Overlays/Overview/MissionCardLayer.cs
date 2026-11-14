@@ -41,8 +41,21 @@ internal sealed class MissionCardLayer(Func<IEnumerable<MissionAgentCard>> cards
         {
             var bounds = context.View.WorldToDip(card.Bounds);
             var rect = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-            if (!HasCardControls(rect.Width, rect.Height) || !rect.IntersectsWith(new Rect(context.Size))) continue;
-            dc.DrawRoundedRectangle(Surface, Outline, rect, 8, 8);
+            if (!rect.IntersectsWith(new Rect(context.Size)) || rect.Width < 6 || rect.Height < 4) continue;
+            double radius = Math.Min(8, Math.Min(rect.Width / 2, rect.Height / 2));
+            dc.DrawRoundedRectangle(Surface, Outline, rect, radius, radius);
+            if (!HasCardControls(rect.Width, rect.Height))
+            {
+                if (rect.Width >= 28 && rect.Height >= 14)
+                {
+                    var mini = context.Text(card.Name, Math.Max(8, Math.Min(12, rect.Height - 6)), Brushes.White);
+                    mini.MaxTextWidth = Math.Max(1, rect.Width - 8);
+                    mini.MaxTextHeight = Math.Max(1, rect.Height - 4);
+                    mini.Trimming = TextTrimming.CharacterEllipsis;
+                    dc.DrawText(mini, new Point(rect.X + 4, rect.Y + 2));
+                }
+                continue;
+            }
             dc.PushClip(new RectangleGeometry(rect, 8, 8));
             var title = context.Text(card.Name, 14, Brushes.White);
             title.MaxTextWidth = rect.Width - 22;

@@ -130,4 +130,85 @@ public class BackpackTextNotesCompatibilityTests : IDisposable
         Assert.Equal(placed.X, updated.A.X);
         Assert.Equal(placed.Y, updated.A.Y);
     }
+
+    [Fact]
+    public void ProjectWithInInventoryFlagRoundTripsThroughPersistence()
+    {
+        var store = new MemoryWorkspaceStore();
+        var persistence = new WorkspacePersistence(store);
+        var desktop = Guid.NewGuid();
+        var zone = new WorkspaceZone
+        {
+            Id = Guid.NewGuid(),
+            DesktopId = desktop,
+            Name = "Feature Pod",
+            Bounds = new WorldRect { X = 100, Y = 200, W = 800, H = 600 },
+            InInventory = true
+        };
+
+        persistence.Document.Zones.Add(zone);
+        Assert.True(persistence.Save());
+
+        var loadedZone = Assert.Single(store.Document.Zones);
+        Assert.Equal(zone.Id, loadedZone.Id);
+        Assert.Equal("Feature Pod", loadedZone.Name);
+        Assert.True(loadedZone.InInventory);
+    }
+
+    [Fact]
+    public void ProjectWithNestedItemsExpandsAndRelocatesAtomicallyOnUnpack()
+    {
+        var projectId = Guid.NewGuid();
+        var windowId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+
+        // Project at (100, 100, 800, 600)
+        var projectItem = new CanvasSelectionItem(
+            new(CanvasItemKind.Project, projectId),
+            new(100, 100, 800, 600),
+            "Project Area",
+            Members: [new(CanvasItemKind.Window, windowId)]
+        );
+
+        // Window inside project at (150, 150, 300, 200)
+        var windowItem = new CanvasSelectionItem(
+            new(CanvasItemKind.Window, windowId),
+            new(150, 150, 300, 200),
+            "Editor"
+        );
+
+        // Text note spatially inside project at (200, 400, 200, 100)
+        var noteItem = new CanvasSelectionItem(
+            new(CanvasItemKind.Annotation, noteId),
+            new(200, 400, 200, 100),
+            "Project Note"
+        );
+
+        var allItems = new[] { projectItem, windowItem, noteItem };
+
+        // Expand starting from project zone
+        var expanded = CanvasSelection.Expand([new(CanvasItemKind.Project, projectId)], allItems);
+
+        // Expanded group must contain the project, explicit window member, and spatially enclosed note
+        Assert.Contains(new CanvasItemId(CanvasItemKind.Project, projectId), expanded);
+        Assert.Contains(new CanvasItemId(CanvasItemKind.Window, windowId), expanded);
+        Assert.Contains(new CanvasItemId(CanvasItemKind.Annotation, noteId), expanded);
+
+        // Relocating project to (500, 600) -> dx = 400, dy = 500
+        double dx = 400;
+        double dy = 500;
+
+        var movedItems = allItems.Where(i => expanded.Contains(i.Key))
+            .Select(i => i with { Bounds = new(i.Bounds.X + dx, i.Bounds.Y + dy, i.Bounds.Width, i.Bounds.Height) })
+            .ToDictionary(i => i.Key);
+
+        Assert.Equal(500, movedItems[new(CanvasItemKind.Project, projectId)].Bounds.X);
+        Assert.Equal(600, movedItems[new(CanvasItemKind.Project, projectId)].Bounds.Y);
+
+        Assert.Equal(550, movedItems[new(CanvasItemKind.Window, windowId)].Bounds.X);
+        Assert.Equal(650, movedItems[new(CanvasItemKind.Window, windowId)].Bounds.Y);
+
+        Assert.Equal(600, movedItems[new(CanvasItemKind.Annotation, noteId)].Bounds.X);
+        Assert.Equal(900, movedItems[new(CanvasItemKind.Annotation, noteId)].Bounds.Y);
+    }
 }

@@ -45,11 +45,17 @@ internal sealed partial class OverviewManager
                 _annotationStore?.Save();
                 RefreshInventory();
                 if (CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+                return;
             }
-            else
+            if (_placeholderWorkspace?.Document.Zones.FirstOrDefault(z => z.Id == id && z.InInventory) is { } zone)
             {
-                _placeholderWorkspace?.Forget(id);
+                zone.InInventory = false;
+                _placeholderWorkspace.SaveNow();
+                RefreshInventory();
+                if (CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+                return;
             }
+            _placeholderWorkspace?.Forget(id);
         };
         AttachDrawerDragFeedback(_backpack.Panel.Drag, inventory: true);
         return _backpack;
@@ -83,7 +89,10 @@ internal sealed partial class OverviewManager
         var noteItems = _annotationDocument?.Items
             .Where(a => a.DesktopId == _annotationDesktop() && a.InInventory && a.Kind == AnnotationKind.Text)
             .Select(NoteToItemView).ToArray() ?? Array.Empty<WorkspaceItemView>();
-        backpack.Panel.UpdateItems(workspaceItems.Concat(noteItems).ToArray());
+        var projectItems = _placeholderWorkspace.Document.Zones
+            .Where(z => z.DesktopId == _annotationDesktop() && z.InInventory && !z.IsTemporaryArea)
+            .Select(ZoneToItemView).ToArray();
+        backpack.Panel.UpdateItems(workspaceItems.Concat(noteItems).Concat(projectItems).ToArray());
         backpack.Panel.SetHelpDismissed(_placeholderWorkspace.Document.InventoryHelpDismissed);
         backpack.Panel.SetHint(_placeholderWorkspace.InventoryStatus);
         backpack.Present(open, CurrentMode != OverviewMode.Hidden, _screens.PrimaryWorkingArea);
@@ -91,9 +100,10 @@ internal sealed partial class OverviewManager
 
     private static WorkspaceItemView NoteToItemView(CanvasAnnotation note)
     {
+        bool isAgent = MissionAgentCard.IsCard(note);
         string text = note.Text.Trim();
         string firstLine = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        string title = firstLine.Length > 0 ? firstLine : "Text note";
+        string title = isAgent ? new MissionAgentCard(note).Name : (firstLine.Length > 0 ? firstLine : "Text note");
         var bounds = new WorldRect
         {
             X = Math.Min(note.A.X, note.B.X),
@@ -109,9 +119,33 @@ internal sealed partial class OverviewManager
             "",
             false,
             bounds,
-            "Note",
-            Name: text.Length > 0 ? text : title,
+            isAgent ? "Agent" : "Note",
+            Name: isAgent ? (note.AgentWorkingFolder ?? note.AgentRole) : (text.Length > 0 ? text : title),
             IsFolder: false,
+            ChromeProfilePath: "",
+            LaunchMessage: null,
+            WebResource: null,
+            ExcludeFromAutomaticMinimization: false,
+            Temporary: false
+        );
+    }
+
+    private WorkspaceItemView ZoneToItemView(WorkspaceZone zone)
+    {
+        int members = _placeholderWorkspace?.Zones.Members(zone.Id).Count(m => m.Assigned) ?? 0;
+        string detail = !string.IsNullOrWhiteSpace(zone.ProjectFolderPath)
+            ? zone.ProjectFolderPath
+            : $"{members} item{(members == 1 ? "" : "s")}";
+        return new WorkspaceItemView(
+            zone.Id,
+            zone.Name,
+            zone.Color,
+            zone.ProjectFolderPath ?? "",
+            false,
+            zone.Bounds with { InInventory = true },
+            "Project",
+            Name: detail,
+            IsFolder: true,
             ChromeProfilePath: "",
             LaunchMessage: null,
             WebResource: null,
@@ -124,7 +158,7 @@ internal sealed partial class OverviewManager
     {
         if (_disposed || _annotationDocument == null) return false;
         if (_annotationDocument.Items.FirstOrDefault(a => a.Id == id && a.DesktopId == _annotationDesktop()
-            && a.Kind == AnnotationKind.Text && a.AgentTaskId.Length == 0) is not { } note)
+            && a.Kind == AnnotationKind.Text) is not { } note)
             return false;
         var source = new WorldRect
         {
@@ -147,10 +181,35 @@ internal sealed partial class OverviewManager
 
         _inventoryFlight ??= new InventoryFlightWindow();
         var view = CurrentMode == OverviewMode.Hidden ? _mainCanvas.Camera : ViewCamera;
+        bool isAgent = MissionAgentCard.IsCard(note);
         string text = note.Text.Trim();
         string firstLine = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        string title = firstLine.Length > 0 ? firstLine : "Text note";
+        string title = isAgent ? new MissionAgentCard(note).Name : (firstLine.Length > 0 ? firstLine : "Text note");
         _inventoryFlight.Fly(title, view.Project(source), backpack.ScreenBounds, _screens.PrimaryBounds,
+            _appConfig.ReduceStartupMotion || !System.Windows.SystemParameters.ClientAreaAnimation);
+
+        if (CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+        return true;
+    }
+
+    internal bool CollectProjectInInventory(Guid id)
+    {
+        if (_disposed || _placeholderWorkspace == null) return false;
+        var zone = _placeholderWorkspace.Document.Zones.FirstOrDefault(z => z.Id == id && z.DesktopId == _annotationDesktop() && !z.IsTemporaryArea);
+        if (zone == null) return false;
+        zone.InInventory = true;
+        _placeholderWorkspace.SaveNow();
+        Selection.Clear();
+
+        var backpack = EnsureBackpack();
+        backpack.SetCanvasOwner(CanvasPanelOwner);
+        RefreshInventory();
+        backpack.NotifyArrival();
+        backpack.Panel.Highlight(id);
+
+        _inventoryFlight ??= new InventoryFlightWindow();
+        var view = CurrentMode == OverviewMode.Hidden ? _mainCanvas.Camera : ViewCamera;
+        _inventoryFlight.Fly(zone.Name, view.Project(zone.Bounds), backpack.ScreenBounds, _screens.PrimaryBounds,
             _appConfig.ReduceStartupMotion || !System.Windows.SystemParameters.ClientAreaAnimation);
 
         if (CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
@@ -209,12 +268,44 @@ internal sealed partial class OverviewManager
             };
             _annotationDocument.Put(updated);
             _annotationStore?.Save();
-            _backpack?.Panel.SetHint("Unpacked. This note is now kept on the canvas.");
+            _backpack?.Panel.SetHint(MissionAgentCard.IsCard(note)
+                ? "Unpacked. This agent card is now kept on the canvas."
+                : "Unpacked. This note is now kept on the canvas.");
             RefreshInventory();
             if (CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
             return;
         }
-        if (!TryDrawerDropTarget(id, true, point, out _, out var wx, out var wy)) return;
+        if (_placeholderWorkspace != null && _placeholderWorkspace.Document.Zones.FirstOrDefault(z => z.Id == id && z.InInventory) is { } projectZone)
+        {
+            if (!TryDrawerDropTarget(id, true, point, out var view, out var targetX, out var targetY)) return;
+            var viewportScreen = view.Screens.FirstOrDefault();
+            double screenW = viewportScreen.Width > 0 ? viewportScreen.Width : 1920;
+            double screenH = viewportScreen.Height > 0 ? viewportScreen.Height : 1080;
+            double destX = targetX ?? (view.Camera.X + (screenW / view.Camera.Zoom - projectZone.Bounds.W) / 2);
+            double destY = targetY ?? (view.Camera.Y + (screenH / view.Camera.Zoom - projectZone.Bounds.H) / 2);
+            double dx = destX - projectZone.Bounds.X;
+            double dy = destY - projectZone.Bounds.Y;
+
+            if (_annotationDocument != null)
+            {
+                var all = SelectionItems();
+                var group = CanvasSelection.Expand([new(CanvasItemKind.Project, projectZone.Id)], all);
+                MoveSelection(new(all.Where(i => group.Contains(i.Key)).ToArray(), dx, dy));
+            }
+            else
+            {
+                _placeholderWorkspace.MoveZone(projectZone.Id, dx, dy);
+            }
+
+            projectZone.InInventory = false;
+            _placeholderWorkspace.SaveNow();
+            _backpack?.Panel.SetHint("Unpacked. This project is now kept on the canvas.");
+            RefreshInventory();
+            RefreshZoneLayout();
+            if (CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+            return;
+        }
+        if (_placeholderWorkspace == null || !TryDrawerDropTarget(id, true, point, out _, out var wx, out var wy)) return;
         bool dropped = _placeholderWorkspace.DropFromInventory(id, wx, wy);
         _backpack?.Panel.SetHint(dropped ? "Unpacked. This place is now kept on the canvas." : _placeholderWorkspace.Status);
         RefreshOverviewWindows();
@@ -227,25 +318,36 @@ internal sealed partial class OverviewManager
             || !_backpack.ContainsScreenPoint(e.X + pass.OriginX, e.Y + pass.OriginY)) return false;
         Guid[] ids;
         Guid[] noteIds = Array.Empty<Guid>();
+        Guid[] projectIds = Array.Empty<Guid>();
         IntPtr[] sessionHandles = Array.Empty<IntPtr>();
         IntPtr handle = IntPtr.Zero;
         if (_tools.Kind == CanvasInteractionKind.Window && _windowDragMoved && _dragIndex >= 0 && _dragIndex < _windows.Count)
         {
             handle = _windows.Windows[_dragIndex].HWnd; ids = Array.Empty<Guid>();
         }
-        else if (_tools.Kind == CanvasInteractionKind.Tool && _selectionTool is { Ghosts.Count: > 0 } selection
-            && (selection.Offset.X != 0 || selection.Offset.Y != 0))
+        else if (_tools.Kind == CanvasInteractionKind.Tool)
         {
-            ids = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Window)
-                .Select(i => i.Key.Id).Where(id => _placeholderWorkspace.Document.Items.Any(i => i.Id == id)).ToArray();
-            sessionHandles = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Window)
-                .Select(i => _selectionWindows.FirstOrDefault(p => p.Value.Id == i.Key.Id).Key)
-                .Where(h => h != IntPtr.Zero).ToArray();
-            noteIds = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Annotation)
-                .Where(i => i.Annotation is { Kind: AnnotationKind.Text, AgentTaskId.Length: 0 })
-                .Select(i => i.Key.Id).ToArray();
+            if (_selectionTool is { Ghosts.Count: > 0 } selection && (selection.Offset.X != 0 || selection.Offset.Y != 0))
+            {
+                ids = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Window)
+                    .Select(i => i.Key.Id).Where(id => _placeholderWorkspace.Document.Items.Any(i => i.Id == id)).ToArray();
+                sessionHandles = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Window)
+                    .Select(i => _selectionWindows.FirstOrDefault(p => p.Value.Id == i.Key.Id).Key)
+                    .Where(h => h != IntPtr.Zero).ToArray();
+                noteIds = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Annotation)
+                    .Where(i => i.Annotation is { Kind: AnnotationKind.Text })
+                    .Select(i => i.Key.Id).ToArray();
+                projectIds = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Project)
+                    .Select(i => i.Key.Id).ToArray();
+            }
+            else if (_zoneTool.Gesture.Kind == ZoneGestureKind.Move && _zoneTool.Gesture.MovingId is { } movingZoneId)
+            {
+                ids = Array.Empty<Guid>();
+                projectIds = [movingZoneId];
+            }
+            else return false;
 
-            if (ids.Length == 0 && sessionHandles.Length == 0 && noteIds.Length == 0) return false;
+            if (ids.Length == 0 && sessionHandles.Length == 0 && noteIds.Length == 0 && projectIds.Length == 0) return false;
         }
         else return false;
         CancelInteraction();
@@ -258,6 +360,7 @@ internal sealed partial class OverviewManager
             if (_placeholderWorkspace.GetWindowContextItem(sessionHandle) is { } itemId) ids = ids.Append(itemId).ToArray();
         foreach (var id in ids) _placeholderWorkspace.CollectInInventory(id);
         foreach (var id in noteIds) CollectNoteInInventory(id);
+        foreach (var id in projectIds) CollectProjectInInventory(id);
         _backpack.Panel.SetDropTarget(false);
         Selection.Clear();
         RefreshOverviewWindows(); ReconcileVisuals();
@@ -266,7 +369,7 @@ internal sealed partial class OverviewManager
 
     private void UpdateInventoryDropHover(OverviewOverlay pass, MouseEventArgs e)
     {
-        _backpack?.Panel.SetDropTarget((_tools.Kind == CanvasInteractionKind.Window || _selectionTool?.Ghosts.Count > 0)
+        _backpack?.Panel.SetDropTarget((_tools.Kind == CanvasInteractionKind.Window || _selectionTool?.Ghosts.Count > 0 || _zoneTool?.Gesture.Kind == ZoneGestureKind.Move)
             && _backpack.ContainsScreenPoint(e.X + pass.OriginX, e.Y + pass.OriginY));
     }
 

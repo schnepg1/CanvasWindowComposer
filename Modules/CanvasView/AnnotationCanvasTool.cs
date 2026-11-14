@@ -110,6 +110,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
             Mode = AnnotationMode.Select;
             try { AnnotationDocument.Validate([result]); } catch (ArgumentException) { return; }
             if (document.Items.Count < AnnotationDocument.MaximumItems) document.Put(result);
+            SelectedId = result.Id;
             return;
         }
         if (creating && result.Kind==AnnotationKind.Text)

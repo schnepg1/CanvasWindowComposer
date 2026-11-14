@@ -21,7 +21,7 @@ internal sealed partial class OverviewManager
     {
         if (CurrentMode != OverviewMode.Zooming || IsStartupIntroActive || _annotationDocument == null) return [];
         var desktop = _annotationDesktop();
-        return _annotationDocument.Items.Where(item => item.DesktopId == desktop
+        return _annotationDocument.Items.Where(item => item.DesktopId == desktop && !item.InInventory
             && MissionAgentCard.IsCard(item)).Select(item => new MissionAgentCard(item));
     }
 
@@ -249,15 +249,27 @@ internal sealed partial class OverviewManager
         }
         var card = HitMissionCard(pointer);
         if (card == null) return false;
-        ShowMissionAgent(card);
-        return true;
+        if (IsOpenAgentClick(card, pointer))
+        {
+            ShowMissionAgent(card);
+            return true;
+        }
+        return false;
+    }
+
+    private static bool IsOpenAgentClick(MissionAgentCard card, CanvasPointer pointer)
+    {
+        var bounds = pointer.View.WorldToDip(card.Bounds);
+        if (bounds.Height < 96) return false;
+        var openRect = new System.Windows.Rect(bounds.X + 8, bounds.Y + 68, Math.Min(110, bounds.Width - 16), 26);
+        return openRect.Contains(pointer.Position.X, pointer.Position.Y);
     }
 
     private MissionAgentCard? HitMissionCard(CanvasPointer pointer)
         => MissionCards().LastOrDefault(c =>
         {
             var bounds = pointer.View.WorldToDip(c.Bounds);
-            return MissionCardLayer.HasCardControls(bounds.Width, bounds.Height)
+            return bounds.Width >= 6 && bounds.Height >= 4
                 && CanvasSelection.Contains(c.Bounds, pointer.World);
         });
 }

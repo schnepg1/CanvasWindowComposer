@@ -644,7 +644,7 @@ internal sealed class BackpackPanel : UserControl
                 BorderBrush = Ink(isSelected ? "#EAC487" : "#344B5B"),
                 BorderThickness = new Thickness(isSelected ? 1.8 : 1),
                 Background = Ink(isSelected ? "#223546" : "#1B2C3A"),
-                ToolTip = item.State == "Note" ? (string.IsNullOrEmpty(item.Name) ? item.Title : item.Name) : (item.Title + "\n" + item.ExecutablePath),
+                ToolTip = item.State is "Note" or "Agent" or "Project" ? (string.IsNullOrEmpty(item.Name) ? item.Title : $"{item.Title}\n{item.Name}") : (item.Title + "\n" + item.ExecutablePath),
                 Cursor = Cursors.Hand
             };
             System.Windows.Automation.AutomationProperties.SetName(tile, item.Title);
@@ -656,16 +656,38 @@ internal sealed class BackpackPanel : UserControl
             var tileHeader = new DockPanel { Margin = new Thickness(0, 0, 0, 7) };
             body.Children.Add(tileHeader);
 
+            var glyphColor = item.State switch
+            {
+                "Note" => Ink("#FBBF24"),
+                "Agent" => Ink("#A78BFA"),
+                "Project" => Ink("#60A5FA"),
+                _ => Ink(item.Temporary ? "#78E2CB" : "#F0CB8D")
+            };
+            var glyphBg = item.State switch
+            {
+                "Note" => Ink("#3D3418"),
+                "Agent" => Ink("#2D2244"),
+                "Project" => Ink("#1E2D4A"),
+                _ => Ink(item.Temporary ? "#22474E" : "#4A3E28")
+            };
+            var glyphBorder = item.State switch
+            {
+                "Note" => Ink("#7C6B38"),
+                "Agent" => Ink("#5B4687"),
+                "Project" => Ink("#2B4C7E"),
+                _ => Ink(item.Temporary ? "#386F78" : "#7C663D")
+            };
+
             var glyph = new Border
             {
                 Width = 32,
                 Height = 28,
                 CornerRadius = new CornerRadius(6),
-                Background = Ink(item.State == "Note" ? "#3D3418" : item.Temporary ? "#22474E" : "#4A3E28"),
-                BorderBrush = Ink(item.State == "Note" ? "#7C6B38" : item.Temporary ? "#386F78" : "#7C663D"),
+                Background = glyphBg,
+                BorderBrush = glyphBorder,
                 BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Child = DrawerAppIcon.Create(item, 20, Ink(item.State == "Note" ? "#FBBF24" : item.Temporary ? "#78E2CB" : "#F0CB8D"))
+                Child = DrawerAppIcon.Create(item, 20, glyphColor)
             };
             tileHeader.Children.Add(glyph);
 
@@ -673,8 +695,8 @@ internal sealed class BackpackPanel : UserControl
             {
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(5, 2, 5, 2),
-                Background = Ink(item.Temporary ? "#17383E" : "#3B331F"),
-                BorderBrush = Ink(item.Temporary ? "#439284" : "#B59458"),
+                Background = Ink(item.Temporary ? "#17383E" : item.State == "Project" ? "#1E293B" : item.State == "Agent" ? "#2E1A47" : "#3B331F"),
+                BorderBrush = Ink(item.Temporary ? "#439284" : item.State == "Project" ? "#3B82F6" : item.State == "Agent" ? "#8B5CF6" : "#B59458"),
                 BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Center
@@ -682,10 +704,10 @@ internal sealed class BackpackPanel : UserControl
             DockPanel.SetDock(tagBadge, Dock.Right);
             tagBadge.Child = new TextBlock
             {
-                Text = item.Temporary ? "SESSION" : "KEPT",
+                Text = item.Temporary ? "SESSION" : item.State == "Project" ? "PROJECT" : item.State == "Agent" ? "AGENT" : "KEPT",
                 FontSize = 9,
                 FontWeight = FontWeights.Bold,
-                Foreground = Ink(item.Temporary ? "#73D8C3" : "#EAC487")
+                Foreground = Ink(item.Temporary ? "#73D8C3" : item.State == "Project" ? "#93C5FD" : item.State == "Agent" ? "#C4B5FD" : "#EAC487")
             };
             tileHeader.Children.Add(tagBadge);
 
@@ -709,12 +731,28 @@ internal sealed class BackpackPanel : UserControl
                 Height = 6,
                 Margin = new Thickness(0, 0, 5, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Fill = Ink(item.State == "Open" ? "#48D18C" : item.State == "Placeholder" ? "#E0B364" : item.State == "Note" ? "#FBBF24" : "#6FA5C7")
+                Fill = Ink(item.State switch
+                {
+                    "Open" => "#48D18C",
+                    "Placeholder" => "#E0B364",
+                    "Note" => "#FBBF24",
+                    "Agent" => "#A78BFA",
+                    "Project" => "#60A5FA",
+                    _ => "#6FA5C7"
+                })
             };
             statePanel.Children.Add(dot);
             statePanel.Children.Add(new TextBlock
             {
-                Text = item.State == "Open" ? "Live window" : item.State == "Placeholder" ? "Closed · kept" : item.State == "Note" ? "Text note" : item.State,
+                Text = item.State switch
+                {
+                    "Open" => "Live window",
+                    "Placeholder" => "Closed · kept",
+                    "Note" => "Text note",
+                    "Agent" => "AI agent",
+                    "Project" => "Project area",
+                    _ => item.State
+                },
                 FontSize = 10,
                 Foreground = Ink("#A0B8CB"),
                 TextTrimming = TextTrimming.CharacterEllipsis
@@ -774,10 +812,16 @@ internal sealed class BackpackPanel : UserControl
                 menu.Items.Add(m);
             }
             Entry("Place near camera", SymbolRegular.Open20, () => PlaceRequested?.Invoke(item.Id));
-            if (item.State != "Note")
+            if (item.State is not ("Note" or "Agent" or "Project"))
                 Entry("Open app", SymbolRegular.ArrowUpRight20, () => OpenItemRequested?.Invoke(item.Id));
             if (item.Temporary) Entry("Keep in backpack", SymbolRegular.Pin20, () => KeepRequested?.Invoke(item.Id));
-            else Entry(item.State == "Note" ? "Delete note" : "Forget saved entry", SymbolRegular.Delete20, () => ForgetRequested?.Invoke(item.Id));
+            else Entry(item.State switch
+            {
+                "Note" => "Delete note",
+                "Agent" => "Delete agent card",
+                "Project" => "Delete from backpack",
+                _ => "Forget saved entry"
+            }, SymbolRegular.Delete20, () => ForgetRequested?.Invoke(item.Id));
             tile.ContextMenu = menu;
 
             _tiles.Children.Add(tile);

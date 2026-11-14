@@ -80,6 +80,7 @@ internal sealed class WorkspacePersistence
                 IsModularMission = z.IsModularMission,
                 MissionWorkingFolder = z.MissionWorkingFolder,
                 ProjectFolderPath = z.ProjectFolderPath,
+                InInventory = z.InInventory,
                 ItemIds = z.IsTemporaryArea ? new() : z.ItemIds.Where(ids.Contains).ToList() }).ToList()
         };
     }

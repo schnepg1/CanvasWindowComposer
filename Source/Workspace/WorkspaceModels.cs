@@ -83,6 +83,8 @@ internal sealed class WorkspaceZone
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? MissionWorkingFolder { get; set; }
     public bool IsTemporaryArea { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool InInventory { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid DesktopId { get; set; }
     public string Name { get; set; } = "Project area";

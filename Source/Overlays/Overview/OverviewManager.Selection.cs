@@ -127,6 +127,7 @@ internal sealed partial class OverviewManager
                 if (ZoneLabelLayout.Get(z.Bounds,p.View) is {} label && label.Contains(p.Position.X,p.Position.Y))
                     return new(CanvasItemKind.Project,z.Id);
         if (_annotationTool?.Hit(p) is {} annotation) return new(CanvasItemKind.Annotation,annotation.Id);
+        if (HitMissionCard(p) is {} card) return new(CanvasItemKind.Annotation, card.Id);
         var pass = _passes.ElementAtOrDefault(p.SurfaceId);
         int index = pass == null ? _windows.HitTest(p.World.X,p.World.Y)
             : HitOverviewWindow(pass,(int)p.Position.X,(int)p.Position.Y,p.World.X,p.World.Y);

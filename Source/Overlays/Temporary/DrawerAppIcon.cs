@@ -26,6 +26,38 @@ internal static class DrawerAppIcon
             return noteIcon;
         }
 
+        if (item.State == "Agent")
+        {
+            var agentIcon = new SymbolIcon
+            {
+                Symbol = SymbolRegular.Bot20,
+                FontSize = size,
+                Foreground = fallbackColor,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            agentIcon.Width = size;
+            agentIcon.Height = size;
+            return agentIcon;
+        }
+
+        if (item.State == "Project")
+        {
+            var projectIcon = new SymbolIcon
+            {
+                Symbol = SymbolRegular.Folder20,
+                FontSize = size,
+                Foreground = fallbackColor,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            projectIcon.Width = size;
+            projectIcon.Height = size;
+            return projectIcon;
+        }
+
         var artwork = PlaceholderArtworkCache.Default.GetArtwork(item);
         var source = artwork.OverviewLogo;
         FrameworkElement icon = source != null

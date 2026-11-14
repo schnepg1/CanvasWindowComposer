@@ -409,15 +409,24 @@ internal sealed partial class OverviewManager
         if (e.Button == MouseButtons.Left && HitMissionCard(Pointer(pass, e)) != null) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
-            if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select
-                && annotationTool.Hit(Pointer(pass,e)) is { } note)
+            if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select)
             {
-                CancelInteraction(); annotationTool.Select(note.Id);
-                if (note.Kind == AnnotationKind.Text || note.Kind == AnnotationKind.Arrow)
-                    QueueAnnotationTextEdit(note,new Point(e.X+pass.OriginX,e.Y+pass.OriginY));
-                else
-                    QueueAnnotationShapeEdit(note);
-                return;
+                var pointer = Pointer(pass, e);
+                if (HitMissionCard(pointer) is { } card)
+                {
+                    CancelInteraction();
+                    ShowMissionAgent(card);
+                    return;
+                }
+                if (annotationTool.Hit(pointer) is { } note)
+                {
+                    CancelInteraction(); annotationTool.Select(note.Id);
+                    if (note.Kind == AnnotationKind.Text || note.Kind == AnnotationKind.Arrow)
+                        QueueAnnotationTextEdit(note,new Point(e.X+pass.OriginX,e.Y+pass.OriginY));
+                    else
+                        QueueAnnotationShapeEdit(note);
+                    return;
+                }
             }
             if (annotationTool.Mode!=AnnotationMode.Select) return;
         }

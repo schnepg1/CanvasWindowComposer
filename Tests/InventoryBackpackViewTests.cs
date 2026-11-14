@@ -354,6 +354,80 @@ public class InventoryBackpackViewTests
             Assert.Equal(noteId, forgottenId);
         });
 
+    [Fact]
+    public void BackpackDisplaysAgentCardsAndProjectsWithDistinctBadgesAndContextMenus()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(true);
+            var agentId = Guid.NewGuid();
+            var projectId = Guid.NewGuid();
+
+            var agentItem = new WorkspaceItemView(
+                agentId,
+                "Research Assistant",
+                "",
+                "",
+                false,
+                new() { W = 240, H = 112, InInventory = true },
+                "Agent",
+                Name: "Research Assistant\nAutonomous Codebase Scout",
+                Temporary: false
+            );
+
+            var projectItem = new WorkspaceItemView(
+                projectId,
+                "Backend Engine",
+                "",
+                "",
+                false,
+                new() { W = 800, H = 600, InInventory = true },
+                "Project",
+                Name: "Backend Engine\n4 windows",
+                Temporary: false
+            );
+
+            panel.UpdateItems([agentItem, projectItem]);
+            panel.Measure(new Size(450, 650));
+            panel.Arrange(new Rect(0, 0, 450, 650));
+            panel.UpdateLayout();
+
+            // Check badges and subtitles
+            var textBlocks = Descendants(panel).OfType<TextBlock>().Select(t => t.Text).ToArray();
+            Assert.Contains("AGENT", textBlocks);
+            Assert.Contains("AI agent", textBlocks);
+            Assert.Contains("PROJECT", textBlocks);
+            Assert.Contains("Project area", textBlocks);
+
+            // Context menu for agent tile
+            var agentTile = Descendants(panel).OfType<Border>().First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Research Assistant");
+            Assert.NotNull(agentTile.ContextMenu);
+            var agentMenuItems = agentTile.ContextMenu.Items.OfType<MenuItem>().Select(m => m.Header?.ToString()).ToArray();
+            Assert.Contains("Place near camera", agentMenuItems);
+            Assert.Contains("Delete agent card", agentMenuItems);
+            Assert.DoesNotContain("Open app", agentMenuItems);
+
+            // Context menu for project tile
+            var projectTile = Descendants(panel).OfType<Border>().First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Backend Engine");
+            Assert.NotNull(projectTile.ContextMenu);
+            var projectMenuItems = projectTile.ContextMenu.Items.OfType<MenuItem>().Select(m => m.Header?.ToString()).ToArray();
+            Assert.Contains("Place near camera", projectMenuItems);
+            Assert.Contains("Delete from backpack", projectMenuItems);
+            Assert.DoesNotContain("Open app", projectMenuItems);
+
+            // Forget agent and project requests
+            var forgottenIds = new List<Guid>();
+            panel.ForgetRequested += id => forgottenIds.Add(id);
+
+            var deleteAgent = agentTile.ContextMenu.Items.OfType<MenuItem>().First(m => m.Header?.ToString() == "Delete agent card");
+            deleteAgent.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            var deleteProject = projectTile.ContextMenu.Items.OfType<MenuItem>().First(m => m.Header?.ToString() == "Delete from backpack");
+            deleteProject.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            Assert.Equal([agentId, projectId], forgottenIds);
+        });
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
