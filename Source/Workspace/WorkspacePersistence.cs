@@ -74,6 +74,8 @@ internal sealed class WorkspacePersistence
             TemporaryAreas = new(document.TemporaryAreas), Cameras = new(document.Cameras), Items = items,
             Zones = document.Zones.Select(z => new WorkspaceZone { Id = z.Id, DesktopId = z.DesktopId,
                 Name = z.Name, Color = z.Color, Bounds = z.Bounds, IsTemporaryArea = z.IsTemporaryArea, AgentTaskId = z.AgentTaskId,
+                MissionPositionLocked = z.MissionPositionLocked,
+                MissionWorkingFolder = z.MissionWorkingFolder,
                 ItemIds = z.IsTemporaryArea ? new() : z.ItemIds.Where(ids.Contains).ToList() }).ToList()
         };
     }

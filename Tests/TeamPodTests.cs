@@ -19,7 +19,8 @@ public class TeamPodTests
         var snapshot = TeamTelemetryJson.Parse("""{"teams":{"feature":{"taskId":"feature","name":"Window linking","activeRole":"architect"}}}""");
         service.Reconcile(snapshot, desktop);
         var zone = Assert.Single(rig.Workspace.Document.Zones);
-        Assert.StartsWith("AI Mission Control", zone.Name);
+        Assert.True(zone.IsMission);
+        Assert.Equal("Window linking", zone.Name);
         Assert.Equal(7, annotations.Items.Count(a => a.AgentRole.Length > 0));
         Assert.Equal(9, annotations.Items.Count(a => a.Kind == AnnotationKind.Arrow));
         Assert.Equal(3, annotations.Items.Count(a => a.InBackground));
@@ -62,6 +63,76 @@ public class TeamPodTests
     }
 
     [Fact]
+    public void MissionsPlacedInDifferentProjectAreasKeepIndependentSavedPositionsAndLocks()
+    {
+        using var rig = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        var pods = new TeamPodService(rig.Workspace, annotations);
+        var desktop = rig.Desktops.CurrentDesktopId;
+        Assert.True(rig.Workspace.Zones.Add(ZoneGeometry.FromPoints(-4500, -2500, 4500, 2500), out var firstProject));
+        Assert.True(rig.Workspace.Zones.Add(ZoneGeometry.FromPoints(5500, -2500, 14500, 2500), out var secondProject));
+        var first = Assert.IsType<Guid>(pods.CreateMission(desktop, "  First mission  ", new(0, 0)));
+        var second = Assert.IsType<Guid>(pods.CreateMission(desktop, "Second mission", new(10000, 0)));
+        Assert.True(pods.SetPositionLocked(first, true));
+        var workingFolder = System.IO.Path.GetTempPath();
+        Assert.True(pods.SetWorkingFolder(first, workingFolder));
+        Assert.False(pods.SetWorkingFolder(secondProject, workingFolder));
+        Assert.False(pods.SetPositionLocked(secondProject, true));
+        Assert.Null(pods.CreateMission(Guid.NewGuid(), "Wrong desktop", new(0, 0)));
+        Assert.Null(pods.CreateMission(desktop, "Invalid location", new(double.NaN, 0)));
+        Assert.Null(pods.CreateMission(desktop, new string('x', 121), new(0, 0)));
+
+        var saved = WorkspacePersistence.SavedState(rig.Workspace.Document);
+        using var restarted = new WorkspaceHarness(saved);
+        var zones = restarted.Workspace.Zones.Items.ToDictionary(z => z.Id);
+        Assert.True(zones[first].IsMission);
+        Assert.Equal("First mission", zones[first].Name);
+        Assert.True(zones[first].MissionPositionLocked);
+        Assert.Equal(workingFolder, restarted.Workspace.Document.Zones.Single(zone => zone.Id == first).MissionWorkingFolder);
+        Assert.False(zones[second].MissionPositionLocked);
+        Assert.Null(zones[first].ParentId);
+        Assert.Null(zones[second].ParentId);
+        Assert.True(ZoneHierarchy.Contains(zones[firstProject].Bounds, zones[first].Bounds));
+        Assert.True(ZoneHierarchy.Contains(zones[secondProject].Bounds, zones[second].Bounds));
+    }
+
+    [Fact]
+    public void SavedMissionRecoversMissingCardsWithoutCreatingAnotherFrame()
+    {
+        using var rig = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        var desktop = rig.Desktops.CurrentDesktopId;
+        var original = new TeamPodService(rig.Workspace, annotations);
+        var id = Assert.IsType<Guid>(original.CreateMission(desktop, "Restore cards", new(150, 200)));
+        using var restarted = new WorkspaceHarness(WorkspacePersistence.SavedState(rig.Workspace.Document));
+        var restored = new AnnotationDocument();
+        var pods = new TeamPodService(restarted.Workspace, restored);
+        pods.Reconcile(TeamTelemetrySnapshot.Empty, desktop);
+        pods.Reconcile(TeamTelemetrySnapshot.Empty, desktop);
+        Assert.Equal(id, Assert.Single(restarted.Workspace.Document.Zones).Id);
+        Assert.Equal(annotations.Items, restored.Items);
+    }
+
+    [Fact]
+    public void MissionExpansionUsesOwnedCardsAndProjectExpansionLeavesMissionsAlone()
+    {
+        var project = new CanvasItemId(CanvasItemKind.Project, Guid.NewGuid());
+        var mission = new CanvasItemId(CanvasItemKind.Project, Guid.NewGuid());
+        var windows = new CanvasItemId(CanvasItemKind.Window, Guid.NewGuid());
+        var card = new CanvasItemId(CanvasItemKind.Annotation, Guid.NewGuid());
+        var layout = new CanvasRect(0, 0, 400, 400);
+        CanvasSelectionItem[] items =
+        [
+            new(project, layout),
+            new(mission, layout, Members: [card], ExplicitMembersOnly: true),
+            new(windows, new(120, 180, 40, 40)),
+            new(card, new(40, 40, 200, 100), ExcludeFromSpatialGroups: true)
+        ];
+        Assert.True(CanvasSelection.Expand([project], items).SetEquals([project, windows]));
+        Assert.True(CanvasSelection.Expand([mission], items).SetEquals([mission, card]));
+    }
+
+    [Fact]
     [Trait("Category", "NativeRendering")]
     public void PodMoveIncludesConnectorsAndUndoRestoresFrameAndCardsTogether()
         => WorkspaceViewTests.OnSta(() =>
@@ -75,12 +146,19 @@ public class TeamPodTests
                 overview.AttachZones(rig.Workspace.Zones); overview.AttachPlaceholderWorkspace(rig.Workspace);
                 overview.AttachAnnotations(rig.Desktops, Path.Combine(folder, "annotations.json"));
                 var snapshot = TeamTelemetryJson.Parse("""{"teams":{"move-test":{"name":"Move test"}}}""");
-                new TeamPodService(rig.Workspace, overview.Annotations!).Reconcile(snapshot, rig.Desktops.CurrentDesktopId);
+                var service = new TeamPodService(rig.Workspace, overview.Annotations!);
+                service.Reconcile(snapshot, rig.Desktops.CurrentDesktopId);
                 var zone = Assert.Single(rig.Workspace.Document.Zones);
                 var before = overview.Annotations!.Items.ToArray(); var bounds = zone.Bounds;
                 var all = overview.SelectionItems();
                 var selected = CanvasSelection.Expand([new(CanvasItemKind.Project, zone.Id)], all);
-                overview.MoveSelection(new(all.Where(i => selected.Contains(i.Key)).ToArray(), 200, 300));
+                var move = new CanvasSelectionMove(all.Where(i => selected.Contains(i.Key)).ToArray(), 200, 300);
+                Assert.True(service.SetPositionLocked(zone.Id, true));
+                overview.MoveSelection(move);
+                Assert.Equal(bounds, zone.Bounds);
+                Assert.Equal(before, overview.Annotations.Items);
+                Assert.True(service.SetPositionLocked(zone.Id, false));
+                overview.MoveSelection(move);
                 Assert.Equal(bounds.X + 200, zone.Bounds.X);
                 Assert.Equal(before.Select(a => a.Translate(200, 300)), overview.Annotations.Items);
                 Assert.True(overview.Annotations.Undo(rig.Desktops.CurrentDesktopId));

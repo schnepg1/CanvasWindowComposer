@@ -18,8 +18,6 @@ internal sealed partial class OverviewManager
     private ITeamTelemetryProvider? _telemetryProvider;
     private TeamPodService? _teamPods;
     internal ITeamTelemetryProvider? TelemetryProvider => _telemetryProvider;
-    private AiOperationsSectorManager? _sectorManager;
-    internal AiOperationsSectorManager? SectorManager => _sectorManager;
     private bool _isAiTeamsActive;
     internal bool IsAiTeamsActive => _isAiTeamsActive;
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
@@ -67,9 +65,8 @@ internal sealed partial class OverviewManager
             if (_placeholderWorkspace != null)
             {
                 _teamPods = new(_placeholderWorkspace, _annotationDocument);
-                _sectorManager = new AiOperationsSectorManager(_placeholderWorkspace, _annotationDocument, _annotationStore, _telemetryProvider);
             }
-            _telemetryProvider.TelemetryUpdated += snapshot =>
+            _telemetryProvider.TelemetryUpdated += _ =>
             {
                 if (_disposed) return;
                 if (_passes.Count > 0 && _passes[0].IsHandleCreated)
@@ -80,7 +77,6 @@ internal sealed partial class OverviewManager
                         {
                             if (_disposed) return;
                             RefreshTeamTelemetry();
-                            ReconcileTeamPods(snapshot);
                             ReconcileVisuals();
                         };
                         if (_passes[0].InvokeRequired)
@@ -98,7 +94,8 @@ internal sealed partial class OverviewManager
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, _connectionTool, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
         _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
-        _drawingLayers=[_annotationLayer, _composerLayer, _selectionLayer!, _interactionLayer!];
+        _missionCards = new(MissionCards, MissionReport, MissionRuntimeLabel);
+        _drawingLayers=[_annotationLayer, _missionCards, _composerLayer, _selectionLayer!, _interactionLayer!];
         foreach(var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
         _tools.SetTool(_annotationRouter);
         _annotationDocument.Changed+=OnAnnotationsChanged;
@@ -110,7 +107,8 @@ internal sealed partial class OverviewManager
     }
     private void OnTeamTelemetryModeChanged(OverviewMode from, OverviewMode to)
     {
-        if (to == OverviewMode.Zooming) RefreshTeamTelemetry();
+        if (to == OverviewMode.Zooming) { RefreshTeamTelemetry(); UpdateMissionStatusTimer(); }
+        else { CloseMissionControl(); _missionStatusTimer?.Stop(); }
     }
     private void RefreshTeamTelemetry()
     {
@@ -144,7 +142,7 @@ internal sealed partial class OverviewManager
     private void OnAnnotationDesktopChanged()
     {
         PauseGuidedTutorial();
-        CancelCanvasComposer(); CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Select);
+        CancelCanvasComposer(); CancelInteraction(); Selection.SwitchDesktop(_annotationDesktop()); CloseMissionControl(); _proximityCircle=null; _annotationTool?.ClearSelection(); _annotationTool?.SetMode(AnnotationMode.Select);
         RefreshToolPreview();
     }
     internal void SelectAnnotationMode(AnnotationMode mode)
@@ -374,7 +372,8 @@ internal sealed partial class OverviewManager
         var selectedAnnotations = Selection.Ids.Where(id => id.Kind == CanvasItemKind.Annotation).Select(id => id.Id).ToArray();
         if (selectedAnnotations.Length > 0 && _annotationDocument != null)
         {
-            _annotationDocument.DeleteWithConnectors(_annotationDesktop(), selectedAnnotations);
+            _annotationDocument.DeleteWithConnectors(_annotationDesktop(), _annotationDocument.Items
+                .Where(item => item.AgentTaskId.Length == 0 && selectedAnnotations.Contains(item.Id)).Select(item => item.Id).ToArray());
             Selection.Replace(Selection.Ids.Where(id => id.Kind != CanvasItemKind.Annotation));
         }
         else
@@ -756,6 +755,7 @@ internal sealed partial class OverviewManager
         _controlsPopup?.Dispose(); _controlsPopup=null;
         _controlsButton?.Dispose(); _controlsButton=null;
         AfterModeChanged -= OnTeamTelemetryModeChanged;
+        DisposeMissionControl();
         _telemetryProvider?.Dispose(); _telemetryProvider=null; _teamPods=null;
     }
 
@@ -770,349 +770,8 @@ internal sealed partial class OverviewManager
         return true;
     }
 
-    public void ToggleAiTeams(CanvasPoint? anchor = null)
-    {
-        SetAiTeamsActive(!_isAiTeamsActive, anchor);
-    }
-
-    public void SetAiTeamsActive(bool active, CanvasPoint? anchor = null)
-    {
-        _isAiTeamsActive = active;
-        _annotationToolbar?.SetAiTeamsActive(active);
-        _unifiedDock?.Panel.SetAiTeamsActive(active);
-
-        if (_sectorManager == null || _placeholderWorkspace == null)
-            return;
-
-        var desktop = _annotationDesktop();
-
-        if (active)
-        {
-            AiOperationsSectorManager.SpawnedPod? targetPod = null;
-            if (_sectorManager.SpawnedPods.Count == 0)
-            {
-                var currentSnapshot = _telemetryProvider?.Current ?? TeamTelemetrySnapshot.Empty;
-                var team = currentSnapshot.Teams?.Values.FirstOrDefault(t => string.Equals(t.Status, "Active", StringComparison.OrdinalIgnoreCase))
-                           ?? currentSnapshot.Teams?.Values.FirstOrDefault()
-                           ?? new TeamInstanceTelemetry(
-                               "mission-control",
-                               "AI Teams Mission Control",
-                               "",
-                               "",
-                               "orchestrator",
-                               "Active",
-                               new Dictionary<string, AgentStatusReport>(StringComparer.OrdinalIgnoreCase),
-                               DateTimeOffset.UtcNow);
-
-                string? cvlJson = LoadTeamArchitectureCvl();
-                if (!string.IsNullOrEmpty(cvlJson))
-                {
-                    CanvasPoint spawnOrigin = anchor ?? _sectorManager.SectorOrigin;
-                    targetPod = _sectorManager.SpawnPod(desktop, team, cvlJson, spawnOrigin);
-                }
-            }
-            else
-            {
-                targetPod = _sectorManager.SpawnedPods.Values.FirstOrDefault();
-            }
-
-            RefreshZoneLayout();
-            RefreshOverviewWindows();
-            ReconcileVisuals();
-
-            if (targetPod != null && _annotationDocument != null)
-            {
-                var bounds = targetPod.GetBounds(_placeholderWorkspace.Document, _annotationDocument, desktop);
-                var fit = ZoneGeometry.Fit(bounds, _screens.PrimaryWorkingArea);
-                NavigateToCamera(new CanvasCamera(fit.X, fit.Y, fit.Zoom), landInDesktopView: false);
-            }
-        }
-        else
-        {
-            foreach (var spawnedTaskId in _sectorManager.SpawnedPods.Keys.ToList())
-            {
-                _sectorManager.CleanPod(desktop, spawnedTaskId);
-            }
-            RefreshZoneLayout();
-            RefreshOverviewWindows();
-            ReconcileVisuals();
-        }
-    }
-
-    private void ReconcileTeamPods(TeamTelemetrySnapshot snapshot)
-    {
-        if (_sectorManager == null || _placeholderWorkspace == null)
-            return;
-
-        var desktop = _annotationDesktop();
-        if (!_isAiTeamsActive)
-        {
-            if (_sectorManager.SpawnedPods.Count > 0)
-            {
-                foreach (var spawnedTaskId in _sectorManager.SpawnedPods.Keys.ToList())
-                {
-                    _sectorManager.CleanPod(desktop, spawnedTaskId);
-                }
-                RefreshZoneLayout();
-                RefreshOverviewWindows();
-                ReconcileVisuals();
-            }
-            return;
-        }
-
-        bool podsMutated = false;
-
-        if (snapshot.Teams != null && snapshot.Teams.Count > 0)
-        {
-            string? cvlJson = null;
-
-            foreach (var team in snapshot.Teams.Values)
-            {
-                if (string.Equals(team.Status, "Active", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!_sectorManager.HasPod(team.TaskId))
-                    {
-                        cvlJson ??= LoadTeamArchitectureCvl();
-                        if (!string.IsNullOrEmpty(cvlJson))
-                        {
-                            _sectorManager.SpawnPod(desktop, team, cvlJson);
-                            podsMutated = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (podsMutated)
-        {
-            RefreshZoneLayout();
-            RefreshOverviewWindows();
-            ReconcileVisuals();
-        }
-    }
-
-    private static string? LoadTeamArchitectureCvl(string? templatePath = null)
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(templatePath))
-            {
-                var config = TeamTelemetryConfig.Load();
-                templatePath = !string.IsNullOrEmpty(config.CvlTemplate)
-                    ? config.CvlTemplate
-                    : TeamTelemetryConfig.DefaultCvlTemplate;
-            }
-
-            if (Path.IsPathRooted(templatePath) && File.Exists(templatePath))
-            {
-                return File.ReadAllText(templatePath);
-            }
-
-            var candidates = new List<string>
-            {
-                templatePath,
-                Path.Combine(Environment.CurrentDirectory, templatePath),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, templatePath),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", templatePath),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CanvasWindowComposer", "Teams", "team_architecture_cvl.json"),
-                // Fallbacks to default template
-                Path.Combine(Environment.CurrentDirectory, TeamTelemetryConfig.DefaultCvlTemplate),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, TeamTelemetryConfig.DefaultCvlTemplate),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", TeamTelemetryConfig.DefaultCvlTemplate)
-            };
-
-            string? curr = Environment.CurrentDirectory;
-            for (int i = 0; i < 4 && curr != null; i++)
-            {
-                candidates.Add(Path.Combine(curr, templatePath));
-                candidates.Add(Path.Combine(curr, ".agents", "teams", "team_architecture_cvl.json"));
-                curr = Path.GetDirectoryName(curr);
-            }
-
-            string? baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            for (int i = 0; i < 4 && baseDir != null; i++)
-            {
-                candidates.Add(Path.Combine(baseDir, templatePath));
-                candidates.Add(Path.Combine(baseDir, ".agents", "teams", "team_architecture_cvl.json"));
-                baseDir = Path.GetDirectoryName(baseDir);
-            }
-            foreach (var c in candidates)
-            {
-                if (!string.IsNullOrEmpty(c) && File.Exists(c))
-                    return File.ReadAllText(c);
-            }
-        }
-        catch { }
-        return DefaultTeamArchitectureCvl;
-    }
-
-    private const string DefaultTeamArchitectureCvl = """
-{
-  "$schema": "https://canvaswindowcomposer.dev/schemas/workflow.v1.json",
-  "version": 1,
-  "summary": "Spaceship Bridge: Multi-Agent Engineering Command (Feature Lifecycle Team)",
-  "direction": "LR",
-  "zones": [
-    {
-      "id": "z_command",
-      "name": "Spaceship Bridge: Mission Command",
-      "color": "#8B5CF6"
-    },
-    {
-      "id": "z_engineering",
-      "name": "Engineering Pod: Build & Quality Loop",
-      "color": "#10B981"
-    },
-    {
-      "id": "z_release",
-      "name": "Release Pod: Integration & Recovery",
-      "color": "#38BDF8"
-    }
-  ],
-  "nodes": [
-    {
-      "id": "orch",
-      "kind": "service",
-      "title": "Mission Orchestrator",
-      "subtitle": "Global Task Board & Team Coordinator",
-      "text": "Mission Orchestrator",
-      "color": "#8B5CF6",
-      "zone": "z_command"
-    },
-    {
-      "id": "arch",
-      "kind": "service",
-      "title": "System Architect",
-      "subtitle": "RFCs & Atomic Task Checklists",
-      "text": "System Architect",
-      "color": "#38BDF8",
-      "zone": "z_command"
-    },
-    {
-      "id": "dev",
-      "kind": "service",
-      "title": "Worktree Programmer",
-      "subtitle": "Isolated ..\CanvasWindowComposer-<task>",
-      "text": "Worktree Programmer",
-      "color": "#10B981",
-      "zone": "z_engineering"
-    },
-    {
-      "id": "rev",
-      "kind": "service",
-      "title": "Quality Reviewer",
-      "subtitle": "Diff, Mutex & Threading Audit",
-      "text": "Quality Reviewer",
-      "color": "#F59E0B",
-      "zone": "z_engineering"
-    },
-    {
-      "id": "mrg",
-      "kind": "service",
-      "title": "Branch Merger",
-      "subtitle": "Target Branch & Test Gatekeeper",
-      "text": "Branch Merger",
-      "color": "#6366F1",
-      "zone": "z_release"
-    },
-    {
-      "id": "res",
-      "kind": "service",
-      "title": "Conflict Resolver",
-      "subtitle": "3-Way Conflict Reconciler & Tester",
-      "text": "Conflict Resolver",
-      "color": "#EF4444",
-      "zone": "z_release"
-    },
-    {
-      "id": "cln",
-      "kind": "service",
-      "title": "Branch Cleaner",
-      "subtitle": "Lock Check & Worktree Pruning",
-      "text": "Branch Cleaner",
-      "color": "#64748B",
-      "zone": "z_command"
-    }
-  ],
-  "edges": [
-    {
-      "from": "orch",
-      "to": "arch",
-      "label": "1. Dispatch Task Request",
-      "color": "#8B5CF6",
-      "stroke": 16.0,
-      "routing": "curved"
-    },
-    {
-      "from": "arch",
-      "to": "dev",
-      "label": "2. ARCHITECTURE_PLAN.md Handoff",
-      "color": "#38BDF8",
-      "stroke": 16.0,
-      "routing": "curved"
-    },
-    {
-      "from": "dev",
-      "to": "rev",
-      "label": "3. Submit Diff for Review",
-      "color": "#10B981",
-      "stroke": 16.0,
-      "routing": "curved"
-    },
-    {
-      "from": "rev",
-      "to": "dev",
-      "label": "3b. Feedback Loop (CHANGES_REQUESTED)",
-      "color": "#F59E0B",
-      "stroke": 12.0,
-      "routing": "curved"
-    },
-    {
-      "from": "rev",
-      "to": "mrg",
-      "label": "4. Verdict: APPROVED",
-      "color": "#10B981",
-      "stroke": 16.0,
-      "routing": "curved"
-    },
-    {
-      "from": "mrg",
-      "to": "res",
-      "label": "4b. On Merge Conflict",
-      "color": "#EF4444",
-      "stroke": 12.0,
-      "routing": "curved"
-    },
-    {
-      "from": "mrg",
-      "to": "cln",
-      "label": "5. Clean Merge Completed",
-      "color": "#6366F1",
-      "stroke": 16.0,
-      "routing": "curved"
-    },
-    {
-      "from": "res",
-      "to": "cln",
-      "label": "5b. Conflict Resolved & Verified",
-      "color": "#10B981",
-      "stroke": 16.0,
-      "routing": "curved"
-    },
-    {
-      "from": "cln",
-      "to": "orch",
-      "label": "6. Task Finished & Cleaned",
-      "color": "#8B5CF6",
-      "stroke": 16.0,
-      "routing": "curved"
-    }
-  ],
-  "edits": []
-}
-""";
-}
-
+}
+
 internal sealed class OverviewAnnotationToolRouter(AnnotationCanvasTool annotations, ZoneCanvasTool zones, CanvasSelectionTool selection, ConnectionCanvasTool connections, Action annotationCompleted) : ICanvasTool
 {
     private ICanvasTool? _owner;

@@ -14,9 +14,9 @@ internal sealed class TelemetryStatusPill
     internal Badge Badge { get; }
     internal string Label { get; }
     internal VisualBrush Brush { get; }
-    public TelemetryStatusPill(AgentStatusReport report, double width)
+    public TelemetryStatusPill(AgentStatusReport report, double width, string? stateLabel = null)
     {
-        Label = "● " + report.State.ToString().ToUpperInvariant()
+        Label = "● " + (stateLabel ?? report.State.ToString().ToUpperInvariant())
             + (string.IsNullOrWhiteSpace(report.Detail) ? "" : " · " + report.Detail.Replace('\r', ' ').Replace('\n', ' '));
         var color = ColorFor(report.State);
         var styles = (ResourceDictionary)Application.LoadComponent(

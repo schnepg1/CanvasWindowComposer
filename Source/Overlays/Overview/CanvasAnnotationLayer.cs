@@ -11,7 +11,7 @@ using CanvasDesktop.CanvasView;
 internal sealed class CanvasAnnotationLayer(AnnotationDocument document, AnnotationCanvasTool tool, Func<Guid> desktop, Func<bool> visible, Func<Guid, bool>? hidden = null, Func<IReadOnlyList<CanvasRect>>? windowOccluders = null, Func<CanvasAnnotation?>? connectionPreview = null, Func<CanvasAnnotation, AgentStatusReport?>? telemetryState = null) : IOverviewAnnotationLayer
 {
     public bool HasAnimatedContent => visible() && document.Items.Any(item => item.DesktopId == desktop()
-        && item.Kind != AnnotationKind.Arrow && !item.InBackground
+        && item.Kind != AnnotationKind.Arrow && !item.InBackground && !MissionAgentCard.IsCard(item)
         && telemetryState?.Invoke(item) is { State: not AgentExecutionState.Idle });
     private readonly Dictionary<Guid, (AgentExecutionState State, string Detail, double Width, TelemetryStatusPill Pill)> _pills = [];
     private readonly Dictionary<Guid,(CanvasAnnotation Item,double Dpi,DrawingGroup Drawing)> _artwork = [];
@@ -33,7 +33,8 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
         if (_revision != document.Revision) { _artwork.Clear(); _pills.Clear(); _revision=document.Revision; }
         var preview = tool.Preview;
         var conn = connectionPreview?.Invoke();
-        var items = document.Items.Where(a => a.DesktopId == desktop() && a.Id != preview?.Id && hidden?.Invoke(a.Id) != true).ToList();
+        var items = document.Items.Where(a => a.DesktopId == desktop() && a.Id != preview?.Id
+            && !MissionAgentCard.IsCard(a) && hidden?.Invoke(a.Id) != true).ToList();
         if (preview != null && preview.DesktopId == desktop()) items.Add(preview);
         if (conn != null && conn.DesktopId == desktop()) items.Add(conn);
         foreach (var item in items)

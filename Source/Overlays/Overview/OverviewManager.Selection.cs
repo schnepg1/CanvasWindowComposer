@@ -74,7 +74,8 @@ internal sealed partial class OverviewManager
         static CanvasRect Rect(WorldRect b) => new(b.X,b.Y,b.W,b.H);
         if (_annotationDocument != null)
             result.AddRange(_annotationDocument.Items.Where(a => a.DesktopId == _annotationDesktop())
-                .Select(a => new CanvasSelectionItem(new(CanvasItemKind.Annotation,a.Id),a.Bounds,a.Text,Annotation:a)));
+                .Select(a => new CanvasSelectionItem(new(CanvasItemKind.Annotation,a.Id),a.Bounds,a.Text,Annotation:a,
+                    ExcludeFromSpatialGroups: a.AgentTaskId.Length > 0)));
         if (_placeholderWorkspace != null)
             result.AddRange(_placeholderWorkspace.Document.Items.Where(i => i.DesktopId == _annotationDesktop() && !i.Bounds.PinnedToScreen && !i.Bounds.InInventory)
                 .Select(i => new CanvasSelectionItem(new(CanvasItemKind.Window,i.Id),Rect(i.Bounds),i.Name.Length>0?i.Name:i.Title)));
@@ -94,23 +95,23 @@ internal sealed partial class OverviewManager
             var zones = _zones.Items;
             var currentDesktop = _annotationDesktop();
             var annotItems = _annotationDocument?.Items
-                .Where(a => a.DesktopId == currentDesktop && a.Kind != AnnotationKind.Arrow && !a.InBackground)
+                .Where(a => a.DesktopId == currentDesktop && a.Kind != AnnotationKind.Arrow && !a.InBackground && a.AgentTaskId.Length == 0)
                 .ToList() ?? [];
 
             result.AddRange(zones.Select(z =>
             {
                 var zRect = Rect(z.Bounds);
+                if (z.IsMission)
+                {
+                    var cards = _annotationDocument?.Items.Where(a => a.DesktopId == currentDesktop && a.AgentTaskId == z.AgentTaskId)
+                        .Select(a => new CanvasItemId(CanvasItemKind.Annotation, a.Id)).ToArray();
+                    return new CanvasSelectionItem(new(CanvasItemKind.Project, z.Id), zRect, z.Name, cards, ExplicitMembersOnly: true);
+                }
                 var memberWindows = _zones.Members(z.Id).Where(m => m.Assigned).Select(m => new CanvasItemId(CanvasItemKind.Window, m.Id));
                 var memberProjects = zones.Where(child => child.ParentId == z.Id).Select(child => new CanvasItemId(CanvasItemKind.Project, child.Id));
                 var memberAnnotations = annotItems
                     .Where(a => CanvasSelection.Contains(zRect, CanvasSelection.Center(a.Bounds)))
                     .Select(a => new CanvasItemId(CanvasItemKind.Annotation, a.Id));
-                var taskId = _placeholderWorkspace?.Document.Zones.FirstOrDefault(area => area.Id == z.Id)?.AgentTaskId;
-                if (!string.IsNullOrEmpty(taskId))
-                    memberAnnotations = memberAnnotations.Concat(_annotationDocument!.Items
-                        .Where(a => a.DesktopId == currentDesktop && a.AgentTaskId == taskId)
-                        .Select(a => new CanvasItemId(CanvasItemKind.Annotation, a.Id)));
-
                 return new CanvasSelectionItem(new(CanvasItemKind.Project, z.Id), zRect, z.Name,
                     memberWindows.Concat(memberProjects).Concat(memberAnnotations).ToArray());
             }));
@@ -167,6 +168,17 @@ internal sealed partial class OverviewManager
             if (move.Before.Any(i => !current.TryGetValue(i.Key,out var now) || now.Bounds != i.Bounds
                 || i.Key.Kind==CanvasItemKind.Project && !(i.Members??[]).ToHashSet().SetEquals(now.Members??[])))
                 throw new InvalidOperationException("The group changed during the drag. Select it again.");
+            if (_zones != null)
+                foreach (var mission in _zones.Items.Where(zone => zone.IsMission))
+                {
+                    var key = new CanvasItemId(CanvasItemKind.Project, mission.Id);
+                    bool movingFrame = move.Before.Any(item => item.Key == key);
+                    bool movingCards = move.Before.Any(item => item.Annotation?.AgentTaskId == mission.AgentTaskId);
+                    if (!movingFrame && movingCards)
+                        throw new InvalidOperationException("Use the mission frame to move its cards.");
+                    if (movingFrame && mission.MissionPositionLocked)
+                        throw new InvalidOperationException("Unlock the mission before moving it.");
+                }
             var moved = _annotationDocument.Items.Where(a => move.Before.Any(i => i.Key == new CanvasItemId(CanvasItemKind.Annotation,a.Id)))
                 .Select(a => a.Translate(move.Dx,move.Dy)).ToList();
             var movedIds = move.Before.Select(i => i.Key.Id).ToHashSet();

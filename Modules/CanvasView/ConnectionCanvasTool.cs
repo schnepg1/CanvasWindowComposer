@@ -174,7 +174,8 @@ public sealed class ConnectionCanvasTool : ICanvasTool
 
     /// <summary>Cards, projects and note/shape annotations can anchor connectors; arrows cannot.</summary>
     public static bool IsConnectable(CanvasSelectionItem item)
-        => item.Key.Kind != CanvasItemKind.Annotation || item.Annotation is { Kind: not AnnotationKind.Arrow };
+        => !item.ExplicitMembersOnly && !item.ExcludeFromSpatialGroups
+            && (item.Key.Kind != CanvasItemKind.Annotation || item.Annotation is { Kind: not AnnotationKind.Arrow });
 
     private ConnectionTarget? FindSnapTarget(CanvasPointer p)
     {

@@ -54,7 +54,7 @@ internal sealed class ZoneCanvasTool : ICanvasTool
         else if (HitHeader(pointer) is { } zone)
         {
             SelectZone(zone.Id);
-            Gesture.BeginMove(zone, world.X, world.Y, _members(zone.Id));
+            if (!zone.MissionPositionLocked) Gesture.BeginMove(zone, world.X, world.Y, _members(zone.Id));
         }
         else
         {
@@ -103,7 +103,7 @@ internal sealed class ZoneCanvasTool : ICanvasTool
         var zones = _zones();
         for (int i = zones.Count - 1; i >= 0; i--)
         {
-            if (zones[i].Id != selectedId) continue;
+            if (zones[i].Id != selectedId || zones[i].IsMission) continue;
             foreach (var handle in ZoneResizeLayout.Get(zones[i].Bounds, pointer.View, hitTarget: true))
                 if (handle.Rect.Contains(pointer.Position.X, pointer.Position.Y)) return (zones[i], handle.Corner);
         }

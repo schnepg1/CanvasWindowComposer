@@ -21,6 +21,7 @@ internal sealed partial class OverviewManager
         var attached = new List<IOverviewAnnotationLayer>();
         if (_tutorialLayer != null) attached.Add(_tutorialLayer);
         if (_annotationLayer != null) attached.Add(_annotationLayer);
+        if (_missionCards != null) attached.Add(_missionCards);
         if (_composerLayer != null) attached.Add(_composerLayer);
         if (_selectionLayer != null) attached.Add(_selectionLayer);
         if (_interactionLayer != null) attached.Add(_interactionLayer);
@@ -124,6 +125,7 @@ internal sealed partial class OverviewManager
         if (_temporaryDrawer?.State.IsOpen == true) { _temporaryDrawer.ClosePeek(); return; }
         if (_backpack?.Panel.IsOpen == true) { SetInventoryVisible(false); return; }
         if (CloseSettingsPopup()) return;
+        if (CloseMissionControl()) { FocusOverview(); return; }
         if (CloseActiveMenus()) return;
         if (_controlsPopup != null && _controlsPopup.Visible) { _controlsPopup.Hide(); FocusOverview(); return; }
         if (_backgroundTool?.SelectedId != null)
