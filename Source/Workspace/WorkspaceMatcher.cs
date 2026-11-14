@@ -33,6 +33,7 @@ internal static class WorkspaceMatcher
     public static WorkspaceMatch Evaluate(IReadOnlyCollection<WorkspaceItem> items, Guid desktop,
         string exe, string title, string target, IEnumerable<Guid> bound, Guid? requested = null, string? chromeProfilePath = null)
     {
+        items = items.Where(i => i.IsMainCopy).ToArray();
         var used = bound.ToArray();
         var resources = items.Where(i => i.WebResource != null && i.DesktopId == desktop
             && WorkspaceAppIdentity.Same(i.ExecutablePath, exe) && !used.Contains(i.Id)

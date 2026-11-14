@@ -20,6 +20,7 @@ internal sealed partial class OverviewManager
 
     public bool NavigateToWindow(IntPtr window)
     {
+        window = _placeholderWorkspace?.ResolveMainNavigationWindow(window) ?? window;
         if (!_disposed && DesktopHandoffPending)
         {
             // Claim the selection so the shell coordinator cannot commit its

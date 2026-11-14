@@ -85,6 +85,7 @@ internal sealed class WorkspaceStore : IWorkspaceStore
                 throw new InvalidDataException("Invalid workspace item.");
         }
         var zoneIds = new HashSet<Guid>();
+        WorkspaceCopies.Normalize(doc);
         var temporaryDesktops = new HashSet<Guid>();
         var itemsById = new Dictionary<Guid, WorkspaceItem>();
         foreach (var item in doc.Items) itemsById.Add(item.Id, item);

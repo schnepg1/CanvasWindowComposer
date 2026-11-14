@@ -10,6 +10,9 @@ internal sealed class WorkspaceItem
 {
     public WorkspacePlacement Placement { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
+    // Empty means an independent legacy place, even if another place has the same target.
+    public Guid CopyGroupId { get; set; }
+    public bool IsMainCopy { get; set; } = true;
     public Guid DesktopId { get; set; }
     public string Title { get; set; } = "";
     public string Name { get; set; } = ""; // Optional user label; never overwritten by a changing window title.

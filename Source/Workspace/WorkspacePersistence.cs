@@ -27,6 +27,7 @@ internal sealed class WorkspacePersistence
         try
         {
             Document = store.Load(out var warning);
+            WorkspaceCopies.Normalize(Document);
             LoadWarning = warning;
             _canSave = true;
         }
@@ -63,6 +64,7 @@ internal sealed class WorkspacePersistence
 
     internal static WorkspaceDocument SavedState(WorkspaceDocument document)
     {
+        WorkspaceCopies.Normalize(document);
         var items = document.Items.Where(i => i.Placement != WorkspacePlacement.Temporary).ToList();
         var ids = items.Select(i => i.Id).ToHashSet();
         return new WorkspaceDocument

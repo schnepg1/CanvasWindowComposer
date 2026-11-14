@@ -7,7 +7,8 @@ namespace CanvasDesktop;
 internal sealed record WorkspaceItemView(Guid Id, string Title, string ExecutablePath,
     string Target, bool OpenOnStartup, WorldRect Bounds, string State, string Name = "", bool IsFolder = false,
     string ChromeProfilePath = "", string? LaunchMessage = null, WebResource? WebResource = null,
-    bool ExcludeFromAutomaticMinimization = false, bool Temporary = false)
+    bool ExcludeFromAutomaticMinimization = false, bool Temporary = false,
+    Guid CopyGroupId = default, bool IsMainCopy = true)
 {
     public WorkspaceApplicationCapabilities Capabilities => WorkspaceApplicationCapabilities.For(ExecutablePath, IsFolder, WebResource != null);
     public bool MissingWebsiteUrl => Capabilities.Website && WebResource == null && Target.Length == 0;
@@ -34,6 +35,8 @@ internal interface IWorkspaceCommands : IWorkspaceNavigationCommands
     void FocusItem(Guid id);
     void CloseToPlaceholder(Guid id);
     void Forget(Guid id);
+    void Duplicate(Guid id) { }
+    void SetAsMain(Guid id) { }
     void SetAutoOpen(Guid id, bool value);
     void SetAutomaticMinimizationExcluded(Guid id, bool value);
     void SetTarget(Guid id, string selected, bool folder);

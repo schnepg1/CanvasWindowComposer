@@ -14,6 +14,7 @@ internal sealed partial class WorkspaceService
 
     private void FocusItem(WorkspaceItem item)
     {
+        item = MainCopy(item);
         if (item.Bounds.InInventory) { InventoryRequested?.Invoke(item.Id); return; }
         if (IsOpen(item)) { Open(item); return; }
         if (_cards.TryGetValue(item.Id, out var card)) Focus(card.Handle, item.Bounds);
@@ -29,6 +30,7 @@ internal sealed partial class WorkspaceService
 
     private void CloseToPlaceholder(WorkspaceItem item)
     {
+        item = MainCopy(item);
         if (BoundWindow(item.Id) is not { } live) return;
         Capture(); Save();
         if (Find(item.Id) != item || BoundWindow(item.Id) != live) return;
@@ -38,6 +40,13 @@ internal sealed partial class WorkspaceService
 
     private void Forget(WorkspaceItem item)
     {
+        if (item.IsMainCopy && item.CopyGroupId != Guid.Empty)
+        {
+            Capture();
+            var successor = Document.Items.FirstOrDefault(i => i.Id != item.Id
+                && i.CopyGroupId == item.CopyGroupId && i.DesktopId == item.DesktopId);
+            if (successor != null) PromoteCopy(successor);
+        }
         if (item.Bounds.InInventory && IsOpen(item) && !DropFromInventory(item.Id)) return;
         if (BoundWindow(item.Id) is { } live) { live.Forgotten = true; _bindings.Unbind(live); }
         _launching.Remove(item.Id);
@@ -48,12 +57,13 @@ internal sealed partial class WorkspaceService
         Document.Items.Remove(item);
         Zones.ForgetItem(item.Id);
         RemoveCard(item.Id);
+        EnsureCards();
         Save(); Changed?.Invoke();
     }
 
     public IReadOnlyList<WorkspaceLinkCandidate> LinkCandidates(Guid id)
     {
-        if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item))
+        if (FindMain(id) is not { } item || item.DesktopId != _desktop || IsOpen(item))
             return Array.Empty<WorkspaceLinkCandidate>();
         return _bindings.Windows.Where(live => CanLink(live, item))
             .Select(live => new WorkspaceLinkCandidate(live.Token,
@@ -75,7 +85,7 @@ internal sealed partial class WorkspaceService
 
     public string? LinkCandidateHint(Guid id)
     {
-        if (Find(id) is not { } item || item.DesktopId != _desktop) return null;
+        if (FindMain(id) is not { } item || item.DesktopId != _desktop) return null;
         int bound = _bindings.Windows.Count(live => live.ItemId.HasValue
             && Find(live.ItemId.Value) is { Placement: not WorkspacePlacement.Temporary } && MatchesLinkWindow(live, item));
         return bound switch
@@ -90,11 +100,11 @@ internal sealed partial class WorkspaceService
     {
         using var writer = BeginExplicitPlacement();
         if (!writer.HasValue) return false;
-        if (Find(id) is not { } item || item.DesktopId != _desktop || IsOpen(item)
+        if (FindMain(id) is not { } item || item.DesktopId != _desktop || IsOpen(item)
             || _bindings.ForToken(candidateToken) is not { } live || !CanLink(live, item)
             || _windowInspector.Inspect(live.Identity.Handle) is not { } observed || observed.Identity != live.Identity) return false;
         DetachTemporary(live);
-        if (!_bindings.Bind(live, id)) return false;
+        if (!_bindings.Bind(live, item.Id)) return false;
         item.ExecutablePath = observed.Exe;
         if (item.CaptureChromeProfile && _windowInspector.ReadChromeProfile(live.Identity.Handle, item.ExecutablePath) is { } profile) item.ChromeProfilePath = profile;
         RestoreBinding(live, item);

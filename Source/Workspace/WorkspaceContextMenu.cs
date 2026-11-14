@@ -6,12 +6,14 @@ namespace CanvasDesktop;
 /// <summary>One menu for native previews, detailed cards and distant title rectangles.</summary>
 internal sealed class WorkspaceContextMenu : ContextMenuStrip
 {
-    private readonly ToolStripMenuItem _auto, _excludeMinimize, _profile, _web, _file, _folder, _advanced, _keep, _forget;
+    private readonly ToolStripMenuItem _auto, _excludeMinimize, _profile, _web, _file, _folder, _advanced, _keep, _forget, _duplicate, _main;
 
     public WorkspaceContextMenu(IWorkspaceCommands workspace, Guid id, Action<Guid>? exportWorkflow = null)
     {
         IWin32Window Owner() => (IWin32Window?)SourceControl?.FindForm() ?? (IWin32Window?)SourceControl ?? new NativeDialogOwner(IntPtr.Zero);
         Items.Add("Open", null, (_, _) => workspace.Open(id));
+        _duplicate = new ToolStripMenuItem("Duplicate", null, (_, _) => workspace.Duplicate(id)); Items.Add(_duplicate);
+        _main = new ToolStripMenuItem("Set as main", null, (_, _) => workspace.SetAsMain(id)); Items.Add(_main);
         Items.Add("Put in backpack", null, (_, _) => workspace.CollectInInventory(id));
         _keep = new ToolStripMenuItem("Keep this place", null, (_, _) => workspace.KeepPlace(id)); Items.Add(_keep);
         Items.Add("Link open window…", null, (_, _) => WorkspaceDialogs.LinkWindow(Owner(), workspace, id));
@@ -44,6 +46,10 @@ internal sealed class WorkspaceContextMenu : ContextMenuStrip
 
     public void UpdateItem(WorkspaceItemView item)
     {
+        _duplicate.Visible = !item.Temporary;
+        _main.Visible = item.CopyGroupId != Guid.Empty;
+        _main.Enabled = !item.IsMainCopy;
+        _main.Checked = item.IsMainCopy;
         _keep.Visible = item.Temporary;
         _forget.Visible = !item.Temporary;
         _auto.Visible = !item.Temporary;

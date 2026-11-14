@@ -225,7 +225,10 @@ internal sealed partial class WorkspaceService : IWorkspaceCommands, IDisposable
     }
 
     private bool Save()
-        => _persistence.Save();
+    {
+        SynchronizeCopyTargets();
+        return _persistence.Save();
+    }
 
     public void Dispose() => Stop(save: true);
 

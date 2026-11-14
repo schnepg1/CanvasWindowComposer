@@ -14,7 +14,7 @@ internal sealed partial class WorkspaceService
 
     private void OpenStartupItems()
     {
-        foreach (var item in Document.Items.Where(i => i.DesktopId == _desktop && i.OpenOnStartup).ToArray())
+        foreach (var item in Document.Items.Where(i => i.DesktopId == _desktop && i.OpenOnStartup && i.IsMainCopy).ToArray())
         {
             // Existing Code windows may still be waiting on their first folder
             // snapshot. Launching now would duplicate a window already open.
@@ -30,6 +30,7 @@ internal sealed partial class WorkspaceService
 
     private void Open(WorkspaceItem item, bool focusPlaceholder = false)
     {
+        item = MainCopy(item);
         if (item.Bounds.InInventory && IsOpen(item)) { InventoryRequested?.Invoke(item.Id); return; }
         if (BoundWindow(item.Id) is { } live)
         {
