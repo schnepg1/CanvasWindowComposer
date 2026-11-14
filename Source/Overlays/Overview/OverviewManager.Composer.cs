@@ -27,7 +27,7 @@ internal sealed partial class OverviewManager
         var owner = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
         if (owner == null) return;
         var form = new CanvasComposerWindow(key => provider ?? new OpenAiCanvasComposerProvider(AiServices.Http, key), credentials ?? new ComposerCredentials(), accounts ?? AiServices.Accounts,
-            BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId, selected, CurrentComposerReferences());
+            BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId, selected, CurrentComposerReferences(), owner.Handle);
         _composerWindow = form;
         form.PreviewChanged += preview =>
         {
@@ -37,11 +37,24 @@ internal sealed partial class OverviewManager
             if (preview != null) FrameComposerPreview(preview);
             RefreshToolPreview();
         };
-        form.Dismissed += () => { CancelCanvasComposer(); RefreshToolPreview(); FocusOverview(); };
+        form.Dismissed += () =>
+        {
+            if (_composerWindow == form)
+            {
+                CancelCanvasComposer();
+                RefreshToolPreview();
+                FocusOverview();
+            }
+        };
         form.WaitingForBrowserChanged += SetComposerWaitingForBrowser;
         var area = owner.Screen.WorkingArea;
-        form.Size = new(Math.Min(form.Width, area.Width), Math.Min(form.Height, area.Height - 80));
-        form.Location = new(area.Right - form.Width - 12, area.Top + 24);
+        double scale = owner.DeviceDpi / 96.0;
+        int targetWidth = (int)Math.Min(form.Width, (area.Width - 40) / scale);
+        int targetHeight = (int)Math.Min(form.Height, (area.Height - 80) / scale);
+        form.Width = targetWidth;
+        form.Height = targetHeight;
+        form.Left = (area.Right / scale) - targetWidth - 12;
+        form.Top = (area.Top / scale) + 24;
         form.Show();
         form.Activate();
     }
@@ -131,7 +144,10 @@ internal sealed partial class OverviewManager
     {
         if (_composerWindow is not { } form) return false;
         bool restoreTopmost = _composerWaitingForBrowser;
-        _composerWindow = null; form.Dispose(); _composerLayer?.SetPreview(null); _composerPreviewIds.Clear();
+        _composerWindow = null;
+        form.Dispose();
+        _composerLayer?.SetPreview(null);
+        _composerPreviewIds.Clear();
         if (restoreTopmost) SetComposerWaitingForBrowser(false);
         return true;
     }

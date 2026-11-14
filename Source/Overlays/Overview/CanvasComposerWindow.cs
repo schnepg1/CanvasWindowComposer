@@ -88,6 +88,7 @@ internal sealed class CanvasComposerWindow : FluentWindow, IDisposable
     private long _generation;
     private IReadOnlySet<CanvasItemId>? _lastSelected;
     private Guid? _lastSelectedId;
+    private bool _isClosing;
 
     public event Action<ComposerPreview?>? PreviewChanged;
     public event Action? Dismissed;
@@ -114,13 +115,14 @@ internal sealed class CanvasComposerWindow : FluentWindow, IDisposable
     public CanvasComposerWindow(Func<string, ICanvasComposerProvider> apiProvider, IComposerCredentials credentials,
         IChatGptAccounts accounts,
         Func<IReadOnlyList<CanvasAnnotation>, IReadOnlyList<ComposerReference>, ComposerContext> context, Func<ComposerPreview, string> apply,
-        IReadOnlyList<CanvasAnnotation> notes, Guid? selectedId, IReadOnlySet<CanvasItemId>? selected = null, IReadOnlyList<ComposerReference>? references = null)
+        IReadOnlyList<CanvasAnnotation> notes, Guid? selectedId, IReadOnlySet<CanvasItemId>? selected = null, IReadOnlyList<ComposerReference>? references = null,
+        IntPtr owner = default)
     {
         _context = context;
         _apply = apply;
 
         Title = "AI Canvas Composer";
-        ShowInTaskbar = true;
+        ShowInTaskbar = false;
         Topmost = true;
         WindowStartupLocation = WindowStartupLocation.Manual;
         base.Width = 680;
@@ -129,6 +131,11 @@ internal sealed class CanvasComposerWindow : FluentWindow, IDisposable
         MinHeight = 740;
         ExtendsContentIntoTitleBar = true;
         WindowBackdropType = WindowBackdropType.Mica;
+
+        if (owner != IntPtr.Zero)
+            new System.Windows.Interop.WindowInteropHelper(this).Owner = owner;
+
+        System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(this);
 
         Resources.MergedDictionaries.Add(new ThemesDictionary { Theme = ApplicationTheme.Dark });
         void AddResource(string path) => Resources.MergedDictionaries.Add(new ResourceDictionary
@@ -310,17 +317,20 @@ internal sealed class CanvasComposerWindow : FluentWindow, IDisposable
             if (e.Key == Key.Escape)
             {
                 e.Handled = true;
-                Dismissed?.Invoke();
+                Close();
             }
         };
 
-        Closing += (_, e) =>
+        Closing += (_, _) =>
         {
-            if (!IsDisposed)
-            {
-                e.Cancel = true;
-                Dismissed?.Invoke();
-            }
+            _isClosing = true;
+            _request?.Cancel();
+        };
+
+        Closed += (_, _) =>
+        {
+            Dispose();
+            Dismissed?.Invoke();
         };
 
         _status.Text = _connections.LastStatus;
@@ -502,6 +512,10 @@ internal sealed class CanvasComposerWindow : FluentWindow, IDisposable
         _request = null;
         _preview = null;
         _connections.Dispose();
-        Close();
+        if (!_isClosing)
+        {
+            _isClosing = true;
+            try { Close(); } catch { }
+        }
     }
 }

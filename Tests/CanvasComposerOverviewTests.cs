@@ -283,7 +283,7 @@ public class CanvasComposerOverviewTests
 
             overview.OpenCanvasComposer(new Provider(), new Credentials(), new Accounts());
             var window = overview.ComposerWindow!;
-            Assert.True(window.ShowInTaskbar);
+            Assert.False(window.ShowInTaskbar);
             Assert.Empty(window.ContextBox.Items);
 
             overview.Selection.Pick(new(CanvasItemKind.Annotation, a.Id), overview.SelectionItems(), false);
@@ -336,5 +336,47 @@ public class CanvasComposerOverviewTests
             overview.TransitionTo(OverviewMode.Zooming);
             Assert.Same(window, overview.ComposerWindow);
             Assert.False(window.IsDisposed);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void ClosingComposerViaWindowCloseDoesNotThrowAndDismissesCleanly()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            overview.OpenCanvasComposer(new Provider(), new Credentials(), new Accounts());
+            var window = overview.ComposerWindow!;
+            Assert.NotNull(window);
+            Assert.False(window.IsDisposed);
+
+            // Simulates user clicking the titlebar 'X' button or triggering WM_CLOSE
+            window.Close();
+
+            PumpUntil(() => overview.ComposerWindow == null);
+            Assert.Null(overview.ComposerWindow);
+            Assert.True(window.IsDisposed);
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+        });
+
+    [Fact]
+    [Trait("Category","NativeRendering")]
+    public void AltQHotkeyNotSuspendedWhenComposerIsOpen()
+        =>WithOverview((overview,desktops,input)=>
+        {
+            overview.OpenCanvasComposer(new Provider(), new Credentials(), new Accounts());
+            var window = overview.ComposerWindow!;
+            Assert.NotNull(window);
+
+            // Canvas note/pan input is suspended, but the Alt+Q hotkey must NOT be blocked
+            Assert.True(overview.CanvasInputSuspended);
+            Assert.False(overview.OverviewHotkeySuspended);
+
+            // Triggering overview toggle transitions out of zooming
+            overview.TransitionTo(OverviewMode.Hidden);
+            Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+
+            // Transitioning back to zooming keeps the window available
+            overview.TransitionTo(OverviewMode.Zooming);
+            Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            Assert.Same(window, overview.ComposerWindow);
         });
 }
