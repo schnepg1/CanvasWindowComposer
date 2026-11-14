@@ -13,7 +13,10 @@ internal sealed partial class OverviewManager
     {
         _drawerDragFeedback.Add(new(drag, (id, point) => PreviewDrawerLanding(id, inventory, point),
             id => _placeholderWorkspace?.Document.Items.FirstOrDefault(i => i.Id == id) is { } item
-                ? (item.Name.Length > 0 ? item.Name : item.Title) : "Window", new CanvasPlacementFeedbackView(_screens)));
+                ? (item.Name.Length > 0 ? item.Name : item.Title)
+                : (_annotationDocument?.Items.FirstOrDefault(a => a.Id == id) is { } note
+                    ? (string.IsNullOrWhiteSpace(note.Text) ? "Note" : note.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Note")
+                    : "Window"), new CanvasPlacementFeedbackView(_screens)));
         drag.Moved += position => SetOtherDrawerDropTarget(inventory, IsOtherDrawerTarget(inventory, position.Screen));
         drag.HeldChanged += held => { if (!held) SetOtherDrawerDropTarget(inventory, false); };
     }
@@ -33,6 +36,7 @@ internal sealed partial class OverviewManager
     private bool TryCrossDrawerDrop(Guid id, bool inventory, Point screen)
     {
         if (_placeholderWorkspace == null || !IsOtherDrawerTarget(inventory, screen)) return false;
+        if (_annotationDocument?.Items.Any(a => a.Id == id) == true) return false;
         if (inventory)
         {
             bool moved = _placeholderWorkspace.MoveInventoryToTemporaryArea(id);
@@ -54,9 +58,26 @@ internal sealed partial class OverviewManager
     {
         viewport = InventoryViewport(); x = y = null;
         var item = _placeholderWorkspace?.Document.Items.FirstOrDefault(i => i.Id == id);
-        if (item == null) return false;
+        WorldRect bounds;
+        if (item != null)
+        {
+            bounds = item.Bounds;
+        }
+        else if (_annotationDocument?.Items.FirstOrDefault(a => a.Id == id) is { } note)
+        {
+            bounds = new WorldRect
+            {
+                X = Math.Min(note.A.X, note.B.X),
+                Y = Math.Min(note.A.Y, note.B.Y),
+                W = Math.Max(AnnotationCanvasTool.MinimumTextCardWidth, Math.Abs(note.B.X - note.A.X)),
+                H = Math.Max(AnnotationCanvasTool.MinimumTextCardHeight, Math.Abs(note.B.Y - note.A.Y)),
+                InInventory = true
+            };
+        }
+        else return false;
+
         if (screen is not { } point) return true;
-        if (!CanvasPlacementGeometry.TryWorldAnchor(viewport, point, item.Bounds, !inventory, out var wx, out var wy)) return false;
+        if (!CanvasPlacementGeometry.TryWorldAnchor(viewport, point, bounds, !inventory, out var wx, out var wy)) return false;
         x = wx; y = wy;
         return true;
     }
@@ -66,8 +87,24 @@ internal sealed partial class OverviewManager
         if (_disposed || _placeholderWorkspace == null || IsOtherDrawerTarget(inventory, screen)
             || !TryDrawerDropTarget(id, inventory, screen, out var view, out var x, out var y)) return null;
         WorldRect placed;
-        bool found = inventory ? _placeholderWorkspace.TryPreviewInventoryDrop(id, view, out placed, x, y)
-            : _placeholderWorkspace.TryPreviewTemporaryDrop(id, view, out placed, x, y);
+        bool found = false;
+        if (_annotationDocument?.Items.FirstOrDefault(a => a.Id == id) is { } note)
+        {
+            var noteBounds = new WorldRect
+            {
+                X = Math.Min(note.A.X, note.B.X),
+                Y = Math.Min(note.A.Y, note.B.Y),
+                W = Math.Max(AnnotationCanvasTool.MinimumTextCardWidth, Math.Abs(note.B.X - note.A.X)),
+                H = Math.Max(AnnotationCanvasTool.MinimumTextCardHeight, Math.Abs(note.B.Y - note.A.Y)),
+                InInventory = true
+            };
+            found = NearbyWindowPlacement.TryPlace(noteBounds, view, _placeholderWorkspace.InventoryPlacementObstacles(id), out placed, x, y);
+        }
+        else
+        {
+            found = inventory ? _placeholderWorkspace.TryPreviewInventoryDrop(id, view, out placed, x, y)
+                : _placeholderWorkspace.TryPreviewTemporaryDrop(id, view, out placed, x, y);
+        }
         if (!found) return null;
         return CanvasPlacementGeometry.Project(placed, view.Camera, CurrentMode == OverviewMode.Hidden);
     }

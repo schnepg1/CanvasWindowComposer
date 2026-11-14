@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
@@ -10,6 +11,7 @@ internal sealed partial class OverviewManager
     private WorkspaceContextMenu? _windowContextMenu;
     private ContextMenuStrip? _activeCardMenu;
     private ContextMenuStrip? _interactionMenu;
+    private ContextMenuStrip? _annotationContextMenu;
 
     private bool TryShowWindowContextMenu(OverviewOverlay pass, Point location)
     {
@@ -120,6 +122,12 @@ internal sealed partial class OverviewManager
             _interactionMenu = null;
             hadMenu = true;
         }
+        if (_annotationContextMenu != null && _annotationContextMenu.Visible)
+        {
+            _annotationContextMenu.Close();
+            _annotationContextMenu = null;
+            hadMenu = true;
+        }
         if (_annotationToolbar != null && _annotationToolbar.HasOpenDropDown)
         {
             _annotationToolbar.CloseDropDowns();
@@ -127,5 +135,54 @@ internal sealed partial class OverviewManager
             hadMenu = true;
         }
         return hadMenu;
+    }
+
+    private bool TryShowAnnotationContextMenu(OverviewOverlay pass, Point location)
+    {
+        if (_annotationDocument == null || _annotationTool == null) return false;
+        var pointer = Pointer(pass, new MouseEventArgs(MouseButtons.Right, 1, location.X, location.Y, 0));
+        var note = _annotationDocument.Items.LastOrDefault(a => a.DesktopId == _annotationDesktop()
+            && !a.InInventory && a.Kind == CanvasDesktop.CanvasView.AnnotationKind.Text
+            && CanvasDesktop.CanvasView.AnnotationGeometry.Hit(a, pointer.World, pointer.View));
+        if (note == null) return false;
+
+        _annotationContextMenu?.Dispose();
+        var menu = _annotationContextMenu = new ContextMenuStrip();
+        var putInBackpack = new ToolStripMenuItem("Put in backpack");
+        putInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
+        {
+            if (!_disposed) CollectNoteInInventory(note.Id);
+        });
+        menu.Items.Add(putInBackpack);
+
+        menu.Items.Add(new ToolStripSeparator());
+
+        var editNote = new ToolStripMenuItem("Edit note…");
+        editNote.Click += (_, _) => pass.BeginInvoke(() =>
+        {
+            if (!_disposed)
+            {
+                _annotationTool.Select(note.Id);
+                QueueAnnotationTextEdit(note, new Point(location.X + pass.OriginX, location.Y + pass.OriginY));
+            }
+        });
+        menu.Items.Add(editNote);
+
+        var deleteNote = new ToolStripMenuItem("Delete note");
+        deleteNote.Click += (_, _) => pass.BeginInvoke(() =>
+        {
+            if (!_disposed)
+            {
+                _annotationDocument.Delete(note.DesktopId, note.Id);
+                _annotationStore?.Save();
+                Selection.Clear();
+                ReconcileVisuals();
+            }
+        });
+        menu.Items.Add(deleteNote);
+
+        PInvoke.SetForegroundWindow((HWND)pass.Handle);
+        menu.Show(pass, location);
+        return true;
     }
 }

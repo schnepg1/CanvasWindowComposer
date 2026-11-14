@@ -63,7 +63,7 @@ internal sealed partial class OverviewManager
         workspace.TemporaryWindowsArrived += OnTemporaryWindowsArrived;
         AttachInventory(workspace);
         workspace.AdditionalPlacementObstacles = () => (_annotationDocument?.Items
-            .Where(a => a.DesktopId == _annotationDesktop()) ?? Enumerable.Empty<CanvasAnnotation>())
+            .Where(a => a.DesktopId == _annotationDesktop() && !a.InInventory) ?? Enumerable.Empty<CanvasAnnotation>())
             .Concat(CurrentTutorial is { Visible: true } notes ? notes.Layout.Items : Array.Empty<CanvasAnnotation>())
             .Select(a => new WorldRect { X = a.Bounds.X, Y = a.Bounds.Y, W = a.Bounds.Width, H = a.Bounds.Height }).ToArray();
         RefreshPlaceholderTitles();

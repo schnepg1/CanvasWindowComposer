@@ -75,7 +75,7 @@ internal sealed partial class WorkspaceService
         return NearbyWindowPlacement.TryPlace(item.Bounds, view, InventoryPlacementObstacles(id), out placed, x, y);
     }
 
-    private IReadOnlyList<WorldRect> InventoryPlacementObstacles(Guid except, IntPtr ignoreHandle = default)
+    internal IReadOnlyList<WorldRect> InventoryPlacementObstacles(Guid except, IntPtr ignoreHandle = default)
     {
         var handles = new HashSet<IntPtr>();
         if (ignoreHandle != IntPtr.Zero) handles.Add(ignoreHandle);

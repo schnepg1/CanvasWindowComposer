@@ -299,6 +299,61 @@ public class InventoryBackpackViewTests
             Assert.False(panel.IsWarningPopupOpen);
         });
 
+    [Fact]
+    public void BackpackDisplaysTextNotesAlongWithWindowsAndSupportsSearchAndContextActions()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            panel.SetOpen(true);
+            var windowItem = Item("Terminal", false);
+            var noteId = Guid.NewGuid();
+            var noteItem = new WorkspaceItemView(
+                noteId,
+                "Release checklist",
+                "",
+                "",
+                false,
+                new() { W = 400, H = 300, InInventory = true },
+                "Note",
+                Name: "Release checklist\n- verify native tests\n- clean merge",
+                Temporary: false
+            );
+
+            panel.UpdateItems([windowItem, noteItem]);
+            panel.Measure(new Size(450, 650));
+            panel.Arrange(new Rect(0, 0, 450, 650));
+            panel.UpdateLayout();
+
+            // Text note renders with "Text note" state text and "KEPT" badge
+            var textBlocks = Descendants(panel).OfType<TextBlock>().Select(t => t.Text).ToArray();
+            Assert.Contains("Release checklist", textBlocks);
+            Assert.Contains("Text note", textBlocks);
+            Assert.Contains("KEPT", textBlocks);
+
+            // Searching for text inside the note body finds it
+            var searchBox = Descendants(panel).OfType<Wpf.Ui.Controls.TextBox>().Single();
+            searchBox.Text = "native tests";
+            var filteredTitles = Descendants(panel).OfType<TextBlock>().Select(t => t.Text).ToArray();
+            Assert.Contains("Release checklist", filteredTitles);
+            Assert.DoesNotContain("Terminal", filteredTitles);
+
+            // Context menu on note tile
+            searchBox.Text = "";
+            var noteTile = Descendants(panel).OfType<Border>().First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Release checklist");
+            Assert.NotNull(noteTile.ContextMenu);
+            var menuItems = noteTile.ContextMenu.Items.OfType<MenuItem>().Select(m => m.Header?.ToString()).ToArray();
+            Assert.Contains("Place near camera", menuItems);
+            Assert.Contains("Delete note", menuItems);
+            Assert.DoesNotContain("Open app", menuItems);
+
+            // Forget/Delete note request
+            Guid? forgottenId = null;
+            panel.ForgetRequested += id => forgottenId = id;
+            var deleteItem = noteTile.ContextMenu.Items.OfType<MenuItem>().First(m => m.Header?.ToString() == "Delete note");
+            deleteItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.Equal(noteId, forgottenId);
+        });
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
