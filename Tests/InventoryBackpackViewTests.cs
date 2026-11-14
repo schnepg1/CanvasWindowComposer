@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Xunit;
@@ -17,6 +18,46 @@ public class InventoryBackpackViewTests
     private static WorkspaceItemView Item(string title, bool temporary, string state = "Open")
         => new(Guid.NewGuid(), title, @"C:\Apps\Editor.exe", "", false,
             new() { W = 800, H = 600, InInventory = true }, state, Temporary: temporary);
+
+    [Fact]
+    public void BackpackSearchBoxTextCursorAndCaretBehaviorAreConsistent()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var panel = new BackpackPanel();
+            var window = new Window { Content = panel, Width = 500, Height = 700 };
+            window.Show();
+            try
+            {
+                panel.SetOpen(true);
+                var searchBox = Assert.Single(Descendants(panel).OfType<Wpf.Ui.Controls.TextBox>());
+
+                // 1. Text cursor (mouse pointer) over the search box is IBeam
+                Assert.Equal(Cursors.IBeam, searchBox.Cursor);
+
+                // 2. Caret brush matches text foreground rather than mismatched accent
+                var expectedBrush = BackpackPanel.Ink("#EAF0F4");
+                Assert.Equal(expectedBrush.Color, ((SolidColorBrush)searchBox.CaretBrush).Color);
+
+                // 3. FocusSearch positions text cursor (caret) at the end of existing text
+                searchBox.Text = "Terminal";
+                panel.FocusSearch();
+                Assert.True(searchBox.IsKeyboardFocused || searchBox.IsFocused);
+                Assert.Equal(searchBox.Text.Length, searchBox.CaretIndex);
+
+                // 4. Clicking outside content host (e.g. search icon / chrome) focuses search and places caret at end
+                var icon = Assert.IsAssignableFrom<FrameworkElement>(searchBox.Icon);
+                searchBox.RaiseEvent(new MouseButtonEventArgs(InputManager.Current.PrimaryMouseDevice, 0, MouseButton.Left)
+                {
+                    RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+                    Source = icon
+                });
+                Assert.Equal(searchBox.Text.Length, searchBox.CaretIndex);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
 
     [Fact]
     public void OnlyTheFoldedBadgeIsVisibleOnFirstPresentation()
