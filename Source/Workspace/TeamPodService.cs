@@ -6,6 +6,12 @@ namespace CanvasDesktop;
 /// <summary>Owns persisted mission frames and their task-scoped role layout.</summary>
 internal sealed class TeamPodService(WorkspaceService workspace, AnnotationDocument annotations)
 {
+    private const double Margin = 24;
+    private const double CardWidth = 240;
+    private const double CardHeight = 112;
+    private const double CardGap = 16;
+    private const double ModularWidth = 2 * (Margin + CardWidth) + CardGap;
+    private const double ModularHeight = 2 * Margin + CardHeight;
     private readonly System.Collections.Generic.HashSet<Guid> _recovered = [];
 
     public bool SetPositionLocked(Guid zoneId, bool locked)
@@ -25,7 +31,65 @@ internal sealed class TeamPodService(WorkspaceService workspace, AnnotationDocum
     }
 
     public Guid? CreateMission(Guid desktop, string name, CanvasPoint anchor)
-        => ZoneService.ValidName(name?.Trim()) ? Create(desktop, Guid.NewGuid().ToString("N"), name!, anchor) : null;
+    {
+        name = name.Trim();
+        if (!CanCreate(desktop) || !ZoneService.ValidName(name)) return null;
+        return SaveMission(new WorkspaceZone
+        {
+            DesktopId = desktop, AgentTaskId = Guid.NewGuid().ToString("N"), IsModularMission = true,
+            Name = name, Color = "#A78BFA",
+            Bounds = new() { X = anchor.X - ModularWidth / 2, Y = anchor.Y - ModularHeight / 2,
+                W = ModularWidth, H = ModularHeight }
+        }, []);
+    }
+
+    public bool AddAgent(Guid missionId, string name)
+    {
+        name = name.Trim();
+        var desktop = workspace.Zones.DesktopId;
+        var zone = workspace.Document.Zones.FirstOrDefault(z => z.Id == missionId && z.DesktopId == desktop && z.IsMission);
+        if (zone == null || !ZoneService.ValidName(name)) return false;
+        var previous = zone.Bounds;
+        var occupied = annotations.Items.Where(a => a.DesktopId == desktop && a.AgentTaskId == zone.AgentTaskId
+            && a.AgentRole.Length > 0 && a.Kind != AnnotationKind.Arrow && !a.InBackground).Select(a => a.Bounds).ToArray();
+        double x = previous.X + Margin;
+        double y = zone.IsModularMission ? previous.Y + Margin
+            : Math.Max(previous.Y + previous.H, occupied.Select(b => b.Y + b.Height).DefaultIfEmpty(previous.Y).Max()) + CardGap;
+        while (occupied.Any(b => CanvasSelection.Intersects(b, new CanvasRect(x, y, CardWidth, CardHeight))))
+        {
+            if (x == previous.X + Margin && previous.W >= ModularWidth)
+                x += CardWidth + CardGap;
+            else
+            {
+                x = previous.X + Margin;
+                y += CardHeight + CardGap;
+            }
+        }
+        var next = previous;
+        next.W = Math.Max(next.W, x + CardWidth + Margin - next.X);
+        next.H = Math.Max(next.H, y + CardHeight + Margin - next.Y);
+        if (!ZoneGeometry.ValidBounds(next)) return false;
+        var id = Guid.NewGuid();
+        var card = new CanvasAnnotation(id, desktop, AnnotationKind.Text, new(x, y), new(x + CardWidth, y + CardHeight), Text: name)
+        {
+            AgentTaskId = zone.AgentTaskId, AgentRole = id.ToString("N")
+        };
+        bool Resize(bool redo)
+        {
+            if (workspace.Zones.DesktopId != desktop || !workspace.Document.Zones.Contains(zone)
+                || !ZoneLayoutPlanner.SamePlacement(zone.Bounds, redo ? previous : next)) return false;
+            zone.Bounds = redo ? next : previous;
+            if (!workspace.SaveNow())
+            {
+                zone.Bounds = redo ? previous : next;
+                return false;
+            }
+            workspace.Zones.NotifyDesktopChanged();
+            return true;
+        }
+        try { return annotations.ApplyBatch(annotations.Revision, desktop, [card], Resize); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return false; }
+    }
 
     public bool SetWorkingFolder(Guid zoneId, string folder)
     {
@@ -45,13 +109,13 @@ internal sealed class TeamPodService(WorkspaceService workspace, AnnotationDocum
         foreach (var team in snapshot.Teams.Values)
         {
             if (workspace.Document.Zones.Any(z => z.AgentTaskId == team.TaskId)) continue;
-            Create(desktop, team.TaskId, team.Name, null);
+            CreateTelemetryMission(desktop, team.TaskId, team.Name);
         }
     }
 
     private void RestoreLayout(Guid desktop)
     {
-        foreach (var zone in workspace.Document.Zones.Where(z => z.IsMission && z.DesktopId == desktop).ToArray())
+        foreach (var zone in workspace.Document.Zones.Where(z => z.IsMission && !z.IsModularMission && z.DesktopId == desktop).ToArray())
         {
             var layout = TeamPodLayout.Create(desktop, zone.AgentTaskId, new(0, 0));
             var existing = annotations.Items.ToDictionary(item => item.Id);
@@ -76,29 +140,21 @@ internal sealed class TeamPodService(WorkspaceService workspace, AnnotationDocum
         }
     }
 
-    private Guid? Create(Guid desktop, string taskId, string name, CanvasPoint? anchor)
+    private bool CanCreate(Guid desktop) => desktop == workspace.Zones.DesktopId
+        && workspace.Document.Zones.Count(z => !z.IsTemporaryArea) < ZoneService.MaximumZones;
+
+    private Guid? CreateTelemetryMission(Guid desktop, string taskId, string name)
     {
-        if (desktop != workspace.Zones.DesktopId
-            || workspace.Document.Zones.Count(z => !z.IsTemporaryArea) >= ZoneService.MaximumZones)
-            return null;
+        if (!CanCreate(desktop)) return null;
         name = string.IsNullOrWhiteSpace(name) ? taskId[..Math.Min(120, taskId.Length)] : name.Trim();
         if (!ZoneService.ValidName(name)) return null;
 
         var pod = TeamPodLayout.Create(desktop, taskId, new(0, 0));
-        double dx, dy;
-        if (anchor is { } center)
-        {
-            dx = center.X - pod.Bounds.Width / 2 - pod.Bounds.X;
-            dy = center.Y - pod.Bounds.Height / 2 - pod.Bounds.Y;
-        }
-        else
-        {
-            var right = annotations.Items.Where(a => a.DesktopId == desktop).Select(a => a.Bounds.X + a.Bounds.Width)
-                .Concat(workspace.Document.Zones.Where(z => z.DesktopId == desktop).Select(z => z.Bounds.X + z.Bounds.W))
-                .Concat(workspace.Document.Items.Where(i => i.DesktopId == desktop).Select(i => i.Bounds.X + i.Bounds.W));
-            dx = right.DefaultIfEmpty(-60).Max() + 160 - pod.Bounds.X;
-            dy = 100 - pod.Bounds.Y;
-        }
+        var right = annotations.Items.Where(a => a.DesktopId == desktop).Select(a => a.Bounds.X + a.Bounds.Width)
+            .Concat(workspace.Document.Zones.Where(z => z.DesktopId == desktop).Select(z => z.Bounds.X + z.Bounds.W))
+            .Concat(workspace.Document.Items.Where(i => i.DesktopId == desktop).Select(i => i.Bounds.X + i.Bounds.W));
+        double dx = right.DefaultIfEmpty(-60).Max() + 160 - pod.Bounds.X;
+        double dy = 100 - pod.Bounds.Y;
 
         // Recover saved cards if workspace persistence lagged behind annotation persistence.
         var existing = annotations.Items.Where(a => a.AgentTaskId == taskId && a.DesktopId == desktop).ToArray();
@@ -114,8 +170,14 @@ internal sealed class TeamPodService(WorkspaceService workspace, AnnotationDocum
             Name = name, Color = "#A78BFA",
             Bounds = new WorldRect { X = pod.Bounds.X + dx, Y = pod.Bounds.Y + dy, W = pod.Bounds.Width, H = pod.Bounds.Height }
         };
-        if (!ZoneGeometry.ValidBounds(zone.Bounds)) return null;
         var items = pod.Items.Where(a => !annotations.Items.Any(e => e.Id == a.Id)).Select(a => a.Translate(dx, dy)).ToArray();
+        return SaveMission(zone, items);
+    }
+
+    private Guid? SaveMission(WorkspaceZone zone, CanvasAnnotation[] items)
+    {
+        if (!ZoneGeometry.ValidBounds(zone.Bounds)) return null;
+        var desktop = zone.DesktopId;
         bool Place(bool redo)
         {
             if (workspace.Zones.DesktopId != desktop) return false;

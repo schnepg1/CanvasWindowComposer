@@ -102,8 +102,9 @@ public class TeamPodTests
         using var rig = new WorkspaceHarness();
         var annotations = new AnnotationDocument();
         var desktop = rig.Desktops.CurrentDesktopId;
-        var original = new TeamPodService(rig.Workspace, annotations);
-        var id = Assert.IsType<Guid>(original.CreateMission(desktop, "Restore cards", new(150, 200)));
+        var snapshot = TeamTelemetryJson.Parse("""{"teams":{"legacy":{"name":"Restore cards"}}}""");
+        new TeamPodService(rig.Workspace, annotations).Reconcile(snapshot, desktop);
+        var id = Assert.Single(rig.Workspace.Document.Zones).Id;
         using var restarted = new WorkspaceHarness(WorkspacePersistence.SavedState(rig.Workspace.Document));
         var restored = new AnnotationDocument();
         var pods = new TeamPodService(restarted.Workspace, restored);
@@ -111,6 +112,37 @@ public class TeamPodTests
         pods.Reconcile(TeamTelemetrySnapshot.Empty, desktop);
         Assert.Equal(id, Assert.Single(restarted.Workspace.Document.Zones).Id);
         Assert.Equal(annotations.Items, restored.Items);
+    }
+
+    [Fact]
+    public void ManualMissionStartsEmptyAndAddsOnlyIndividuallyRequestedCardsAfterReload()
+    {
+        using var rig = new WorkspaceHarness();
+        var annotations = new AnnotationDocument();
+        var original = new TeamPodService(rig.Workspace, annotations);
+        var desktop = rig.Desktops.CurrentDesktopId;
+        var id = Assert.IsType<Guid>(original.CreateMission(desktop, "Draft Friday's script", new(150, 200)));
+        Assert.Empty(annotations.Items);
+
+        using var restarted = new WorkspaceHarness(WorkspacePersistence.SavedState(rig.Workspace.Document));
+        var pods = new TeamPodService(restarted.Workspace, annotations);
+        pods.Reconcile(TeamTelemetrySnapshot.Empty, desktop);
+        Assert.Empty(annotations.Items);
+        Assert.True(pods.AddAgent(id, "Writer"));
+        var writer = Assert.Single(annotations.Items);
+        Assert.Equal("Writer", writer.Text);
+        Assert.True(pods.AddAgent(id, "Reviewer"));
+        Assert.True(pods.AddAgent(id, "Editor"));
+        Assert.Equal(new[] { "Writer", "Reviewer", "Editor" }, annotations.Items.Select(a => a.Text));
+        Assert.False(CanvasSelection.Intersects(writer.Bounds, annotations.Items[1].Bounds));
+        Assert.False(CanvasSelection.Intersects(writer.Bounds, annotations.Items[2].Bounds));
+        Assert.True(annotations.Undo(desktop));
+        Assert.Equal(2, annotations.Items.Count);
+        Assert.True(annotations.Undo(desktop, true));
+        Assert.Equal(3, annotations.Items.Count);
+        new TeamPodService(restarted.Workspace, annotations).Reconcile(TeamTelemetrySnapshot.Empty, desktop);
+        Assert.Equal(writer, annotations.Items[0]);
+        Assert.Equal(3, annotations.Items.Count);
     }
 
     [Fact]

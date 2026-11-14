@@ -2,12 +2,14 @@
 
 Open the canvas with **Alt+Q**, then choose **AI Teams Mission Control** from the
 toolbelt's **More actions** menu. Create a mission at the center of the current
-view, or jump to an existing mission. Use **Inspect** to open its list of agents.
-Click an agent card on the canvas to open that agent directly.
+view, or jump to an existing mission. New missions start empty. In **Inspect**,
+enter a name and choose **Add agent** for each agent you want. Click an agent
+card on the canvas to open that agent directly. Starting Codex is a separate
+action on the agent's card.
 
 External agents can still register missions by reporting a stable task ID.
-Repeated telemetry updates reuse the saved frame and cards. The supplied template
-provides seven role cards. Start a session for any role from its inspector.
+Repeated telemetry updates reuse the saved frame and cards. Missions imported
+from the existing external team workflow use its seven-role layout.
 
 ## Open an agent terminal
 
@@ -87,3 +89,18 @@ available on the desktop where they were created.
 
 Agent cards use the installed [WPF-UI](https://github.com/lepoco/wpfui) badges.
 At a distant zoom level, open the inspector from the Mission Control list.
+
+## Planned terminal and chat views
+
+- Place a standalone agent from the toolbelt and link or unlink it from a
+  mission while preserving its identity and any live session.
+- Expand an agent card in place into a Fluent shell with its status header and
+  a terminal pane connected to the same Herdr session. Prove streaming output,
+  resize, and keyboard input in Windows. Open in observation mode and offer
+  **Take control** for input. Collapsing the pane detaches the view.
+- Host the same agent view in a mission pop-out for Alt+Tab. Canvas and the
+  pop-out share agent identity and session state. Opening the pop-out focuses
+  an existing window for that mission.
+- Add a chat view once a supported runtime exposes structured messages,
+  streaming, and tool approval state. Keep terminal access on the same card.
+  Speech-to-text can feed the chat's compose field in a later step.

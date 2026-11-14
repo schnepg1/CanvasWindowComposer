@@ -37,7 +37,7 @@ internal sealed partial class OverviewManager
     private string? _annotationError;
     public bool CanvasInputSuspended => DesktopHandoffPending || BackgroundEditorVisible || CanvasEditorInputSuspended;
     public bool OverviewHotkeySuspended => CanvasEditorInputSuspended || _backgroundEditor?.IsChoosingImage == true;
-    private bool CanvasEditorInputSuspended => PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true) || (_connectionTool?.HasPendingInteraction == true);
+    private bool CanvasEditorInputSuspended => _missionControl?.IsActive == true || PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true) || (_connectionTool?.HasPendingInteraction == true);
 
     internal AnnotationDocument? Annotations => _annotationDocument;
     internal AnnotationToolbar? AnnotationToolbar => _annotationToolbar;
@@ -160,7 +160,7 @@ internal sealed partial class OverviewManager
     }
     private void FocusOverview()
     {
-        if(!_disposed && CurrentMode==OverviewMode.Zooming) _passes.FirstOrDefault(p=>p.Visible)?.Activate();
+        if(!_disposed && CurrentMode==OverviewMode.Zooming && _missionControl?.IsActive != true) _passes.FirstOrDefault(p=>p.Visible)?.Activate();
     }
     private string? AnnotationHint => PeekWorking ? "Working in Canvas Peek · Mouse and keyboard go to app · Choose Return to resume the canvas" : _windowInteraction.Active
         ? "Interacting: mouse and keyboard go to app  ·  Drag header: move  ·  Ctrl+click: select  ·  Esc: Arrange"

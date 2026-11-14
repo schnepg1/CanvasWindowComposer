@@ -72,6 +72,8 @@ internal sealed class WorkspaceZone
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsMission => !string.IsNullOrEmpty(AgentTaskId);
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsModularMission { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool MissionPositionLocked { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? MissionWorkingFolder { get; set; }

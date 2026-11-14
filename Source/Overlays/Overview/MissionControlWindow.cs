@@ -23,6 +23,7 @@ internal sealed class MissionControlWindow : FluentWindow
     private readonly TextBlock _feedback = new() { TextWrapping = TextWrapping.Wrap };
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HerdrSessions _herdr;
+    private TextBox? _initialInput;
     internal event Action? TerminalChanged;
     internal event Action? TerminalOpened;
 
@@ -50,8 +51,21 @@ internal sealed class MissionControlWindow : FluentWindow
         root.Children.Add(title);
         root.Children.Add(new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Content = root;
+        System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(this);
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
         Closed += (_, _) => { _lifetime.Cancel(); _lifetime.Dispose(); };
+    }
+
+    public void Present()
+    {
+        Show();
+        // Let the dock's context menu finish restoring focus before taking it.
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
+        {
+            if (!IsVisible) return;
+            Activate();
+            _initialInput?.Focus();
+        }));
     }
 
     public void ShowMissions(IReadOnlyList<ZoneView> missions, Func<string, bool> create, Action<ZoneView> jump,
@@ -66,25 +80,36 @@ internal sealed class MissionControlWindow : FluentWindow
             _body.Children.Add(row);
         }
         if (missions.Count == 0) Note("Create a mission at the current canvas position.");
-        var name = new TextBox { PlaceholderText = "Mission name", MaxLength = 120, Margin = new(0, 10, 0, 6) };
-        System.Windows.Automation.AutomationProperties.SetName(name, "Mission name");
-        _body.Children.Add(name);
-        _body.Children.Add(ActionButton("New mission", () =>
-        {
-            if (string.IsNullOrWhiteSpace(name.Text)) { _feedback.Text = "Enter a mission name."; return; }
-            if (!create(name.Text.Trim())) _feedback.Text = "Could not save the mission at this position.";
-        }));
+        NameEntry("Mission name", "New mission", create, "Could not save the mission at this position.");
         _body.Children.Add(_feedback);
     }
 
     public void ShowMission(ZoneView mission, IReadOnlyList<MissionAgentCard> cards, Action<MissionAgentCard> inspect,
-        Func<bool, bool> setLocked)
+        Func<bool, bool> setLocked, Func<string, bool> addAgent)
     {
         Heading(MissionName(mission));
         _body.Children.Add(LockButton(mission.MissionPositionLocked, setLocked));
         foreach (var card in cards)
             _body.Children.Add(ActionButton(card.Name, () => inspect(card)));
+        if (cards.Count == 0) Note("Add the first agent for this mission.");
+        NameEntry("Agent name", "Add agent", addAgent, "Could not add the agent to this mission.");
         _body.Children.Add(_feedback);
+    }
+
+    private void NameEntry(string label, string action, Func<string, bool> submit, string error)
+    {
+        var input = new TextBox { PlaceholderText = label, MaxLength = 120, Margin = new(0, 10, 0, 6) };
+        System.Windows.Automation.AutomationProperties.SetName(input, label);
+        _initialInput = input;
+        _body.Children.Add(input);
+        void Submit()
+        {
+            string name = input.Text.Trim();
+            if (name.Length == 0) { _feedback.Text = $"Enter a {label.ToLowerInvariant()}."; return; }
+            if (!submit(name)) _feedback.Text = error;
+        }
+        input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { e.Handled = true; Submit(); } };
+        _body.Children.Add(ActionButton(action, Submit));
     }
 
     public void ShowAgent(ZoneView mission, MissionAgentCard card, AgentStatusReport? status, string? folder,

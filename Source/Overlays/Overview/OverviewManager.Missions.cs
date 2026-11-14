@@ -103,7 +103,7 @@ internal sealed partial class OverviewManager
         {
             if (FindMission(zone.Id) is { } current) { CloseMissionControl(); JumpToZone(current); }
         }, ShowMission);
-        window.Show();
+        window.Present();
     }
 
     private ZoneView? FindMission(Guid id) => _zones?.Items.FirstOrDefault(z => z.Id == id && z.IsMission);
@@ -117,8 +117,13 @@ internal sealed partial class OverviewManager
         var workspace = _placeholderWorkspace?.Document.Zones.FirstOrDefault(z => z.Id == current.Id);
         var window = NewMissionControl();
         window.ShowMission(current, MissionCards().Where(c => c.TaskId == workspace?.AgentTaskId).ToArray(),
-            ShowMissionAgent, locked => _teamPods?.SetPositionLocked(current.Id, locked) == true);
-        window.Show();
+            ShowMissionAgent, locked => _teamPods?.SetPositionLocked(current.Id, locked) == true, name =>
+            {
+                if (_teamPods?.AddAgent(current.Id, name) != true) return false;
+                ShowMission(current);
+                return true;
+            });
+        window.Present();
     }
 
     private void ShowMissionAgent(MissionAgentCard card)
@@ -131,7 +136,7 @@ internal sealed partial class OverviewManager
         window.ShowAgent(mission, card, MissionReport(card), folder,
             locked => _teamPods?.SetPositionLocked(mission.Id, locked) == true,
             directory => _teamPods?.SetWorkingFolder(mission.Id, directory) == true, () => ShowMission(mission));
-        window.Show();
+        window.Present();
     }
 
     private MissionControlWindow NewMissionControl()
