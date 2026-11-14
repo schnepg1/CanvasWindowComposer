@@ -48,6 +48,7 @@ internal sealed partial class OverviewManager
         if (e.Button == MouseButtons.Right)
         {
             if (TryShowWindowContextMenu(pass, new(e.X, e.Y))) return;
+            if (TryShowAnnotationContextMenu(pass, new(e.X, e.Y))) return;
 
             _tools.TryBeginNavigation(CanvasInteractionKind.Pan, pointer);
             ApplyPointerCapture();
@@ -252,7 +253,8 @@ internal sealed partial class OverviewManager
         _visualFrames.Flush();
         if (e.Button == MouseButtons.Right && ((_windowContextMenu != null && _windowContextMenu.Visible)
             || (_interactionMenu != null && _interactionMenu.Visible)
-            || (_activeCardMenu != null && _activeCardMenu.Visible)))
+            || (_activeCardMenu != null && _activeCardMenu.Visible)
+            || (_annotationContextMenu != null && _annotationContextMenu.Visible)))
         {
             return;
         }

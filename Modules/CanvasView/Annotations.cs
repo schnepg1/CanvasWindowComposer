@@ -31,6 +31,7 @@ public sealed record CanvasAnnotation
     public ConnectionPort TargetPort { get; init; } = ConnectionPort.Auto;
     public bool TargetEphemeral { get; init; }
     public ConnectorRouting Routing { get; init; } = ConnectorRouting.Curved;
+    public bool InInventory { get; init; }
     public string AgentTaskId { get; init; } = "";
     public string AgentRole { get; init; } = "";
 
@@ -41,7 +42,9 @@ public sealed record CanvasAnnotation
         AnnotationCardFill CardFill = (AnnotationCardFill)(-1), bool InBackground = false,
         Guid? SourceId = null, ConnectionPort SourcePort = ConnectionPort.Auto, bool SourceEphemeral = false,
         Guid? TargetId = null, ConnectionPort TargetPort = ConnectionPort.Auto, bool TargetEphemeral = false,
-        ConnectorRouting Routing = ConnectorRouting.Curved)
+        ConnectorRouting Routing = ConnectorRouting.Curved,
+        bool InInventory = false,
+        string AgentTaskId = "", string AgentRole = "")
     {
         this.Id = Id;
         this.DesktopId = DesktopId;
@@ -65,6 +68,9 @@ public sealed record CanvasAnnotation
         this.TargetPort = TargetPort;
         this.TargetEphemeral = TargetEphemeral;
         this.Routing = Routing;
+        this.InInventory = InInventory;
+        this.AgentTaskId = AgentTaskId;
+        this.AgentRole = AgentRole;
     }
 
     public CanvasRect Bounds => new(Math.Min(A.X, B.X), Math.Min(A.Y, B.Y), Math.Abs(B.X - A.X), Math.Abs(B.Y - A.Y));
