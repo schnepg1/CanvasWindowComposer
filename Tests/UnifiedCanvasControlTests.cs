@@ -37,32 +37,25 @@ public class UnifiedCanvasControlTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ToolbarMoreDropdownContainsProjectNavigatorAndProjectAreas()
+    public void ToolbarMoreDropdownOffersOneProjectsWindowEntry()
     {
         var toolbar = new AnnotationToolbar();
         var strip = toolbar.Controls.OfType<ToolStrip>().Single();
         var moreBtn = strip.Items.OfType<ToolStripDropDownButton>().Single(b => b.Name == "More");
         var moreItems = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
 
-        Assert.Contains("Project Navigator…", moreItems);
-        Assert.Contains("Project areas…", moreItems);
+        Assert.Contains("Projects…", moreItems);
+        Assert.DoesNotContain("Project Navigator…", moreItems);
+        Assert.DoesNotContain("Project areas…", moreItems);
 
-        bool navRequested = false;
-        bool areasRequested = false;
-        toolbar.ProjectNavigatorRequested += () => navRequested = true;
-        toolbar.ProjectAreasRequested += () => areasRequested = true;
+        bool requested = false;
+        toolbar.ProjectsRequested += () => requested = true;
 
-        var navItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Project Navigator…");
-        var areasItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Project areas…");
+        var projectsItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Projects…");
+        Assert.Equal("P", projectsItem.ShortcutKeyDisplayString);
 
-        Assert.Equal("P", navItem.ShortcutKeyDisplayString);
-        Assert.Equal("Z", areasItem.ShortcutKeyDisplayString);
-
-        navItem.PerformClick();
-        Assert.True(navRequested);
-
-        areasItem.PerformClick();
-        Assert.True(areasRequested);
+        projectsItem.PerformClick();
+        Assert.True(requested);
     }
 
     [Fact]

@@ -78,7 +78,7 @@ internal sealed class UnifiedDockControl : UserControl
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
     public event Action? AiTeamsToggled;
     public event Action<double>? NearbyRequested;
-    public event Action? WebResourceRequested, BackgroundsRequested, ProjectNavigatorRequested, ProjectAreasRequested;
+    public event Action? WebResourceRequested, BackgroundsRequested, ProjectsRequested;
     public event Action? ExportAllWorkflowsRequested, ImportWorkflowRequested;
     public event Action<string>? ColorRequested;
     public event Action<double>? StrokeRequested;
@@ -625,8 +625,7 @@ internal sealed class UnifiedDockControl : UserControl
         AddMenuItem(menu, "Add web resource…", SymbolRegular.Globe20, () => WebResourceRequested?.Invoke());
         AddMenuItem(menu, "Backgrounds…", SymbolRegular.Image20, () => BackgroundsRequested?.Invoke());
 
-        var nav = AddMenuItem(menu, "Project Navigator…", SymbolRegular.Navigation20, () => ProjectNavigatorRequested?.Invoke(), "P");
-        var areas = AddMenuItem(menu, "Project areas…", SymbolRegular.Grid20, () => ProjectAreasRequested?.Invoke(), "Z");
+        AddMenuItem(menu, "Projects…", SymbolRegular.Navigation20, () => ProjectsRequested?.Invoke(), "P");
 
         menu.Items.Add(new Separator());
         AddMenuItem(menu, "Export all workflows (JSON)", SymbolRegular.Share20, () => ExportAllWorkflowsRequested?.Invoke());

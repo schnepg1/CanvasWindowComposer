@@ -95,7 +95,6 @@ internal sealed partial class OverviewManager
         return _windows.HitTest(wx, wy);
     }
     public event Action? ZonePanelRequested;
-    public event Action? ZoneNavigatorRequested;
     public event Action<WorldRect>? ZoneDrawn;
     public event Action<Guid, double, double>? ZoneMoveRequested;
     public event Action<Guid, WorldRect>? ZoneResizeRequested;
@@ -335,14 +334,10 @@ internal sealed partial class OverviewManager
         {
             BeginZone(); e.Handled = true; return true;
         }
-        if (_zones != null && !e.Control && !e.Alt && e.KeyCode == Keys.Z)
-        {
-            ZonePanelRequested?.Invoke(); e.Handled = true; return true;
-        }
-        if (_zones != null && !e.Control && !e.Alt && e.KeyCode == Keys.P)
+        if (_zones != null && !e.Control && !e.Alt && (e.KeyCode == Keys.Z || e.KeyCode == Keys.P))
         {
             CancelInteraction();
-            ZoneNavigatorRequested?.Invoke(); e.Handled = true; return true;
+            ZonePanelRequested?.Invoke(); e.Handled = true; return true;
         }
         return false;
     }

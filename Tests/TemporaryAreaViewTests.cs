@@ -18,7 +18,8 @@ public class TemporaryAreaViewTests
             using var rig = new WorkspaceHarness(new WorkspaceDocument { PlacementPolicyInitialized = true });
             rig.Workspace.Start();
             var area = rig.Workspace.EnsureTemporaryArea()!;
-            var editor = new ZoneWindow(rig.Workspace.Zones, () => { }, _ => { }, () => null);
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
+            var editor = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
             try
             {
                 editor.Select(area.Id);

@@ -8,13 +8,14 @@ namespace CanvasDesktop.Tests;
 public class ZoneViewTests
 {
     [Fact]
-    public void ManagerHistoryButtonsFollowWorkspaceAndStopUpdatingAfterClose()
+    public void HistoryButtonsFollowWorkspaceAndStopUpdatingAfterClose()
     {
         OnSta(() =>
         {
             using var rig = new WorkspaceHarness(); rig.Workspace.Start();
             rig.Workspace.Zones.Add(new WorldRect { W = 1000, H = 800 }, out var id);
-            var window = new ZoneWindow(rig.Workspace.Zones, () => { }, _ => { }, () => null, rig.Workspace,
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null, rig.Workspace,
                 redo => { if (redo) rig.Workspace.RedoZoneLayout(); else rig.Workspace.UndoZoneLayout(); });
             var undo = Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Undo"));
             var redo = Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Redo"));
@@ -80,58 +81,40 @@ public class ZoneViewTests
         });
     }
 
-    private static void OnSta(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() => { try { action(); } catch (Exception ex) { failure = ex; } });
-        thread.SetApartmentState(ApartmentState.STA); thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Zone UI verification did not finish.");
-        if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
-
     [Fact]
     public void EditorSavesSelectedZoneRejectsInvalidColorAndNavigatesById()
     {
-        Exception? failure = null;
-        var thread = new Thread(() =>
+        OnSta(() =>
         {
+            using var rig = new WorkspaceHarness(); rig.Workspace.Start();
+            rig.Workspace.Zones.Add(new WorldRect { W = 800, H = 600 }, out var id);
+            Guid? jumped = null; bool drawing = false;
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, z => jumped = z.Id, () => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation,
+                () => drawing = true, () => null);
             try
             {
-                var document = new WorkspaceDocument();
-                var zones = new ZoneService(document, () => Guid.Empty, () => true);
-                zones.Add(new WorldRect { W = 800, H = 600 }, out var id);
-                Guid? jumped = null;
-                bool drawing = false;
-                var window = new ZoneWindow(zones, () => drawing = true, z => jumped = z.Id, () => null);
-                try
-                {
-                    var elements = Descendants(window).ToArray();
-                    var name = elements.OfType<TextBox>().Single(t => t.Name == "AreaName");
-                    var color = elements.OfType<TextBox>().Single(t => t.Name == "AreaColor");
-                    void Click(string label) => elements.OfType<Button>().Single(b => Equals(b.Content, label))
-                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    name.Text = "Research"; color.Text = "#34D399";
-                    Click("Save changes");
-                    Assert.Equal("Research", Assert.Single(zones.Items).Name);
-                    Assert.Equal("#34D399", Assert.Single(zones.Items).Color);
-                    color.Text = "invalid";
-                    Click("Save changes");
-                    Assert.Equal("#34D399", Assert.Single(zones.Items).Color);
-                    Click("Jump to area"); Assert.Equal(id, jumped);
-                    Click("+  Draw an area"); Assert.True(drawing);
-                    zones.Remove(id);
-                    Assert.False(name.IsEnabled);
-                }
-                finally { window.Close(); }
-                // No callback may update the closed window.
-                zones.Add(new WorldRect { W = 200, H = 200 }, out _);
+                var elements = Descendants(window).ToArray();
+                var name = elements.OfType<TextBox>().Single(t => t.Name == "AreaName");
+                var color = elements.OfType<TextBox>().Single(t => t.Name == "AreaColor");
+                void Click(string label) => elements.OfType<Button>().Single(b => Equals(b.Content, label))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                name.Text = "Research"; color.Text = "#34D399";
+                Click("Save changes");
+                Assert.Equal("Research", Assert.Single(rig.Workspace.Zones.Items).Name);
+                Assert.Equal("#34D399", Assert.Single(rig.Workspace.Zones.Items).Color);
+                color.Text = "invalid";
+                Click("Save changes");
+                Assert.Equal("#34D399", Assert.Single(rig.Workspace.Zones.Items).Color);
+                Click("Jump to area"); Assert.Equal(id, jumped);
+                Click("Draw an area"); Assert.True(drawing);
+                rig.Workspace.Zones.Remove(id);
+                Assert.False(name.IsEnabled);
             }
-            catch (Exception ex) { failure = ex; }
+            finally { window.Close(); }
+            // No callback may update the closed window.
+            rig.Workspace.Zones.Add(new WorldRect { W = 200, H = 200 }, out _);
         });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Zone UI verification did not finish.");
-        if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
@@ -141,5 +124,14 @@ public class ZoneViewTests
             yield return child;
             foreach (var descendant in Descendants(child)) yield return descendant;
         }
+    }
+
+    private static void OnSta(Action action)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() => { try { action(); } catch (Exception ex) { failure = ex; } });
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Zone UI verification did not finish.");
+        if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 }

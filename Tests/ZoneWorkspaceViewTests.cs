@@ -5,7 +5,7 @@ using CanvasDesktop;
 
 namespace CanvasDesktop.Tests;
 
-public class ZoneNavigatorViewTests
+public class ZoneWorkspaceViewTests
 {
     [Fact]
     public void NestedProjectsAppearUnderParentAndSearchRetainsAncestors()
@@ -16,13 +16,13 @@ public class ZoneNavigatorViewTests
             child.Bounds = new WorldRect { X = 100, Y = 100, W = 1200, H = 900 };
             using var rig = new WorkspaceHarness(document); rig.Workspace.Start();
             using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
-            var window = new ZoneNavigatorWindow(navigation, _ => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
             try
             {
                 var tree = Descendants(window).OfType<TreeView>().Single();
                 var root = Assert.Single(tree.Items.Cast<TreeViewItem>());
                 Assert.Equal(2, root.Items.Count); // One saved member and one sub-project.
-                var filter = Descendants(window).OfType<TextBox>().Single();
+                var filter = Search(window);
                 filter.Text = child.Name;
                 root = Assert.Single(tree.Items.Cast<TreeViewItem>());
                 Assert.True(root.IsExpanded);
@@ -36,17 +36,6 @@ public class ZoneNavigatorViewTests
         });
     }
 
-    private static WorkspaceDocument Document()
-    {
-        var item = new WorkspaceItem { Title = "Reference", ExecutablePath = @"C:\Apps\Editor.exe",
-            Bounds = new WorldRect { X = 100, Y = 200, W = 800, H = 600 } };
-        return new WorkspaceDocument { Items = new() { item }, Zones = new()
-        {
-            new WorkspaceZone { Name = "Website", Bounds = new WorldRect { W = 1800, H = 1200 }, ItemIds = new() { item.Id } },
-            new WorkspaceZone { Name = "Empty research", Bounds = new WorldRect { X = 3000, W = 1200, H = 900 } }
-        } };
-    }
-
     [Fact]
     public void SearchAutoExpandsMemberMatchesAndEmptySearchRestoresExpansion()
     {
@@ -54,11 +43,11 @@ public class ZoneNavigatorViewTests
         {
             using var rig = new WorkspaceHarness(Document()); rig.Workspace.Start();
             using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
-            var window = new ZoneNavigatorWindow(navigation, _ => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
             try
             {
                 var tree = Descendants(window).OfType<TreeView>().Single();
-                var filter = Descendants(window).OfType<TextBox>().Single();
+                var filter = Search(window);
                 Assert.Equal(2, tree.Items.Count);
                 var website = (TreeViewItem)tree.Items[1]; website.IsExpanded = true;
                 filter.Text = "reference";
@@ -83,8 +72,7 @@ public class ZoneNavigatorViewTests
             var document = Document(); var item = document.Items[0];
             using var rig = new WorkspaceHarness(document); rig.Workspace.Start();
             using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
-            Guid? managed = null;
-            var window = new ZoneNavigatorWindow(navigation, id => managed = id);
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
             try
             {
                 var tree = Descendants(window).OfType<TreeView>().Single();
@@ -98,8 +86,6 @@ public class ZoneNavigatorViewTests
                 var buttons = Descendants(window).OfType<Button>().ToArray();
                 var reopen = buttons.Single(b => Equals(b.Content, "Reopen member"));
                 Assert.True(reopen.IsEnabled);
-                buttons.Single(b => Equals(b.Content, "Manage areas…")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(document.Zones[0].Id, managed);
                 reopen.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(item.Id, Assert.Single(rig.Launcher.Opened));
                 Assert.False(Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Opening…")).IsEnabled);
@@ -118,18 +104,33 @@ public class ZoneNavigatorViewTests
         {
             using var rig = new WorkspaceHarness(Document()); rig.Workspace.Start();
             using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
-            var window = new ZoneNavigatorWindow(navigation, _ => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
             try
             {
                 rig.Desktops.SwitchTo(Guid.NewGuid()); rig.Desktops.SwitchTo(Guid.NewGuid());
                 Assert.Empty(Descendants(window).OfType<TreeView>().Single().Items);
                 var buttons = Descendants(window).OfType<Button>().ToArray();
                 Assert.False(buttons.Single(b => Equals(b.Content, "Jump to area")).IsEnabled);
-                Assert.False(buttons.Single(b => Equals(b.Content, "Open member")).IsEnabled);
+                Assert.False(buttons.Single(b => Equals(b.Content, "Save changes")).IsEnabled);
+                Assert.False(buttons.Single(b => Equals(b.Content, "Remove area")).IsEnabled);
                 Assert.Empty(rig.Launcher.Opened);
             }
             finally { window.Close(); }
         });
+    }
+
+    private static TextBox Search(DependencyObject window) =>
+        Descendants(window).OfType<TextBox>().Single(t => t.Name == "ProjectSearch");
+
+    private static WorkspaceDocument Document()
+    {
+        var item = new WorkspaceItem { Title = "Reference", ExecutablePath = @"C:\Apps\Editor.exe",
+            Bounds = new WorldRect { X = 100, Y = 200, W = 800, H = 600 } };
+        return new WorkspaceDocument { Items = new() { item }, Zones = new()
+        {
+            new WorkspaceZone { Name = "Website", Bounds = new WorldRect { W = 1800, H = 1200 }, ItemIds = new() { item.Id } },
+            new WorkspaceZone { Name = "Empty research", Bounds = new WorldRect { X = 3000, W = 1200, H = 900 } }
+        } };
     }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
@@ -142,7 +143,7 @@ public class ZoneNavigatorViewTests
         Exception? failure = null;
         var thread = new Thread(() => { try { action(); } catch (Exception ex) { failure = ex; } });
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Navigator UI verification did not finish.");
+        Assert.True(thread.Join(TimeSpan.FromSeconds(20)), "Projects window verification did not finish.");
         if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 }
