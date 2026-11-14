@@ -54,7 +54,9 @@ internal sealed class FakeOverviewController : IOverviewController
         return NavigateToWindowResult;
     }
     public List<CanvasCamera> NavigatedCameras = new();
-    public bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false) { NavigatedCameras.Add(target); return true; }
+    public bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false, double? duration = null, bool fixedDuration = false) { NavigatedCameras.Add(target); return true; }
+    public Func<bool>? ToggleOverviewShortcutHandler { get; set; }
+    public bool ToggleOverviewShortcut() => ToggleOverviewShortcutHandler?.Invoke() ?? false;
     public List<int> RecalledBookmarks = new();
     public bool RecallBookmark(int slot) { RecalledBookmarks.Add(slot); return true; }
     public bool PendingInteraction;

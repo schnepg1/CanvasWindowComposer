@@ -20,6 +20,8 @@ internal sealed class FakeAppConfig : IAppConfig
     public bool DisableZoomHotkey { get; set; }
     public bool EnableShortcutZoomOut { get; set; } = true;
     public double ShortcutZoomOutAmount { get; set; } = OverviewZoomDefaults.ShortcutZoomOutAmount;
+    public bool EnableShortcutFlight { get; set; } = false;
+    public double ShortcutFlightDuration { get; set; } = OverviewZoomDefaults.DefaultShortcutFlightDuration;
     public bool EnableLivePreviewsTier { get; set; } = true;
     public bool EnableDetailedCardsTier { get; set; } = true;
     public bool EnableSimpleCardsTier { get; set; } = true;

@@ -41,6 +41,8 @@ internal interface IAppConfig
     bool DisableZoomHotkey { get; }
     bool EnableShortcutZoomOut => true;
     double ShortcutZoomOutAmount => OverviewZoomDefaults.ShortcutZoomOutAmount;
+    bool EnableShortcutFlight => true;
+    double ShortcutFlightDuration => OverviewZoomDefaults.DefaultShortcutFlightDuration;
 
     /// <summary>
     /// When false (default), raw mouse deltas are passed through Windows'
@@ -115,6 +117,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public bool DisableZoomHotkey { get; private set; }
     public bool EnableShortcutZoomOut { get; private set; } = true;
     public double ShortcutZoomOutAmount { get; private set; } = OverviewZoomDefaults.ShortcutZoomOutAmount;
+    public bool EnableShortcutFlight { get; private set; } = true;
+    public double ShortcutFlightDuration { get; private set; } = OverviewZoomDefaults.DefaultShortcutFlightDuration;
     public bool CheckForUpdates { get; private set; } = true;
     public string UpdateChannel { get; private set; } = "stable";
     public bool HasUpdateChannel { get; private set; }
@@ -177,6 +181,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             DisableZoomHotkey = GetBool(values, "DisableZoomHotkey", defaultValue: false);
             EnableShortcutZoomOut = GetBool(values, "EnableShortcutZoomOut", defaultValue: true);
             ShortcutZoomOutAmount = GetDouble(values, "ShortcutZoomOutAmount", OverviewZoomDefaults.ShortcutZoomOutAmount, min: 0, max: 0.80);
+            EnableShortcutFlight = GetBool(values, "EnableShortcutFlight", defaultValue: true);
+            ShortcutFlightDuration = GetDouble(values, "ShortcutFlightDuration", OverviewZoomDefaults.DefaultShortcutFlightDuration,
+                min: OverviewZoomDefaults.MinimumShortcutFlightDuration, max: OverviewZoomDefaults.MaximumShortcutFlightDuration);
             CheckForUpdates = GetBool(values, "CheckForUpdates", defaultValue: true);
             UpdateChannel = values.TryGetValue("UpdateChannel", out var channel) && channel == "preview" ? "preview" : "stable";
             HasUpdateChannel = channel is "stable" or "preview";
@@ -240,7 +247,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
                 EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
                 ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile, FlightFullDurationDistance, FlightFullClimbDistance,
-                SimplifyWindowCardsDuringMotion, EnableAsyncDesktopHandoff);
+                SimplifyWindowCardsDuringMotion, EnableAsyncDesktopHandoff, EnableShortcutFlight, ShortcutFlightDuration);
         }
     }
 
@@ -256,6 +263,8 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["DisableZoomHotkey"] = (!preferences.ZoomHotkey).ToString().ToLowerInvariant(),
                 ["EnableShortcutZoomOut"] = preferences.ShortcutZoomOut.ToString().ToLowerInvariant(),
                 ["ShortcutZoomOutAmount"] = preferences.ShortcutZoomOutAmount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                ["EnableShortcutFlight"] = preferences.ShortcutFlight.ToString().ToLowerInvariant(),
+                ["ShortcutFlightDuration"] = preferences.ShortcutFlightDuration.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
                 ["DisableMouseCurve"] = (!preferences.MouseCurve).ToString().ToLowerInvariant(),
                 ["ShowScreenFixedWindowsDuringPan"] = preferences.ScreenFixedWindows.ToString().ToLowerInvariant(),
                 ["DisableGreedyDraw"] = (!preferences.ClipOffscreen).ToString().ToLowerInvariant(),
@@ -426,6 +435,11 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ;EnableShortcutZoomOut=true
 ;ShortcutZoomOutAmount=0.15
 
+; Smoothly animate camera flight on Alt+Q (liftoff when opening, landing when closing)
+;EnableShortcutFlight=true
+; Duration in seconds of the Alt+Q camera flight (0.20..5.00)
+;ShortcutFlightDuration=1.00
+
 ; Maximum zoom level in canvas overview (1.0 = 100%, 2.0 = 200%, up to 5.0 = 500% magnifier)
 ;MaximumZoom=1.00
 
@@ -553,4 +567,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     double FlightDurationSeconds = 3.0, double FlightCruisingScale = 1.0, string FlightProfile = "Helicopter",
     double FlightFullDurationDistance = WindowNavigationFlight.DefaultFullDurationDistance,
     double FlightFullClimbDistance = WindowNavigationFlight.DefaultFullClimbDistance,
-    bool SimplifyWindowCardsDuringMotion = false, bool AsyncDesktopHandoff = false);
+    bool SimplifyWindowCardsDuringMotion = false, bool AsyncDesktopHandoff = false,
+    bool ShortcutFlight = true, double ShortcutFlightDuration = OverviewZoomDefaults.DefaultShortcutFlightDuration);

@@ -9,8 +9,8 @@ namespace CanvasDesktop;
 /// <summary>A detached zoom-policy editor shared by Settings and the canvas popup.</summary>
 internal sealed class ZoomSettingsControl : UserControl
 {
-    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _peek, _smoothZoom, _zoomAcceleration;
-    private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _peekDelay, _maximumZoom;
+    private readonly CheckBox _live, _detailed, _simple, _shortcutZoomOut, _shortcutFlight, _peek, _smoothZoom, _zoomAcceleration;
+    private readonly Slider _cardEnter, _cardExit, _simpleEnter, _simpleExit, _shortcutAmount, _shortcutFlightDuration, _peekDelay, _maximumZoom;
     private readonly ZoomSpectrumControl _spectrum;
     private readonly ZoomPreviewPlaygroundControl _playground;
     private bool _syncing;
@@ -28,6 +28,14 @@ internal sealed class ZoomSettingsControl : UserControl
         _shortcutZoomOut.Checked += (_, _) => _shortcutAmount.IsEnabled = true;
         _shortcutZoomOut.Unchecked += (_, _) => _shortcutAmount.IsEnabled = false;
         Hint("Reduces the current zoom by this percentage, centered on the main screen. For example, 15% changes 100% zoom to 85%. Turn off to keep the zoom when opening. Applies after saving.");
+
+        _shortcutFlight = Option("Camera flight on Alt+Q", preferences.ShortcutFlight);
+        _shortcutFlightDuration = FlightDurationThreshold("Camera flight duration", preferences.ShortcutFlightDuration,
+            OverviewZoomDefaults.MinimumShortcutFlightDuration, OverviewZoomDefaults.MaximumShortcutFlightDuration);
+        _shortcutFlightDuration.IsEnabled = _shortcutFlight.IsChecked == true;
+        _shortcutFlight.Checked += (_, _) => _shortcutFlightDuration.IsEnabled = true;
+        _shortcutFlight.Unchecked += (_, _) => _shortcutFlightDuration.IsEnabled = false;
+        Hint("Smoothly lifts off the camera when opening canvas view and lands back to the desktop when closing with Alt+Q. Turn off to jump immediately.");
 
         _smoothZoom = Option("Smooth canvas zooming", preferences.SmoothZoom);
         Hint("Smoothly glides zoom levels when scrolling the mouse wheel or using + / -. Turn off for immediate discrete steps.");
@@ -201,6 +209,8 @@ internal sealed class ZoomSettingsControl : UserControl
         {
             _shortcutZoomOut.IsChecked = true;
             _shortcutAmount.Value = OverviewZoomDefaults.ShortcutZoomOutAmount * 100;
+            _shortcutFlight.IsChecked = true;
+            _shortcutFlightDuration.Value = OverviewZoomDefaults.DefaultShortcutFlightDuration;
             _smoothZoom.IsChecked = true;
             _zoomAcceleration.IsChecked = true;
             _live.IsChecked = _detailed.IsChecked = _simple.IsChecked = true;
@@ -277,6 +287,25 @@ internal sealed class ZoomSettingsControl : UserControl
             panel.Children.Add(slider);
             return slider;
         }
+
+        Slider FlightDurationThreshold(string label, double value, double min, double max, Panel? targetPanel = null)
+        {
+            var panel = targetPanel ?? body;
+            var header = new DockPanel();
+            var readout = new TextBlock { Width = 56, TextAlignment = TextAlignment.Right, FontWeight = FontWeights.SemiBold };
+            DockPanel.SetDock(readout, Dock.Right); header.Children.Add(readout);
+            header.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(header);
+            var slider = new Slider { Minimum = min, Maximum = max, Value = Math.Clamp(value, min, max),
+                TickFrequency = 0.1, IsSnapToTickEnabled = true, SmallChange = 0.1, LargeChange = 0.5,
+                AutoToolTipPlacement = System.Windows.Controls.Primitives.AutoToolTipPlacement.TopLeft,
+                AutoToolTipPrecision = 1, Margin = new Thickness(0, 4, 0, 12) };
+            AutomationProperties.SetName(slider, label + " (seconds)");
+            readout.Text = $"{slider.Value:0.0} s";
+            slider.ValueChanged += (_, _) => readout.Text = $"{slider.Value:0.0} s";
+            panel.Children.Add(slider);
+            return slider;
+        }
     }
 
     public bool TryApply(CanvasPreferences current, out CanvasPreferences updated, out string? error)
@@ -292,6 +321,7 @@ internal sealed class ZoomSettingsControl : UserControl
         if (error != null) return false;
         updated = current with { LivePreviewsTier = _live.IsChecked == true, DetailedCardsTier = _detailed.IsChecked == true,
             ShortcutZoomOut = _shortcutZoomOut.IsChecked == true, ShortcutZoomOutAmount = _shortcutAmount.Value / 100,
+            ShortcutFlight = _shortcutFlight.IsChecked == true, ShortcutFlightDuration = Math.Round(_shortcutFlightDuration.Value, 2),
             SimpleCardsTier = _simple.IsChecked == true, CardEnterZoom = _cardEnter.Value / 100,
             CardExitZoom = _cardExit.Value / 100, SimpleCardEnterZoom = _simpleEnter.Value / 100,
             SimpleCardExitZoom = _simpleExit.Value / 100,

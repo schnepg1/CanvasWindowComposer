@@ -74,13 +74,29 @@ internal sealed class OverviewCamera
         return SetZoomAroundWorldPoint(virtualX, virtualY, wx, wy, Zoom + notches * ZoomStep * Zoom);
     }
 
+    /// <summary>Calculate the target camera for the Alt+Q shortcut zoom-out without applying it.</summary>
+    public CanvasCamera GetShortcutZoomOutCamera(double amount, double? baseZoom = null)
+    {
+        if (!double.IsFinite(amount) || amount <= 0) return new CanvasCamera(X, Y, Zoom);
+        var primary = _screens.PrimaryBounds;
+        int vx = primary.X + primary.Width / 2;
+        int vy = primary.Y + primary.Height / 2;
+        var (wx, wy) = WorldFromVirtual(vx, vy);
+        double bz = baseZoom ?? Zoom;
+        double targetZoom = Math.Clamp(bz - Math.Clamp(amount, 0, 0.80) * bz, ZoomMin, MaxZoom);
+        if (Math.Abs(targetZoom - Zoom) < ZoomEpsilon) return new CanvasCamera(X, Y, Zoom);
+        double targetX = wx - vx / targetZoom;
+        double targetY = wy - vy / targetZoom;
+        return new CanvasCamera(targetX, targetY, targetZoom);
+    }
+
     /// <summary>Reduce zoom immediately while preserving the main screen's center.</summary>
     public bool ZoomOutForShortcut(double amount)
     {
-        if (!double.IsFinite(amount) || amount <= 0) return false;
-        var primary = _screens.PrimaryBounds;
-        return ZoomToCursor(primary.X + primary.Width / 2, primary.Y + primary.Height / 2,
-            -Math.Clamp(amount, 0, 0.80) / ZoomStep);
+        var target = GetShortcutZoomOutCamera(amount);
+        if (Math.Abs(target.Zoom - Zoom) < ZoomEpsilon) return false;
+        SetTo(target.X, target.Y, target.Zoom);
+        return true;
     }
 
     /// <summary>Center on a world rect (does not change zoom).</summary>

@@ -81,7 +81,7 @@ internal sealed partial class OverviewManager
         return true;
     }
 
-    public bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false)
+    public bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false, double? duration = null, bool fixedDuration = false)
     {
         if (_disposed) return false;
         if (DesktopHandoffPending)
@@ -90,7 +90,7 @@ internal sealed partial class OverviewManager
             _navigationAfterDesktopHandoff = () =>
             {
                 if (_wm.DesktopHandoffNavigationDesktop == desktop)
-                    NavigateToCamera(target, landInDesktopView);
+                    NavigateToCamera(target, landInDesktopView, duration, fixedDuration);
             };
             return TryRecoverDesktopHandoff();
         }
@@ -107,12 +107,13 @@ internal sealed partial class OverviewManager
         _navigationDisplayTarget = IntPtr.Zero;
         _cameraFlightLandsInDesktop = landInDesktopView;
 
-        if (CurrentMode != OverviewMode.Zooming) TransitionTo(OverviewMode.Zooming);
+        if (CurrentMode != OverviewMode.Zooming) TransitionTo(OverviewMode.Zooming, zoomOutOnOpen: false);
         RefreshOverviewWindows();
 
-        _windowFlight = new(ViewCamera, target, _screens.PrimaryWorkingArea,
-            _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile,
-            _appConfig.FlightFullDurationDistance, _appConfig.FlightFullClimbDistance);
+        _windowFlight = new(ViewCamera, target, _screens.PrimaryBounds,
+            duration ?? _appConfig.FlightDurationSeconds, _appConfig.FlightCruisingScale, _appConfig.FlightProfile,
+            _appConfig.FlightFullDurationDistance, _appConfig.FlightFullClimbDistance,
+            fixedDuration: fixedDuration);
         WindowNavigationStarted?.Invoke();
         if (!_appConfig.AnimateWindowNavigation || _prefersReducedStartupMotion())
         {
@@ -127,6 +128,47 @@ internal sealed partial class OverviewManager
         _windowFlightTimer.Start();
         FocusOverview();
         return true;
+    }
+
+    public bool ToggleOverviewShortcut()
+    {
+        if (_disposed || !_appConfig.EnableShortcutFlight) return false;
+
+        if (CurrentMode == OverviewMode.Zooming)
+        {
+            if (_cameraFlightLandsInDesktop)
+            {
+                // Reversing landing: lift off back to configured zoom out
+                var target = _camera.GetShortcutZoomOutCamera(_appConfig.EnableShortcutZoomOut ? _appConfig.ShortcutZoomOutAmount : 0, baseZoom: 1.0);
+                return NavigateToCamera(target, landInDesktopView: false, duration: _appConfig.ShortcutFlightDuration, fixedDuration: true);
+            }
+            else
+            {
+                // Landing flight from current position back to desktop
+                var (vx, vy) = _camera.ViewportCamera;
+                var target = new CanvasCamera(vx, vy, 1.0);
+                if (Math.Abs(_camera.Zoom - 1.0) < 0.001)
+                {
+                    TransitionTo(OverviewMode.Hidden, syncCameraOnClose: true);
+                    return true;
+                }
+                return NavigateToCamera(target, landInDesktopView: true, duration: _appConfig.ShortcutFlightDuration, fixedDuration: true);
+            }
+        }
+        else if (CurrentMode == OverviewMode.Hidden)
+        {
+            if (!_appConfig.EnableShortcutZoomOut || _appConfig.ShortcutZoomOutAmount <= 0)
+            {
+                TransitionTo(OverviewMode.Zooming, zoomOutOnOpen: false);
+                return true;
+            }
+
+            TransitionTo(OverviewMode.Zooming, zoomOutOnOpen: false);
+            var target = _camera.GetShortcutZoomOutCamera(_appConfig.ShortcutZoomOutAmount, baseZoom: 1.0);
+            return NavigateToCamera(target, landInDesktopView: false, duration: _appConfig.ShortcutFlightDuration, fixedDuration: true);
+        }
+
+        return false;
     }
 
     private void OnWindowFlightTick(object? sender, EventArgs args)

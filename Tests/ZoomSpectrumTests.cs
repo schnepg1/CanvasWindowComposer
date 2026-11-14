@@ -127,7 +127,7 @@ public class ZoomSpectrumTests
             Assert.True(boxes.Single(b => Equals(b.Content, "Detailed placeholder cards")).IsChecked);
             Assert.True(boxes.Single(b => Equals(b.Content, "Live previews")).IsChecked);
 
-            var sliders = WorkspaceViewTests.Descendants(control).OfType<Slider>().Skip(1).Take(4).ToArray();
+            var sliders = WorkspaceViewTests.Descendants(control).OfType<Slider>().Skip(2).Take(4).ToArray();
             Assert.Equal(40, sliders[0].Value);
             Assert.Equal(45, sliders[1].Value);
             Assert.Equal(10, sliders[2].Value);

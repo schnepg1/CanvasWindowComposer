@@ -97,7 +97,7 @@ public class SettingsWindowTests
                 overview.ShowSettings(zoomOnly);
                 var popup = overview.SettingsPopup!;
                 var zoomSettings = WorkspaceViewTests.Descendants(popup).OfType<ZoomSettingsControl>().Single();
-                var sliders = WorkspaceViewTests.Descendants(zoomSettings).OfType<Slider>().Skip(1).Take(4).ToArray();
+                var sliders = WorkspaceViewTests.Descendants(zoomSettings).OfType<Slider>().Skip(2).Take(4).ToArray();
                 sliders[0].Value = 35; sliders[1].Value = 43;
                 sliders[2].Value = 8; sliders[3].Value = 12;
                 int closings = 0;
@@ -141,7 +141,7 @@ public class SettingsWindowTests
                 WorkspaceViewTests.Render(window, "zoom-settings-popup-preview.png");
                 window.Width = 360; window.Height = 420;
                 WorkspaceViewTests.Render(window, "zoom-settings-popup-small-150-preview.png", 1.5);
-                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).Take(4).ToArray();
+                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(2).Take(4).ToArray();
                 Assert.Equal(4, sliders.Length);
                 sliders[0].Value = 55; sliders[1].Value = 65;
                 sliders[2].Value = 15; sliders[3].Value = 22;
@@ -175,7 +175,7 @@ public class SettingsWindowTests
                 var before = File.ReadAllText(Path.Combine(directory, "config.ini"));
                 int applied = 0;
                 var window = new SettingsWindow(config, () => applied++, zoomOnly: true);
-                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(1).Take(4).ToArray();
+                var sliders = WorkspaceViewTests.Descendants(window).OfType<Slider>().Skip(2).Take(4).ToArray();
                 sliders[0].Value = 80;
                 WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -441,7 +441,7 @@ public class SettingsWindowTests
                 foreach (var name in new[] { "settings-shell-preview.png", "settings-shell-small-150-preview.png" })
                     File.Copy(Path.Combine(AppContext.BaseDirectory, name), Path.Combine(renders, name), true);
                 var boxes = WorkspaceViewTests.Descendants(window).OfType<CheckBox>().ToArray();
-                Assert.Equal(23, boxes.Length);
+                Assert.Equal(25, boxes.Length);
                 boxes[0].IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Animate navigation to apps selected with Alt+Tab or the taskbar").IsChecked = false;
                 boxes.Single(b => (b.Content as TextBlock)?.Text == "Show Windows taskbar in canvas view").IsChecked = false;

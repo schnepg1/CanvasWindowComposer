@@ -117,6 +117,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
 
     internal CanvasCamera ViewCamera => new(_camera.X, _camera.Y, _camera.Zoom);
+    internal OverviewCamera Camera => _camera;
 
 
 

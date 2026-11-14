@@ -15,7 +15,8 @@ internal interface IOverviewController
     void TransitionTo(OverviewMode target, bool syncCameraOnClose = true, bool zoomOutOnOpen = false);
     bool NavigateToWindow(IntPtr window);
     bool WindowNavigationActive => false;
-    bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false) => false;
+    bool NavigateToCamera(CanvasCamera target, bool landInDesktopView = false, double? duration = null, bool fixedDuration = false) => false;
+    bool ToggleOverviewShortcut() => false;
     bool RecallBookmark(int slot) => false;
     void HandleEscape();
     bool TryRecoverDesktopHandoff() => false;

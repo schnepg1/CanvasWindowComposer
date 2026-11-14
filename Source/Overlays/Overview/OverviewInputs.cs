@@ -100,6 +100,7 @@ internal sealed class OverviewInputs : IDisposable
     {
         if (_disposed || _overview.TryOpenDesktopHandoffRecovery() || _overview.OverviewHotkeySuspended) return;
         if (_overview.TrySkipStartupIntro()) return;
+        if (_overview.ToggleOverviewShortcut()) return;
         if (_overview.CurrentMode == OverviewMode.Zooming)
             _overview.TransitionTo(OverviewMode.Hidden);
         else

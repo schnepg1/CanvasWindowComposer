@@ -42,7 +42,8 @@ internal sealed class WindowNavigationFlight
         double? cruisingScale = null,
         string? profile = null,
         double fullDurationDistance = DefaultFullDurationDistance,
-        double fullClimbDistance = DefaultFullClimbDistance)
+        double fullClimbDistance = DefaultFullClimbDistance,
+        bool fixedDuration = false)
     {
         _from = from;
         _to = to;
@@ -64,9 +65,16 @@ internal sealed class WindowNavigationFlight
         _distance = Math.Sqrt(dx * dx + dy * dy);
         fullDurationDistance = Math.Clamp(fullDurationDistance, MinimumRampDistance, MaximumRampDistance);
         fullClimbDistance = Math.Clamp(fullClimbDistance, MinimumRampDistance, MaximumRampDistance);
-        double maximumDuration = Math.Clamp(duration ?? Duration, 0.5, 10.0);
-        double durationFraction = Math.Min(_distance / fullDurationDistance, 1);
-        _flightDuration = MinimumFlightDuration + (maximumDuration - MinimumFlightDuration) * durationFraction;
+        double maximumDuration = Math.Clamp(duration ?? Duration, 0.1, 10.0);
+        if (fixedDuration)
+        {
+            _flightDuration = maximumDuration;
+        }
+        else
+        {
+            double durationFraction = Math.Min(_distance / fullDurationDistance, 1);
+            _flightDuration = MinimumFlightDuration + (maximumDuration - MinimumFlightDuration) * durationFraction;
+        }
 
         _climbFraction = string.Equals(_profile, "Planar", StringComparison.OrdinalIgnoreCase)
             ? 0
@@ -122,7 +130,9 @@ internal sealed class WindowNavigationFlight
         // Climbs smoothly and strongly in the first phase (u <= 0.42), crests at cruising altitude (0.42 - 0.50),
         // and smoothly begins descent from u = 0.50 onwards, gently decelerating into touchdown as horizontal
         // motion finishes simultaneously.
-        double directZoom = _from.Zoom + (_to.Zoom - _from.Zoom) * pXy;
+        double directZoom = Math.Abs(_from.Zoom - _to.Zoom) > 1e-12
+            ? Math.Exp(Math.Log(_from.Zoom) + (Math.Log(_to.Zoom) - Math.Log(_from.Zoom)) * pXy)
+            : _from.Zoom;
         double curZoom = directZoom;
         if (_climbFraction > 0)
         {
