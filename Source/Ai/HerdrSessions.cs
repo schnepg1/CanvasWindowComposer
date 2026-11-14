@@ -22,16 +22,35 @@ internal sealed partial class HerdrSessions
     [GeneratedRegex(@"\At[0-9a-z]+\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     internal static partial Regex LocalAddress();
 
-    public async Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation)
+    public async Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null)
     {
         if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder))
             throw new InvalidOperationException("Choose an existing local working folder.");
-        var reply = await Run(cancellation, "run", "--json", "--bg", "--no-parent", "--cwd", folder,
+        var args = new List<string>
+        {
+            "run", "--json", "--bg", "--no-parent", "--cwd", folder,
             "--name", card.ToString("N"), "--label", "canvas_managed=1",
             "--label", $"{AgentLabel}={card:N}", "--", FindOnPath("codex.cmd")
-                ?? throw new InvalidOperationException("Codex CLI (codex.cmd) was not found on PATH."), "--no-daemon");
+                ?? throw new InvalidOperationException("Codex CLI (codex.cmd) was not found on PATH."), "--no-daemon"
+        };
+        if (!string.IsNullOrWhiteSpace(prompt)) args.Add(prompt);
+        var reply = await Run(cancellation, args.ToArray());
         using var json = JsonDocument.Parse(reply);
         return ReadTerminal(json.RootElement);
+    }
+
+    public async Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation)
+    {
+        var terminal = await Find(card, cancellation);
+        if (terminal is { IsLive: true })
+        {
+            await Run(cancellation, "send", terminal.Address, prompt);
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+        {
+            await StartCodex(folder, card, cancellation, prompt);
+        }
     }
 
     public async Task<Dictionary<Guid, Terminal>> Snapshot(CancellationToken cancellation)

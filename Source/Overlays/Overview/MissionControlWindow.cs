@@ -129,6 +129,8 @@ internal sealed class MissionControlWindow : FluentWindow
         Note(status == null ? "No workflow status reported." : "At opening · " + status.State + (status.Detail.Length > 0 ? " · " + status.Detail : ""));
         if (status?.Timestamp is { } timestamp && timestamp != default)
             Note("Last workflow update " + timestamp.ToLocalTime().ToString("g"));
+        if (!string.IsNullOrWhiteSpace(card.Prompt))
+            Note("Prompt: " + card.Prompt);
         var directory = new TextBox { Text = folder ?? "", PlaceholderText = "Local working folder", Margin = new(0, 10, 0, 5) };
         System.Windows.Automation.AutomationProperties.SetName(directory, "Local working folder");
         var settings = new StackPanel();

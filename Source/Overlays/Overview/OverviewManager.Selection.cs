@@ -160,10 +160,75 @@ internal sealed partial class OverviewManager
         RefreshToolPreview(); FocusOverview();
     }
 
+    internal Func<IntPtr, string, string, bool?> PromptConfirmationDialog { get; set; } = AgentPromptConfirmationDialog.ShowPromptConfirmation;
+
+    internal bool TryPromptAgentWithTextCard(CanvasAnnotation textCard, MissionAgentCard targetAgent)
+    {
+        if (_annotationDocument == null) return false;
+        string prompt = textCard.Text.Trim();
+        if (string.IsNullOrWhiteSpace(prompt)) return false;
+
+        bool? confirmed = PromptConfirmationDialog(CanvasPanelOwner, targetAgent.Name, prompt);
+        if (confirmed != true) return true;
+
+        var currentAgent = _annotationDocument.Items.FirstOrDefault(a => a.Id == targetAgent.Id);
+        if (currentAgent != null)
+        {
+            var updatedAgent = currentAgent with { AgentPrompt = prompt };
+            _annotationDocument.Put(updatedAgent);
+            _annotationStore?.Save();
+        }
+
+        var data = MissionFor(targetAgent);
+        var mission = data == null ? null : FindMission(data.Id);
+        var project = AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], targetAgent.Layout);
+        var workflow = _telemetryProvider?.Current.Teams.GetValueOrDefault(targetAgent.TaskId);
+        var folder = project?.ProjectFolderPath ?? data?.MissionWorkingFolder ?? targetAgent.Layout.AgentWorkingFolder
+            ?? _telemetryProvider?.GetReportForCard(targetAgent.Layout)?.Worktree;
+        if (string.IsNullOrWhiteSpace(folder)) folder = workflow?.Worktree;
+
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await _herdrSessions.SendPrompt(targetAgent.Id, prompt, folder, cts.Token);
+            }
+            catch (Exception)
+            {
+            }
+        });
+
+        return true;
+    }
+
     internal void MoveSelection(CanvasSelectionMove move)
     {
         if (_annotationDocument == null || Selection.Desktop != _annotationDesktop()) return;
         var desktop=_annotationDesktop();
+        if (move.Before.Count == 1 && move.Before[0].Key.Kind == CanvasItemKind.Annotation)
+        {
+            var textCard = _annotationDocument.Items.FirstOrDefault(a => a.Id == move.Before[0].Key.Id
+                && a.DesktopId == desktop && a.Kind == AnnotationKind.Text && a.AgentTaskId.Length == 0);
+            if (textCard != null && !string.IsNullOrWhiteSpace(textCard.Text))
+            {
+                var targetBounds = new CanvasRect(textCard.Bounds.X + move.Dx, textCard.Bounds.Y + move.Dy, textCard.Bounds.Width, textCard.Bounds.Height);
+                var targetCenter = CanvasSelection.Center(targetBounds);
+                var dropPoint = move.DropPoint ?? targetCenter;
+                var targetAgent = MissionCards().LastOrDefault(c =>
+                    CanvasSelection.Contains(c.Bounds, dropPoint)
+                    || CanvasSelection.Contains(c.Bounds, targetCenter)
+                    || CanvasSelection.Intersects(targetBounds, c.Bounds));
+                if (targetAgent != null)
+                {
+                    if (TryPromptAgentWithTextCard(textCard, targetAgent))
+                    {
+                        RefreshAnnotationUi();
+                        return;
+                    }
+                }
+            }
+        }
         try
         {
             var current = SelectionItems().ToDictionary(i => i.Key);
