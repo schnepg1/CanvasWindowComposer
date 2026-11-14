@@ -19,8 +19,8 @@ internal sealed partial class HerdrSessions
         public bool IsLive => State == "live";
     }
 
-    [GeneratedRegex(@"\At[0-9]+\z", RegexOptions.CultureInvariant)]
-    private static partial Regex LocalAddress();
+    [GeneratedRegex(@"\At[0-9a-z]+\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    internal static partial Regex LocalAddress();
 
     public async Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation)
     {
@@ -75,7 +75,7 @@ internal sealed partial class HerdrSessions
         using var process = Process.Start(viewer) ?? throw new InvalidOperationException("Windows Terminal could not start.");
     }
 
-    private static Terminal ReadTerminal(JsonElement record)
+    internal static Terminal ReadTerminal(JsonElement record)
     {
         var address = ReadString(record, "address");
         if (address == null || !LocalAddress().IsMatch(address))
