@@ -266,7 +266,7 @@ internal sealed class BackpackPanel : UserControl
             Background = Ink("#101923"),
             BorderBrush = Ink("#344858"),
             CaretBrush = Ink("#EAC487"),
-            ToolTip = "Find a window by its title or application",
+            ToolTip = "Find a window or note by title, text, or application",
             Margin = new Thickness(18, 0, 18, 8)
         };
         System.Windows.Automation.AutomationProperties.SetName(_search, "Find a backpack item");
@@ -622,12 +622,14 @@ internal sealed class BackpackPanel : UserControl
         _tiles.Children.Clear();
         _tileBorders.Clear();
         string query = _search.Text.Trim();
-        var filtered = _items.Where(i => query.Length == 0 || i.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+        var filtered = _items.Where(i => query.Length == 0
+            || i.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+            || i.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
             || i.ExecutablePath.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
         _scroll.Visibility = filtered.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         _emptyContainer.Visibility = filtered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         _emptyIcon.Symbol = _items.Count == 0 ? SymbolRegular.Luggage48 : SymbolRegular.Search24;
-        _empty.Text = _items.Count == 0 ? "Your travelling workspace\n\nDrag a window here to carry it.\nPan anywhere, then drag it back out." : "No matching windows.";
+        _empty.Text = _items.Count == 0 ? "Your travelling workspace\n\nDrag a window or note here to carry it.\nPan anywhere, then drag it back out." : "No matching items.";
 
         foreach (var item in filtered)
         {
@@ -642,7 +644,7 @@ internal sealed class BackpackPanel : UserControl
                 BorderBrush = Ink(isSelected ? "#EAC487" : "#344B5B"),
                 BorderThickness = new Thickness(isSelected ? 1.8 : 1),
                 Background = Ink(isSelected ? "#223546" : "#1B2C3A"),
-                ToolTip = item.Title + "\n" + item.ExecutablePath,
+                ToolTip = item.State == "Note" ? (string.IsNullOrEmpty(item.Name) ? item.Title : item.Name) : (item.Title + "\n" + item.ExecutablePath),
                 Cursor = Cursors.Hand
             };
             System.Windows.Automation.AutomationProperties.SetName(tile, item.Title);
@@ -659,11 +661,11 @@ internal sealed class BackpackPanel : UserControl
                 Width = 32,
                 Height = 28,
                 CornerRadius = new CornerRadius(6),
-                Background = Ink(item.Temporary ? "#22474E" : "#4A3E28"),
-                BorderBrush = Ink(item.Temporary ? "#386F78" : "#7C663D"),
+                Background = Ink(item.State == "Note" ? "#3D3418" : item.Temporary ? "#22474E" : "#4A3E28"),
+                BorderBrush = Ink(item.State == "Note" ? "#7C6B38" : item.Temporary ? "#386F78" : "#7C663D"),
                 BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Child = DrawerAppIcon.Create(item, 20, Ink(item.Temporary ? "#78E2CB" : "#F0CB8D"))
+                Child = DrawerAppIcon.Create(item, 20, Ink(item.State == "Note" ? "#FBBF24" : item.Temporary ? "#78E2CB" : "#F0CB8D"))
             };
             tileHeader.Children.Add(glyph);
 
@@ -707,12 +709,12 @@ internal sealed class BackpackPanel : UserControl
                 Height = 6,
                 Margin = new Thickness(0, 0, 5, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Fill = Ink(item.State == "Open" ? "#48D18C" : item.State == "Placeholder" ? "#E0B364" : "#6FA5C7")
+                Fill = Ink(item.State == "Open" ? "#48D18C" : item.State == "Placeholder" ? "#E0B364" : item.State == "Note" ? "#FBBF24" : "#6FA5C7")
             };
             statePanel.Children.Add(dot);
             statePanel.Children.Add(new TextBlock
             {
-                Text = item.State == "Open" ? "Live window" : item.State == "Placeholder" ? "Closed · kept" : item.State,
+                Text = item.State == "Open" ? "Live window" : item.State == "Placeholder" ? "Closed · kept" : item.State == "Note" ? "Text note" : item.State,
                 FontSize = 10,
                 Foreground = Ink("#A0B8CB"),
                 TextTrimming = TextTrimming.CharacterEllipsis
@@ -772,9 +774,10 @@ internal sealed class BackpackPanel : UserControl
                 menu.Items.Add(m);
             }
             Entry("Place near camera", SymbolRegular.Open20, () => PlaceRequested?.Invoke(item.Id));
-            Entry("Open app", SymbolRegular.ArrowUpRight20, () => OpenItemRequested?.Invoke(item.Id));
+            if (item.State != "Note")
+                Entry("Open app", SymbolRegular.ArrowUpRight20, () => OpenItemRequested?.Invoke(item.Id));
             if (item.Temporary) Entry("Keep in backpack", SymbolRegular.Pin20, () => KeepRequested?.Invoke(item.Id));
-            else Entry("Forget saved entry", SymbolRegular.Delete20, () => ForgetRequested?.Invoke(item.Id));
+            else Entry(item.State == "Note" ? "Delete note" : "Forget saved entry", SymbolRegular.Delete20, () => ForgetRequested?.Invoke(item.Id));
             tile.ContextMenu = menu;
 
             _tiles.Children.Add(tile);

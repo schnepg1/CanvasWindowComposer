@@ -33,12 +33,18 @@ internal sealed class CanvasAnnotationLayer(AnnotationDocument document, Annotat
         if (_revision != document.Revision) { _artwork.Clear(); _pills.Clear(); _revision=document.Revision; }
         var preview = tool.Preview;
         var conn = connectionPreview?.Invoke();
-        var items = document.Items.Where(a => a.DesktopId == desktop() && a.Id != preview?.Id
+        var items = document.Items.Where(a => a.DesktopId == desktop() && !a.InInventory && a.Id != preview?.Id
             && !MissionAgentCard.IsCard(a) && hidden?.Invoke(a.Id) != true).ToList();
         if (preview != null && preview.DesktopId == desktop()) items.Add(preview);
         if (conn != null && conn.DesktopId == desktop()) items.Add(conn);
         foreach (var item in items)
         {
+            if (item.Kind == AnnotationKind.Arrow)
+            {
+                if ((item.SourceId is { } sid && document.Items.Any(a => a.Id == sid && a.InInventory))
+                    || (item.TargetId is { } tid && document.Items.Any(a => a.Id == tid && a.InInventory)))
+                    continue;
+            }
             var projected = context.View.WorldToDip(item.Bounds);
             var rect = new Rect(projected.X,projected.Y,projected.Width,projected.Height);
             if (!new Rect(-32,-32,context.Size.Width+64,context.Size.Height+64).IntersectsWith(rect)) continue;

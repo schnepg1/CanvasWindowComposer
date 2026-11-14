@@ -62,7 +62,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
             else document.Put(FitText(updated));
         }
     }
-    public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop()
+    public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop() && !a.InInventory
         && a.AgentTaskId.Length==0 && AnnotationGeometry.Hit(a,pointer.World,pointer.View));
     public bool PointerDown(CanvasPointer p)
     {

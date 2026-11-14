@@ -73,7 +73,7 @@ internal sealed partial class OverviewManager
         var result = new List<CanvasSelectionItem>();
         static CanvasRect Rect(WorldRect b) => new(b.X,b.Y,b.W,b.H);
         if (_annotationDocument != null)
-            result.AddRange(_annotationDocument.Items.Where(a => a.DesktopId == _annotationDesktop())
+            result.AddRange(_annotationDocument.Items.Where(a => a.DesktopId == _annotationDesktop() && !a.InInventory)
                 .Select(a => new CanvasSelectionItem(new(CanvasItemKind.Annotation,a.Id),a.Bounds,a.Text,Annotation:a,
                     ExcludeFromSpatialGroups: a.AgentTaskId.Length > 0)));
         if (_placeholderWorkspace != null)
@@ -95,7 +95,8 @@ internal sealed partial class OverviewManager
             var zones = _zones.Items;
             var currentDesktop = _annotationDesktop();
             var annotItems = _annotationDocument?.Items
-                .Where(a => a.DesktopId == currentDesktop && a.Kind != AnnotationKind.Arrow && !a.InBackground && a.AgentTaskId.Length == 0)
+                .Where(a => a.DesktopId == currentDesktop && !a.InInventory && a.Kind != AnnotationKind.Arrow
+                    && !a.InBackground && a.AgentTaskId.Length == 0)
                 .ToList() ?? [];
 
             result.AddRange(zones.Select(z =>
