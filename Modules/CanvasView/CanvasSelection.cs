@@ -5,7 +5,7 @@ public readonly record struct CanvasItemId(CanvasItemKind Kind, Guid Id);
 public sealed record CanvasSelectionItem(CanvasItemId Key, CanvasRect Bounds, string Title = "",
     IReadOnlyList<CanvasItemId>? Members = null, CanvasAnnotation? Annotation = null, bool Ephemeral = false,
     bool ExplicitMembersOnly = false, bool ExcludeFromSpatialGroups = false);
-public sealed record CanvasSelectionMove(IReadOnlyList<CanvasSelectionItem> Before, double Dx, double Dy);
+public sealed record CanvasSelectionMove(IReadOnlyList<CanvasSelectionItem> Before, double Dx, double Dy, CanvasPoint? DropPoint = null);
 
 /// <summary>Desktop-scoped identities. Project membership combines explicit links and spatial contents.</summary>
 public sealed class CanvasSelection
@@ -150,7 +150,7 @@ public sealed class CanvasSelectionTool(CanvasSelection selection, Func<IReadOnl
         PointerMove(p);
         if (_snapshot == null) return;
         var move = !_marquee && AnnotationGeometry.Distance(new(0,0),Offset)*_zoom >= 4
-            ? new CanvasSelectionMove(_snapshot,Offset.X,Offset.Y) : null;
+            ? new CanvasSelectionMove(_snapshot,Offset.X,Offset.Y, p.World) : null;
         _snapshot=null; Marquee=null; Offset=default;
         if (move?.Before.Count > 0) MoveRequested?.Invoke(move);
     }

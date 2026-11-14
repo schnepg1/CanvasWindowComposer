@@ -13,6 +13,7 @@ internal sealed record MissionAgentCard(CanvasAnnotation Layout)
     public string Role => Layout.AgentRole;
     public string Name => string.IsNullOrWhiteSpace(Layout.Text) ? Role : Layout.Text.Split('\n')[0].Trim();
     public CanvasRect Bounds => Layout.Bounds;
+    public string? Prompt => Layout.AgentPrompt;
 
     public static bool IsCard(CanvasAnnotation item) =>
         item.AgentTaskId.Length != 0 && item.AgentRole.Length != 0 && item.Kind != AnnotationKind.Arrow && !item.InBackground;
@@ -23,7 +24,7 @@ internal sealed class MissionCardLayer(Func<IEnumerable<MissionAgentCard>> cards
 {
     private static readonly Brush Surface = Frozen(Color.FromRgb(25, 32, 46));
     private static readonly Brush Secondary = Frozen(Color.FromRgb(180, 193, 216));
-    private static readonly Pen Outline = new(Frozen(Color.FromRgb(98, 84, 143)), 1);
+    private static readonly Pen Outline = FrozenPen(Color.FromRgb(98, 84, 143), 1);
     private readonly Dictionary<Guid, (AgentStatusReport Report, double Width, string? State, TelemetryStatusPill Pill)> _pills = [];
     public bool HasAnimatedContent => false;
 
@@ -88,5 +89,12 @@ internal sealed class MissionCardLayer(Func<IEnumerable<MissionAgentCard>> cards
         var brush = new SolidColorBrush(color);
         brush.Freeze();
         return brush;
+    }
+
+    private static Pen FrozenPen(Color color, double thickness)
+    {
+        var pen = new Pen(Frozen(color), thickness);
+        pen.Freeze();
+        return pen;
     }
 }

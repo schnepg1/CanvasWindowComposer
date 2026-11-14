@@ -248,4 +248,47 @@ public class AnnotationToolbarTests
             }
             finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
         });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void MoreMenuProvidesCutCopyPasteActionsAndRespectsState()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var dock = new AnnotationToolbar();
+            int cut = 0, copy = 0, paste = 0;
+            dock.CutRequested += () => cut++;
+            dock.CopyRequested += () => copy++;
+            dock.PasteRequested += () => paste++;
+
+            var strip = dock.Strip;
+            var more = strip.Items.OfType<ToolStripDropDownButton>().Single();
+
+            var cutItem = more.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Name == "Cut annotation");
+            var copyItem = more.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Name == "Copy annotation");
+            var pasteItem = more.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Name == "Paste annotation");
+
+            Assert.Equal("Ctrl+X", cutItem.ShortcutKeyDisplayString);
+            Assert.Equal("Ctrl+C", copyItem.ShortcutKeyDisplayString);
+            Assert.Equal("Ctrl+V", pasteItem.ShortcutKeyDisplayString);
+
+            // Initially nothing selected
+            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanCopy: false, CanCut: false, CanPaste: true));
+            Assert.False(cutItem.Enabled);
+            Assert.False(copyItem.Enabled);
+            Assert.True(pasteItem.Enabled);
+
+            // With selection
+            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanCopy: true, CanCut: true, CanPaste: true));
+            Assert.True(cutItem.Enabled);
+            Assert.True(copyItem.Enabled);
+            Assert.True(pasteItem.Enabled);
+
+            cutItem.PerformClick();
+            copyItem.PerformClick();
+            pasteItem.PerformClick();
+
+            Assert.Equal(1, cut);
+            Assert.Equal(1, copy);
+            Assert.Equal(1, paste);
+        });
 }

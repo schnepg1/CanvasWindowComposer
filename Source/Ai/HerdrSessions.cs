@@ -44,7 +44,7 @@ internal sealed partial class HerdrSessions
     [GeneratedRegex(@"\At[0-9a-z]+\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     internal static partial Regex LocalAddress();
 
-    public async Task<Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation)
+    public async Task<Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null)
     {
         if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder))
             throw new InvalidOperationException("Choose an existing local working folder.");
@@ -59,13 +59,28 @@ internal sealed partial class HerdrSessions
             "--", executable
         };
         args.AddRange(agent.DefaultArgs);
+        if (!string.IsNullOrWhiteSpace(prompt)) args.Add(prompt);
         var reply = await Run(cancellation, [.. args]);
         using var json = JsonDocument.Parse(reply);
         return ReadTerminal(json.RootElement);
     }
 
-    public Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation) =>
-        StartAgent(DefaultAgent, folder, card, cancellation);
+    public Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
+        StartAgent(DefaultAgent, folder, card, cancellation, prompt);
+
+    public async Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation)
+    {
+        var terminal = await Find(card, cancellation);
+        if (terminal is { IsLive: true })
+        {
+            await Run(cancellation, "send", terminal.Address, prompt);
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+        {
+            await StartCodex(folder, card, cancellation, prompt);
+        }
+    }
 
     public async Task<Dictionary<Guid, Terminal>> Snapshot(CancellationToken cancellation)
     {

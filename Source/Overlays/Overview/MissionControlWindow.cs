@@ -477,6 +477,26 @@ internal sealed class MissionControlWindow : FluentWindow
                 Margin = new Thickness(16, 2, 0, 0)
             });
         }
+        if (!string.IsNullOrWhiteSpace(card.Prompt))
+        {
+            var promptPill = new Border
+            {
+                Background = Brush("#0F172A"),
+                BorderBrush = Brush("#334155"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 6, 0, 0),
+                Child = new TextBlock
+                {
+                    Text = "Prompt: " + card.Prompt,
+                    FontSize = 11.5,
+                    Foreground = Brush("#A78BFA"),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+            heroStack.Children.Add(promptPill);
+        }
         _body.Children.Add(CreateCard(heroStack));
 
         // 3. Environment & Workspace Settings Card
@@ -703,7 +723,7 @@ internal sealed class MissionControlWindow : FluentWindow
         {
             var selected = (AgentProfile)selector.SelectedItem ?? HerdrSessions.DefaultAgent;
             if (await _herdr.Find(card.Id, token) is not { IsLive: true })
-                await _herdr.StartAgent(selected, directory.Text.Trim(), card.Id, token);
+                await _herdr.StartAgent(selected, directory.Text.Trim(), card.Id, token, card.Prompt);
             await Load(token);
         });
         watch.Click += (_, _) => Expand(observe: true);

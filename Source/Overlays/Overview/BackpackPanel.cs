@@ -265,18 +265,37 @@ internal sealed class BackpackPanel : UserControl
             Foreground = Ink("#EAF0F4"),
             Background = Ink("#101923"),
             BorderBrush = Ink("#344858"),
-            CaretBrush = Ink("#EAC487"),
+            CaretBrush = Ink("#EAF0F4"),
+            Cursor = Cursors.IBeam,
             ToolTip = "Find a window or note by title, text, or application",
             Margin = new Thickness(18, 0, 18, 8)
         };
         System.Windows.Automation.AutomationProperties.SetName(_search, "Find a backpack item");
         _search.TextChanged += (_, _) => RebuildTiles();
-        _search.PreviewMouseLeftButtonDown += (_, _) =>
+        _search.PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (!_search.IsKeyboardFocusWithin)
             {
-                _search.Focus();
-                Keyboard.Focus(_search);
+                // If the user clicks inside the content host (text area), let WPF's TextBoxView
+                // handle the click so the text cursor (caret) is placed precisely at the clicked character.
+                // Do not intercept clear button clicks. Only claim focus when clicking icon, padding, or chrome.
+                bool isContentHost = false;
+                bool isClearButton = false;
+                for (var cur = e.OriginalSource as DependencyObject; cur != null && cur != _search; cur = VisualTreeHelper.GetParent(cur))
+                {
+                    if (cur is FrameworkElement fe)
+                    {
+                        if (fe.Name == "PART_ContentHost") { isContentHost = true; break; }
+                        if (fe.Name == "ClearButton") { isClearButton = true; break; }
+                    }
+                }
+
+                if (!isContentHost && !isClearButton)
+                {
+                    _search.Focus();
+                    Keyboard.Focus(_search);
+                    _search.CaretIndex = _search.Text.Length;
+                }
             }
         };
         AddRow(_search, 3);
@@ -550,10 +569,15 @@ internal sealed class BackpackPanel : UserControl
     {
         _search.Focus();
         Keyboard.Focus(_search);
+        _search.CaretIndex = _search.Text.Length;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, (Action)(() =>
         {
-            _search.Focus();
-            Keyboard.Focus(_search);
+            if (!_search.IsKeyboardFocusWithin)
+            {
+                _search.Focus();
+                Keyboard.Focus(_search);
+                _search.CaretIndex = _search.Text.Length;
+            }
         }));
     }
 

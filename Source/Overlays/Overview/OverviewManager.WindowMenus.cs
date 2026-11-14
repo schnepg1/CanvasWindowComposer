@@ -159,77 +159,101 @@ internal sealed partial class OverviewManager
 
     private bool TryShowAnnotationContextMenu(OverviewOverlay pass, Point location)
     {
-        if (_annotationDocument == null || _annotationTool == null) return false;
         var pointer = Pointer(pass, new MouseEventArgs(MouseButtons.Right, 1, location.X, location.Y, 0));
-        var note = _annotationDocument.Items.LastOrDefault(a => a.DesktopId == _annotationDesktop()
-            && !a.InInventory && a.Kind == CanvasDesktop.CanvasView.AnnotationKind.Text
-            && CanvasDesktop.CanvasView.AnnotationGeometry.Hit(a, pointer.World, pointer.View));
-        if (note != null)
+        if (_annotationDocument != null && _annotationTool != null)
         {
-            _annotationContextMenu?.Dispose();
-            var menu = _annotationContextMenu = new ContextMenuStrip();
-            var putInBackpack = new ToolStripMenuItem("Put in backpack");
-            putInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
+            var note = _annotationDocument.Items.LastOrDefault(a => a.DesktopId == _annotationDesktop()
+                && !a.InInventory && a.Kind == CanvasDesktop.CanvasView.AnnotationKind.Text
+                && CanvasDesktop.CanvasView.AnnotationGeometry.Hit(a, pointer.World, pointer.View));
+            if (note != null)
             {
-                if (!_disposed) CollectNoteInInventory(note.Id);
-            });
-            menu.Items.Add(putInBackpack);
-
-            menu.Items.Add(new ToolStripSeparator());
-
-            if (MissionAgentCard.IsCard(note))
-            {
-                var card = new MissionAgentCard(note);
-                var openAgent = new ToolStripMenuItem("Open agent");
-                openAgent.Click += (_, _) => pass.BeginInvoke(() =>
+                _annotationContextMenu?.Dispose();
+                var menu = _annotationContextMenu = new ContextMenuStrip();
+                var putInBackpack = new ToolStripMenuItem("Put in backpack");
+                putInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
                 {
-                    if (!_disposed) ShowMissionAgent(card);
+                    if (!_disposed) CollectNoteInInventory(note.Id);
                 });
-                menu.Items.Add(openAgent);
+                menu.Items.Add(putInBackpack);
 
-                var deleteCard = new ToolStripMenuItem("Delete agent card");
-                deleteCard.Click += (_, _) => pass.BeginInvoke(() =>
+                menu.Items.Add(new ToolStripSeparator());
+
+                if (MissionAgentCard.IsCard(note))
                 {
-                    if (!_disposed)
+                    var card = new MissionAgentCard(note);
+                    var openAgent = new ToolStripMenuItem("Open agent");
+                    openAgent.Click += (_, _) => pass.BeginInvoke(() =>
                     {
-                        _annotationDocument.Delete(note.DesktopId, note.Id);
-                        _annotationStore?.Save();
-                        Selection.Clear();
-                        ReconcileVisuals();
-                    }
-                });
-                menu.Items.Add(deleteCard);
+                        if (!_disposed) ShowMissionAgent(card);
+                    });
+                    menu.Items.Add(openAgent);
+
+                    var deleteCard = new ToolStripMenuItem("Delete agent card");
+                    deleteCard.Click += (_, _) => pass.BeginInvoke(() =>
+                    {
+                        if (!_disposed)
+                        {
+                            _annotationDocument.Delete(note.DesktopId, note.Id);
+                            _annotationStore?.Save();
+                            Selection.Clear();
+                            ReconcileVisuals();
+                        }
+                    });
+                    menu.Items.Add(deleteCard);
+                }
+                else
+                {
+                    var editNote = new ToolStripMenuItem("Edit note…");
+                    editNote.Click += (_, _) => pass.BeginInvoke(() =>
+                    {
+                        if (!_disposed)
+                        {
+                            _annotationTool.Select(note.Id);
+                            QueueAnnotationTextEdit(note, new Point(location.X + pass.OriginX, location.Y + pass.OriginY));
+                        }
+                    });
+                    menu.Items.Add(editNote);
+
+                    var cutNote = new ToolStripMenuItem("Cut note");
+                    cutNote.Click += (_, _) => pass.BeginInvoke(() =>
+                    {
+                        if (!_disposed)
+                        {
+                            _annotationTool.Select(note.Id);
+                            CutSelectedAnnotations();
+                        }
+                    });
+                    menu.Items.Add(cutNote);
+
+                    var copyNote = new ToolStripMenuItem("Copy note");
+                    copyNote.Click += (_, _) => pass.BeginInvoke(() =>
+                    {
+                        if (!_disposed)
+                        {
+                            _annotationTool.Select(note.Id);
+                            CopySelectedAnnotations();
+                        }
+                    });
+                    menu.Items.Add(copyNote);
+
+                    var deleteNote = new ToolStripMenuItem("Delete note");
+                    deleteNote.Click += (_, _) => pass.BeginInvoke(() =>
+                    {
+                        if (!_disposed)
+                        {
+                            _annotationDocument.Delete(note.DesktopId, note.Id);
+                            _annotationStore?.Save();
+                            Selection.Clear();
+                            ReconcileVisuals();
+                        }
+                    });
+                    menu.Items.Add(deleteNote);
+                }
+
+                PInvoke.SetForegroundWindow((HWND)pass.Handle);
+                menu.Show(pass, location);
+                return true;
             }
-            else
-            {
-                var editNote = new ToolStripMenuItem("Edit note…");
-                editNote.Click += (_, _) => pass.BeginInvoke(() =>
-                {
-                    if (!_disposed)
-                    {
-                        _annotationTool.Select(note.Id);
-                        QueueAnnotationTextEdit(note, new Point(location.X + pass.OriginX, location.Y + pass.OriginY));
-                    }
-                });
-                menu.Items.Add(editNote);
-
-                var deleteNote = new ToolStripMenuItem("Delete note");
-                deleteNote.Click += (_, _) => pass.BeginInvoke(() =>
-                {
-                    if (!_disposed)
-                    {
-                        _annotationDocument.Delete(note.DesktopId, note.Id);
-                        _annotationStore?.Save();
-                        Selection.Clear();
-                        ReconcileVisuals();
-                    }
-                });
-                menu.Items.Add(deleteNote);
-            }
-
-            PInvoke.SetForegroundWindow((HWND)pass.Handle);
-            menu.Show(pass, location);
-            return true;
         }
 
         if (_zones != null)
@@ -241,6 +265,14 @@ internal sealed partial class OverviewManager
             {
                 _annotationContextMenu?.Dispose();
                 var menu = _annotationContextMenu = new ContextMenuStrip();
+                var chooseFolder = new ToolStripMenuItem("Choose project folder…");
+                chooseFolder.Click += (_, _) => pass.BeginInvoke(() =>
+                {
+                    if (!_disposed) ChooseProjectFolder(pass, zone.Id);
+                });
+                menu.Items.Add(chooseFolder);
+                menu.Items.Add(new ToolStripSeparator());
+
                 var putProjectInBackpack = new ToolStripMenuItem("Put in backpack");
                 putProjectInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
                 {
@@ -255,5 +287,15 @@ internal sealed partial class OverviewManager
         }
 
         return false;
+    }
+
+    internal Func<string?, string?>? ProjectFolderPickerOverride { get; set; }
+
+    private void ChooseProjectFolder(OverviewOverlay pass, Guid zoneId)
+    {
+        if (_placeholderWorkspace == null) return;
+        WorkspaceDialogs.ChooseProjectFolder(pass, _placeholderWorkspace, zoneId,
+            report: msg => _zoneWindow?.Report(msg),
+            folderPicker: ProjectFolderPickerOverride);
     }
 }

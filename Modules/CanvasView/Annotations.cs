@@ -35,6 +35,7 @@ public sealed record CanvasAnnotation
     public string AgentTaskId { get; init; } = "";
     public string AgentRole { get; init; } = "";
     public string? AgentWorkingFolder { get; init; }
+    public string? AgentPrompt { get; init; }
 
     [System.Text.Json.Serialization.JsonConstructor]
     public CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,
@@ -114,6 +115,7 @@ public sealed class AnnotationDocument
                 || !Enum.IsDefined(item.SourcePort) || !Enum.IsDefined(item.TargetPort) || !Enum.IsDefined(item.Routing)
                 || !ValidColor(item.Color) || item.Text is null || item.Text.Length > MaximumTextLength
                 || item.AgentTaskId is null || item.AgentTaskId.Length > 200 || item.AgentRole is null || item.AgentRole.Length > 80
+                || item.AgentPrompt?.Length > MaximumTextLength
                 || (item.Kind == AnnotationKind.Arrow ? AnnotationGeometry.Distance(item.A, item.B) < 1
                     : item.Bounds.Width < 1 || item.Bounds.Height < 1)
                 || (item.Kind == AnnotationKind.Text && string.IsNullOrWhiteSpace(item.Text)))
@@ -151,6 +153,15 @@ public sealed class AnnotationDocument
         if (_items.SequenceEqual(next) && replay == null) return false;
         if (replay?.Invoke(true)==false) throw new InvalidOperationException("The selected group changed. Select it again.");
         Remember(desktop, replay); _items.Clear(); _items.AddRange(next); NotifyChanged(desktop); return true;
+    }
+
+    /// <summary>Pasting annotations is recorded as a single atomic history step.</summary>
+    public bool Paste(Guid desktop, IReadOnlyList<CanvasAnnotation> items)
+    {
+        if (items.Count == 0) return false;
+        if (_items.Count + items.Count > MaximumItems)
+            throw new InvalidOperationException($"Cannot paste: canvas exceeds maximum limit of {MaximumItems} annotations.");
+        return ApplyBatch(Revision, desktop, items);
     }
 
     /// <summary>
