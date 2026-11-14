@@ -76,6 +76,7 @@ internal sealed class UnifiedDockControl : UserControl
     public event Action? ControlsClicked;
     public event Action<AnnotationMode>? ModeRequested;
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
+    public event Action? CutRequested, CopyRequested, PasteRequested;
     public event Action? AiTeamsToggled;
     public event Action<double>? NearbyRequested;
     public event Action? WebResourceRequested, BackgroundsRequested, ProjectsRequested;
@@ -610,6 +611,15 @@ internal sealed class UnifiedDockControl : UserControl
         var menu = new ContextMenu();
         var edit = AddMenuItem(menu, "Edit annotation", SymbolRegular.Edit20, () => EditRequested?.Invoke(), "Enter");
         edit.IsEnabled = _state?.Selected?.Kind is AnnotationKind.Text or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Arrow;
+
+        var cut = AddMenuItem(menu, "Cut annotation", SymbolRegular.Cut20, () => CutRequested?.Invoke(), "Ctrl+X");
+        cut.IsEnabled = _state?.CanCut ?? (_state?.HasSelectedAnnotations == true || _state?.Selected != null);
+
+        var copy = AddMenuItem(menu, "Copy annotation", SymbolRegular.Copy20, () => CopyRequested?.Invoke(), "Ctrl+C");
+        copy.IsEnabled = _state?.CanCopy ?? (_state?.HasSelectedAnnotations == true || _state?.Selected != null);
+
+        var paste = AddMenuItem(menu, "Paste annotation", SymbolRegular.ClipboardPaste20, () => PasteRequested?.Invoke(), "Ctrl+V");
+        paste.IsEnabled = _state?.CanPaste ?? true;
 
         var delete = AddMenuItem(menu, "Delete annotation", SymbolRegular.Delete20, () => DeleteRequested?.Invoke(), "Delete");
         delete.IsEnabled = _state?.HasSelectedAnnotations == true || _state?.Selected != null;

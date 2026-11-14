@@ -182,4 +182,92 @@ public class AnnotationOverviewIntegrationTests
             }
             finally { if(Directory.Exists(folder))Directory.Delete(folder,true); }
         });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void EmptyCanvasDoubleClick_StartsTextPlacement_AndEditorOpens()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "canvas-doubleclick-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+                var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+
+                // Double click on empty canvas
+                pass.OnMouseDoubleClicked!(pass, new MouseEventArgs(MouseButtons.Left, 2, 400, 350, 0));
+                Application.DoEvents();
+
+                Assert.NotNull(overview.AnnotationEditor);
+                var editor = overview.AnnotationEditor!;
+                editor.Editor.Text = "Double clicked note";
+                editor.Complete(true);
+
+                var note = Assert.Single(overview.Annotations!.Items);
+                Assert.Equal("Double clicked note", note.Text);
+                Assert.Equal(AnnotationKind.Text, note.Kind);
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void CopyCutPasteShortcuts_DuplicateAndMoveAnnotationsWithCascadingOffset()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "canvas-copypaste-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas(); var api = new FakeWindowApi(); var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+                var pass = (OverviewOverlay)Control.FromHandle(overview.MonitorHandles[0])!;
+
+                // Create an initial note
+                var initial = new CanvasAnnotation(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text,
+                    new CanvasPoint(100, 100), new CanvasPoint(340, 148), Text: "Original");
+                overview.Annotations!.Put(initial);
+                overview.Selection.Replace([new CanvasItemId(CanvasItemKind.Annotation, initial.Id)]);
+                overview.AnnotationTool!.Select(initial.Id);
+
+                // Ctrl+C
+                pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.C));
+                Application.DoEvents();
+
+                // Ctrl+V (first paste: +32, +32)
+                pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.V));
+                Application.DoEvents();
+
+                Assert.Equal(2, overview.Annotations.Items.Count);
+                var pasted1 = overview.Annotations.Items.First(a => a.Id != initial.Id);
+                Assert.Equal(132, pasted1.A.X);
+                Assert.Equal(132, pasted1.A.Y);
+
+                // Ctrl+V again (second paste: +64, +64 from original)
+                pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.V));
+                Application.DoEvents();
+                Assert.Equal(3, overview.Annotations.Items.Count);
+
+                // Cut currently selected items
+                pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.X));
+                Application.DoEvents();
+                Assert.Equal(2, overview.Annotations.Items.Count);
+
+                // Paste back
+                pass.OnKey!(pass, new KeyEventArgs(Keys.Control | Keys.V));
+                Application.DoEvents();
+                Assert.Equal(3, overview.Annotations.Items.Count);
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+        });
 }

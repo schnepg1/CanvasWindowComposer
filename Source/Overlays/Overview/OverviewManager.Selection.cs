@@ -27,6 +27,7 @@ internal sealed partial class OverviewManager
             () => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive && _annotationEditor == null, _connectionTool);
         Selection.Changed += () =>
         {
+            if (!_isPasting) _annotationPasteOffsetCount = 0;
             _proximityCircle=null;
             var ids = Selection.Ids;
             if (ids.Count == 1 && ids.First().Kind == CanvasItemKind.Annotation) _annotationTool?.Select(ids.First().Id);

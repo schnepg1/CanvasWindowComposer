@@ -11,14 +11,15 @@ internal sealed record AnnotationToolbarState(
     string Color = "#FBBF24", double Stroke = 3, double FontSize = 18,
     AnnotationTextAlign TextAlign = AnnotationTextAlign.Left, AnnotationTextEmphasis Emphasis = AnnotationTextEmphasis.Normal,
     AnnotationCardFill CardFill = AnnotationCardFill.Solid, bool CanUndo = false, bool CanRedo = false,
-    bool HasSelectedAnnotations = false, bool AnimateFeedback = true);
+    bool HasSelectedAnnotations = false, bool AnimateFeedback = true,
+    bool CanCopy = false, bool CanCut = false, bool CanPaste = true);
 
 internal sealed class AnnotationToolbar : CanvasDockSurface
 {
     private readonly ToolStripButton _selectButton, _textButton, _agentButton, _undo, _redo;
     private readonly ToolStripSplitButton _shapesButton;
     private readonly ToolStripDropDownButton _more, _colors, _widths, _sizes, _textStyle, _fills;
-    private readonly ToolStripMenuItem _edit, _delete, _save, _aiTeams;
+    private readonly ToolStripMenuItem _edit, _cut, _copy, _paste, _delete, _save, _aiTeams;
     private readonly ToolStripLabel _status = new() { ForeColor = CanvasDockTheme.Muted };
     private readonly CanvasDockSurface _properties = new() { RoundBottom = true, Text = "Annotation properties", AccessibleName = "Annotation properties" };
     private readonly List<ToolStripDropDownItem> _dropDowns = [];
@@ -40,6 +41,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     public event Action<AnnotationTextEmphasis>? EmphasisRequested;
     public event Action<AnnotationCardFill>? CardFillRequested;
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
+    public event Action? CutRequested, CopyRequested, PasteRequested;
     public event Action? AiTeamsToggled;
     public event Action? WebResourceRequested;
     public event Action? BackgroundsRequested;
@@ -70,9 +72,12 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _more = new("More", _image) { Name = "More", AccessibleName = "More canvas actions", Tag = DockGlyph.More, DisplayStyle = ToolStripItemDisplayStyle.Image, ShowDropDownArrow = false, ToolTipText = "More actions" };
         Decorate(_more);
         _edit = MenuItem("Edit annotation", () => EditRequested?.Invoke(), DockGlyph.Edit); _edit.ShortcutKeyDisplayString = "Enter";
+        _cut = MenuItem("Cut annotation", () => CutRequested?.Invoke()); _cut.ShortcutKeyDisplayString = "Ctrl+X";
+        _copy = MenuItem("Copy annotation", () => CopyRequested?.Invoke()); _copy.ShortcutKeyDisplayString = "Ctrl+C";
+        _paste = MenuItem("Paste annotation", () => PasteRequested?.Invoke()); _paste.ShortcutKeyDisplayString = "Ctrl+V";
         _delete = MenuItem("Delete annotation", () => DeleteRequested?.Invoke(), DockGlyph.Delete); _delete.ShortcutKeyDisplayString = "Delete";
         _save = MenuItem("Save now", () => RetrySaveRequested?.Invoke(), DockGlyph.Save);
-        _more.DropDownItems.AddRange([_edit, _delete, new ToolStripSeparator(), _save]);
+        _more.DropDownItems.AddRange([_edit, _cut, _copy, _paste, _delete, new ToolStripSeparator(), _save]);
         var nearby = new ToolStripMenuItem("Select nearby") { Name = "Nearby", ForeColor = CanvasDockTheme.Ink };
         _radius.BackColor = CanvasDockTheme.Surface; _radius.ForeColor = CanvasDockTheme.Ink; _radius.BorderStyle = BorderStyle.FixedSingle;
         nearby.DropDownItems.Add(new ToolStripLabel("Radius in canvas units") { ForeColor = CanvasDockTheme.Muted });
@@ -208,6 +213,9 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         CheckValues(_shapesButton, mode);
         _undo.Enabled = state.CanUndo; _redo.Enabled = state.CanRedo;
         _edit.Enabled = state.Selected?.Kind is AnnotationKind.Text or AnnotationKind.Rectangle or AnnotationKind.Ellipse or AnnotationKind.Arrow;
+        _cut.Enabled = state.CanCut;
+        _copy.Enabled = state.CanCopy;
+        _paste.Enabled = state.CanPaste;
         _delete.Enabled = state.HasSelectedAnnotations || state.Selected != null;
         _save.Text = state.Status == null ? "Save now" : "Retry saving";
         _status.Text = state.Status == null ? $"{state.SelectedCount} selected" : "Not saved";

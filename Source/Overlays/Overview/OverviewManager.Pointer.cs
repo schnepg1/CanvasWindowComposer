@@ -441,7 +441,35 @@ internal sealed partial class OverviewManager
         {
             var entry = _windows.Windows[hit];
             if (!NavigateToWindow(entry.HWnd)) GoToWindow(entry.HWnd, entry.World);
+            return;
         }
+
+        StartTextPlacementAt(pass, new Point(e.X, e.Y), new CanvasPoint(wx, wy));
+    }
+
+    private void StartTextPlacementAt(OverviewOverlay pass, Point screenPoint, CanvasPoint worldPoint)
+    {
+        if (_annotationDocument == null) return;
+        CancelInteraction();
+        var desktop = _annotationDesktop();
+        var tool = _annotationTool;
+        var textItem = new CanvasAnnotation(
+            Id: Guid.NewGuid(),
+            DesktopId: desktop,
+            Kind: AnnotationKind.Text,
+            A: worldPoint,
+            B: new CanvasPoint(
+                worldPoint.X + AnnotationCanvasTool.DefaultTextCardWidth,
+                worldPoint.Y + AnnotationCanvasTool.DefaultTextCardHeight),
+            Color: tool?.Color ?? "#FBBF24",
+            Stroke: tool?.Stroke ?? 3,
+            FontSize: tool?.FontSize ?? AnnotationDocument.DefaultFontSize,
+            TextAlign: tool?.TextAlign ?? AnnotationTextAlign.Left,
+            Emphasis: tool?.Emphasis ?? AnnotationTextEmphasis.Normal,
+            CardFill: tool?.CardFill ?? AnnotationCardFill.Solid);
+
+        tool?.SetMode(AnnotationMode.Select);
+        QueueAnnotationTextEdit(textItem, new Point(screenPoint.X + pass.OriginX, screenPoint.Y + pass.OriginY));
     }
 
     // ==================== HELPERS ====================

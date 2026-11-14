@@ -253,4 +253,54 @@ public class UnifiedDockTests
                 if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
         });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void UnifiedDock_MoreMenuProvidesCutCopyPasteActionsAndRespectsState()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var dock = new UnifiedDockControl();
+            int cut = 0, copy = 0, paste = 0;
+            dock.CutRequested += () => cut++;
+            dock.CopyRequested += () => copy++;
+            dock.PasteRequested += () => paste++;
+
+            // Without selection
+            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanCopy: false, CanCut: false, CanPaste: true));
+            var menu1 = dock.OpenMoreMenu();
+            Assert.NotNull(menu1);
+
+            var cutItem1 = menu1.Items.OfType<MenuItem>().First(i => (string)i.Header == "Cut annotation");
+            var copyItem1 = menu1.Items.OfType<MenuItem>().First(i => (string)i.Header == "Copy annotation");
+            var pasteItem1 = menu1.Items.OfType<MenuItem>().First(i => (string)i.Header == "Paste annotation");
+
+            Assert.Equal("Ctrl+X", cutItem1.InputGestureText);
+            Assert.Equal("Ctrl+C", copyItem1.InputGestureText);
+            Assert.Equal("Ctrl+V", pasteItem1.InputGestureText);
+
+            Assert.False(cutItem1.IsEnabled);
+            Assert.False(copyItem1.IsEnabled);
+            Assert.True(pasteItem1.IsEnabled);
+
+            // With selection
+            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanCopy: true, CanCut: true, CanPaste: true));
+            var menu2 = dock.OpenMoreMenu();
+            Assert.NotNull(menu2);
+
+            var cutItem2 = menu2.Items.OfType<MenuItem>().First(i => (string)i.Header == "Cut annotation");
+            var copyItem2 = menu2.Items.OfType<MenuItem>().First(i => (string)i.Header == "Copy annotation");
+            var pasteItem2 = menu2.Items.OfType<MenuItem>().First(i => (string)i.Header == "Paste annotation");
+
+            Assert.True(cutItem2.IsEnabled);
+            Assert.True(copyItem2.IsEnabled);
+            Assert.True(pasteItem2.IsEnabled);
+
+            cutItem2.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            copyItem2.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            pasteItem2.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            Assert.Equal(1, cut);
+            Assert.Equal(1, copy);
+            Assert.Equal(1, paste);
+        });
 }

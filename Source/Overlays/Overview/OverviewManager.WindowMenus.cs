@@ -213,6 +213,28 @@ internal sealed partial class OverviewManager
                 });
                 menu.Items.Add(editNote);
 
+                var cutNote = new ToolStripMenuItem("Cut note");
+                cutNote.Click += (_, _) => pass.BeginInvoke(() =>
+                {
+                    if (!_disposed)
+                    {
+                        _annotationTool.Select(note.Id);
+                        CutSelectedAnnotations();
+                    }
+                });
+                menu.Items.Add(cutNote);
+
+                var copyNote = new ToolStripMenuItem("Copy note");
+                copyNote.Click += (_, _) => pass.BeginInvoke(() =>
+                {
+                    if (!_disposed)
+                    {
+                        _annotationTool.Select(note.Id);
+                        CopySelectedAnnotations();
+                    }
+                });
+                menu.Items.Add(copyNote);
+
                 var deleteNote = new ToolStripMenuItem("Delete note");
                 deleteNote.Click += (_, _) => pass.BeginInvoke(() =>
                 {
