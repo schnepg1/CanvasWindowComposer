@@ -241,7 +241,8 @@ internal sealed class CanvasControlsPopup : Form
             ("Shapes / Text", "Use the toolbar to draw arrows, rectangles, ellipses, and text notes."),
             ("Double-click note/shape", "Edit a note's text or a shape's appearance."),
             ("Nearby", "Use the toolbar to select items within your chosen radius."),
-            ("P / Z / N", "Project Navigator / project areas / draw a new project area."),
+            ("P / Z", "Open the Projects window: search areas, rename, recolor and remove them."),
+            ("N", "Draw a new project area."),
             ("Ctrl+Z / Ctrl+Y", "Undo / redo canvas moves and edits. Ctrl+Shift+Z also redoes."),
             ("Delete / Backspace", "Delete selected notes, shapes, and arrows."),
             ("Esc", "Close this popup first. On the canvas, return to Arrange, cancel the current action, clear selection, or exit when nothing is active.")

@@ -14,7 +14,7 @@ public class ZoneOverviewIntegrationTests
 {
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ProjectNavigatorRemainsAboveCanvasAndSurvivesCanvasToggles()
+    public void ProjectsWindowRemainsAboveCanvasAndSurvivesCanvasToggles()
         => WorkspaceViewTests.OnSta(() =>
         {
             var folder = Path.Combine(Path.GetTempPath(), "zone-nav-overview-" + Guid.NewGuid().ToString("N"));
@@ -30,9 +30,9 @@ public class ZoneOverviewIntegrationTests
                 overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
 
                 using var zoneUi = new ZoneUi(rig.Workspace, overview);
-                zoneUi.ShowNavigator();
+                zoneUi.Show();
 
-                var navigator = zoneUi.Navigator!;
+                var navigator = zoneUi.Window!;
                 try
                 {
                     var search = Descendants(navigator).OfType<System.Windows.Controls.TextBox>().Single(t => t.Name == "ProjectSearch");
@@ -79,7 +79,7 @@ public class ZoneOverviewIntegrationTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void MoreMenuActionsOpenProjectNavigatorAndAreasOverCanvas()
+    public void MoreMenuActionOpensProjectsWindowOverCanvas()
         => WorkspaceViewTests.OnSta(() =>
         {
             var folder = Path.Combine(Path.GetTempPath(), "zone-menu-overview-" + Guid.NewGuid().ToString("N"));
@@ -101,17 +101,8 @@ public class ZoneOverviewIntegrationTests
                 var strip = overview.AnnotationToolbar.Controls.OfType<ToolStrip>().Single();
                 var moreBtn = strip.Items.OfType<ToolStripDropDownButton>().Single(b => b.Name == "More");
 
-                var navItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Project Navigator…");
-                navItem.PerformClick();
-
-                Assert.NotNull(zoneUi.Navigator);
-                Assert.True(zoneUi.Navigator.IsVisible);
-                Assert.True(zoneUi.Navigator.Topmost);
-                Assert.Contains(new WindowInteropHelper(zoneUi.Navigator).Owner, overview.MonitorHandles);
-                zoneUi.Navigator.Close();
-
-                var areasItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Project areas…");
-                areasItem.PerformClick();
+                var projectsItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Projects…");
+                projectsItem.PerformClick();
 
                 Assert.NotNull(zoneUi.Window);
                 Assert.True(zoneUi.Window.IsVisible);
@@ -129,7 +120,7 @@ public class ZoneOverviewIntegrationTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ProjectAreasWindowRemainsAboveCanvasAndSurvivesCanvasToggles()
+    public void ProjectsWindowKeepsUnsavedEditsAcrossCanvasToggles()
         => WorkspaceViewTests.OnSta(() =>
         {
             var folder = Path.Combine(Path.GetTempPath(), "zone-window-overview-" + Guid.NewGuid().ToString("N"));

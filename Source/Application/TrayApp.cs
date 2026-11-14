@@ -221,8 +221,7 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(workspaceItem);
             menu.Items.Add(new ToolStripMenuItem("Backpack inventory · I in Canvas", null, (_, _) => _overview.ToggleInventory()));
             menu.Items.Add(new ToolStripMenuItem("Add web resource…", null, (_, _) => WorkspaceInteractionDialogs.WebResourceSettings(IntPtr.Zero, _workspace)));
-            menu.Items.Add(new ToolStripMenuItem("Project Areas…", null, (_, _) => _zoneUi.Show()));
-            menu.Items.Add(new ToolStripMenuItem("Project Navigator…", null, (_, _) => _zoneUi.ShowNavigator()));
+            menu.Items.Add(new ToolStripMenuItem("Projects…", null, (_, _) => _zoneUi.Show()));
             menu.Items.Add(saveItem);
             menu.Items.Add(new ToolStripMenuItem("Go to temporary area", null, (_, _) => _overview.ShowTemporaryArea()));
             menu.Items.Add(startupItem);

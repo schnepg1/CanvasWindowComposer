@@ -69,42 +69,20 @@ internal static class Program
         using var layout = new PreviewLayoutCommands(zones);
         void Replay(bool redo) { if (redo) layout.RedoZoneLayout(); else layout.UndoZoneLayout(); }
         var navigationWorkspace = new PreviewNavigationWorkspace(document);
-        ZoneNavigatorWindow? navigator = null;
         Action<ZoneView> jump = _ => { };
-        Action<Guid?> manage = _ => { };
         using var navigation = new ZoneNavigation(zones, navigationWorkspace, area => jump(area), () => { });
-        void ShowNavigator()
-        {
-            if (navigator == null)
-            {
-                navigator = new ZoneNavigatorWindow(navigation, areaId => manage(areaId)) { Topmost = true };
-                navigator.Closed += (_, _) => navigator = null;
-                System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(navigator);
-            }
-            navigator.Show(); navigator.Activate(); navigator.FocusSearch();
-        }
         if (args.Length == 2 && (args[0] == "--render" || args[0] == "--render-members" || args[0] == "--render-navigator"))
         {
             System.Windows.Window window = args[0] switch
             {
                 "--render-members" => new ZoneMembersWindow(zones, zones.Items[0], () => null),
-                "--render-navigator" => new ZoneNavigatorWindow(navigation, _ => { }),
-                _ => new ZoneWindow(zones, () => { }, _ => { }, () => null, layout, Replay, ShowNavigator)
+                _ => new ZoneWorkspaceWindow(zones, navigation, () => { }, () => null, layout, Replay)
             };
-            if (window is ZoneNavigatorWindow)
-            {
-                var grid = (System.Windows.Controls.Grid)window.Content;
-                var body = grid.Children.OfType<System.Windows.Controls.Grid>().Single();
-                var tree = body.Children.OfType<System.Windows.Controls.TreeView>().Single();
-                var area = (System.Windows.Controls.TreeViewItem)tree.Items[0];
-                area.IsExpanded = true;
-                if (area.Items.Count > 0) ((System.Windows.Controls.TreeViewItem)area.Items[0]).IsSelected = true;
-            }
+            if (window is ZoneWorkspaceWindow projects) projects.Select(zones.Items[0].Id);
             double width = window.Width, height = window.Height - 40;
-            double contentWidth = width - 48, contentHeight = height - 48;
             var content = (System.Windows.FrameworkElement)window.Content;
-            content.Measure(new System.Windows.Size(contentWidth, contentHeight));
-            content.Arrange(new System.Windows.Rect(0, 0, contentWidth, contentHeight));
+            content.Measure(new System.Windows.Size(width, height));
+            content.Arrange(new System.Windows.Rect(0, 0, width, height));
             content.UpdateLayout();
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)width, (int)height, 96, 96,
                 System.Windows.Media.PixelFormats.Pbgra32);
@@ -112,7 +90,7 @@ internal static class Program
             using (var dc = visual.RenderOpen())
             {
                 dc.DrawRectangle(window.Background, null, new System.Windows.Rect(0, 0, width, height));
-                dc.DrawRectangle(new System.Windows.Media.VisualBrush(content), null, new System.Windows.Rect(24, 24, contentWidth, contentHeight));
+                dc.DrawRectangle(new System.Windows.Media.VisualBrush(content), null, new System.Windows.Rect(0, 0, width, height));
             }
             bitmap.Render(visual);
             var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
@@ -130,7 +108,7 @@ internal static class Program
         IntPtr thumbnail = IntPtr.Zero;
         var dwm = new DwmThumbnailApi();
         OverviewAnnotationWindow? annotation = null;
-        ZoneWindow? manager = null;
+        ZoneWorkspaceWindow? manager = null;
         var gesture = new OverviewZoneInteraction();
         void Refresh()
         {
@@ -158,7 +136,6 @@ internal static class Program
         {
             manager!.Show(); manager.Activate();
         }
-        manage = areaId => { ShowManager(); if (areaId is { } selected) manager!.Select(selected); };
         jump = area =>
         {
             // The preview has no camera handoff: report selection and keep the navigator visible.
@@ -175,8 +152,8 @@ internal static class Program
                 opacity = 255, fVisible = true, fSourceClientAreaOnly = true
             });
             annotation = new OverviewAnnotationWindow(host.Handle);
-            manager = new ZoneWindow(zones, () => { gesture.Arm(); Refresh(); host.Activate(); },
-                _ => ShowManager(), () => null, layout, Replay, ShowNavigator) { Topmost = true };
+            manager = new ZoneWorkspaceWindow(zones, navigation, () => { gesture.Arm(); Refresh(); host.Activate(); },
+                () => null, layout, Replay) { Topmost = true };
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(manager);
             manager.Show();
             Refresh();
@@ -247,7 +224,7 @@ internal static class Program
         host.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Escape) { gesture.Cancel(); host.Capture = false; Refresh(); }
-            else if (e.KeyCode == Keys.P && !e.Control && !e.Alt) ShowNavigator();
+            else if (e.KeyCode == Keys.P && !e.Control && !e.Alt) ShowManager();
             else if (e.Control && (e.KeyCode == Keys.Z || e.KeyCode == Keys.Y))
             {
                 gesture.Cancel(); host.Capture = false;
@@ -256,7 +233,7 @@ internal static class Program
         };
         host.FormClosed += (_, _) =>
         {
-            annotation?.Close(); manager?.Close(); navigator?.Close();
+            annotation?.Close(); manager?.Close();
             if (thumbnail != IntPtr.Zero) dwm.Unregister(thumbnail);
             source.Close(); app.Shutdown();
         };

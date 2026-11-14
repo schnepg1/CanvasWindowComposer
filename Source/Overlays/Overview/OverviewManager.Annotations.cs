@@ -218,8 +218,7 @@ internal sealed partial class OverviewManager
             _annotationToolbar.ComposerRequested+=() => OpenCanvasComposer();
             _annotationToolbar.WebResourceRequested += ShowAddWebResource;
             _annotationToolbar.BackgroundsRequested += () => BackgroundsRequested?.Invoke();
-            _annotationToolbar.ProjectNavigatorRequested += () => ZoneNavigatorRequested?.Invoke();
-            _annotationToolbar.ProjectAreasRequested += () => ZonePanelRequested?.Invoke();
+            _annotationToolbar.ProjectsRequested += () => ZonePanelRequested?.Invoke();
             _annotationToolbar.ExportAllWorkflowsRequested += () => ExportCurrentWorkflowToClipboard(null);
             _annotationToolbar.ImportWorkflowRequested += ShowImportWorkflowDialog;
             _annotationToolbar.NearbyRequested+=radius => SelectNearby(radius);
@@ -281,8 +280,7 @@ internal sealed partial class OverviewManager
             _unifiedDock.Panel.AiTeamsToggled += () => ToggleAiTeams();
             _unifiedDock.Panel.WebResourceRequested += ShowAddWebResource;
             _unifiedDock.Panel.BackgroundsRequested += () => BackgroundsRequested?.Invoke();
-            _unifiedDock.Panel.ProjectNavigatorRequested += () => ZoneNavigatorRequested?.Invoke();
-            _unifiedDock.Panel.ProjectAreasRequested += () => ZonePanelRequested?.Invoke();
+            _unifiedDock.Panel.ProjectsRequested += () => ZonePanelRequested?.Invoke();
             _unifiedDock.Panel.ExportAllWorkflowsRequested += () => ExportCurrentWorkflowToClipboard(null);
             _unifiedDock.Panel.ImportWorkflowRequested += ShowImportWorkflowDialog;
             _unifiedDock.Panel.NearbyRequested += radius => SelectNearby(radius);

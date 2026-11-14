@@ -43,8 +43,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
     public event Action? AiTeamsToggled;
     public event Action? WebResourceRequested;
     public event Action? BackgroundsRequested;
-    public event Action? ProjectNavigatorRequested;
-    public event Action? ProjectAreasRequested;
+    public event Action? ProjectsRequested;
     public event Action? ExportAllWorkflowsRequested, ImportWorkflowRequested;
     public bool IsAiTeamsActive => _aiTeams.Checked;
     public void SetAiTeamsActive(bool active) => _aiTeams.Checked = active;
@@ -85,12 +84,9 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         _more.DropDownItems.Add(_aiTeams);
         _more.DropDownItems.Add(MenuItem("Add web resource…", () => WebResourceRequested?.Invoke()));
         _more.DropDownItems.Add(MenuItem("Backgrounds…", () => BackgroundsRequested?.Invoke()));
-        var projectNav = MenuItem("Project Navigator…", () => ProjectNavigatorRequested?.Invoke());
-        projectNav.ShortcutKeyDisplayString = "P";
-        _more.DropDownItems.Add(projectNav);
-        var projectAreas = MenuItem("Project areas…", () => ProjectAreasRequested?.Invoke());
-        projectAreas.ShortcutKeyDisplayString = "Z";
-        _more.DropDownItems.Add(projectAreas);
+        var projects = MenuItem("Projects…", () => ProjectsRequested?.Invoke());
+        projects.ShortcutKeyDisplayString = "P";
+        _more.DropDownItems.Add(projects);
         _more.DropDownItems.Add(new ToolStripSeparator());
         var workflows = new ToolStripMenuItem("Workflows") { Name = "Workflows", ForeColor = CanvasDockTheme.Ink };
         workflows.DropDownItems.Add(MenuItem("Export all workflows (JSON)", () => ExportAllWorkflowsRequested?.Invoke()));
