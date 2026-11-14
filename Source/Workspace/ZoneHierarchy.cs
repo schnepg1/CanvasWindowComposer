@@ -44,7 +44,8 @@ internal sealed class ZoneHierarchy
             result.Add(new(zone.Id, zone.Name, zone.Color, zone.Bounds, zone.ItemIds.Count)
                 {
                     ParentId = Parent(zone.Id), Depth = depth, IsTemporaryArea = zone.IsTemporaryArea,
-                    AgentTaskId = zone.AgentTaskId, MissionPositionLocked = zone.MissionPositionLocked
+                    AgentTaskId = zone.AgentTaskId, MissionPositionLocked = zone.MissionPositionLocked,
+                    ProjectFolderPath = zone.ProjectFolderPath
                 });
             foreach (var child in Children(zone.Id)) Visit(child, depth + 1);
         }

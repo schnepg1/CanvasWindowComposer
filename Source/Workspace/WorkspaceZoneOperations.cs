@@ -11,6 +11,27 @@ internal sealed partial class WorkspaceService : IZoneLayoutCommands
     internal long ZoneHistoryOrder(bool redo) => _zoneHistory.Order(_desktop,redo);
     internal void ClearZoneRedoHistory(Guid desktop) => _zoneHistory.ClearRedo(desktop);
     private void RecordZoneLayout(ZoneLayoutEdit edit) { _zoneHistory.Record(_desktop,edit);ZoneLayoutRecorded?.Invoke(_desktop); }
+    public bool SetProjectFolder(Guid id, string path)
+    {
+        if (_disposed || !_started || _switching) return false;
+        if (!System.IO.Directory.Exists(path))
+        { _status = "Choose an existing filesystem folder."; return false; }
+        using var writer = BeginExplicitPlacement();
+        if (!writer.HasValue) return false;
+        Capture();
+        if (!ZoneProjectFolder.TryAssign(Document, _desktop, id, path,
+                itemId => BoundWindow(itemId) == null && !_launching.ContainsKey(itemId) && !_queued.Contains(itemId), out var folder))
+        { _status = "The project folder could not be assigned. Check the area, folder, and workspace item limit."; return false; }
+        if (_cards.TryGetValue(folder!.Id, out var card) && _canvas.HasWindow(card.Handle))
+            _canvas.SetWindow(card.Handle, folder.Bounds.X, folder.Bounds.Y, folder.Bounds.W, folder.Bounds.H);
+        _status = null;
+        bool saved = Save();
+        EnsureCards();
+        Zones.NotifyDesktopChanged();
+        _wm.Reproject(isAsync: true);
+        Changed?.Invoke();
+        return saved;
+    }
     public bool CanUndoZoneLayout => _zoneHistory.Peek(_desktop, false) != null;
     public bool CanRedoZoneLayout => _zoneHistory.Peek(_desktop, true) != null;
     /// <summary>

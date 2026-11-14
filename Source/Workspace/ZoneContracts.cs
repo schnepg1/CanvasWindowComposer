@@ -11,6 +11,7 @@ internal sealed record ZoneView(Guid Id, string Name, string Color, WorldRect Bo
     public string AgentTaskId { get; init; } = "";
     public bool IsMission => AgentTaskId.Length != 0;
     public bool MissionPositionLocked { get; init; }
+    public string? ProjectFolderPath { get; init; }
 }
 internal sealed record ZoneMemberView(Guid Id, string Title, bool Assigned, WorldRect Bounds, string Details = "");
 

@@ -24,14 +24,18 @@ internal sealed class ZoneWindow : Window
     private readonly Button _undo;
     private readonly Button _redo;
     private readonly Button _membersButton, _removeButton;
+    private readonly Action<Guid>? _chooseProjectFolder;
+    private readonly Button _folderButton;
+    private readonly TextBlock _folderPath = new() { TextWrapping = TextWrapping.Wrap, MaxHeight = 48 };
     private bool _refreshing;
     private static SolidColorBrush Brush(string hex) => ZoneTheme.Brush(hex);
 
     public ZoneWindow(IZoneCommands zones, Action draw, Action<ZoneView> jump, Func<string?> status,
-        IZoneLayoutCommands? history = null, Action<bool>? replay = null, Action? navigate = null, Action<Guid>? exportWorkflow = null)
+        IZoneLayoutCommands? history = null, Action<bool>? replay = null, Action? navigate = null, Action<Guid>? exportWorkflow = null, Action<Guid>? chooseProjectFolder = null)
     {
         _zones = zones; _draw = draw; _jump = jump; _status = status;
         _history = history;
+        _chooseProjectFolder = chooseProjectFolder;
         _undo = Button("Undo", () => replay?.Invoke(false));
         _redo = Button("Redo", () => replay?.Invoke(true));
         System.Windows.Automation.AutomationProperties.SetName(_name, "Area name");
@@ -120,6 +124,13 @@ internal sealed class ZoneWindow : Window
         _membersButton = Button("Choose members…", ChooseMembers);
         _removeButton = Button("Remove area", Remove);
         _editor.Children.Add(_membersButton);
+        _folderButton = Button("Choose project folder...", () =>
+        {
+            if (Selected is { } zone) _chooseProjectFolder?.Invoke(zone.Id);
+        });
+        _folderButton.Visibility = chooseProjectFolder == null ? Visibility.Collapsed : Visibility.Visible;
+        _editor.Children.Add(_folderButton);
+        _editor.Children.Add(_folderPath);
         if (exportWorkflow != null)
         {
             var exportButton = Button("Export workflow (JSON)", () =>
@@ -186,6 +197,9 @@ internal sealed class ZoneWindow : Window
         _editor.IsEnabled = Selected != null;
         _name.Text = Selected?.Name ?? ""; _color.Text = Selected?.Color ?? "#60A5FA";
         _membersButton.IsEnabled = _removeButton.IsEnabled = Selected is { IsTemporaryArea: false, IsMission: false };
+        _folderButton.IsEnabled = _chooseProjectFolder != null && Selected is { IsTemporaryArea: false, IsMission: false };
+        _folderPath.Text = Selected?.ProjectFolderPath ?? "";
+        _folderPath.ToolTip = Selected?.ProjectFolderPath;
         _membersButton.ToolTip = Selected?.IsTemporaryArea == true ? "Temporary windows join and leave this area automatically." : null;
         _removeButton.ToolTip = Selected?.IsTemporaryArea == true ? "Keep this area for incoming temporary windows. You can move, resize or rename it." : null;
     }

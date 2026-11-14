@@ -68,6 +68,8 @@ internal static class WorkspaceGeometry
 
 internal sealed class WorkspaceZone
 {
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProjectFolderPath { get; set; }
     public string AgentTaskId { get; set; } = "";
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsMission => !string.IsNullOrEmpty(AgentTaskId);

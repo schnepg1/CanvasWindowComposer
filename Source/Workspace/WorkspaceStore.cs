@@ -92,6 +92,7 @@ internal sealed class WorkspaceStore : IWorkspaceStore
         {
             if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
                 || zone.AgentTaskId is null || zone.AgentTaskId.Length > 200
+                || zone.ProjectFolderPath is { } projectFolder && !ZoneProjectFolder.ValidPath(projectFolder)
                 || !zone.IsMission && (zone.MissionPositionLocked || zone.IsModularMission)
                 || zone.MissionWorkingFolder is { } folder && (!zone.IsMission || folder.Length > 32767
                     || folder.IndexOf('\0') >= 0 || !Path.IsPathFullyQualified(folder))

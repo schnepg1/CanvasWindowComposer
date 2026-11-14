@@ -42,7 +42,7 @@ internal sealed class ZoneUi : IDisposable
         {
             _window = new ZoneWindow(_workspace.Zones, _overview.BeginZone, _overview.JumpToZone,
                 () => _workspace.Status, _workspace, OnZoneHistoryRequested, ShowNavigator,
-                id => _overview.ExportCurrentWorkflowToClipboard(id));
+                id => _overview.ExportCurrentWorkflowToClipboard(id), ChooseProjectFolder);
             _window.Closed += (_, _) => { _window = null; _overview.AttachZoneWindow(null); };
             ElementHost.EnableModelessKeyboardInterop(_window);
         }
@@ -51,6 +51,16 @@ internal sealed class ZoneUi : IDisposable
         _window.Activate(); _window.RaiseWithoutActivation();
     }
 
+    private void ChooseProjectFolder(Guid id)
+    {
+        var picker = new Microsoft.Win32.OpenFolderDialog { Title = "Choose project folder" };
+        var zone = System.Linq.Enumerable.FirstOrDefault(_workspace.Zones.Items, z => z.Id == id);
+        if (zone?.ProjectFolderPath is { } path && System.IO.Directory.Exists(path)) picker.InitialDirectory = path;
+        if (_window == null || picker.ShowDialog(_window) != true) return;
+        bool saved = _workspace.SetProjectFolder(id, picker.FolderName);
+        _window.Report(saved ? "Project folder saved. Its placeholder can be moved freely."
+            : _workspace.Status ?? "The project folder could not be saved.");
+    }
     private void OnModeChanged(OverviewMode from, OverviewMode to)
     {
         _overview.AttachZoneWindow(_window);
