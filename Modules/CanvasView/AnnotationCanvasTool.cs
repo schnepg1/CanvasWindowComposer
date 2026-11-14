@@ -103,6 +103,15 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         var result=Preview; bool creating=_creating; int handle=_handle; var original=_original;
         Cancel();
         if (result is null) return;
+        if (creating && Mode == AnnotationMode.Agent)
+        {
+            result = result with { B = new(result.A.X + 240, result.A.Y + 112), Text = "AI agent",
+                AgentTaskId = "standalone-" + result.Id.ToString("N"), AgentRole = result.Id.ToString("N") };
+            Mode = AnnotationMode.Select;
+            try { AnnotationDocument.Validate([result]); } catch (ArgumentException) { return; }
+            if (document.Items.Count < AnnotationDocument.MaximumItems) document.Put(result);
+            return;
+        }
         if (creating && result.Kind==AnnotationKind.Text)
         {
             Mode=AnnotationMode.Select; EditTextRequested?.Invoke(SizeTextCard(result,p.View.Zoom)); return;

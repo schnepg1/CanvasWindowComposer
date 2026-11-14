@@ -121,10 +121,10 @@ internal sealed class MissionControlWindow : FluentWindow
         _body.Children.Add(ActionButton(action, Submit));
     }
 
-    public void ShowAgent(ZoneView mission, MissionAgentCard card, AgentStatusReport? status, string? folder,
-        Func<bool, bool> setLocked, Func<string, bool> saveFolder, Action showMission)
+    public void ShowAgent(ZoneView? mission, MissionAgentCard card, AgentStatusReport? status, string? folder,
+        Func<bool, bool> setLocked, Func<string, bool>? saveFolder, Action showMission)
     {
-        _body.Children.Add(ActionButton("‹ " + MissionName(mission), showMission));
+        if (mission != null) _body.Children.Add(ActionButton("Back to " + MissionName(mission), showMission));
         Heading(card.Name);
         Note(status == null ? "No workflow status reported." : "At opening · " + status.State + (status.Detail.Length > 0 ? " · " + status.Detail : ""));
         if (status?.Timestamp is { } timestamp && timestamp != default)
@@ -133,12 +133,12 @@ internal sealed class MissionControlWindow : FluentWindow
         System.Windows.Automation.AutomationProperties.SetName(directory, "Local working folder");
         var settings = new StackPanel();
         settings.Children.Add(directory);
-        settings.Children.Add(ActionButton("Save working folder", () =>
+        if (saveFolder != null) settings.Children.Add(ActionButton("Save working folder", () =>
         {
             _feedback.Text = saveFolder(directory.Text.Trim())
-                ? "Working folder saved for this mission." : "Choose an existing local working folder.";
+                ? "Working folder saved." : "Choose an existing local working folder.";
         }));
-        settings.Children.Add(LockButton(mission.MissionPositionLocked, setLocked));
+        if (mission != null) settings.Children.Add(LockButton(mission.MissionPositionLocked, setLocked));
         _body.Children.Add(settings);
         _body.Children.Add(_feedback);
         var actions = new WrapPanel();
@@ -217,7 +217,7 @@ internal sealed class MissionControlWindow : FluentWindow
                     refresh.IsEnabled = true;
                     launch.IsEnabled = checkedTerminal && terminal?.IsLive != true;
                     watch.IsEnabled = control.IsEnabled = external.IsEnabled = checkedTerminal && terminal?.IsLive == true;
-                    directory.IsEnabled = terminal?.IsLive != true;
+                    directory.IsEnabled = saveFolder != null && terminal?.IsLive != true;
                 }
             }
         }

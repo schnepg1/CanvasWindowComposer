@@ -19,13 +19,10 @@ internal sealed partial class OverviewManager
 
     private IEnumerable<MissionAgentCard> MissionCards()
     {
-        if (CurrentMode != OverviewMode.Zooming || IsStartupIntroActive || _annotationDocument == null
-            || _placeholderWorkspace == null) return [];
+        if (CurrentMode != OverviewMode.Zooming || IsStartupIntroActive || _annotationDocument == null) return [];
         var desktop = _annotationDesktop();
-        var missions = _placeholderWorkspace.Document.Zones.Where(z => z.IsMission && z.DesktopId == desktop)
-            .Select(z => z.AgentTaskId).ToHashSet(StringComparer.Ordinal);
         return _annotationDocument.Items.Where(item => item.DesktopId == desktop
-            && MissionAgentCard.IsCard(item) && missions.Contains(item.AgentTaskId)).Select(item => new MissionAgentCard(item));
+            && MissionAgentCard.IsCard(item)).Select(item => new MissionAgentCard(item));
     }
 
     private AgentStatusReport? MissionReport(MissionAgentCard card)
@@ -130,14 +127,26 @@ internal sealed partial class OverviewManager
 
     private void ShowMissionAgent(MissionAgentCard card)
     {
-        if (MissionFor(card) is not { } data || FindMission(data.Id) is not { } mission) return;
+        var data = MissionFor(card);
+        var mission = data == null ? null : FindMission(data.Id);
+        var project = AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], card.Layout);
         var workflow = _telemetryProvider?.Current.Teams.GetValueOrDefault(card.TaskId);
-        var folder = data.MissionWorkingFolder ?? _telemetryProvider?.GetReportForCard(card.Layout)?.Worktree;
+        var folder = project?.ProjectFolderPath ?? data?.MissionWorkingFolder ?? card.Layout.AgentWorkingFolder
+            ?? _telemetryProvider?.GetReportForCard(card.Layout)?.Worktree;
         if (string.IsNullOrWhiteSpace(folder)) folder = workflow?.Worktree;
+        if (string.IsNullOrWhiteSpace(folder)) folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var window = NewMissionControl();
         window.ShowAgent(mission, card, MissionReport(card), folder,
-            locked => _teamPods?.SetPositionLocked(mission.Id, locked) == true,
-            directory => _teamPods?.SetWorkingFolder(mission.Id, directory) == true, () => ShowMission(mission));
+            locked => mission != null && _teamPods?.SetPositionLocked(mission.Id, locked) == true,
+            project?.ProjectFolderPath != null ? null : directory =>
+            {
+                if (mission != null) return _teamPods?.SetWorkingFolder(mission.Id, directory) == true;
+                if (!System.IO.Path.IsPathFullyQualified(directory) || !System.IO.Directory.Exists(directory)) return false;
+                var current = _annotationDocument?.Items.FirstOrDefault(item => item.Id == card.Id);
+                if (current == null) return false;
+                _annotationDocument!.Put(current with { AgentWorkingFolder = directory });
+                return true;
+            }, () => { if (mission != null) ShowMission(mission); });
         _terminalCard = card.Id;
         window.TerminalLayoutChanged += () => PositionAgentTerminal(SceneCamera, layoutChanged: true);
         window.Present();

@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace CanvasDesktop;
 
-internal enum DockGlyph { Select, Rectangle, Ellipse, Arrow, Text, Undo, Redo, More, Edit, Delete, Save, Compose, Color }
+internal enum DockGlyph { Select, Rectangle, Ellipse, Arrow, Text, Undo, Redo, More, Edit, Delete, Save, Compose, Color, Agent }
 
 internal static class CanvasDockTheme
 {
@@ -205,6 +205,9 @@ internal sealed class CanvasDockRenderer() : ToolStripProfessionalRenderer(new C
                 case DockGlyph.Rectangle: g.DrawRectangle(pen, 3, 3, 14, 14); break;
                 case DockGlyph.Ellipse: g.DrawEllipse(pen, 3, 3, 14, 14); break;
                 case DockGlyph.Arrow: g.DrawLine(pen, 4, 16, 16, 4); g.DrawLines(pen, [new PointF(7, 4), new(16, 4), new(16, 13)]); break;
+                case DockGlyph.Agent:
+                    g.DrawRectangle(pen, 3, 5, 14, 12); g.DrawLine(pen, 10, 2, 10, 5);
+                    g.DrawEllipse(pen, 6, 9, 1, 1); g.DrawEllipse(pen, 13, 9, 1, 1); g.DrawLine(pen, 7, 14, 13, 14); break;
                 case DockGlyph.Text: g.DrawLine(pen, 3, 4, 17, 4); g.DrawLine(pen, 10, 4, 10, 17); g.DrawLine(pen, 7, 17, 13, 17); break;
                 case DockGlyph.Redo:
                 case DockGlyph.Undo:

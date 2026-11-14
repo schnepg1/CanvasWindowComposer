@@ -1,7 +1,7 @@
 namespace CanvasDesktop.CanvasView;
 
 public enum AnnotationKind { Arrow, Rectangle, Ellipse, Text }
-public enum AnnotationMode { Navigate, Select, Arrow, Rectangle, Ellipse, Text }
+public enum AnnotationMode { Navigate, Select, Arrow, Rectangle, Ellipse, Text, Agent }
 public enum AnnotationChangeKind { Edit, Undo, Redo }
 public enum ZOrderAction { None, BringToFront, SendToBack, BringForward, SendBackward }
 public enum AnnotationTextAlign { Left, Center, Right }
@@ -33,6 +33,7 @@ public sealed record CanvasAnnotation
     public ConnectorRouting Routing { get; init; } = ConnectorRouting.Curved;
     public string AgentTaskId { get; init; } = "";
     public string AgentRole { get; init; } = "";
+    public string? AgentWorkingFolder { get; init; }
 
     [System.Text.Json.Serialization.JsonConstructor]
     public CanvasAnnotation(Guid Id, Guid DesktopId, AnnotationKind Kind,

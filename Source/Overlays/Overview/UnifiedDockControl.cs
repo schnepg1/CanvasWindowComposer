@@ -64,6 +64,7 @@ internal sealed class UnifiedDockControl : UserControl
 
     // State tracking
     private bool _interactMode;
+    private readonly Wpf.Ui.Controls.Button _agentButton;
     private AnnotationMode _currentMode = AnnotationMode.Select;
     private AnnotationMode _lastShape = AnnotationMode.Rectangle;
     private AnnotationToolbarState? _state;
@@ -188,6 +189,8 @@ internal sealed class UnifiedDockControl : UserControl
         _creationToolsPanel.Children.Add(_selectButton);
         _creationToolsPanel.Children.Add(_shapesButton);
         _creationToolsPanel.Children.Add(_textButton);
+        _agentButton = CreateToolButton("AI agent", SymbolRegular.Bot20, "Place an AI agent card", () => RequestMode(AnnotationMode.Agent));
+        _creationToolsPanel.Children.Add(_agentButton);
 
         _creationToolsPanel.Children.Add(CreateDivider());
 
@@ -478,6 +481,7 @@ internal sealed class UnifiedDockControl : UserControl
 
         HighlightButton(_selectButton, isSelect);
         HighlightButton(_textButton, isText);
+        HighlightButton(_agentButton, _currentMode == AnnotationMode.Agent);
         HighlightButton(_shapesButton, isShape);
 
         // Update Shapes icon & label

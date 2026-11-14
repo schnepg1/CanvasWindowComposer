@@ -15,7 +15,7 @@ internal sealed record AnnotationToolbarState(
 
 internal sealed class AnnotationToolbar : CanvasDockSurface
 {
-    private readonly ToolStripButton _selectButton, _textButton, _undo, _redo;
+    private readonly ToolStripButton _selectButton, _textButton, _agentButton, _undo, _redo;
     private readonly ToolStripSplitButton _shapesButton;
     private readonly ToolStripDropDownButton _more, _colors, _widths, _sizes, _textStyle, _fills;
     private readonly ToolStripMenuItem _edit, _delete, _save, _aiTeams;
@@ -65,6 +65,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
             item.Tag = mode; _shapesButton.DropDownItems.Add(item);
         }
         _textButton = Button("Text", DockGlyph.Text, "Add a note · click or drag on the canvas", () => ModeRequested?.Invoke(AnnotationMode.Text), true);
+        _agentButton = Button("AI agent", DockGlyph.Agent, "Place an AI agent card", () => ModeRequested?.Invoke(AnnotationMode.Agent), true);
         _undo = Button("Undo", DockGlyph.Undo, "Undo · Ctrl+Z", () => UndoRequested?.Invoke());
         _redo = Button("Redo", DockGlyph.Redo, "Redo · Ctrl+Y / Ctrl+Shift+Z", () => RedoRequested?.Invoke());
         _more = new("More", _image) { Name = "More", AccessibleName = "More canvas actions", Tag = DockGlyph.More, DisplayStyle = ToolStripItemDisplayStyle.Image, ShowDropDownArrow = false, ToolTipText = "More actions" };
@@ -97,7 +98,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         workflows.DropDownItems.Add(MenuItem("Import workflow (JSON)…", () => ImportWorkflowRequested?.Invoke()));
         _more.DropDownItems.Add(workflows);
         _status.Click += (_, _) => { if (_state?.Status != null) RetrySaveRequested?.Invoke(); };
-        Strip.Items.AddRange([_selectButton, _shapesButton, _textButton, new ToolStripSeparator(), _undo, _redo, _more, _status]);
+        Strip.Items.AddRange([_selectButton, _shapesButton, _textButton, _agentButton, new ToolStripSeparator(), _undo, _redo, _more, _status]);
 
         _colors = DropDown("Color", "Annotation color"); _colors.Image = _colorImage; _colors.Tag = DockGlyph.Color;
         foreach (var (title, hex) in new[] { ("Gold", "#FBBF24"), ("White", "#FFFFFF"), ("Coral", "#FB7185"), ("Sky", "#60A5FA"), ("Mint", "#34D399"), ("Lilac", "#C084FC") })
@@ -173,10 +174,10 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         if (_availableWidth == width && !_layoutDirty) return;
         _availableWidth = width;
         _layoutDirty = false;
-        foreach (var item in new ToolStripItem[] { _selectButton, _shapesButton, _textButton }) item.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+        foreach (var item in new ToolStripItem[] { _selectButton, _shapesButton, _textButton, _agentButton }) item.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
         _status.Available = false;
         if (Strip.GetPreferredSize(Size.Empty).Width + Pixel(14) > width)
-            foreach (var item in new ToolStripItem[] { _selectButton, _shapesButton, _textButton }) item.DisplayStyle = ToolStripItemDisplayStyle.Image;
+            foreach (var item in new ToolStripItem[] { _selectButton, _shapesButton, _textButton, _agentButton }) item.DisplayStyle = ToolStripItemDisplayStyle.Image;
         _status.Available = _state?.Status != null || _state?.SelectedCount > 0 && Strip.GetPreferredSize(Size.Empty).Width + Pixel(90) < width;
         if (_state?.Status != null) _status.Text = Strip.GetPreferredSize(Size.Empty).Width + Pixel(14) > width ? "!" : "Not saved";
         FitToContents(width); _properties.FitToContents(width); PositionProperties();
@@ -190,6 +191,7 @@ internal sealed class AnnotationToolbar : CanvasDockSurface
         var mode = state.Mode == AnnotationMode.Navigate ? AnnotationMode.Select : state.Mode;
         bool shape = mode is AnnotationMode.Rectangle or AnnotationMode.Ellipse or AnnotationMode.Arrow;
         if (shape) _lastShape = mode;
+        _agentButton.Checked = mode == AnnotationMode.Agent;
         _selectButton.Checked = mode == AnnotationMode.Select; _textButton.Checked = mode == AnnotationMode.Text;
         _shapesButton.BackColor = shape ? CanvasDockTheme.Active : CanvasDockTheme.Surface;
         _shapesButton.Tag = _lastShape switch { AnnotationMode.Arrow => DockGlyph.Arrow, AnnotationMode.Ellipse => DockGlyph.Ellipse, _ => DockGlyph.Rectangle };
