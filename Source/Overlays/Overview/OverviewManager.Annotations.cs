@@ -232,6 +232,9 @@ internal sealed partial class OverviewManager
             _annotationToolbar.CardFillRequested+=fill=>ChangeAnnotationTextStyle(fill:fill);
             _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
             _annotationToolbar.RedoRequested+=()=>AnnotationHistory(true);
+            _annotationToolbar.CutRequested += () => CutSelectedAnnotations();
+            _annotationToolbar.CopyRequested += () => CopySelectedAnnotations();
+            _annotationToolbar.PasteRequested += () => PasteAnnotations();
             _annotationToolbar.DeleteRequested+=DeleteAnnotation;
             _annotationToolbar.RetrySaveRequested+=()=>
             {
@@ -248,8 +251,11 @@ internal sealed partial class OverviewManager
             _annotationTool.Emphasis, _annotationTool.CardFill,
             CanUndo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), false) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(false) ?? 0) > 0,
             CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
-            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation),
-            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode));
+            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
+            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode,
+            CanCopy: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
+            CanCut: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
+            CanPaste: true));
         _annotationToolbar.SetAiTeamsActive(_isAiTeamsActive);
         _annotationToolbar.SetAvailableWidth(toolbarArea.Width);
         if(!_annotationToolbar.Visible)
@@ -294,6 +300,9 @@ internal sealed partial class OverviewManager
             _unifiedDock.Panel.CardFillRequested += fill => ChangeAnnotationTextStyle(fill: fill);
             _unifiedDock.Panel.UndoRequested += () => AnnotationHistory(false);
             _unifiedDock.Panel.RedoRequested += () => AnnotationHistory(true);
+            _unifiedDock.Panel.CutRequested += () => CutSelectedAnnotations();
+            _unifiedDock.Panel.CopyRequested += () => CopySelectedAnnotations();
+            _unifiedDock.Panel.PasteRequested += () => PasteAnnotations();
             _unifiedDock.Panel.DeleteRequested += DeleteAnnotation;
             _unifiedDock.Panel.RetrySaveRequested += () =>
             {
@@ -311,8 +320,11 @@ internal sealed partial class OverviewManager
             _annotationTool?.Emphasis ?? AnnotationTextEmphasis.Normal, _annotationTool?.CardFill ?? AnnotationCardFill.Solid,
             CanUndo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), false) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(false) ?? 0) > 0,
             CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
-            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation),
-            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode));
+            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
+            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode,
+            CanCopy: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
+            CanCut: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
+            CanPaste: true));
         _unifiedDock.Present(true, new ScreenRect(toolbarArea.Left, toolbarArea.Top, toolbarArea.Width, toolbarArea.Height), _appConfig.ShowTaskbarInCanvas);
     }
 
@@ -389,7 +401,13 @@ internal sealed partial class OverviewManager
     }
     private bool HandleAnnotationKey(KeyEventArgs e)
     {
-        if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null) return true;
+        if(_annotationEditor!=null || _shapeEditor!=null || _composerWindow!=null) return true;
+        if (e.Control && !e.Alt && !e.Shift)
+        {
+            if (e.KeyCode == Keys.C) { CopySelectedAnnotations(); e.Handled = true; e.SuppressKeyPress = true; return true; }
+            if (e.KeyCode == Keys.X) { CutSelectedAnnotations(); e.Handled = true; e.SuppressKeyPress = true; return true; }
+            if (e.KeyCode == Keys.V) { PasteAnnotations(); e.Handled = true; e.SuppressKeyPress = true; return true; }
+        }
         if(_annotationTool==null || _annotationTool.Mode is AnnotationMode.Navigate or AnnotationMode.Select)
         {
             if(e.Control && !e.Alt && (e.KeyCode==Keys.Z || e.KeyCode==Keys.Y)) { AnnotationHistory(e.KeyCode==Keys.Y || e.Shift); e.Handled=true; e.SuppressKeyPress=true; return true; }

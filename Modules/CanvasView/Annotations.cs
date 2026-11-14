@@ -155,6 +155,15 @@ public sealed class AnnotationDocument
         Remember(desktop, replay); _items.Clear(); _items.AddRange(next); NotifyChanged(desktop); return true;
     }
 
+    /// <summary>Pasting annotations is recorded as a single atomic history step.</summary>
+    public bool Paste(Guid desktop, IReadOnlyList<CanvasAnnotation> items)
+    {
+        if (items.Count == 0) return false;
+        if (_items.Count + items.Count > MaximumItems)
+            throw new InvalidOperationException($"Cannot paste: canvas exceeds maximum limit of {MaximumItems} annotations.");
+        return ApplyBatch(Revision, desktop, items);
+    }
+
     /// <summary>
     /// Applies a change that follows from the last edit (re-anchored connectors) without
     /// its own history step: undo already restores the state from before that edit.
