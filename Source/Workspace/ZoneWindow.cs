@@ -185,7 +185,7 @@ internal sealed class ZoneWindow : Window
         if (_refreshing) return;
         _editor.IsEnabled = Selected != null;
         _name.Text = Selected?.Name ?? ""; _color.Text = Selected?.Color ?? "#60A5FA";
-        _membersButton.IsEnabled = _removeButton.IsEnabled = Selected?.IsTemporaryArea != true;
+        _membersButton.IsEnabled = _removeButton.IsEnabled = Selected is { IsTemporaryArea: false, IsMission: false };
         _membersButton.ToolTip = Selected?.IsTemporaryArea == true ? "Temporary windows join and leave this area automatically." : null;
         _removeButton.ToolTip = Selected?.IsTemporaryArea == true ? "Keep this area for incoming temporary windows. You can move, resize or rename it." : null;
     }

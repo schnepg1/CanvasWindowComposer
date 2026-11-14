@@ -15,7 +15,7 @@ internal sealed partial class OverviewManager
     internal CanvasComposerWindow? ComposerWindow => _composerWindow;
 
     private IReadOnlyList<CanvasAnnotation> CurrentComposerNotes() => _annotationDocument?.Items
-        .Where(a => a.DesktopId == _annotationDesktop()).ToArray() ?? [];
+        .Where(a => a.DesktopId == _annotationDesktop() && a.AgentTaskId.Length == 0).ToArray() ?? [];
 
     internal void OpenCanvasComposer(ICanvasComposerProvider? provider = null, IComposerCredentials? credentials = null, IChatGptAccounts? accounts = null)
     {
@@ -45,7 +45,7 @@ internal sealed partial class OverviewManager
         form.Show();
         form.Activate();
     }
-    private IReadOnlyList<ComposerReference> CurrentComposerReferences() => SelectionItems().Where(i => i.Key.Kind != CanvasItemKind.Annotation)
+    private IReadOnlyList<ComposerReference> CurrentComposerReferences() => SelectionItems().Where(i => i.Key.Kind != CanvasItemKind.Annotation && !i.ExplicitMembersOnly)
         .Select(i => new ComposerReference(i.Key.Id, i.Key.Kind == CanvasItemKind.Window ? "window" : "project", i.Title, i.Bounds)).ToArray();
 
     private ComposerContext BuildComposerContext(IReadOnlyList<CanvasAnnotation> shared, IReadOnlyList<ComposerReference> references)
@@ -55,7 +55,7 @@ internal sealed partial class OverviewManager
             throw new ArgumentException("Share up to 20 context items and 32,000 characters.");
         var desktop = _annotationDesktop();
         foreach (var item in shared)
-            if (item.DesktopId != desktop || !_annotationDocument.Items.Contains(item))
+            if (item.DesktopId != desktop || item.AgentTaskId.Length > 0 || !_annotationDocument.Items.Contains(item))
                 throw new InvalidOperationException("A shared note changed. Reopen the composer and try again.");
         var available = CurrentComposerReferences();
         if (references.Any(r => !available.Contains(r))) throw new InvalidOperationException("A shared window or project changed. Reopen the composer.");

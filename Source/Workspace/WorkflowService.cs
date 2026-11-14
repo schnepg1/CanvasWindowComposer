@@ -31,7 +31,7 @@ internal sealed class WorkflowService : IWorkflowService
     public WorkflowGraph GetWorkflow(Guid desktopId, Guid? zoneId = null)
     {
         var doc = _workspace.Document;
-        var zones = doc.Zones.Where(z => z.DesktopId == desktopId).ToList();
+        var zones = doc.Zones.Where(z => z.DesktopId == desktopId && !z.IsMission).ToList();
         if (zoneId.HasValue) zones = zones.Where(z => z.Id == zoneId.Value).ToList();
 
         var zoneItemIds = zones.SelectMany(z => z.ItemIds).ToHashSet();
@@ -384,7 +384,7 @@ internal sealed class WorkflowService : IWorkflowService
 
             if (!string.IsNullOrEmpty(wNode.Zone))
             {
-                var zone = _workspace.Document.Zones.FirstOrDefault(z => z.DesktopId == desktopId && z.Name == wNode.Zone);
+                var zone = _workspace.Document.Zones.FirstOrDefault(z => z.DesktopId == desktopId && !z.IsMission && z.Name == wNode.Zone);
                 zone?.ItemIds.Add(newId);
             }
         }

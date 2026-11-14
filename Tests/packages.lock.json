@@ -111,6 +111,11 @@
           "Microsoft.TestPlatform.ObjectModel": "18.10.1"
         }
       },
+      "Microsoft.Web.WebView2": {
+        "type": "Transitive",
+        "resolved": "1.0.4314.35",
+        "contentHash": "x5MFf2W03xueU1mMNvivXfHSsQ+ODo7vJ36qw/dLtU5Gs+8d7+7N7zzmNNDoT3ffosmcvZNBtUnlzyiDUuBkSQ=="
+      },
       "SharpGen.Runtime": {
         "type": "Transitive",
         "resolved": "2.4.2-beta",
@@ -221,6 +226,7 @@
         "dependencies": {
           "CanvasDesktop.Ai": "[1.0.0, )",
           "CanvasDesktop.CanvasView": "[1.0.0, )",
+          "Microsoft.Web.WebView2": "[1.0.4314.35, )",
           "Velopack": "[1.2.161, )",
           "Vortice.D3DCompiler": "[3.8.3, )",
           "Vortice.Direct3D11": "[3.8.3, )",

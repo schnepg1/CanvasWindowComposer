@@ -68,6 +68,7 @@ internal sealed partial class OverviewManager
             BeginPan();
             return;
         }
+        if (TryInspectMission(pointer)) return;
         if (_tools.TryBeginTool(pointer)) { ApplyPointerCapture(); RefreshToolPreview(); return; }
         if (e.Button == MouseButtons.Left)
         {
@@ -405,6 +406,7 @@ internal sealed partial class OverviewManager
             return;
         }
         if (_composerWindow != null || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & Keys.Control) != 0) return;
+        if (e.Button == MouseButtons.Left && HitMissionCard(Pointer(pass, e)) != null) return;
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select

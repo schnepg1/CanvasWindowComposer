@@ -123,7 +123,8 @@ internal sealed partial class OverviewManager
     internal bool CollectNoteInInventory(Guid id)
     {
         if (_disposed || _annotationDocument == null) return false;
-        if (_annotationDocument.Items.FirstOrDefault(a => a.Id == id && a.DesktopId == _annotationDesktop() && a.Kind == AnnotationKind.Text) is not { } note)
+        if (_annotationDocument.Items.FirstOrDefault(a => a.Id == id && a.DesktopId == _annotationDesktop()
+            && a.Kind == AnnotationKind.Text && a.AgentTaskId.Length == 0) is not { } note)
             return false;
         var source = new WorldRect
         {
@@ -241,7 +242,8 @@ internal sealed partial class OverviewManager
                 .Select(i => _selectionWindows.FirstOrDefault(p => p.Value.Id == i.Key.Id).Key)
                 .Where(h => h != IntPtr.Zero).ToArray();
             noteIds = selection.Ghosts.Where(i => i.Key.Kind == CanvasItemKind.Annotation)
-                .Select(i => i.Key.Id).Where(id => _annotationDocument?.Items.Any(a => a.Id == id && a.Kind == AnnotationKind.Text) == true).ToArray();
+                .Where(i => i.Annotation is { Kind: AnnotationKind.Text, AgentTaskId.Length: 0 })
+                .Select(i => i.Key.Id).ToArray();
 
             if (ids.Length == 0 && sessionHandles.Length == 0 && noteIds.Length == 0) return false;
         }

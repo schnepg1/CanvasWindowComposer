@@ -56,7 +56,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     public bool Remove(Guid id)
     {
         var zone = Find(id);
-        if (zone == null || zone.IsTemporaryArea) return false;
+        if (zone == null || zone.IsTemporaryArea || zone.IsMission) return false;
         _document.Zones.Remove(zone);
         return Persist();
     }
@@ -74,7 +74,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     public bool SetMembership(Guid id, IReadOnlyCollection<Guid> itemIds)
     {
         var zone = Find(id);
-        if (zone == null || zone.IsTemporaryArea || itemIds == null || itemIds.Count > 2000) return false;
+        if (zone == null || zone.IsTemporaryArea || zone.IsMission || itemIds == null || itemIds.Count > 2000) return false;
         var ids = itemIds.ToHashSet();
         var eligible = _document.Items.Where(i => i.DesktopId == _desktop() && !i.Bounds.InInventory).Select(i => i.Id).ToHashSet();
         if (ids.Count != itemIds.Count || !ids.IsSubsetOf(eligible)) return false;
@@ -85,7 +85,8 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     }
 
     internal bool TryPlanMove(Guid id, double dx, double dy, out ZoneLayoutPlan? plan)
-        => ZoneLayoutPlanner.TryMove(Find(id), _document.Items, dx, dy, out plan, Subtree(id));
+        => ZoneLayoutPlanner.TryMove(Find(id) is { IsMission: false } zone ? zone : null,
+            _document.Items, dx, dy, out plan, Subtree(id));
 
     internal ZoneLayoutPlan Snapshot(ZoneLayoutPlan plan)
         => new(plan.ZoneId, Find(plan.ZoneId)!.Bounds, plan.Items.Select(p =>
@@ -101,7 +102,7 @@ internal sealed class ZoneService : IZoneCommands, IZoneNavigationSource
     {
         plan = null;
         var zone = Find(id);
-        if (zone == null || !ZoneGeometry.ValidBounds(bounds)) return false;
+        if (zone == null || zone.IsMission || !ZoneGeometry.ValidBounds(bounds)) return false;
         var resized = zone.Bounds;
         resized.X = bounds.X; resized.Y = bounds.Y; resized.W = bounds.W; resized.H = bounds.H;
         plan = new(id, resized, Array.Empty<ZoneItemPlacement>());

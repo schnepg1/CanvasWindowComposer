@@ -208,7 +208,7 @@ public class UnifiedDockTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void UnifiedDock_AiTeamsToggle_SpawnsSectorPod()
+    public void UnifiedDock_AiTeamsToggle_PreservesSavedMissions()
         => WorkspaceViewTests.OnSta(() =>
         {
             var folder = Path.Combine(Path.GetTempPath(), "dock-aiteams-" + Guid.NewGuid().ToString("N"));
@@ -220,6 +220,9 @@ public class UnifiedDockTests
                 overview.AttachZones(rig.Workspace.Zones);
                 overview.AttachPlaceholderWorkspace(rig.Workspace);
                 overview.AttachAnnotations(rig.Desktops, Path.Combine(folder, "annotations.json"));
+                var savedMission = new TeamPodService(rig.Workspace, overview.Annotations!)
+                    .CreateMission(rig.Desktops.CurrentDesktopId, "Saved mission", new(0, 0));
+                Assert.NotNull(savedMission);
                 overview.TransitionTo(OverviewMode.Zooming);
 
                 Assert.NotNull(overview.UnifiedDock);
@@ -234,8 +237,8 @@ public class UnifiedDockTests
 
                 Assert.True(overview.IsAiTeamsActive);
                 Assert.True(panel.IsAiTeamsActive);
-                Assert.NotNull(overview.SectorManager);
-                Assert.NotEmpty(overview.SectorManager.SpawnedPods);
+                var missions = rig.Workspace.Document.Zones.Where(z => z.IsMission).Select(z => z.Id).ToArray();
+                Assert.Contains(savedMission.Value, missions);
 
                 var menu2 = panel.OpenMoreMenu();
                 var aiTeamsItem2 = menu2!.Items.OfType<MenuItem>().First(i => (string)i.Header == "AI Teams Mission Control");
@@ -243,6 +246,7 @@ public class UnifiedDockTests
 
                 Assert.False(overview.IsAiTeamsActive);
                 Assert.False(panel.IsAiTeamsActive);
+                Assert.Equal(missions, rig.Workspace.Document.Zones.Where(z => z.IsMission).Select(z => z.Id).ToArray());
             }
             finally
             {

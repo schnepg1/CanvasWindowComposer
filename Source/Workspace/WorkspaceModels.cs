@@ -69,6 +69,14 @@ internal static class WorkspaceGeometry
 internal sealed class WorkspaceZone
 {
     public string AgentTaskId { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsMission => !string.IsNullOrEmpty(AgentTaskId);
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsModularMission { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool MissionPositionLocked { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MissionWorkingFolder { get; set; }
     public bool IsTemporaryArea { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid DesktopId { get; set; }

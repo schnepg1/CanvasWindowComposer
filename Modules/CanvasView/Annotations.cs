@@ -156,7 +156,7 @@ public sealed class AnnotationDocument
     /// Applies a change that follows from the last edit (re-anchored connectors) without
     /// its own history step: undo already restores the state from before that edit.
     /// </summary>
-    public bool ApplyDerivedChange(Guid desktop, IReadOnlyList<CanvasAnnotation> upserts)
+    public bool ApplyDerivedChange(Guid desktop, IReadOnlyList<CanvasAnnotation> upserts, bool addMissing = false)
     {
         var batch = upserts.ToArray();
         Validate(batch);
@@ -165,6 +165,11 @@ public sealed class AnnotationDocument
         if (_items.Any(a => ids.Contains(a.Id) && a.DesktopId != desktop)) throw new ArgumentException("Cannot change another desktop.");
         // Every replaced item was validated above and everything else is untouched.
         var next = _items.Select(a => batch.FirstOrDefault(b => b.Id == a.Id) ?? a).ToList();
+        if (addMissing)
+        {
+            next.AddRange(batch.Where(a => !_items.Any(b => b.Id == a.Id)));
+            Validate(next);
+        }
         if (_items.SequenceEqual(next)) return false;
         _items.Clear(); _items.AddRange(next);
         NotifyChanged(desktop);

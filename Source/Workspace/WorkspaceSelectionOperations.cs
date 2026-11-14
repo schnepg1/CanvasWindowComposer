@@ -43,7 +43,8 @@ internal sealed partial class WorkspaceService
         }
         if (expected.Membership.Any(p=>!Document.Zones.Any(z=>z.Id==p.Key && z.DesktopId==_desktop && z.ItemIds.OrderBy(id=>id).SequenceEqual(p.Value)))
             || !Valid(expected.Items, target.Items, Document.Items.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds))
-            || !Valid(expected.Areas, target.Areas, Document.Zones.Where(i => i.DesktopId == _desktop).ToDictionary(i => i.Id, i => i.Bounds), area:true))
+            || !Valid(expected.Areas, target.Areas, Document.Zones.Where(i => i.DesktopId == _desktop && !i.MissionPositionLocked)
+                .ToDictionary(i => i.Id, i => i.Bounds), area:true))
         { _status = "Selection changed. Select the group again before moving or undoing it."; return false; }
 
         var targets = new List<(IntPtr Handle, WorldRect Bounds, bool Live)>();

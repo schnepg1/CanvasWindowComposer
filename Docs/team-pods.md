@@ -1,10 +1,30 @@
 # Agent team pods
 
-An agent or orchestrator registers a stable task ID on its first telemetry update.
-Canvas reads registrations; it does not start agents or infer tasks from chat text.
-The shipped CVL team template creates seven role cards and nine connectors inside
-one **AI Mission Control: <task name>** project area. Repeated updates reuse the
-saved pod. Each card stores its task and role identity independently of its label.
+Open the canvas with **Alt+Q**, then choose **AI Teams Mission Control** from the
+toolbelt's **More actions** menu. Create a mission at the center of the current
+view, or jump to an existing mission. New missions start empty. In **Inspect**,
+enter a name and choose **Add agent** for each agent you want. Click an agent
+card on the canvas to open that agent directly. Starting Codex is a separate
+action on the agent's card.
+
+External agents can still register missions by reporting a stable task ID.
+Repeated telemetry updates reuse the saved frame and cards. Missions imported
+from the existing external team workflow use its seven-role layout.
+
+## Open an agent terminal
+
+Install Herdr Core (`hc.exe`), the Codex CLI (`codex.cmd`), and Windows Terminal.
+Enter an existing local path in **Local working folder**. Use **Save working
+folder** to make it the default for the mission. **Start Codex** launches a
+background Herdr terminal. **Watch terminal** expands a read-only terminal at
+the card's position on the canvas. Choose **Take control** to type, including
+to complete a Codex startup prompt. **Detach terminal** collapses the view
+and leaves the session running. **Open externally** opens Windows Terminal
+when you need a separate viewer. The inline pane uses the Microsoft Edge
+WebView2 Runtime and Herdr Core 0.1.20 or newer.
+
+The role card can find the same live Herdr terminal when Canvas reopens.
+Herdr reports the states emitted by the running program.
 
 ## Register and report progress
 
@@ -66,19 +86,22 @@ also discovers files created after startup and recovers missed watcher events.
 
 ## Move and keep a pod
 
-Open the interactive canvas, including at 100% zoom. Use the project navigator to
-find **AI Mission Control: <task name>**, then drag its outlined header. Cards,
-connectors, nested areas, and member windows move in one undoable transaction.
-Task identity keeps cards linked even after they are renamed or moved outside
-the frame. The frame is saved in `workspace.json`; cards, connectors, and their
-identities are saved in `annotations.json`. Telemetry never resets their positions.
-Pods stay on the desktop where first created and remain after task completion.
-The normal desktop view hides canvas overlays; enter the interactive canvas to
-see and manipulate project borders.
+Drag the mission's title grip to move the frame and its cards as one undoable
+operation. Use **Lock position** in the inspector to keep it anchored. You can
+place missions within different project areas. Each mission keeps its own
+position and working folder. Closing Mission Control leaves its saved missions
+available on the desktop where they were created.
 
-Status headers use the installed [WPF-UI](https://github.com/lepoco/wpfui) 4.3.0
-Badge control: cyan Working, amber Testing, emerald Done, orange Blocked, red
-Error, and gray Idle. Details truncate within the card width, with reserved header
-space on task cards. Legacy unbound cards show the pill just above their artwork.
-Pills and text follow canvas zoom and DPI; glow animation respects reduced motion
-and pauses during camera motion.
+Agent cards use the installed [WPF-UI](https://github.com/lepoco/wpfui) badges.
+At a distant zoom level, open the inspector from the Mission Control list.
+
+## Planned terminal and chat views
+
+- Place a standalone agent from the toolbelt and link or unlink it from a
+  mission while preserving its identity and any live session.
+- Host the same agent view in a mission pop-out for Alt+Tab. Canvas and the
+  pop-out share agent identity and session state. Opening the pop-out focuses
+  an existing window for that mission.
+- Add a chat view once a supported runtime exposes structured messages,
+  streaming, and tool approval state. Keep terminal access on the same card.
+  Speech-to-text can feed the chat's compose field in a later step.

@@ -22,7 +22,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     private int _handle = -1;
     private bool _active, _creating;
     public bool HasPendingInteraction => _active;
-    public CanvasAnnotation? Selected => document.Items.FirstOrDefault(a=>a.Id==SelectedId && a.DesktopId==desktop());
+    public CanvasAnnotation? Selected => document.Items.FirstOrDefault(a=>a.Id==SelectedId && a.DesktopId==desktop() && a.AgentTaskId.Length==0);
     public event Action<CanvasAnnotation>? EditTextRequested;
     public void SetMode(AnnotationMode mode) { Cancel(); Mode=mode; if (mode==AnnotationMode.Navigate) SelectedId=null; }
     public void ClearSelection() { Cancel(); SelectedId=null; }
@@ -62,7 +62,8 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
             else document.Put(FitText(updated));
         }
     }
-    public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop() && !a.InInventory && AnnotationGeometry.Hit(a,pointer.World,pointer.View));
+    public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop() && !a.InInventory
+        && a.AgentTaskId.Length==0 && AnnotationGeometry.Hit(a,pointer.World,pointer.View));
     public bool PointerDown(CanvasPointer p)
     {
         if (p.Button!=CanvasPointerButton.Left || Mode==AnnotationMode.Navigate) return false;
@@ -127,7 +128,7 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         double height=Math.Sign(dy)==0?DefaultTextCardHeight:Math.Sign(dy)*Math.Max(Math.Abs(dy),MinimumTextCardHeight);
         return item with { B=new(item.A.X+width,item.A.Y+height) };
     }
-    public void Select(Guid id) { Cancel(); SelectedId=document.Items.Any(a=>a.Id==id && a.DesktopId==desktop())?id:null; }
+    public void Select(Guid id) { Cancel(); SelectedId=document.Items.Any(a=>a.Id==id && a.DesktopId==desktop() && a.AgentTaskId.Length==0)?id:null; }
     public void Delete() { if (Selected is {} item) document.Delete(desktop(),item.Id); ClearSelection(); }
     public void Cancel() { _active=false; _creating=false; Preview=null; _original=null; _handle=-1; }
     public CanvasCursor CursorAt(CanvasPointer p)

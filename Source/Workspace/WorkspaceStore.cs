@@ -92,6 +92,10 @@ internal sealed class WorkspaceStore : IWorkspaceStore
         {
             if (zone == null || zone.Id == Guid.Empty || !zoneIds.Add(zone.Id)
                 || zone.AgentTaskId is null || zone.AgentTaskId.Length > 200
+                || !zone.IsMission && (zone.MissionPositionLocked || zone.IsModularMission)
+                || zone.MissionWorkingFolder is { } folder && (!zone.IsMission || folder.Length > 32767
+                    || folder.IndexOf('\0') >= 0 || !Path.IsPathFullyQualified(folder))
+                || zone.IsMission && zone.IsTemporaryArea
                 || zone.IsTemporaryArea && !temporaryDesktops.Add(zone.DesktopId)
                 || !ZoneService.ValidName(zone.Name) || !ZoneService.ValidColor(zone.Color)
                 || !ZoneGeometry.ValidBounds(zone.Bounds) || zone.ItemIds == null || zone.ItemIds.Count > 2000)
