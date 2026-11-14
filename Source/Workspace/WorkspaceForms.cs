@@ -311,4 +311,36 @@ internal static class WorkspaceDialogs
             if (dialog.ShowDialog(owner) == DialogResult.OK) workspace.SetTarget(id, dialog.FileName, false);
         }
     }
+
+    public static bool ChooseProjectFolder(IWin32Window? owner, WorkspaceService workspace, Guid id,
+        Action<string>? report = null, Func<string?, string?>? folderPicker = null, System.Windows.Window? wpfOwner = null)
+    {
+        var zone = System.Linq.Enumerable.FirstOrDefault(workspace.Zones.Items, z => z.Id == id);
+        string? initialDirectory = zone?.ProjectFolderPath is { } p && System.IO.Directory.Exists(p) ? p : null;
+        string? selectedFolder;
+        if (folderPicker != null)
+        {
+            selectedFolder = folderPicker(initialDirectory);
+        }
+        else
+        {
+            var picker = new Microsoft.Win32.OpenFolderDialog { Title = "Choose project folder" };
+            if (initialDirectory != null) picker.InitialDirectory = initialDirectory;
+            if (wpfOwner != null)
+            {
+                if (picker.ShowDialog(wpfOwner) != true) return false;
+            }
+            else
+            {
+                if (picker.ShowDialog() != true) return false;
+            }
+            selectedFolder = picker.FolderName;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedFolder)) return false;
+        bool saved = workspace.SetProjectFolder(id, selectedFolder);
+        report?.Invoke(saved ? "Project folder saved. Its placeholder can be moved freely."
+            : workspace.Status ?? "The project folder could not be saved.");
+        return saved;
+    }
 }
