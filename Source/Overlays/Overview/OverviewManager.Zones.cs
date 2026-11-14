@@ -52,6 +52,10 @@ internal sealed partial class OverviewManager
         if (_annotationDocument != null)
         {
             _teamPods = new(workspace, _annotationDocument);
+            if (_sectorManager == null && _telemetryProvider != null)
+            {
+                _sectorManager = new AiOperationsSectorManager(workspace, _annotationDocument, _annotationStore, _telemetryProvider);
+            }
             RefreshTeamTelemetry();
         }
         workspace.Changed += RefreshPlaceholderTitles;

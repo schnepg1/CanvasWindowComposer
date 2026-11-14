@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using MenuItem = System.Windows.Controls.MenuItem;
 using System.Windows.Controls.Primitives;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
@@ -173,5 +175,78 @@ public class UnifiedDockTests
             dock.UndoRequested += () => undoFired = true;
             dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanUndo: true));
             Assert.False(undoFired);
+        });
+
+    [Fact]
+    public void StandaloneUnifiedDockControl_AiTeamsToggledAndState()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var dock = new UnifiedDockControl();
+            bool toggled = false;
+            dock.AiTeamsToggled += () => toggled = true;
+
+            Assert.False(dock.IsAiTeamsActive);
+            dock.SetAiTeamsActive(true);
+            Assert.True(dock.IsAiTeamsActive);
+
+            var menu = dock.OpenMoreMenu();
+            Assert.NotNull(menu);
+            var aiTeamsItem = menu.Items.OfType<MenuItem>().FirstOrDefault(i => (string)i.Header == "AI Teams Mission Control");
+            Assert.NotNull(aiTeamsItem);
+            Assert.True(aiTeamsItem.IsCheckable);
+            Assert.True(aiTeamsItem.IsChecked);
+
+            aiTeamsItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.True(toggled);
+
+            dock.SetAiTeamsActive(false);
+            Assert.False(dock.IsAiTeamsActive);
+            var menu2 = dock.OpenMoreMenu();
+            var aiTeamsItem2 = menu2!.Items.OfType<MenuItem>().First(i => (string)i.Header == "AI Teams Mission Control");
+            Assert.False(aiTeamsItem2.IsChecked);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void UnifiedDock_AiTeamsToggle_SpawnsSectorPod()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-aiteams-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var rig = new WorkspaceHarness(config: config); rig.Workspace.Start();
+                using var overview = new OverviewManager(rig.Canvas, rig.Wm, rig.Api, rig.Input, config);
+                overview.AttachZones(rig.Workspace.Zones);
+                overview.AttachPlaceholderWorkspace(rig.Workspace);
+                overview.AttachAnnotations(rig.Desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                Assert.NotNull(overview.UnifiedDock);
+                var panel = overview.UnifiedDock.Panel;
+                Assert.False(panel.IsAiTeamsActive);
+                Assert.False(overview.IsAiTeamsActive);
+
+                var menu = panel.OpenMoreMenu();
+                Assert.NotNull(menu);
+                var aiTeamsItem = menu.Items.OfType<MenuItem>().First(i => (string)i.Header == "AI Teams Mission Control");
+                aiTeamsItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+                Assert.True(overview.IsAiTeamsActive);
+                Assert.True(panel.IsAiTeamsActive);
+                Assert.NotNull(overview.SectorManager);
+                Assert.NotEmpty(overview.SectorManager.SpawnedPods);
+
+                var menu2 = panel.OpenMoreMenu();
+                var aiTeamsItem2 = menu2!.Items.OfType<MenuItem>().First(i => (string)i.Header == "AI Teams Mission Control");
+                aiTeamsItem2.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+                Assert.False(overview.IsAiTeamsActive);
+                Assert.False(panel.IsAiTeamsActive);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
         });
 }

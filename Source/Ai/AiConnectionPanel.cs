@@ -1,18 +1,21 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace CanvasDesktop;
 
 /// <summary>Connection UI; canvas editing and provider transport stay outside this control.</summary>
-internal sealed class AiConnectionPanel : UserControl
+internal sealed class AiConnectionPanel : UserControl, IDisposable
 {
+    private static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+
     private sealed record AccountChoice(ChatGptAccount? Account)
     {
         public override string ToString() => Account?.ToString() ?? "Add another account or workspace…";
@@ -70,37 +73,42 @@ internal sealed class AiConnectionPanel : UserControl
     private readonly IChatGptAccounts _accounts;
     private readonly Action<Uri> _openBrowser;
     private readonly Action _welcome;
-    private readonly ComboBox _source = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _account = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, DropDownWidth = 520 };
-    private readonly TextBox _key = new() { UseSystemPasswordChar = true, Dock = DockStyle.Fill, PlaceholderText = "OpenAI API key" };
-    private readonly CheckBox _remember = new() { Text = "Save key in Windows Credential Manager", AutoSize = true };
-    private readonly ComboBox _model = new() { Dock = DockStyle.Fill, DropDownWidth = 520 };
-    private readonly Button _signIn = new() { Text = "Continue with ChatGPT", AutoSize = true };
-    private readonly Button _signOut = new() { Text = "Sign out", AutoSize = true };
-    private readonly Button _usage = new() { Text = "Manage usage", AutoSize = true };
-    private readonly Button _refresh = new() { Text = "Refresh models", AutoSize = true };
-    private readonly Button _forget = new() { Text = "Remove saved key", AutoSize = true };
-    private readonly Label _billing = new() { Dock = DockStyle.Fill, AutoEllipsis = true };
-    private readonly TableLayoutPanel _api = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
-    private readonly TableLayoutPanel _chat = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
-    private readonly TableLayoutPanel _layout;
+
+    private readonly FluentComboBox _source = new() { HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
+    private readonly FluentComboBox _account = new() { HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
+    private readonly FluentTextBox _key = new() { PlaceholderText = "OpenAI API key", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
+    private readonly CheckBox _remember = new() { Content = "Save key in Windows Credential Manager", Foreground = Brush("#F1F5F9"), Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly FluentComboBox _model = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly FluentButton _signIn = new() { Content = "Continue with ChatGPT", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly FluentButton _signOut = new() { Content = "Sign out", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly FluentButton _usage = new() { Content = "Manage usage", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly FluentButton _refresh = new() { Content = "Refresh models", Margin = new Thickness(8, 0, 0, 0) };
+    private readonly FluentButton _forget = new() { Content = "Remove saved key", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly TextBlock _billing = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brush("#94A3B8"), FontSize = 12, Margin = new Thickness(0, 6, 0, 0) };
+
+    private readonly StackPanel _api = new() { Orientation = Orientation.Vertical };
+    private readonly StackPanel _chat = new() { Orientation = Orientation.Vertical };
+    private readonly StackPanel _root = new() { Orientation = Orientation.Vertical };
+
     private CancellationTokenSource? _operation;
     private long _epoch;
-    private bool _updating, _externalBusy, _waitingForBrowser;
+    private bool _updating, _externalBusy, _waitingForBrowser, _disposed;
+
     public event Action? ConnectionChanged;
     public event Action? BusyChanged;
     public event Action<string>? StatusChanged;
     public event Action<bool>? WaitingForBrowserChanged;
+
     internal string LastStatus { get; private set; } = "";
     internal bool Busy => _operation != null;
     internal bool WaitingForBrowser => _waitingForBrowser;
-    internal TextBox KeyBox => _key;
-    internal ComboBox ModelBox => _model;
-    internal ComboBox SourceBox => _source;
-    internal ComboBox AccountBox => _account;
-    internal Button SignInButton => _signIn;
-    internal Button SignOutButton => _signOut;
-    internal Button RefreshButton => _refresh;
+    internal FluentTextBox KeyBox => _key;
+    internal FluentComboBox ModelBox => _model;
+    internal FluentComboBox SourceBox => _source;
+    internal FluentComboBox AccountBox => _account;
+    internal FluentButton SignInButton => _signIn;
+    internal FluentButton SignOutButton => _signOut;
+    internal FluentButton RefreshButton => _refresh;
     private bool ChatGpt => _source.SelectedIndex == 1;
     private ChatGptAccount? SelectedAccount => (_account.SelectedItem as AccountChoice)?.Account;
 
@@ -108,30 +116,59 @@ internal sealed class AiConnectionPanel : UserControl
         IChatGptAccounts accounts, Action<Uri> openBrowser, Action welcome)
     {
         _apiProvider = apiProvider; _credentials = credentials; _accounts = accounts; _openBrowser = openBrowser; _welcome = welcome;
-        Height = 208; Dock = DockStyle.Fill;
-        _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
-        _layout.ColumnStyles.Add(new(SizeType.Percent, 100));
-        foreach (int height in new[] { 30, 70, 0, 34, 32 }) _layout.RowStyles.Add(new(SizeType.Absolute, height));
-        
+
+        Content = _root;
+
         var settings = LoadSettings();
         _savedModelId = settings.ModelId;
 
-        _source.Items.AddRange(["OpenAI API key", "ChatGPT plan"]);
+        _source.Items.Add("OpenAI API key");
+        _source.Items.Add("ChatGPT plan");
         _source.SelectedIndex = (settings.SourceIndex >= 0 && settings.SourceIndex < _source.Items.Count) ? settings.SourceIndex : 0;
-        _layout.Controls.Add(_source, 0, 0);
-        _api.RowStyles.Add(new(SizeType.Absolute, 32)); _api.RowStyles.Add(new(SizeType.Absolute, 34));
-        _api.ColumnStyles.Add(new(SizeType.Percent, 100)); _api.Controls.Add(_key, 0, 0);
-        var apiActions = Actions(_remember, _forget); _api.Controls.Add(apiActions, 0, 1);
-        _chat.RowStyles.Add(new(SizeType.Absolute, 32)); _chat.RowStyles.Add(new(SizeType.Absolute, 34));
-        _chat.ColumnStyles.Add(new(SizeType.Percent, 100)); _chat.Controls.Add(_account, 0, 0);
-        _chat.Controls.Add(Actions(_signIn, _signOut, _usage), 0, 1);
-        _layout.Controls.Add(_api, 0, 1); _layout.Controls.Add(_chat, 0, 2);
-        var modelRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
-        modelRow.ColumnStyles.Add(new(SizeType.AutoSize)); modelRow.ColumnStyles.Add(new(SizeType.Percent, 100)); modelRow.ColumnStyles.Add(new(SizeType.AutoSize));
-        modelRow.Controls.Add(new Label { Text = "Model", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        modelRow.Controls.Add(_model, 1, 0); modelRow.Controls.Add(_refresh, 2, 0);
-        _model.AccessibleName = "AI model";
-        _layout.Controls.Add(modelRow, 0, 3); _layout.Controls.Add(_billing, 0, 4); Controls.Add(_layout);
+        _root.Children.Add(_source);
+
+        // Section 1: API Panel
+        _api.Children.Add(_key);
+        var apiActions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        apiActions.Children.Add(_remember);
+        apiActions.Children.Add(_forget);
+        _api.Children.Add(apiActions);
+        _root.Children.Add(_api);
+
+        // Section 2: ChatGPT Panel
+        _chat.Children.Add(_account);
+        var chatActions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        chatActions.Children.Add(_signIn);
+        chatActions.Children.Add(_signOut);
+        chatActions.Children.Add(_usage);
+        _chat.Children.Add(chatActions);
+        _root.Children.Add(_chat);
+
+        // Section 3: Model Row
+        var modelGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        modelGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        modelGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        modelGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var modelLabel = new TextBlock
+        {
+            Text = "Model",
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Brush("#F1F5F9"),
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        Grid.SetColumn(modelLabel, 0);
+        Grid.SetColumn(_model, 1);
+        Grid.SetColumn(_refresh, 2);
+        modelGrid.Children.Add(modelLabel);
+        modelGrid.Children.Add(_model);
+        modelGrid.Children.Add(_refresh);
+        _root.Children.Add(modelGrid);
+
+        // Section 4: Billing Text
+        _root.Children.Add(_billing);
+
+        // Event wiring
         _source.SelectedIndexChanged += (_, _) =>
         {
             if (_updating) return;
@@ -139,6 +176,7 @@ internal sealed class AiConnectionPanel : UserControl
             SaveSettings();
             if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true) _ = RefreshModelsAsync();
         };
+
         _account.SelectedIndexChanged += (_, _) =>
         {
             if (_updating) return;
@@ -146,7 +184,9 @@ internal sealed class AiConnectionPanel : UserControl
             SaveSettings();
             if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true) _ = RefreshModelsAsync();
         };
+
         _key.TextChanged += (_, _) => { if (!_updating) { ClearModels(); InvalidateConnection(); } };
+
         _model.TextChanged += (_, _) =>
         {
             if (!_updating)
@@ -159,6 +199,7 @@ internal sealed class AiConnectionPanel : UserControl
                 }
             }
         };
+
         _model.SelectedIndexChanged += (_, _) =>
         {
             if (!_updating)
@@ -171,6 +212,7 @@ internal sealed class AiConnectionPanel : UserControl
                 }
             }
         };
+
         _signIn.Click += async (_, _) => await SignInAsync();
         _signOut.Click += async (_, _) => await SignOutAsync();
         _refresh.Click += async (_, _) => await RefreshModelsAsync();
@@ -178,27 +220,24 @@ internal sealed class AiConnectionPanel : UserControl
         _forget.Click += (_, _) =>
         {
             InvalidateConnection();
-            try { _credentials.Delete(); _key.Clear(); _remember.Checked = false; Report("Saved API key removed."); }
+            try { _credentials.Delete(); _key.Clear(); _remember.IsChecked = false; Report("Saved API key removed."); }
             catch { Report("Windows could not remove the saved API key."); }
         };
-        try { _key.Text = _credentials.Read() ?? ""; _remember.Checked = _key.TextLength > 0; }
+
+        try { _key.Text = _credentials.Read() ?? ""; _remember.IsChecked = _key.TextLength > 0; }
         catch { Report("Windows could not read the saved API key. Enter a key to continue."); }
+
         ReloadAccounts(settings.AccountId);
         if (!ChatGpt && !string.IsNullOrWhiteSpace(_savedModelId))
         {
             _model.Text = _savedModelId;
         }
+
         UpdateMode();
         if (ChatGpt && SelectedAccount?.PlanUsageEnabled == true)
         {
             _ = RefreshModelsAsync();
         }
-    }
-
-    private static FlowLayoutPanel Actions(params Control[] controls)
-    {
-        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
-        panel.Controls.AddRange(controls); return panel;
     }
 
     internal (ICanvasComposerProvider Provider, string Model) PrepareRequest()
@@ -216,7 +255,7 @@ internal sealed class AiConnectionPanel : UserControl
         }
         string key = _key.Text.Trim();
         if (string.IsNullOrWhiteSpace(key)) throw new AiConnectionException("Enter an OpenAI API key.");
-        if (_remember.Checked) _credentials.Write(key);
+        if (_remember.IsChecked == true) _credentials.Write(key);
         return (_apiProvider(key), model);
     }
 
@@ -231,7 +270,7 @@ internal sealed class AiConnectionPanel : UserControl
             SetWaitingForBrowser(true);
             try { account = await _accounts.SignInAsync(id, token); }
             finally { SetWaitingForBrowser(false); }
-            if (token.IsCancellationRequested || IsDisposed) return;
+            if (token.IsCancellationRequested || _disposed) return;
             ReloadAccounts(account.Id);
             SaveSettings();
             if (account.NeedsWelcome)
@@ -252,7 +291,7 @@ internal sealed class AiConnectionPanel : UserControl
         return RunAsync(async token =>
         {
             string result = await _accounts.SignOutAsync(account.Id, token);
-            if (IsDisposed || token.IsCancellationRequested) return;
+            if (_disposed || token.IsCancellationRequested) return;
             ReloadAccounts(account.Id); ClearModels(); SaveSettings(); Report(result);
         });
     }
@@ -279,11 +318,12 @@ internal sealed class AiConnectionPanel : UserControl
     private async Task LoadModelsAsync(ICanvasComposerProvider provider, CancellationToken token)
     {
         var models = await provider.ListModelsAsync(token);
-        if (token.IsCancellationRequested || IsDisposed) return;
+        if (token.IsCancellationRequested || _disposed) return;
         _updating = true;
         try
         {
-            _model.Items.Clear(); _model.Items.AddRange(models.Cast<object>().ToArray());
+            _model.Items.Clear();
+            foreach (var m in models) _model.Items.Add(m);
             if (!string.IsNullOrEmpty(_savedModelId))
             {
                 var match = models.FirstOrDefault(m => string.Equals(m.Id, _savedModelId, StringComparison.OrdinalIgnoreCase));
@@ -306,10 +346,10 @@ internal sealed class AiConnectionPanel : UserControl
         var pending = new CancellationTokenSource(TimeSpan.FromMinutes(5)); _operation = pending;
         long epoch = _epoch; UpdateControls(); BusyChanged?.Invoke();
         try { await work(pending.Token); }
-        catch (OperationCanceledException) { if (!IsDisposed && epoch == _epoch) Report("Connection operation cancelled or timed out."); }
+        catch (OperationCanceledException) { if (!_disposed && epoch == _epoch) Report("Connection operation cancelled or timed out."); }
         catch (Exception ex)
         {
-            if (!IsDisposed && epoch == _epoch)
+            if (!_disposed && epoch == _epoch)
             {
                 Report(ex is AiConnectionException ? ex.Message : "The connection could not complete. Check your network and try again.");
                 _usage.ResetFont();
@@ -321,7 +361,7 @@ internal sealed class AiConnectionPanel : UserControl
         {
             if (ReferenceEquals(_operation, pending)) _operation = null;
             pending.Dispose();
-            if (!IsDisposed && epoch == _epoch) { UpdateControls(); BusyChanged?.Invoke(); }
+            if (!_disposed && epoch == _epoch) { UpdateControls(); BusyChanged?.Invoke(); }
         }
     }
 
@@ -341,29 +381,42 @@ internal sealed class AiConnectionPanel : UserControl
         catch (AiConnectionException ex) { Report(ex.Message); }
         finally { _updating = false; }
     }
+
     private void ClearModels()
     {
         _updating = true;
         try { _model.Items.Clear(); _model.SelectedIndex = -1; _model.Text = ""; }
         finally { _updating = false; }
     }
+
     private void UpdateMode()
     {
-        _api.Visible = !ChatGpt; _chat.Visible = ChatGpt;
-        _layout.RowStyles[1].Height = ChatGpt ? 0 : 70; _layout.RowStyles[2].Height = ChatGpt ? 70 : 0;
-        _model.DropDownStyle = ChatGpt ? ComboBoxStyle.DropDownList : ComboBoxStyle.DropDown;
+        _api.Visibility = ChatGpt ? Visibility.Collapsed : Visibility.Visible;
+        _chat.Visibility = ChatGpt ? Visibility.Visible : Visibility.Collapsed;
+        _model.IsEditable = !ChatGpt;
         UpdateControls();
     }
+
     private void UpdateControls()
     {
         bool enabled = !Busy && !_externalBusy;
         _billing.Text = !ChatGpt ? "Using OpenAI API · billed separately to your API account"
             : SelectedAccount is { SignedIn: true, PlanUsageEnabled: true } ? "Using ChatGPT plan · Manage usage in ChatGPT settings"
             : "ChatGPT plan · sign in and enable plan usage to generate";
-        foreach (var control in new Control[] { _source, _account, _key, _model, _remember, _signIn, _refresh, _forget }) control.Enabled = enabled;
-        _signOut.Enabled = enabled && SelectedAccount?.SignedIn == true;
+
+        _source.IsEnabled = enabled;
+        _account.IsEnabled = enabled;
+        _key.IsEnabled = enabled;
+        _model.IsEnabled = enabled;
+        _remember.IsEnabled = enabled;
+        _signIn.IsEnabled = enabled;
+        _refresh.IsEnabled = enabled;
+        _forget.IsEnabled = enabled;
+        _signOut.IsEnabled = enabled && SelectedAccount?.SignedIn == true;
     }
+
     internal void SetBusy(bool busy) { _externalBusy = busy; UpdateControls(); }
+
     internal void RefreshAccountState()
     {
         if (!ChatGpt) return;
@@ -371,28 +424,42 @@ internal sealed class AiConnectionPanel : UserControl
         if (SelectedAccount is not { SignedIn: true, PlanUsageEnabled: true }) ClearModels();
         UpdateControls();
     }
+
     internal void CancelPending()
     {
         _epoch++; _operation?.Cancel(); _operation = null; SetWaitingForBrowser(false);
-        if (!IsDisposed) { _usage.ResetFont(); UpdateControls(); BusyChanged?.Invoke(); }
+        if (!_disposed) { _usage.ResetFont(); UpdateControls(); BusyChanged?.Invoke(); }
     }
-    internal void ShowUsageAction() { if (!_usage.Font.Bold) _usage.Font = new Font(_usage.Font, FontStyle.Bold); _usage.Focus(); }
+
+    internal void ShowUsageAction()
+    {
+        _usage.FontWeight = FontWeights.Bold;
+        _usage.Focus();
+    }
+
     private void InvalidateConnection() { _usage.ResetFont(); ConnectionChanged?.Invoke(); }
     private void Report(string message) { LastStatus = message; StatusChanged?.Invoke(message); }
+
     private void SetWaitingForBrowser(bool waiting)
     {
         if (_waitingForBrowser == waiting) return;
         _waitingForBrowser = waiting;
-        if (!IsDisposed) WaitingForBrowserChanged?.Invoke(waiting);
+        if (!_disposed) WaitingForBrowserChanged?.Invoke(waiting);
     }
-    protected override void Dispose(bool disposing)
+
+    public void Dispose()
     {
-        if (disposing)
-        {
-            _updating = true;
-            ConnectionChanged = null; BusyChanged = null; StatusChanged = null; WaitingForBrowserChanged = null;
-            _epoch++; _operation?.Cancel(); _operation = null; _waitingForBrowser = false; _key.Clear();
-        }
-        base.Dispose(disposing);
+        if (_disposed) return;
+        _disposed = true;
+        _updating = true;
+        ConnectionChanged = null;
+        BusyChanged = null;
+        StatusChanged = null;
+        WaitingForBrowserChanged = null;
+        _epoch++;
+        _operation?.Cancel();
+        _operation = null;
+        _waitingForBrowser = false;
+        _key.Clear();
     }
 }

@@ -75,6 +75,7 @@ internal sealed class UnifiedDockControl : UserControl
     public event Action? ControlsClicked;
     public event Action<AnnotationMode>? ModeRequested;
     public event Action? UndoRequested, RedoRequested, EditRequested, DeleteRequested, RetrySaveRequested, ComposerRequested;
+    public event Action? AiTeamsToggled;
     public event Action<double>? NearbyRequested;
     public event Action? WebResourceRequested, BackgroundsRequested, ProjectNavigatorRequested, ProjectAreasRequested;
     public event Action? ExportAllWorkflowsRequested, ImportWorkflowRequested;
@@ -88,9 +89,13 @@ internal sealed class UnifiedDockControl : UserControl
     public bool HasOpenDropDown => _openMenu?.IsOpen == true;
     public bool IsInteractMode => _interactMode;
     public AnnotationMode CurrentAnnotationMode => _currentMode;
+    public bool IsAiTeamsActive { get; private set; }
+    public void SetAiTeamsActive(bool active) => IsAiTeamsActive = active;
     internal Wpf.Ui.Controls.Button ControlsButton => _controlsButton;
     internal Wpf.Ui.Controls.Button ArrangeModeButton => _arrangeModeButton;
     internal Wpf.Ui.Controls.Button InteractModeButton => _interactModeButton;
+    internal Wpf.Ui.Controls.Button MoreButton => _moreButton;
+    internal ContextMenu? OpenMoreMenu() { ShowMoreMenu(); return _openMenu; }
     internal StackPanel CreationToolsPanel => _creationToolsPanel;
     internal StackPanel InteractHudPanel => _interactHudPanel;
     internal Border PropertiesShelf => _propertiesShelf;
@@ -610,6 +615,9 @@ internal sealed class UnifiedDockControl : UserControl
 
         AddMenuItem(menu, "Select around camera", SymbolRegular.Target20, () => NearbyRequested?.Invoke(_selectionRadius));
         AddMenuItem(menu, "AI Compose…", SymbolRegular.Sparkle20, () => ComposerRequested?.Invoke());
+        var aiTeams = AddMenuItem(menu, "AI Teams Mission Control", SymbolRegular.Bot20, () => AiTeamsToggled?.Invoke());
+        aiTeams.IsCheckable = true;
+        aiTeams.IsChecked = IsAiTeamsActive;
         AddMenuItem(menu, "Add web resource…", SymbolRegular.Globe20, () => WebResourceRequested?.Invoke());
         AddMenuItem(menu, "Backgrounds…", SymbolRegular.Image20, () => BackgroundsRequested?.Invoke());
 

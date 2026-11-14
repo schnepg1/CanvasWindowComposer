@@ -1,16 +1,30 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Wpf.Ui.Appearance;
+using Wpf.Ui.Controls;
+using Wpf.Ui.Markup;
+using Button = Wpf.Ui.Controls.Button;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace CanvasDesktop;
 
-internal sealed class CanvasComposerWindow : Form
+internal sealed class CanvasComposerWindow : FluentWindow, IDisposable
 {
-    private sealed record NoteChoice(CanvasAnnotation? Item, ComposerReference? Reference = null)
+    private static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+
+    public sealed record NoteChoice(CanvasAnnotation? Item, ComposerReference? Reference = null)
     {
         public override string ToString()
         {
@@ -22,23 +36,52 @@ internal sealed class CanvasComposerWindow : Form
     private readonly AiConnectionPanel _connections;
     private readonly Func<IReadOnlyList<CanvasAnnotation>, IReadOnlyList<ComposerReference>, ComposerContext> _context;
     private readonly Func<ComposerPreview, string> _apply;
-    private readonly TextBox _prompt = new() { Multiline = true, Dock = DockStyle.Fill, MaxLength = 8000, ScrollBars = ScrollBars.Vertical, Font = new Font("Segoe UI", 9.5f) };
-    private readonly CheckedListBox _notes = new() { Dock = DockStyle.Fill, CheckOnClick = true, HorizontalScrollbar = true, Font = new Font("Segoe UI", 9f) };
-    private readonly Label _contextPlaceholder = new()
+
+    private readonly FluentTextBox _prompt = new()
     {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleCenter,
-        ForeColor = SystemColors.GrayText,
-        Font = new Font("Segoe UI", 9f, FontStyle.Italic),
-        Text = "No canvas items selected. Select notes or shapes on the canvas to include them as context, or write a prompt to generate a new diagram."
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        MaxLength = 8000,
+        Height = 110,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        Margin = new Thickness(0, 0, 0, 10)
     };
-    private readonly FlowLayoutPanel _promptChips = new() { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 2, 0, 4) };
-    private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(540, 0), Font = new Font("Segoe UI", 9f) };
-    private readonly TextBox _summary = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical, Font = new Font("Segoe UI", 9f), PlaceholderText = "Proposal summary and counts of proposed nodes/edges will appear here once generated." };
-    private readonly ComboBox _action = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9f) };
-    private readonly Button _generate = new() { Text = "Generate preview", AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-    private readonly Button _cancel = new() { Text = "Cancel / discard", AutoSize = true, Font = new Font("Segoe UI", 9f) };
-    private readonly Button _applyButton = new() { Text = "Apply to canvas", AutoSize = true, Enabled = false, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
+
+    private readonly FluentCheckedListBox _notes = new()
+    {
+        Height = 100,
+        Margin = new Thickness(0, 0, 0, 10)
+    };
+
+    private readonly TextBlock _contextPlaceholder = new()
+    {
+        Text = "No canvas items selected. Select notes or shapes on the canvas to include them as context, or write a prompt to generate a new diagram.",
+        FontStyle = FontStyles.Italic,
+        Foreground = Brush("#94A3B8"),
+        TextWrapping = TextWrapping.Wrap,
+        TextAlignment = TextAlignment.Center,
+        Margin = new Thickness(12, 16, 12, 16)
+    };
+
+    private readonly WrapPanel _promptChips = new() { Margin = new Thickness(0, 2, 0, 8) };
+    private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brush("#CBD5E1"), FontSize = 12, Margin = new Thickness(0, 6, 0, 0) };
+    private readonly FluentTextBox _summary = new()
+    {
+        IsReadOnly = true,
+        AcceptsReturn = true,
+        TextWrapping = TextWrapping.Wrap,
+        Height = 90,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        PlaceholderText = "Proposal summary and counts of proposed nodes/edges will appear here once generated.",
+        Margin = new Thickness(0, 0, 0, 10)
+    };
+
+    private readonly FluentComboBox _action = new() { HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
+    private readonly FluentButton _generate = new() { Content = "Generate preview", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 8, 0) };
+    private readonly FluentButton _cancel = new() { Content = "Cancel / discard", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly FluentButton _applyButton = new() { Content = "Apply to canvas", FontWeight = FontWeights.Bold, IsEnabled = false };
+
+    private readonly Grid _contextContainer = new() { Margin = new Thickness(0, 0, 0, 8) };
 
     private ComposerPreview? _preview;
     private CancellationTokenSource? _request;
@@ -51,53 +94,109 @@ internal sealed class CanvasComposerWindow : Form
     internal event Action<bool>? WaitingForBrowserChanged;
     internal bool Busy => _request != null || _connections.Busy;
     internal bool WaitingForBrowser => _connections.WaitingForBrowser;
-    internal TextBox PromptBox => _prompt;
-    internal TextBox KeyBox => _connections.KeyBox;
-    internal ComboBox ActionBox => _action;
-    internal CheckedListBox ContextBox => _notes;
-    internal ComboBox ModelBox => _connections.ModelBox;
+    internal FluentTextBox PromptBox => _prompt;
+    internal FluentTextBox KeyBox => _connections.KeyBox;
+    internal FluentComboBox ActionBox => _action;
+    internal FluentCheckedListBox ContextBox => _notes;
+    internal FluentComboBox ModelBox => _connections.ModelBox;
     internal AiConnectionPanel Connections => _connections;
-    internal Button GenerateButton => _generate;
-    internal Button ApplyButton => _applyButton;
+    internal FluentButton GenerateButton => _generate;
+    internal FluentButton ApplyButton => _applyButton;
     internal string Status => _status.Text;
+
+    public bool TopMost { get => Topmost; set => Topmost = value; }
+    public new int Width { get => (int)base.Width; set => base.Width = value; }
+    public new int Height { get => (int)base.Height; set => base.Height = value; }
+    public System.Drawing.Point Location { get => new((int)Left, (int)Top); set { Left = value.X; Top = value.Y; } }
+    public System.Drawing.Size Size { get => new((int)base.Width, (int)base.Height); set { base.Width = value.Width; base.Height = value.Height; } }
+    public bool IsDisposed { get; private set; }
 
     public CanvasComposerWindow(Func<string, ICanvasComposerProvider> apiProvider, IComposerCredentials credentials,
         IChatGptAccounts accounts,
         Func<IReadOnlyList<CanvasAnnotation>, IReadOnlyList<ComposerReference>, ComposerContext> context, Func<ComposerPreview, string> apply,
         IReadOnlyList<CanvasAnnotation> notes, Guid? selectedId, IReadOnlySet<CanvasItemId>? selected = null, IReadOnlyList<ComposerReference>? references = null)
     {
-        _context = context; _apply = apply;
+        _context = context;
+        _apply = apply;
+
+        Title = "AI Canvas Composer";
+        ShowInTaskbar = true;
+        Topmost = true;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        base.Width = 680;
+        base.Height = 860;
+        MinWidth = 620;
+        MinHeight = 740;
+        ExtendsContentIntoTitleBar = true;
+        WindowBackdropType = WindowBackdropType.Mica;
+
+        Resources.MergedDictionaries.Add(new ThemesDictionary { Theme = ApplicationTheme.Dark });
+        void AddResource(string path) => Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri($"pack://application:,,,/Wpf.Ui;component/{path}", UriKind.Absolute)
+        });
+        AddResource("Resources/Fonts.xaml");
+        AddResource("Resources/Typography.xaml");
+        AddResource("Resources/StaticColors.xaml");
+        AddResource("Resources/Accent.xaml");
+        AddResource("Resources/Palette.xaml");
+        AddResource("Resources/Variables.xaml");
+        AddResource("Controls/Button/Button.xaml");
+        AddResource("Controls/Card/Card.xaml");
+        AddResource("Controls/TextBox/TextBox.xaml");
+        AddResource("Controls/ComboBox/ComboBox.xaml");
+        AddResource("Controls/CheckBox/CheckBox.xaml");
+        AddResource("Controls/TitleBar/TitleBar.xaml");
+
+        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
+        Foreground = Brush("#F1F5F9");
+
         _connections = new(apiProvider, credentials, accounts, AiServices.OpenBrowser, () =>
             MessageBox.Show(this, "Eligible AI requests in this app use your ChatGPT plan or credits. Manage usage in ChatGPT settings.",
-                "You’re using your ChatGPT plan", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                "You’re using your ChatGPT plan", MessageBoxButton.OK, MessageBoxImage.Information));
 
-        Text = "AI Canvas Composer";
-        ShowInTaskbar = true;
-        TopMost = true;
-        KeyPreview = true;
-        StartPosition = FormStartPosition.Manual;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(680, 860);
-        MinimumSize = new Size(620, 740);
-        Font = new Font("Segoe UI", 9f);
+        var root = new DockPanel();
+        Content = root;
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, ColumnCount = 1, RowCount = 14, Padding = new Padding(14) };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var titleBar = new TitleBar { Title = "AI Canvas Composer" };
+        DockPanel.SetDock(titleBar, Dock.Top);
+        root.Children.Add(titleBar);
 
-        void Row(Control control, int height)
+        var body = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
+        var scroll = new ScrollViewer
         {
-            int row = layout.RowStyles.Count;
-            layout.RowStyles.Add(new RowStyle(height < 0 ? SizeType.Percent : SizeType.Absolute, height < 0 ? -height : height));
-            layout.Controls.Add(control, 0, row);
-        }
+            Content = body,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 10, 0)
+        };
+        root.Children.Add(scroll);
 
         // Section 1: Connection Panel
-        Row(_connections, 176);
+        var connBorder = new Border
+        {
+            Background = Brush("#162032"),
+            BorderBrush = Brush("#334155"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(12),
+            Margin = new Thickness(0, 0, 0, 14)
+        };
+        connBorder.Child = _connections;
+        body.Children.Add(connBorder);
 
         // Section 2: Request & Starter Prompts
-        Row(new Label { Text = "Request — describe what to generate or modify on the canvas", AutoSize = true, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold) }, 24);
+        body.Children.Add(new TextBlock
+        {
+            Text = "Request — describe what to generate or modify on the canvas",
+            FontWeight = FontWeights.Bold,
+            FontSize = 13,
+            Foreground = Brush("#F1F5F9"),
+            Margin = new Thickness(0, 0, 0, 6)
+        });
 
-        _action.Items.AddRange([
+        foreach (var actionName in new[]
+        {
             "Custom request",
             "Create visual workflow / pipeline",
             "Design system / software architecture",
@@ -106,9 +205,13 @@ internal sealed class CanvasComposerWindow : Form
             "Show dependencies",
             "Turn into a roadmap",
             "Improve layout, keep wording",
-            "Create a summary"]);
+            "Create a summary"
+        })
+        {
+            _action.Items.Add(actionName);
+        }
         _action.SelectedIndex = 0;
-        Row(_action, 32);
+        body.Children.Add(_action);
 
         // Starter prompt chips
         AddPromptChip("Cloud Architecture", "Design a visual software and cloud architecture showing services, APIs, databases, caches, and queues with data flows on connection arrows.");
@@ -116,29 +219,52 @@ internal sealed class CanvasComposerWindow : Form
         AddPromptChip("Microservices", "Design a microservices architecture showing API gateway, auth service, domain microservices, event bus, and persistent datastores with flow dependencies.");
         AddPromptChip("User Funnel", "Build a visual customer acquisition funnel with traffic sources, landing pages, conversion triggers, automated nurturing, and retention stages.");
         AddPromptChip("Roadmap", "Turn this context into a strategic development roadmap with milestones, dependencies, and next actions.");
-        Row(_promptChips, 36);
+        body.Children.Add(_promptChips);
 
-        Row(_prompt, -38);
+        body.Children.Add(_prompt);
 
-        // Section 3: Canvas Selection Context (Only selected items are displayed)
-        Row(new Label { Text = "Canvas Selection Context — only items selected on the canvas are included", AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) }, 24);
+        // Section 3: Canvas Selection Context
+        body.Children.Add(new TextBlock
+        {
+            Text = "Canvas Selection Context — only items selected on the canvas are included",
+            FontWeight = FontWeights.Bold,
+            FontSize = 13,
+            Foreground = Brush("#F1F5F9"),
+            Margin = new Thickness(0, 0, 0, 6)
+        });
 
-        var contextContainer = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
-        contextContainer.Controls.Add(_notes);
-        contextContainer.Controls.Add(_contextPlaceholder);
-        Row(contextContainer, -24);
+        var contextCard = new Border
+        {
+            Background = Brush("#162032"),
+            BorderBrush = Brush("#334155"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(6),
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        _contextContainer.Children.Add(_notes);
+        _contextContainer.Children.Add(_contextPlaceholder);
+        contextCard.Child = _contextContainer;
+        body.Children.Add(contextCard);
 
         // Section 4: Proposal Summary Card
-        Row(new Label { Text = "Proposal Summary", AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) }, 22);
-        Row(_summary, -20);
+        body.Children.Add(new TextBlock
+        {
+            Text = "Proposal Summary",
+            FontWeight = FontWeights.Bold,
+            FontSize = 13,
+            Foreground = Brush("#F1F5F9"),
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        body.Children.Add(_summary);
 
         // Section 5: Action Buttons and Status
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 4, 0, 4) };
-        actions.Controls.AddRange([_generate, _cancel, _applyButton]);
-        Row(actions, 38);
-        Row(_status, 48);
-
-        Controls.Add(layout);
+        var actionsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
+        actionsPanel.Children.Add(_generate);
+        actionsPanel.Children.Add(_cancel);
+        actionsPanel.Children.Add(_applyButton);
+        body.Children.Add(actionsPanel);
+        body.Children.Add(_status);
 
         PopulateContextItems(notes, references, selected, selectedId);
 
@@ -174,34 +300,52 @@ internal sealed class CanvasComposerWindow : Form
         _connections.StatusChanged += message => _status.Text = message;
         _connections.WaitingForBrowserChanged += waiting =>
         {
-            TopMost = !waiting;
+            Topmost = !waiting;
             WaitingForBrowserChanged?.Invoke(waiting);
         };
-        _notes.ItemCheck += (_, _) => { if (_preview != null) Discard("Context changed. Generate a new preview."); };
-        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; Dismissed?.Invoke(); } };
-        FormClosing += (_, e) => { if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Dismissed?.Invoke(); } };
+        _notes.ItemCheck += () => { if (_preview != null) Discard("Context changed. Generate a new preview."); };
+
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                Dismissed?.Invoke();
+            }
+        };
+
+        Closing += (_, e) =>
+        {
+            if (!IsDisposed)
+            {
+                e.Cancel = true;
+                Dismissed?.Invoke();
+            }
+        };
+
         _status.Text = _connections.LastStatus;
     }
 
     private void AddPromptChip(string title, string promptText)
     {
-        var chip = new Button
+        var chip = new FluentButton
         {
-            Text = title,
-            AutoSize = true,
-            FlatStyle = FlatStyle.Flat,
+            Content = title,
             Cursor = Cursors.Hand,
-            Margin = new Padding(2, 2, 4, 2),
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular)
+            Margin = new Thickness(0, 0, 6, 6),
+            FontSize = 11.5,
+            Padding = new Thickness(10, 4, 10, 4),
+            Background = Brush("#1E293B"),
+            BorderBrush = Brush("#475569"),
+            Foreground = Brush("#E2E8F0")
         };
-        chip.FlatAppearance.BorderSize = 1;
         chip.Click += (_, _) =>
         {
             _prompt.Text = promptText;
             _prompt.Focus();
-            _prompt.SelectionStart = _prompt.Text.Length;
+            _prompt.CaretIndex = _prompt.Text.Length;
         };
-        _promptChips.Controls.Add(chip);
+        _promptChips.Children.Add(chip);
     }
 
     private void PopulateContextItems(
@@ -243,8 +387,8 @@ internal sealed class CanvasComposerWindow : Form
         }
 
         bool hasItems = _notes.Items.Count > 0;
-        _notes.Visible = hasItems;
-        _contextPlaceholder.Visible = !hasItems;
+        _notes.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
+        _contextPlaceholder.Visibility = !hasItems ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task GenerateAsync()
@@ -280,7 +424,7 @@ internal sealed class CanvasComposerWindow : Form
             int edgeCount = _preview.Items.Count(i => i.Kind == AnnotationKind.Arrow);
             _summary.Text = $"{_preview.Summary}\r\n\r\nProposed Diagram Elements:\r\n  • {nodeCount} node(s) / shape(s)\r\n  • {edgeCount} connection arrow(s)\r\nTotal: {_preview.Items.Count} proposed canvas edits.";
 
-            PreviewChanged?.Invoke(_preview); _applyButton.Enabled = true;
+            PreviewChanged?.Invoke(_preview); _applyButton.IsEnabled = true;
             _status.Text = "Preview on canvas. Apply, refine your request, or discard.";
         }
         catch (OperationCanceledException) { if (!IsDisposed && generation == _generation) _status.Text = "Request timed out or was cancelled. Nothing was applied."; }
@@ -305,8 +449,8 @@ internal sealed class CanvasComposerWindow : Form
     private void UpdateBusy()
     {
         bool busy = Busy;
-        _action.Enabled = !busy; _generate.Enabled = !busy; _prompt.Enabled = !busy; _notes.Enabled = !busy;
-        _promptChips.Enabled = !busy;
+        _action.IsEnabled = !busy; _generate.IsEnabled = !busy; _prompt.IsEnabled = !busy; _notes.IsEnabled = !busy;
+        _promptChips.IsEnabled = !busy;
         _connections.SetBusy(_request != null);
     }
 
@@ -324,17 +468,40 @@ internal sealed class CanvasComposerWindow : Form
     public void Discard(string message)
     {
         _generation++; _request?.Cancel(); _request = null; _preview = null;
-        _applyButton.Enabled = false; _summary.Clear(); _connections.CancelPending(); UpdateBusy(); _status.Text = message;
+        _applyButton.IsEnabled = false; _summary.Clear(); _connections.CancelPending(); UpdateBusy(); _status.Text = message;
         PreviewChanged?.Invoke(null);
     }
 
-    protected override void Dispose(bool disposing)
+    public void DrawToBitmap(System.Drawing.Bitmap bitmap, System.Drawing.Rectangle targetBounds)
     {
-        if (disposing)
+        try
         {
-            WaitingForBrowserChanged = null;
-            _generation++; _request?.Cancel(); _request = null; _preview = null;
+            int w = Math.Max(1, (int)ActualWidth);
+            int h = Math.Max(1, (int)ActualHeight);
+            var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(this);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(rtb));
+            using var ms = new MemoryStream();
+            encoder.Save(ms);
+            ms.Position = 0;
+            using var src = new System.Drawing.Bitmap(ms);
+            using var g = System.Drawing.Graphics.FromImage(bitmap);
+            g.DrawImage(src, targetBounds);
         }
-        base.Dispose(disposing);
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        if (IsDisposed) return;
+        IsDisposed = true;
+        WaitingForBrowserChanged = null;
+        _generation++;
+        _request?.Cancel();
+        _request = null;
+        _preview = null;
+        _connections.Dispose();
+        Close();
     }
 }
