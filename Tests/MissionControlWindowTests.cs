@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -11,12 +14,37 @@ namespace CanvasDesktop.Tests;
 
 public class MissionControlWindowTests
 {
+    private sealed class MockAgentSessionManager : IAgentSessionManager
+    {
+        public IReadOnlyList<AgentProfile> SupportedAgents => HerdrSessions.SupportedAgents;
+        public AgentProfile DefaultAgent => HerdrSessions.DefaultAgent;
+        public AgentProfile FindAgent(string? id) => HerdrSessions.FindAgent(id);
+
+        public Task<HerdrSessions.Terminal?> Find(Guid card, CancellationToken cancellation) =>
+            Task.FromResult<HerdrSessions.Terminal?>(null);
+
+        public Task<HerdrSessions.Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
+            Task.FromResult(new HerdrSessions.Terminal("t0", "live", "idle", folder));
+
+        public Task<HerdrSessions.Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
+            StartAgent(DefaultAgent, folder, card, cancellation, prompt);
+
+        public Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation) =>
+            Task.CompletedTask;
+
+        public Task<Dictionary<Guid, HerdrSessions.Terminal>> Snapshot(CancellationToken cancellation) =>
+            Task.FromResult(new Dictionary<Guid, HerdrSessions.Terminal>());
+
+        public Task Open(Guid card, string expectedAddress, bool observe, CancellationToken cancellation) =>
+            Task.CompletedTask;
+    }
+
     [Fact]
     public void MissionControlWindowInitializesWithDarkFluentStyling()
     {
         WorkspaceViewTests.OnSta(() =>
         {
-            var herdr = new HerdrSessions();
+            var herdr = new MockAgentSessionManager();
             var window = new MissionControlWindow(IntPtr.Zero, herdr);
             try
             {
@@ -36,7 +64,7 @@ public class MissionControlWindowTests
     {
         WorkspaceViewTests.OnSta(() =>
         {
-            var herdr = new HerdrSessions();
+            var herdr = new MockAgentSessionManager();
             var window = new MissionControlWindow(IntPtr.Zero, herdr);
             try
             {
@@ -50,19 +78,21 @@ public class MissionControlWindowTests
                 Assert.NotNull(window.LaunchButton);
 
                 Assert.Equal(HerdrSessions.SupportedAgents.Count, window.AgentSelector.Items.Count);
-                Assert.Equal("Codex", ((AgentProfile)window.AgentSelector.SelectedItem).DisplayName);
+                var firstItem = Assert.IsType<ComboBoxItem>(window.AgentSelector.SelectedItem);
+                var firstAgent = Assert.IsType<AgentProfile>(firstItem.Tag);
+                Assert.Equal("Codex", firstAgent.DisplayName);
                 Assert.Equal("Start Codex", window.LaunchButton.Content);
 
-                // Switch to Claude Code
+                // Switch to Claude Code (index 1)
+                window.AgentSelector.SelectedIndex = 1;
                 var claude = HerdrSessions.SupportedAgents.First(a => a.Id == "claude");
-                window.AgentSelector.SelectedItem = claude;
                 Assert.Equal("Start Claude Code", window.LaunchButton.Content);
                 var expectedClaudeColor = (Color)ColorConverter.ConvertFromString(claude.AccentColorHex);
                 Assert.Equal(expectedClaudeColor, ((SolidColorBrush)window.LaunchButton.Background).Color);
 
-                // Switch to Gemini CLI
+                // Switch to Gemini CLI (index 2)
+                window.AgentSelector.SelectedIndex = 2;
                 var gemini = HerdrSessions.SupportedAgents.First(a => a.Id == "gemini");
-                window.AgentSelector.SelectedItem = gemini;
                 Assert.Equal("Start Gemini CLI", window.LaunchButton.Content);
                 var expectedGeminiColor = (Color)ColorConverter.ConvertFromString(gemini.AccentColorHex);
                 Assert.Equal(expectedGeminiColor, ((SolidColorBrush)window.LaunchButton.Background).Color);
@@ -79,7 +109,7 @@ public class MissionControlWindowTests
     {
         WorkspaceViewTests.OnSta(() =>
         {
-            var herdr = new HerdrSessions();
+            var herdr = new MockAgentSessionManager();
             var window = new MissionControlWindow(IntPtr.Zero, herdr);
             try
             {

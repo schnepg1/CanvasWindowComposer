@@ -131,10 +131,10 @@ public class HerdrSessionsTests
         var agent = HerdrSessions.DefaultAgent;
         var card = Guid.NewGuid();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<HerdrException>(() =>
             sessions.StartAgent(agent, "relative\\path", card, default));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<HerdrException>(() =>
             sessions.StartAgent(agent, "C:\\NonExistentFolder_123456789", card, default));
     }
 }

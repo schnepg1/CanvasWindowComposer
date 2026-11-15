@@ -16,7 +16,7 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
     private readonly WebView2 _view = new();
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly HerdrSessions _herdr;
+    private readonly IAgentSessionManager _herdr;
     private readonly Guid _card;
     private CancellationTokenSource? _attachment;
     private HerdrTerminalConnection? _connection;
@@ -28,7 +28,7 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
 
     public event Action<string>? StatusChanged;
 
-    public AgentTerminalPane(HerdrSessions herdr, Guid card)
+    public AgentTerminalPane(IAgentSessionManager herdr, Guid card)
     {
         _herdr = herdr;
         _card = card;
