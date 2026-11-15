@@ -257,6 +257,15 @@ internal class CanvasDockSurface : Form
     }
 
     public int Pixel(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
+
+    public void RaiseWithoutActivation()
+    {
+        if (Visible && !IsDisposed && IsHandleCreated)
+        {
+            PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1),
+                0, 0, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        }
+    }
     public void FitToContents(int? availableWidth = null)
     {
         if (availableWidth is {} width) _availableWidth = Math.Max(Pixel(100), width);
