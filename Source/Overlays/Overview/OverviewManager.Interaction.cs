@@ -171,6 +171,7 @@ internal sealed partial class OverviewManager
         if (PeekWorking)
         {
             _peekWindow!.SetWorking(false);
+            _peekState = CanvasPeekState.PreviewOnly;
             if (!_disposed && CurrentMode == OverviewMode.Zooming) _input.EnableEscHotkey();
         }
         var capture = _interactionCapture;

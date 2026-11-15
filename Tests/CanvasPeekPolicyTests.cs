@@ -75,4 +75,15 @@ public class CanvasPeekPolicyTests
         Assert.InRange(middle.X, from.X, to.X);
         Assert.InRange(middle.Width, from.Width, to.Width);
     }
+
+    [Fact]
+    public void CanvasPeekStateEnumDefinesAllRequiredLifecycleStates()
+    {
+        Assert.Equal(0, (int)CanvasPeekState.Hidden);
+        Assert.Equal(1, (int)CanvasPeekState.DwellHovering);
+        Assert.Equal(2, (int)CanvasPeekState.OpeningAnimation);
+        Assert.Equal(3, (int)CanvasPeekState.PreviewOnly);
+        Assert.Equal(4, (int)CanvasPeekState.Interacting);
+        Assert.Equal(5, (int)CanvasPeekState.Closing);
+    }
 }

@@ -3,6 +3,17 @@ using System.Drawing;
 
 namespace CanvasDesktop;
 
+/// <summary>Explicit lifecycle states for Canvas Peek preview and interaction.</summary>
+internal enum CanvasPeekState
+{
+    Hidden,
+    DwellHovering,
+    OpeningAnimation,
+    PreviewOnly,
+    Interacting,
+    Closing
+}
+
 /// <summary>Stationary-pointer dwell, independent of the overview's rendering tiers.</summary>
 internal sealed class CanvasPeekHover
 {

@@ -82,10 +82,12 @@ public class CanvasPeekIntegrationTests
             h.Config.EnableDetailedCardsTier = h.Config.EnableSimpleCardsTier = cards;
             h.ZoomOut(); h.Hover();
             var before = h.Overview.ViewCamera;
+            Assert.Equal(CanvasPeekState.DwellHovering, h.Overview.PeekState);
             h.Clock.Advance(999); h.Overview.TickWindowPeek(h.SourcePoint);
             Assert.Null(h.Overview.PeekWindow);
             h.Clock.Advance(1); h.Overview.TickWindowPeek(h.SourcePoint);
             Assert.NotNull(h.Overview.PeekWindow);
+            Assert.Equal(CanvasPeekState.PreviewOnly, h.Overview.PeekState);
             Assert.True(h.Overview.PeekWindow.Live);
             Assert.False(h.Overview.WindowInteractionActive);
             Assert.True(h.Input.EscHotkeyEnabled);
@@ -101,6 +103,7 @@ public class CanvasPeekIntegrationTests
         {
             using var h = new Rig(); h.ZoomOut();
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
+            Assert.Equal(CanvasPeekState.PreviewOnly, h.Overview.PeekState);
             var outside = new Point(h.Pass.Screen.Bounds.Right + 10, h.Pass.Screen.Bounds.Bottom + 10);
             h.Overview.TickWindowPeek(outside);
             h.Clock.Advance(399); h.Overview.TickWindowPeek(outside);
@@ -110,6 +113,7 @@ public class CanvasPeekIntegrationTests
             Assert.NotNull(h.Overview.PeekWindow);
             h.Overview.HandleEscape();
             Assert.Null(h.Overview.PeekWindow);
+            Assert.Equal(CanvasPeekState.Hidden, h.Overview.PeekState);
             Assert.Equal(OverviewMode.Zooming, h.Overview.CurrentMode);
         });
 
@@ -122,7 +126,9 @@ public class CanvasPeekIntegrationTests
             var before = h.Overview.ViewCamera; var original = h.Canvas.Windows[h.Source.Handle];
             int moves = h.Api.SetPositionCalls.Count;
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
+            Assert.Equal(CanvasPeekState.PreviewOnly, h.Overview.PeekState);
             h.Overview.BeginPeekInteraction();
+            Assert.Equal(CanvasPeekState.Interacting, h.Overview.PeekState);
             Assert.True(h.Overview.PeekWorking); Assert.False(h.Input.EscHotkeyEnabled);
             h.Clock.Advance(5000); h.Overview.TickWindowPeek(new(-40000, -40000));
             h.Overview.HandleEscape();
@@ -135,6 +141,7 @@ public class CanvasPeekIntegrationTests
             Assert.Contains(h.Pointer.Messages, m => m.Id == 0x202);
             Assert.Contains(h.Pointer.Messages, m => m.Id == 0x20A && (m.Flags & 8) != 0);
             h.Return();
+            Assert.Equal(CanvasPeekState.Hidden, h.Overview.PeekState);
             Assert.Null(h.Overview.PeekWindow); Assert.False(h.Overview.WindowInteractionActive);
             Assert.False(h.Pass.WindowInteractionActive); Assert.True(h.Input.EscHotkeyEnabled);
             Assert.Equal(before, h.Overview.ViewCamera); Assert.Equal(original, h.Canvas.Windows[h.Source.Handle]);
@@ -200,9 +207,11 @@ public class CanvasPeekIntegrationTests
         {
             using var h = new Rig();
             Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle)); h.Overview.BeginPeekInteraction();
+            Assert.Equal(CanvasPeekState.Interacting, h.Overview.PeekState);
             h.Pointer.Accept = false;
             h.Dispatch(new(h.ContentPoint, MouseButtons.Left, true, false));
             Assert.False(h.Overview.WindowInteractionActive); Assert.False(h.Overview.PeekWorking);
+            Assert.Equal(CanvasPeekState.PreviewOnly, h.Overview.PeekState);
             Assert.False(h.Pass.WindowInteractionActive); Assert.True(h.Input.EscHotkeyEnabled);
             Assert.NotNull(h.Overview.PeekWindow);
         });
