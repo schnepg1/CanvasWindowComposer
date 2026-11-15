@@ -182,16 +182,47 @@ try {
         }
     }
 
+    # Before publishing: if CanvasDesktop.exe is not running, check for and stop any lingering orphan helper processes
+    # whose .Path starts with $destination (e.g. CanvasInputHost, CanvasInputProbe).
+    if (@(Get-Process CanvasDesktop -ErrorAction SilentlyContinue).Count -eq 0) {
+        Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                if ($_.Path -and $_.Path.StartsWith($destination + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                    Write-Detail "Stopping lingering orphan process $($_.ProcessName) (PID $($_.Id)) from $destination..."
+                    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                    $_.WaitForExit(2000)
+                }
+            } catch { }
+        }
+    }
+
     $stage = Join-Path $root ('publish-launch-' + [Guid]::NewGuid().ToString('N'))
-    # Always publish from current sources; MSBuild still performs incremental compilation.
-    Invoke-DotNet -Arguments @('publish', 'CanvasDesktop.csproj', '-c', 'Release', '--self-contained', 'false', '-o', $stage)
-    if (!(Test-Path -LiteralPath (Join-Path $stage 'CanvasDesktop.exe'))) { throw 'Publishing did not produce CanvasDesktop.exe.' }
-    if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
-    Move-Item -LiteralPath $stage -Destination $destination
-    $stage = $null
+    try {
+        # Always publish from current sources; MSBuild still performs incremental compilation.
+        Invoke-DotNet -Arguments @('publish', 'CanvasDesktop.csproj', '-c', 'Release', '--self-contained', 'false', '-o', $stage)
+        if (!(Test-Path -LiteralPath (Join-Path $stage 'CanvasDesktop.exe'))) { throw 'Publishing did not produce CanvasDesktop.exe.' }
+        if (Test-Path -LiteralPath $destination) {
+            for ($retry = 1; $retry -le 5; $retry++) {
+                try {
+                    Remove-Item -LiteralPath $destination -Recurse -Force
+                    break
+                } catch {
+                    if ($retry -ge 5) { throw }
+                    Write-Detail "Transient lock removing $destination (attempt $retry/5). Retrying in 300ms..."
+                    Start-Sleep -Milliseconds 300
+                }
+            }
+        }
+        Move-Item -LiteralPath $stage -Destination $destination
+        $stage = $null
+    } finally {
+        if ($stage -and (Test-Path -LiteralPath $stage)) {
+            Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
 
     if (!$NoLaunch) {
-        $process = Start-Process -FilePath (Join-Path $destination 'CanvasDesktop.exe') -WorkingDirectory $destination -PassThru
+        $process = Start-Process -FilePath (Join-Path $destination 'CanvasDesktop.exe') -WorkingDirectory $root -PassThru
         if ($process.WaitForExit(3000) -and $process.ExitCode -ne 0) {
             throw "Canvas exited during startup (exit $($process.ExitCode)). Check the .NET Desktop Runtime and the application log at $logDirectory\canvas_debug.log."
         }
