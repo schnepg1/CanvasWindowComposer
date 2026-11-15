@@ -14,34 +14,6 @@ namespace CanvasDesktop.Tests;
 
 public class MissionControlWindowTests
 {
-    private sealed class MockAgentSessionManager : IAgentSessionManager
-    {
-        public IReadOnlyList<AgentProfile> SupportedAgents => HerdrSessions.SupportedAgents;
-        public AgentProfile DefaultAgent => HerdrSessions.DefaultAgent;
-        public AgentProfile FindAgent(string? id) => HerdrSessions.FindAgent(id);
-
-        public Task<HerdrSessions.Terminal?> Find(Guid card, CancellationToken cancellation) =>
-            Task.FromResult<HerdrSessions.Terminal?>(null);
-
-        public Task<HerdrSessions.Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
-            Task.FromResult(new HerdrSessions.Terminal("t0", "live", "idle", folder));
-
-        public Task<HerdrSessions.Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
-            StartAgent(DefaultAgent, folder, card, cancellation, prompt);
-
-        public Task StopAgent(Guid card, CancellationToken cancellation) =>
-            Task.CompletedTask;
-
-        public Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation) =>
-            Task.CompletedTask;
-
-        public Task<Dictionary<Guid, HerdrSessions.Terminal>> Snapshot(CancellationToken cancellation) =>
-            Task.FromResult(new Dictionary<Guid, HerdrSessions.Terminal>());
-
-        public Task Open(Guid card, string expectedAddress, bool observe, CancellationToken cancellation) =>
-            Task.CompletedTask;
-    }
-
     [Fact]
     public void MissionControlWindowInitializesWithDarkFluentStyling()
     {

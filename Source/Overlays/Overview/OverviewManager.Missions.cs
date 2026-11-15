@@ -7,7 +7,7 @@ namespace CanvasDesktop;
 
 internal sealed partial class OverviewManager
 {
-    private readonly HerdrSessions _herdrSessions = new();
+    internal IAgentSessionManager HerdrSessions { get; set; } = new HerdrSessions();
     private MissionCardLayer? _missionCards;
     private MissionControlWindow? _missionControl;
     internal MissionControlWindow? MissionControl => _missionControl;
@@ -64,7 +64,7 @@ internal sealed partial class OverviewManager
         _missionStatusRequest = request;
         try
         {
-            _missionTerminals = await _herdrSessions.Snapshot(request.Token);
+            _missionTerminals = await HerdrSessions.Snapshot(request.Token);
             _herdrDisconnected = false;
         }
         catch (OperationCanceledException) { return; }
@@ -152,7 +152,7 @@ internal sealed partial class OverviewManager
     private MissionControlWindow NewMissionControl()
     {
         CloseMissionControl();
-        var window = new MissionControlWindow(CanvasPanelOwner, _herdrSessions);
+        var window = new MissionControlWindow(CanvasPanelOwner, HerdrSessions);
         _missionControl = window;
         _isAiTeamsActive = true;
         window.TerminalChanged += RefreshMissionTerminals;
@@ -299,7 +299,7 @@ internal sealed partial class OverviewManager
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var terminal = await _herdrSessions.StartAgent(agent, folder, card.Id, cts.Token, card.Prompt);
+            var terminal = await HerdrSessions.StartAgent(agent, folder, card.Id, cts.Token, card.Prompt);
             _missionTerminals[card.Id] = terminal;
             _herdrDisconnected = false;
         }
@@ -319,7 +319,7 @@ internal sealed partial class OverviewManager
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await _herdrSessions.StopAgent(card.Id, cts.Token);
+            await HerdrSessions.StopAgent(card.Id, cts.Token);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

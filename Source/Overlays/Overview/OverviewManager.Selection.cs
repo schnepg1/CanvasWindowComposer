@@ -196,7 +196,7 @@ internal sealed partial class OverviewManager
             try
             {
                 using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15));
-                await _herdrSessions.SendPrompt(targetAgent.Id, prompt, folder, cts.Token);
+                await HerdrSessions.SendPrompt(targetAgent.Id, prompt, folder, cts.Token);
             }
             catch (Exception)
             {

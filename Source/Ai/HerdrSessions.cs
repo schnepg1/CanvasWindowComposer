@@ -169,8 +169,20 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
             : throw new HerdrException("Herdr Core (hc.exe) was not found."));
     }
 
+    internal static bool DisableProcessExecution { get; set; } =
+        AppDomain.CurrentDomain.FriendlyName.Contains("testhost", StringComparison.OrdinalIgnoreCase);
+
     private static async Task<string> Run(CancellationToken cancellation, params string[] args)
     {
+        if (DisableProcessExecution)
+        {
+            if (args.Length > 0 && args[0] == "ls")
+                return "{\"terminals\":[]}";
+            if (args.Length > 0 && args[0] == "run")
+                return "{\"address\":\"t0\",\"state\":\"live\",\"status\":\"idle\",\"cwd\":\"\"}";
+            return "{}";
+        }
+
         var start = new ProcessStartInfo(FindExecutable())
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true

@@ -254,6 +254,7 @@ public class AgentPromptDropTests
         var desktops = new FakeVirtualDesktops { CurrentDesktopId = desktop };
         var wm = new WindowManager(canvas, api, config, input, new FakeClock());
         var overview = new OverviewManager(canvas, wm, api, input, config);
+        overview.HerdrSessions = new MockAgentSessionManager();
         overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
         overview.TransitionTo(OverviewMode.Zooming);
 
