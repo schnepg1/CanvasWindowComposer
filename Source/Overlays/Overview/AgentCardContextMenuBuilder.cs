@@ -61,8 +61,10 @@ internal static class AgentCardContextMenuBuilder
         editPrompt.Click += (_, _) => onEditPrompt();
         menu.Items.Add(editPrompt);
 
-        // 5. Toggle Live Console
-        var toggleConsole = new ToolStripMenuItem("Toggle Live Console");
+        // 5. Toggle In-Canvas Console / Watch Terminal
+        string consoleLabel = isLive ? "Watch Terminal" : "Toggle Live Console";
+        var toggleConsole = new ToolStripMenuItem(consoleLabel);
+        toggleConsole.AccessibleName = "Toggle In-Canvas Console";
         toggleConsole.Click += (_, _) => onToggleLiveConsole();
         menu.Items.Add(toggleConsole);
 

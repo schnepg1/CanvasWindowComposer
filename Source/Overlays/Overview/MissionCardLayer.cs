@@ -41,6 +41,9 @@ internal static class MissionCardLayout
 
     public static Rect TerminalDrawerRect(Rect card) =>
         new(card.X + 10, card.Y + 108, Math.Max(20, card.Width - 20), Math.Max(10, card.Height - 118));
+
+    public static CanvasRect TerminalDrawerRect(CanvasRect card) =>
+        new(card.X + 10, card.Y + 108, Math.Max(20, card.Width - 20), Math.Max(10, card.Height - 118));
 }
 
 internal sealed class MissionCardLayer(

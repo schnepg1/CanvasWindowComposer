@@ -348,6 +348,7 @@ internal sealed partial class OverviewManager
         double worldDx = virtualDx / _camera.Zoom;
         double worldDy = virtualDy / _camera.Zoom;
         _camera.PanByVirtual(virtualDx, virtualDy);
+        UpdateTerminalOverlaysPlacement();
         ObserveGestureMotion();
         _visualPanX += worldDx;
         _visualPanY += worldDy;
@@ -369,6 +370,7 @@ internal sealed partial class OverviewManager
         }
         if (IsZoomSettling) CancelSmoothZoom();
         if (!_camera.ZoomToCursor(virtualX, virtualY, notches)) { RefreshTourUi();return; }
+        UpdateTerminalOverlaysPlacement();
         _instantZoomActivityUntil = _gestureClock.TickCount64 + GesturePreviewPolicy.SettleMs;
         ObserveGestureMotion();
         if(_tour?.ObserveZoom(before,_camera.Zoom)==true)SaveTourProgress();
