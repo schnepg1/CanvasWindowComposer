@@ -248,6 +248,31 @@ public class WindowInteractionNativeTests
         Assert.False(api.Post((IntPtr)123, 0x200, 0, new(0, -40000)));
     }
 
+    [Fact]
+    public void CanvasInputHostExitCodeValuesAndDiagnosticsAreConsistent()
+    {
+        Assert.Equal(0, (int)CanvasInputHostExitCode.Success);
+        Assert.Equal(1, (int)CanvasInputHostExitCode.InvalidCommandLineArgs);
+        Assert.Equal(2, (int)CanvasInputHostExitCode.TargetThreadProcessMismatch);
+        Assert.Equal(3, (int)CanvasInputHostExitCode.ModulePathResolutionFailed);
+        Assert.Equal(4, (int)CanvasInputHostExitCode.FilterModuleLoadFailed);
+        Assert.Equal(5, (int)CanvasInputHostExitCode.MouseHookInstallationFailed);
+        Assert.Equal(6, (int)CanvasInputHostExitCode.CallWndProcHookInstallationFailed);
+        Assert.Equal(7, (int)CanvasInputHostExitCode.ConfirmationVerificationFailed);
+
+        int definedCode = (int)CanvasInputHostExitCode.CallWndProcHookInstallationFailed;
+        string definedName = Enum.IsDefined(typeof(CanvasInputHostExitCode), definedCode)
+            ? ((CanvasInputHostExitCode)definedCode).ToString()
+            : "Unknown";
+        Assert.Equal("CallWndProcHookInstallationFailed", definedName);
+
+        int unknownCode = 999;
+        string unknownName = Enum.IsDefined(typeof(CanvasInputHostExitCode), unknownCode)
+            ? ((CanvasInputHostExitCode)unknownCode).ToString()
+            : "Unknown";
+        Assert.Equal("Unknown", unknownName);
+    }
+
     // Windows may deny foreground activation when another process owns focus. Keep
     // this test independent of that policy while using the real native API for
     // window validation, hit testing, coordinate conversion, and message delivery.
