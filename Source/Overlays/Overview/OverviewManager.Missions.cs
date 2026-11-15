@@ -130,15 +130,11 @@ internal sealed partial class OverviewManager
         var data = MissionFor(card);
         var mission = data == null ? null : FindMission(data.Id);
         var project = AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], card.Layout);
-        var workflow = _telemetryProvider?.Current.Teams.GetValueOrDefault(card.TaskId);
-        var folder = project?.ProjectFolderPath ?? data?.MissionWorkingFolder ?? card.Layout.AgentWorkingFolder
-            ?? _telemetryProvider?.GetReportForCard(card.Layout)?.Worktree;
-        if (string.IsNullOrWhiteSpace(folder)) folder = workflow?.Worktree;
-        if (string.IsNullOrWhiteSpace(folder)) folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var folder = AgentCardContext.ResolveWorkingFolder(card.Layout, _telemetryProvider, data?.MissionWorkingFolder, project?.ProjectFolderPath);
         var window = NewMissionControl();
         window.ShowAgent(mission, card, MissionReport(card), folder,
             locked => mission != null && _teamPods?.SetPositionLocked(mission.Id, locked) == true,
-            project?.ProjectFolderPath != null ? null : directory =>
+            directory =>
             {
                 if (mission != null) return _teamPods?.SetWorkingFolder(mission.Id, directory) == true;
                 if (!System.IO.Path.IsPathFullyQualified(directory) || !System.IO.Directory.Exists(directory)) return false;

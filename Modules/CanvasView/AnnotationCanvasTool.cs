@@ -1,8 +1,10 @@
 namespace CanvasDesktop.CanvasView;
 
 public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid> desktop, Func<CanvasAnnotation, CanvasAnnotation>? fitText = null,
-    Func<CanvasAnnotation, bool, double, CanvasAnnotation>? resolveConnections = null) : ICanvasTool
+    Func<CanvasAnnotation, bool, double, CanvasAnnotation>? resolveConnections = null,
+    Func<CanvasAnnotation, string?>? resolveProjectFolder = null) : ICanvasTool
 {
+    public Func<CanvasAnnotation, string?>? ResolveProjectFolder { get; set; } = resolveProjectFolder;
     public const double DefaultTextCardWidth = 240;
     public const double DefaultTextCardHeight = 48;
     public const double MinimumTextCardWidth = 80;
@@ -105,8 +107,10 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (result is null) return;
         if (creating && Mode == AnnotationMode.Agent)
         {
+            var workingFolder = ResolveProjectFolder?.Invoke(result);
             result = result with { B = new(result.A.X + 240, result.A.Y + 112), Text = "AI agent",
-                AgentTaskId = "standalone-" + result.Id.ToString("N"), AgentRole = result.Id.ToString("N") };
+                AgentTaskId = "standalone-" + result.Id.ToString("N"), AgentRole = result.Id.ToString("N"),
+                AgentWorkingFolder = workingFolder };
             Mode = AnnotationMode.Select;
             try { AnnotationDocument.Validate([result]); } catch (ArgumentException) { return; }
             if (document.Items.Count < AnnotationDocument.MaximumItems) document.Put(result);
