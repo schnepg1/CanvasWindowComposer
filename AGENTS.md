@@ -13,6 +13,7 @@ Before creating worktrees, writing code, or running builds, **every agent must e
 ### Step 1: Codebase Reconnaissance (Read-Only)
 - Inspect the repository to locate symbols, callers, interfaces, and existing tests relevant to the user's request.
 - Assess architectural layers touched (`Source/` WPF UI, `Modules/`, `Native/` Win32/D3D interop, `Tests/`).
+- Check for and adhere to any local `AGENTS.md` present within the subsystem directories you inspect (e.g., `Source/Overlays/Overview/AGENTS.md`).
 - **Do not modify code or start builds during reconnaissance.**
 
 ### Step 2: Dynamic Blast Radius Assessment
