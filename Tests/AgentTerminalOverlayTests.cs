@@ -10,6 +10,7 @@ using Xunit;
 
 namespace CanvasDesktop.Tests;
 
+[Collection("ShellViews")]
 public class AgentTerminalOverlayTests
 {
     [Fact]
