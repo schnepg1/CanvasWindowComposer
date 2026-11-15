@@ -326,7 +326,8 @@ internal sealed partial class OverviewManager
             CanCut: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
             CanPaste: true));
         _unifiedDock.Present(true, new ScreenRect(toolbarArea.Left, toolbarArea.Top, toolbarArea.Width, toolbarArea.Height), _appConfig.ShowTaskbarInCanvas);
-        if (_peekWindow is { Visible: true } peek) peek.RaiseWithoutActivation();
+        RegisterCanvasLayers();
+        _layerCoordinator.RaiseAbove(CanvasLayerTier.DockAndToolbars);
     }
 
     private void ToggleControlsPopup(OverviewOverlay pass)

@@ -4,6 +4,9 @@ namespace CanvasDesktop;
 
 internal sealed partial class OverviewManager
 {
+    private readonly CanvasLayerCoordinator _layerCoordinator = new();
+    internal CanvasLayerCoordinator LayerCoordinator => _layerCoordinator;
+
     internal TaskbarPreviewSnapshot TaskbarDiagnostics => _taskbarPreviews.Snapshot();
     internal object InteractionDiagnostics => new
     {
@@ -25,15 +28,42 @@ internal sealed partial class OverviewManager
 
     internal event Action? CanvasPanelsRaised;
 
+    private void RegisterCanvasLayers()
+    {
+        _layerCoordinator.Register(CanvasLayerTier.Zones, "Zones",
+            () => _zoneWindow?.RaiseWithoutActivation(),
+            () => _zoneWindow is { IsVisible: true });
+
+        _layerCoordinator.Register(CanvasLayerTier.BackpackAndDrawers, "BackgroundEditor",
+            () => _backgroundEditor?.RaiseWithoutActivation(),
+            () => _backgroundEditor is { IsVisible: true });
+
+        _layerCoordinator.Register(CanvasLayerTier.BackpackAndDrawers, "Backpack",
+            () => _backpack?.RaiseWithoutActivation(),
+            () => _backpack is { IsVisible: true });
+
+        _layerCoordinator.Register(CanvasLayerTier.BackpackAndDrawers, "TemporaryDrawer",
+            () => _temporaryDrawer?.RaiseWithoutActivation(),
+            () => _temporaryDrawer is { IsVisible: true });
+
+        _layerCoordinator.Register(CanvasLayerTier.DockAndToolbars, "AnnotationToolbar",
+            () => _annotationToolbar?.RaiseWithoutActivation(),
+            () => _annotationToolbar is { IsDisposed: false, Visible: true });
+
+        _layerCoordinator.Register(CanvasLayerTier.DockAndToolbars, "UnifiedDock",
+            () => _unifiedDock?.RaiseWithoutActivation(),
+            () => _unifiedDock is { IsAlive: true, IsVisible: true });
+
+        _layerCoordinator.Register(CanvasLayerTier.PeekPreview, "PeekPreview",
+            () => _peekWindow?.RaiseWithoutActivation(),
+            () => _peekWindow is { IsDisposed: false, Visible: true });
+    }
+
     private void RaiseCanvasPanels()
     {
         if (_disposed) return;
-        if (_unifiedDock?.IsAlive == true) _unifiedDock.RaiseWithoutActivation();
-        _backpack?.RaiseWithoutActivation();
-        _temporaryDrawer?.RaiseWithoutActivation();
-        _backgroundEditor?.RaiseWithoutActivation();
-        _zoneWindow?.RaiseWithoutActivation();
-        _peekWindow?.RaiseWithoutActivation();
+        RegisterCanvasLayers();
+        _layerCoordinator.RaiseAll();
         CanvasPanelsRaised?.Invoke();
     }
 
