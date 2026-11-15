@@ -72,7 +72,9 @@ internal sealed class TeamPodService(WorkspaceService workspace, AnnotationDocum
         var id = Guid.NewGuid();
         var card = new CanvasAnnotation(id, desktop, AnnotationKind.Text, new(x, y), new(x + CardWidth, y + CardHeight), Text: name)
         {
-            AgentTaskId = zone.AgentTaskId, AgentRole = id.ToString("N")
+            AgentTaskId = zone.AgentTaskId,
+            AgentRole = id.ToString("N"),
+            AgentWorkingFolder = AgentCardContext.ProjectAt(workspace.Document.Zones, desktop, new(x, y))?.ProjectFolderPath
         };
         bool Resize(bool redo)
         {

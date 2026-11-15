@@ -189,10 +189,7 @@ internal sealed partial class OverviewManager
         var data = MissionFor(targetAgent);
         var mission = data == null ? null : FindMission(data.Id);
         var project = AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], targetAgent.Layout);
-        var workflow = _telemetryProvider?.Current.Teams.GetValueOrDefault(targetAgent.TaskId);
-        var folder = project?.ProjectFolderPath ?? data?.MissionWorkingFolder ?? targetAgent.Layout.AgentWorkingFolder
-            ?? _telemetryProvider?.GetReportForCard(targetAgent.Layout)?.Worktree;
-        if (string.IsNullOrWhiteSpace(folder)) folder = workflow?.Worktree;
+        var folder = AgentCardContext.ResolveWorkingFolder(targetAgent.Layout, _telemetryProvider, data?.MissionWorkingFolder, project?.ProjectFolderPath);
 
         _ = System.Threading.Tasks.Task.Run(async () =>
         {

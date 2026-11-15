@@ -55,7 +55,8 @@ internal sealed partial class OverviewManager
         _annotationStore=new(path??Path.Combine(AppConfig.ConfigDir,"annotations.json"));
         _cameraBookmarks=new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path??Path.Combine(AppConfig.ConfigDir,"annotations.json")))!,"camera-bookmarks.json"));
         _annotationDocument=_annotationStore.Document;
-        _annotationTool=new(_annotationDocument,_annotationDesktop, item => AnnotationVisual.FitText(item), ResolveArrowEndpoint);
+        _annotationTool = new(_annotationDocument, _annotationDesktop, item => AnnotationVisual.FitText(item), ResolveArrowEndpoint,
+            card => AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], card)?.ProjectFolderPath);
         _annotationTool.SetMode(AnnotationMode.Select);
         _connectionTool=new(_annotationDocument,_annotationDesktop,SelectionItems,Selection);
         _connectionTool.ConnectionCreated += OnConnectionCreated;
