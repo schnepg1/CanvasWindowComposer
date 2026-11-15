@@ -48,8 +48,12 @@ internal sealed class HerdrTerminalConnection : IDisposable
         cancellation.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo(executable)
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
-            RedirectStandardOutput = true, RedirectStandardError = true
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
         };
         start.ArgumentList.Add("connect");
         var bridge = Process.Start(start) ?? throw new IOException("Could not connect to Herdr Core.");

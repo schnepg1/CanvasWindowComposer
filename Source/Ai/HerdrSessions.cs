@@ -119,7 +119,11 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
         var viewerPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Microsoft", "WindowsApps", "wt.exe");
         if (!File.Exists(viewerPath)) throw new InvalidOperationException("Windows Terminal (wt.exe) was not found.");
-        var viewer = new ProcessStartInfo(viewerPath) { UseShellExecute = false };
+        var viewer = new ProcessStartInfo(viewerPath)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+        };
         foreach (var arg in new[] { "-w", "new", "new-tab", FindExecutable(), "attach" })
             viewer.ArgumentList.Add(arg);
         if (observe) viewer.ArgumentList.Add("--observe");
@@ -185,7 +189,11 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
 
         var start = new ProcessStartInfo(FindExecutable())
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
         };
         foreach (var arg in args) start.ArgumentList.Add(arg);
         using var process = Process.Start(start) ?? throw new HerdrException("Herdr Core could not start.");
