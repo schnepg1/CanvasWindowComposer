@@ -18,18 +18,28 @@ internal sealed partial class OverviewManager
     private Rectangle _peekOrigin, _peekTarget;
     private long _peekOpenedAt;
     private long? _peekLeaveAt;
-    private bool _peekAnimating, _peekConsumeUp, _peekClosing, _peekEnterPending;
+    private bool _peekConsumeUp, _peekEnterPending;
+    private CanvasPeekState _peekState = CanvasPeekState.Hidden;
+    internal CanvasPeekState PeekState => _peekState;
     internal CanvasPeekWindow? PeekWindow => _peekWindow;
-    internal bool PeekWorking => _peekWindow?.Working == true;
+    internal bool PeekWorking => _peekState == CanvasPeekState.Interacting && _peekWindow?.Working == true;
+    private bool _peekAnimating => _peekState == CanvasPeekState.OpeningAnimation;
+    private bool _peekClosing => _peekState == CanvasPeekState.Closing;
+
+    private bool HasBlockingModalOrDropdownUi =>
+        _controlsPopup?.Visible == true
+        || _backpack?.Panel.IsOpen == true
+        || _temporaryDrawer?.State.IsOpen == true
+        || _windowContextMenu?.Visible == true
+        || _interactionMenu?.Visible == true
+        || _activeCardMenu?.Visible == true
+        || _annotationToolbar?.HasOpenDropDown == true;
 
     private bool PeekToolsReady => !_disposed && _appConfig.EnableCanvasPeek
         && CurrentMode == OverviewMode.Zooming && _cfg.InputEnabled && InteractionToolReady
         && !CanvasInputSuspended && !WindowNavigationActive && !_inertia.IsActive
         && !GesturePreviewsActive && !IsStartupIntroActive && !GuidedTutorialActive
-        && _controlsPopup?.Visible != true
-        && _backpack?.Panel.IsOpen != true && _temporaryDrawer?.State.IsOpen != true
-        && _windowContextMenu?.Visible != true && _interactionMenu?.Visible != true
-        && _activeCardMenu?.Visible != true && _annotationToolbar?.HasOpenDropDown != true;
+        && !HasBlockingModalOrDropdownUi;
 
     private void PrepareOverviewLiveSources(IEnumerable<IntPtr> handles)
     {
@@ -62,6 +72,7 @@ internal sealed partial class OverviewManager
             ResetPeekHover();
             return;
         }
+        _peekState = CanvasPeekState.DwellHovering;
         _peekPass = pass;
         EnsurePeekTimer();
         if (changed) _visualFrames.Request();
@@ -123,7 +134,8 @@ internal sealed partial class OverviewManager
         bool live = !_wm.UsesCachedPreview(source) && _interactionApi.IsAvailable(source);
         var area = pass.Screen.WorkingArea;
         _peekTarget = CanvasPeekLayout.Place(origin, crop.Size, area, pass.DeviceDpi);
-        _peekAnimating = live && !_appConfig.LowQualityMode && !_appConfig.ReduceStartupMotion && !_prefersReducedStartupMotion();
+        bool animate = live && !_appConfig.LowQualityMode && !_appConfig.ReduceStartupMotion && !_prefersReducedStartupMotion();
+        _peekState = animate ? CanvasPeekState.OpeningAnimation : CanvasPeekState.PreviewOnly;
         _peekOpenedAt = _gestureClock.TickCount64;
         var window = _peekWindow = new CanvasPeekWindow(_peekDwm);
         window.WorkRequested += BeginPeekInteraction;
@@ -191,12 +203,16 @@ internal sealed partial class OverviewManager
             if (!PeekIdentityCurrent) { CloseWindowPeek(); return; }
             if (window.Live && (_wm.UsesCachedPreview(_peekSource) || !_interactionApi.IsAvailable(_peekSource)))
             { CloseWindowPeek(); return; }
-            if (_peekAnimating)
+            if (_peekState == CanvasPeekState.OpeningAnimation)
             {
                 double progress = (now - _peekOpenedAt) / (double)CanvasPeekLayout.AnimationMs;
-                _peekAnimating = progress < 1;
-                if (!_peekAnimating && _peekTimer != null) _peekTimer.Interval = 50;
-                window.SetFrame(CanvasPeekLayout.Animate(_peekOrigin, _peekTarget, progress), _peekAnimating);
+                bool animating = progress < 1;
+                if (!animating)
+                {
+                    _peekState = CanvasPeekState.PreviewOnly;
+                    if (_peekTimer != null) _peekTimer.Interval = 50;
+                }
+                window.SetFrame(CanvasPeekLayout.Animate(_peekOrigin, _peekTarget, progress), animating);
                 if (_peekWindow != window) return;
             }
             if (window.Live) window.UpdateSource(PeekSourceCrop());
@@ -240,8 +256,13 @@ internal sealed partial class OverviewManager
             _peekConsumeUp = false;
             if (_peekWindow == window) window.SetWorking(false, _interactionError ?? "Could not focus this app. Choose Open app.");
             if (!_disposed && CurrentMode == OverviewMode.Zooming) _input.EnableEscHotkey();
+            _peekState = CanvasPeekState.PreviewOnly;
         }
-        else window.RaiseWithoutActivation();
+        else
+        {
+            _peekState = CanvasPeekState.Interacting;
+            window.RaiseWithoutActivation();
+        }
     }
 
     private bool RoutePeekMouse(InteractionMouseEvent input)
@@ -343,20 +364,22 @@ internal sealed partial class OverviewManager
             // The hover wake ends with the dwell; an open peek renews its own lease.
             _wm.SetTransientPreviewWindow(IntPtr.Zero);
             if (dwellWasActive) _visualFrames.Request(); // erase the activation border
+            if (_peekState != CanvasPeekState.Closing)
+                _peekState = CanvasPeekState.Hidden;
         }
     }
 
     private bool CloseWindowPeek(bool focus = false)
     {
-        if (_peekClosing) return false;
-        _peekClosing = true;
-        var window = _peekWindow;
+        if (_peekState == CanvasPeekState.Closing) return false;
         bool wasWorking = PeekWorking;
+        _peekState = CanvasPeekState.Closing;
+        var window = _peekWindow;
         _peekWindow = null;
         _peekSource = _peekCard = _peekRoot = IntPtr.Zero;
         _wm.SetTransientPreviewWindow(IntPtr.Zero);
         _peekPass = null;
-        _peekAnimating = _peekConsumeUp = false;
+        _peekConsumeUp = false;
         _peekEnterPending = false;
         _peekLeaveAt = null;
         ResetPeekHover();
@@ -375,7 +398,7 @@ internal sealed partial class OverviewManager
             }
             if (focus && window != null && !_disposed) FocusOverview();
         }
-        finally { _peekClosing = false; }
+        finally { _peekState = CanvasPeekState.Hidden; }
         return window != null;
     }
 }
