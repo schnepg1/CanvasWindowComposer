@@ -10,16 +10,7 @@ using System.Threading.Tasks;
 
 namespace CanvasDesktop;
 
-internal sealed record AgentProfile(
-    string Id,
-    string DisplayName,
-    string Subtitle,
-    string[] CandidateExecutables,
-    string[] DefaultArgs,
-    string AccentColorHex
-);
-
-internal sealed partial class HerdrSessions
+internal sealed partial class HerdrSessions : IAgentSessionManager
 {
     private const string AgentLabel = "canvas_agent";
 
@@ -31,10 +22,14 @@ internal sealed partial class HerdrSessions
         new("opencode", "OpenCode", "OpenCode Autonomous Agent", ["opencode.cmd", "opencode.exe", "opencode.bat"], [], "#DB2777"),
     ];
 
+    IReadOnlyList<AgentProfile> IAgentSessionManager.SupportedAgents => SupportedAgents;
+
     public static AgentProfile DefaultAgent => SupportedAgents[0];
+    AgentProfile IAgentSessionManager.DefaultAgent => DefaultAgent;
 
     public static AgentProfile FindAgent(string? id) =>
         SupportedAgents.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase)) ?? DefaultAgent;
+    AgentProfile IAgentSessionManager.FindAgent(string? id) => FindAgent(id);
 
     internal sealed record Terminal(string Address, string State, string? AgentState, string? WorkingDirectory)
     {
@@ -47,9 +42,9 @@ internal sealed partial class HerdrSessions
     public async Task<Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null)
     {
         if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder))
-            throw new InvalidOperationException("Choose an existing local working folder.");
+            throw new HerdrException("Choose an existing local working folder.");
         var executable = FindCandidateOnPath(agent.CandidateExecutables)
-            ?? throw new InvalidOperationException($"{agent.DisplayName} ({agent.CandidateExecutables.FirstOrDefault() ?? agent.Id}) was not found on PATH.");
+            ?? throw new HerdrException($"{agent.DisplayName} ({agent.CandidateExecutables.FirstOrDefault() ?? agent.Id}) was not found on PATH.");
         var args = new List<string>
         {
             "run", "--json", "--bg", "--no-parent", "--cwd", folder,
@@ -162,7 +157,7 @@ internal sealed partial class HerdrSessions
         var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs", "herdr-core", "hc.exe");
         return FindOnPath("hc.exe") ?? (File.Exists(installed) ? installed
-            : throw new InvalidOperationException("Herdr Core (hc.exe) was not found."));
+            : throw new HerdrException("Herdr Core (hc.exe) was not found."));
     }
 
     private static async Task<string> Run(CancellationToken cancellation, params string[] args)
@@ -172,7 +167,7 @@ internal sealed partial class HerdrSessions
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
         };
         foreach (var arg in args) start.ArgumentList.Add(arg);
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("Herdr Core could not start.");
+        using var process = Process.Start(start) ?? throw new HerdrException("Herdr Core could not start.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         timeout.CancelAfter(TimeSpan.FromSeconds(12));
         try
@@ -181,7 +176,7 @@ internal sealed partial class HerdrSessions
             var error = process.StandardError.ReadToEndAsync(timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
             if (process.ExitCode != 0)
-                throw new InvalidOperationException("Herdr Core returned an error: " + (await error).Trim());
+                throw new HerdrException("Herdr Core returned an error: " + (await error).Trim());
             return await output;
         }
         catch (OperationCanceledException)
@@ -189,7 +184,11 @@ internal sealed partial class HerdrSessions
             try { if (!process.HasExited) process.Kill(); }
             catch (InvalidOperationException) { }
             if (cancellation.IsCancellationRequested) throw;
-            throw new InvalidOperationException("Herdr Core did not respond in time. Refresh before trying again.");
+            throw new HerdrException("Herdr Core did not respond in time. Refresh before trying again.");
+        }
+        catch (Exception ex) when (ex is not HerdrException and not OperationCanceledException)
+        {
+            throw new HerdrException(ex.Message, ex);
         }
     }
 }
