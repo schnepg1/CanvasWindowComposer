@@ -26,7 +26,13 @@ The Reviewer provides decisive, structured feedback with clear severity classifi
 - Are there unnecessary modifications or scope creep?
 - Does it preserve existing public APIs or handle deprecation gracefully?
 
-### 2. WPF, Desktop & Win32 Invariants
+### 2. Universal Maintainability & Anti-Pattern Audit
+- **Boolean Flag Sprawl**: Has the developer introduced confusing clusters of boolean flags instead of a clean enum or state machine?
+- **Bypassed Coordinators**: Are components making ad-hoc, uncoordinated calls to shared resources (e.g. ad-hoc `SetWindowPos`, `TopMost = true`) instead of registering with existing coordinators (like `CanvasLayerCoordinator`)?
+- **Hidden Invariants**: Are complex domain decisions, multi-clause conditionals, or platform workarounds left uncommented without explaining the architectural *why*?
+- **Over-Engineering Guard**: Has the developer introduced speculative interfaces, redundant wrappers, or premature generic abstractions for single-use logic?
+
+### 3. WPF, Desktop & Win32 Invariants
 - **UI Thread Safety**: Are background thread callbacks updating WPF UI objects without invoking `Dispatcher`?
 - **Unmanaged Resource Handling**: Are `IntPtr` window handles, `HBITMAP`, D3D devices, or DWM thumbnails wrapped in `SafeHandle` or explicitly cleaned up in `Dispose()`?
 - **Global Hook Hygiene**: If low-level hooks (`WH_MOUSE_LL`, `WH_KEYBOARD_LL`) are touched, are they properly unhooked on exit to prevent system lag?

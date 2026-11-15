@@ -35,6 +35,27 @@ The **Worktree Developer (Programmer)** is responsible for writing production co
 
 ---
 
+## Universal Maintainability & Design Invariants
+Every developer agent must adhere to these foundational software engineering principles to ensure components remain maintainable, cohesive, and extensible without premature over-engineering:
+
+1. **Explicit State over Boolean Sprawl**:
+   - Avoid accumulating clusters of ad-hoc boolean flags (`isLoading`, `hasFailed`, `isStarted`, `wasRetried`).
+   - If an entity, window, or workflow has more than two states or transitions, model them explicitly using enums, state machines, or discriminated unions.
+2. **Intent-Revealing Code (Self-Documenting "Why")**:
+   - Do NOT bury compound, multi-clause boolean expressions (`if (a && (b || !c) && d != null)`) inline in core loops or layout methods.
+   - Extract conditions into well-named helper methods or computed properties that express the domain intent (the "why"), accompanied by concise comments explaining non-obvious constraints.
+3. **Subsystem Boundaries & Centralized Coordination**:
+   - Respect existing architectural layers. Never bypass an existing coordinator/manager to invoke ad-hoc low-level system or platform APIs directly.
+   - When multiple components compete for a shared resource (Z-order, focus, display overlay, hardware, caches), route them through the subsystem coordinator (e.g., `CanvasLayerCoordinator`) rather than letting components fight for ownership.
+4. **Pragmatic Abstraction (Rule of Three / YAGNI)**:
+   - Do NOT construct speculative generic frameworks, abstract factories, or multi-layered wrapper tiers for single-use implementations.
+   - Strive for high cohesion and low coupling: keep mechanisms localized. Abstract only when there are 2–3 concrete callers with proven duplication or competing ownership. Prefer code that is easy to read, refactor, and delete.
+5. **Failure Isolation & Defensive Cleanup**:
+   - Wrap external boundary calls (unmanaged interop, process spawning, file/network I/O) with clear error contracts and graceful degradation.
+   - Guarantee that all acquired unmanaged resources, hooks, handles, and event subscriptions are deterministically cleaned up on both success and failure paths.
+
+---
+
 ## Step-by-Step Procedure
 
 ### 1. Worktree & Branch Initialization
