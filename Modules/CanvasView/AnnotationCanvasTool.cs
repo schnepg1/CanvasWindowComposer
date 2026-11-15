@@ -108,8 +108,8 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (creating && Mode == AnnotationMode.Agent)
         {
             var workingFolder = ResolveProjectFolder?.Invoke(result);
-            result = result with { B = new(result.A.X + 240, result.A.Y + 112), Text = "AI agent",
-                AgentTaskId = "standalone-" + result.Id.ToString("N"), AgentRole = result.Id.ToString("N"),
+            result = result with { B = new(result.A.X + 280, result.A.Y + 140), Text = "Codex",
+                AgentTaskId = "standalone-" + result.Id.ToString("N"), AgentRole = "codex",
                 AgentWorkingFolder = workingFolder };
             Mode = AnnotationMode.Select;
             try { AnnotationDocument.Validate([result]); } catch (ArgumentException) { return; }
