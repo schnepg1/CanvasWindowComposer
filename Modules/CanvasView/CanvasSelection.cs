@@ -30,7 +30,7 @@ public sealed class CanvasSelection
         else Replace(_ids.Concat(group).ToArray());
     }
     public void Rectangle(CanvasRect rect, IReadOnlyList<CanvasSelectionItem> items, IEnumerable<CanvasItemId>? baseline = null)
-        => Replace(Expand(items.Where(i => !i.ExcludeFromSpatialGroups).Where(i => i.Key.Kind==CanvasItemKind.Project
+        => Replace(Expand(items.Where(i => i.Key.Kind==CanvasItemKind.Project
             ? Contains(rect,new(i.Bounds.X,i.Bounds.Y)) && Contains(rect,new(i.Bounds.X+i.Bounds.Width,i.Bounds.Y+i.Bounds.Height))
             : i.Annotation is {} annotation ? SelectionGeometry.Intersects(annotation,rect) : Intersects(rect,i.Bounds))
             .Select(i => i.Key), items).Concat(baseline ?? []));
@@ -44,7 +44,7 @@ public sealed class CanvasSelection
             return (x-center.X)*(x-center.X) + (y-center.Y)*(y-center.Y) <= radius*radius;
         }
         // A selected project remains one group, including explicitly assigned members outside its tile.
-        Replace(Expand(items.Where(i => !i.ExcludeFromSpatialGroups).Where(i => i.Key.Kind==CanvasItemKind.Project
+        Replace(Expand(items.Where(i => i.Key.Kind==CanvasItemKind.Project
             ? Math.Pow(Math.Abs(Center(i.Bounds).X-center.X)+i.Bounds.Width/2,2)+Math.Pow(Math.Abs(Center(i.Bounds).Y-center.Y)+i.Bounds.Height/2,2)<=radius*radius
             : i.Annotation is {} annotation ? SelectionGeometry.Within(annotation,center,radius) : Inside(i.Bounds))
             .Select(i => i.Key),items).Concat(add ? _ids.ToArray() : []));

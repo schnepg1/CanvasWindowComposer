@@ -174,4 +174,87 @@ public class SpatialCanvasTests
         var preview=CanvasComposer.Prepare(context,new("Arrange",[new(note.Id.ToString(),"note",note.Text,note.Color)],[],[]));
         Assert.False(CanvasSelection.Intersects(note.Bounds,Assert.Single(preview.Items).Bounds));
     }
+
+    [Fact]
+    public void MarqueeSelectsMultipleAiAgentCardsAndProximityFindsThem()
+    {
+        var card1 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(100, 100, 240, 112), "Agent 1", ExcludeFromSpatialGroups: true);
+        var card2 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(360, 100, 240, 112), "Agent 2", ExcludeFromSpatialGroups: true);
+        var outsideCard = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(1000, 1000, 240, 112), "Agent 3", ExcludeFromSpatialGroups: true);
+        var items = new[] { card1, card2, outsideCard };
+
+        var selection = new CanvasSelection();
+        selection.Rectangle(new(50, 50, 600, 200), items);
+        Assert.True(selection.Ids.SetEquals([card1.Key, card2.Key]));
+
+        selection.Clear();
+        selection.Nearby(new(220, 150), 300, items);
+        Assert.True(selection.Ids.SetEquals([card1.Key, card2.Key]));
+    }
+
+    [Fact]
+    public void MarqueeInsideMissionCanSelectSubsetOfAgentCards()
+    {
+        var card1 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(100, 100, 240, 112), "Agent 1", ExcludeFromSpatialGroups: true);
+        var card2 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(360, 100, 240, 112), "Agent 2", ExcludeFromSpatialGroups: true);
+        var card3 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(100, 230, 240, 112), "Agent 3", ExcludeFromSpatialGroups: true);
+        var mission = new CanvasSelectionItem(new(CanvasItemKind.Project, Guid.NewGuid()), new(50, 50, 600, 400), "Mission",
+            Members: [card1.Key, card2.Key, card3.Key], ExplicitMembersOnly: true);
+        var items = new[] { mission, card1, card2, card3 };
+
+        var selection = new CanvasSelection();
+        // Marquee encloses only card1 and card2, but not mission or card3
+        selection.Rectangle(new(80, 80, 540, 140), items);
+        Assert.True(selection.Ids.SetEquals([card1.Key, card2.Key]));
+
+        // Marquee enclosing the entire mission selects mission and all its cards
+        selection.Rectangle(new(40, 40, 620, 420), items);
+        Assert.True(selection.Ids.SetEquals([mission.Key, card1.Key, card2.Key, card3.Key]));
+    }
+
+    [Fact]
+    public void ControlClickCanMultiSelectAndToggleAiAgentCards()
+    {
+        var card1 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(100, 100, 240, 112), "Agent 1", ExcludeFromSpatialGroups: true);
+        var card2 = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(360, 100, 240, 112), "Agent 2", ExcludeFromSpatialGroups: true);
+        var items = new[] { card1, card2 };
+
+        var selection = new CanvasSelection();
+        var tool = new CanvasSelectionTool(selection, () => items, p => p.World.X < 300 ? card1.Key : card2.Key, () => true);
+
+        // Click card1
+        tool.PointerDown(P(150, 150));
+        tool.PointerUp(P(150, 150));
+        Assert.True(selection.Ids.SetEquals([card1.Key]));
+
+        // Ctrl+Click card2 to multi-select
+        tool.PointerDown(P(400, 150, CanvasModifiers.Control));
+        tool.PointerUp(P(400, 150));
+        Assert.True(selection.Ids.SetEquals([card1.Key, card2.Key]));
+
+        // Ctrl+Click card1 to deselect it
+        tool.PointerDown(P(150, 150, CanvasModifiers.Control));
+        tool.PointerUp(P(150, 150));
+        Assert.True(selection.Ids.SetEquals([card2.Key]));
+    }
+
+    [Fact]
+    public void ProjectExpansionIgnoresAgentCardsWhileDirectMarqueeSelectsBoth()
+    {
+        var card = new CanvasSelectionItem(new(CanvasItemKind.Annotation, Guid.NewGuid()), new(200, 200, 240, 112), "Agent", ExcludeFromSpatialGroups: true);
+        var window = new CanvasSelectionItem(new(CanvasItemKind.Window, Guid.NewGuid()), new(100, 100, 100, 100), "Window");
+        var project = new CanvasSelectionItem(new(CanvasItemKind.Project, Guid.NewGuid()), new(0, 0, 800, 600), "Standard Project");
+        var items = new[] { project, window, card };
+
+        var selection = new CanvasSelection();
+
+        // Picking the project expands spatially to include window, but excludes agent card
+        selection.Pick(project.Key, items, false);
+        Assert.True(selection.Ids.SetEquals([project.Key, window.Key]));
+
+        // Direct marquee enclosing both project and card selects both
+        selection.Clear();
+        selection.Rectangle(new(-10, -10, 850, 650), items);
+        Assert.True(selection.Ids.SetEquals([project.Key, window.Key, card.Key]));
+    }
 }
