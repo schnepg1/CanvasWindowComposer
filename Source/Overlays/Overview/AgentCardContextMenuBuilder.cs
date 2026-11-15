@@ -20,7 +20,8 @@ internal static class AgentCardContextMenuBuilder
         Action onEditPrompt,
         Action onToggleLiveConsole,
         Action onPutInBackpack,
-        Action onDeleteAgentCard)
+        Action onDeleteAgentCard,
+        Action? onToggleExpandCollapse = null)
     {
         var menu = new ContextMenuStrip();
         var activeProfile = HerdrSessions.FindAgent(note.AgentRole);
@@ -64,6 +65,20 @@ internal static class AgentCardContextMenuBuilder
         var toggleConsole = new ToolStripMenuItem("Toggle Live Console");
         toggleConsole.Click += (_, _) => onToggleLiveConsole();
         menu.Items.Add(toggleConsole);
+
+        // 6. Expand to Full Card / Collapse to Satellite Pill
+        if (note.Bounds.Height <= 60)
+        {
+            var expandItem = new ToolStripMenuItem("Expand to Full Card");
+            expandItem.Click += (_, _) => onToggleExpandCollapse?.Invoke();
+            menu.Items.Add(expandItem);
+        }
+        else
+        {
+            var collapseItem = new ToolStripMenuItem("Collapse to Satellite Pill");
+            collapseItem.Click += (_, _) => onToggleExpandCollapse?.Invoke();
+            menu.Items.Add(collapseItem);
+        }
 
         // Separator
         menu.Items.Add(new ToolStripSeparator());

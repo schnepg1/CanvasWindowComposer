@@ -1,7 +1,14 @@
 namespace CanvasDesktop.CanvasView;
 
 public readonly record struct CanvasPoint(double X, double Y);
-public readonly record struct CanvasRect(double X, double Y, double Width, double Height);
+public readonly record struct CanvasRect(double X, double Y, double Width, double Height)
+{
+    public double Right => X + Width;
+    public double Bottom => Y + Height;
+    public bool IntersectsWith(CanvasRect other) =>
+        X < other.X + other.Width && X + Width > other.X &&
+        Y < other.Y + other.Height && Y + Height > other.Y;
+}
 
 /// <summary>
 /// Immutable projection shared by pointer input, painting and hit testing.

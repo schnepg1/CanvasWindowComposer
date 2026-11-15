@@ -82,6 +82,13 @@ internal sealed class MissionCardLayer(
             var accentColor = (Color)ColorConverter.ConvertFromString(agent.AccentColorHex);
             var borderPen = FrozenPen(accentColor, 1.5);
 
+            // Satellite Pill Rendering (Compact subagent card)
+            if (card.Bounds.Height <= 60)
+            {
+                DrawSatellitePill(dc, context, card, rect, agent, accentColor, borderPen);
+                continue;
+            }
+
             double radius = Math.Min(8, Math.Min(rect.Width / 2, rect.Height / 2));
             dc.DrawRoundedRectangle(Surface, borderPen, rect, radius, radius);
 
@@ -219,6 +226,65 @@ internal sealed class MissionCardLayer(
             }
 
             dc.Pop();
+        }
+    }
+
+    private void DrawSatellitePill(
+        DrawingContext dc,
+        OverviewAnnotationContext context,
+        MissionAgentCard card,
+        Rect rect,
+        AgentProfile agent,
+        Color accentColor,
+        Pen borderPen)
+    {
+        double pillRadius = Math.Min(rect.Height / 2, 12);
+        dc.DrawRoundedRectangle(Surface, borderPen, rect, pillRadius, pillRadius);
+
+        if (rect.Width < 20 || rect.Height < 10) return;
+
+        // 1. Small avatar circle with initials
+        double avatarSize = Math.Min(22, Math.Max(12, rect.Height - 8));
+        var avatarRect = new Rect(rect.X + 6, rect.Y + (rect.Height - avatarSize) / 2, avatarSize, avatarSize);
+        var avatarBg = Frozen(Color.FromArgb(45, accentColor.R, accentColor.G, accentColor.B));
+        var avatarPen = FrozenPen(accentColor, 1.0);
+        dc.DrawRoundedRectangle(avatarBg, avatarPen, avatarRect, avatarSize / 2, avatarSize / 2);
+
+        string initial = agent.Id switch
+        {
+            "codex" => "C",
+            "claude" => "CC",
+            "gemini" => "G",
+            "aider" => "A",
+            "opencode" => "O",
+            _ => agent.DisplayName.Length > 0 ? agent.DisplayName.Substring(0, 1) : "A"
+        };
+        var initText = context.Text(initial, Math.Max(7, Math.Min(9, avatarSize - 4)), Brushes.White);
+        initText.Trimming = TextTrimming.None;
+        double initX = avatarRect.X + (avatarRect.Width - initText.Width) / 2.0;
+        double initY = avatarRect.Y + (avatarRect.Height - initText.Height) / 2.0;
+        dc.DrawText(initText, new Point(initX, initY));
+
+        // 2. Telemetry status dot
+        var reported = status(card);
+        var report = reported ?? new(card.Role, AgentExecutionState.Idle);
+        double dotRadius = Math.Min(4, Math.Max(2.5, (rect.Height - 16) / 4));
+        var dotBrush = Frozen(TelemetryStatusPill.ColorFor(report.State));
+        double dotCenterX = rect.Right - 10;
+        double dotCenterY = rect.Y + rect.Height / 2;
+        dc.DrawEllipse(dotBrush, null, new Point(dotCenterX, dotCenterY), dotRadius, dotRadius);
+
+        // 3. Name text
+        double textLeft = avatarRect.Right + 6;
+        double textRight = dotCenterX - dotRadius - 6;
+        if (textRight > textLeft + 8)
+        {
+            var title = context.Text(card.Name, Math.Max(8, Math.Min(11, rect.Height - 14)), Brushes.White);
+            title.MaxTextWidth = textRight - textLeft;
+            title.MaxTextHeight = Math.Max(8, rect.Height - 4);
+            title.Trimming = TextTrimming.CharacterEllipsis;
+            double textY = rect.Y + (rect.Height - title.Height) / 2;
+            dc.DrawText(title, new Point(textLeft, textY));
         }
     }
 

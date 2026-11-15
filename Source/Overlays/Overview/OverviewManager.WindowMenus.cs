@@ -213,7 +213,8 @@ internal sealed partial class OverviewManager
                                 Selection.Clear();
                                 ReconcileVisuals();
                             }
-                        }));
+                        }),
+                        onToggleExpandCollapse: () => pass.BeginInvoke(() => { if (!_disposed) ToggleAgentCardSize(note.Id); }));
                 }
                 else
                 {
