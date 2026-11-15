@@ -63,6 +63,15 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
     public Task<Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
         StartAgent(DefaultAgent, folder, card, cancellation, prompt);
 
+    public async Task StopAgent(Guid card, CancellationToken cancellation)
+    {
+        var terminal = await Find(card, cancellation);
+        if (terminal is { IsLive: true })
+        {
+            await Run(cancellation, "kill", terminal.Address);
+        }
+    }
+
     public async Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation)
     {
         var terminal = await Find(card, cancellation);

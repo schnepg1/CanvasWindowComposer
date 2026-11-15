@@ -13,6 +13,42 @@ public record GitWorktreeInfo(
 
 public static class GitWorktreeHelper
 {
+    public static string FormatEnvironmentLabel(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+            return "📁 (no directory)";
+
+        try
+        {
+            var info = GetWorktreeInfo(folder);
+            if (info.IsWorktree)
+            {
+                var repo = Path.GetFileName((info.RepoRoot ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                if (string.IsNullOrEmpty(repo))
+                    repo = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                var branch = string.IsNullOrEmpty(info.BranchName) ? "unknown" : info.BranchName;
+                return $"🌿 {repo} ↳ {branch}";
+            }
+
+            if (info.IsGitRepo)
+            {
+                var repo = Path.GetFileName((info.RepoRoot ?? folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                var branch = string.IsNullOrEmpty(info.BranchName) ? "HEAD" : info.BranchName;
+                return $"📁 {repo} [{branch}]";
+            }
+
+            var folderName = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrEmpty(folderName))
+                folderName = folder;
+            return $"📁 {folderName}";
+        }
+        catch
+        {
+            var fallback = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return $"📁 {(string.IsNullOrEmpty(fallback) ? folder : fallback)}";
+        }
+    }
+
     public static GitWorktreeInfo GetWorktreeInfo(string? folder)
     {
         if (string.IsNullOrWhiteSpace(folder))

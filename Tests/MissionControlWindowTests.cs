@@ -29,6 +29,9 @@ public class MissionControlWindowTests
         public Task<HerdrSessions.Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null) =>
             StartAgent(DefaultAgent, folder, card, cancellation, prompt);
 
+        public Task StopAgent(Guid card, CancellationToken cancellation) =>
+            Task.CompletedTask;
+
         public Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation) =>
             Task.CompletedTask;
 

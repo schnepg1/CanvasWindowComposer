@@ -10,6 +10,7 @@ internal sealed partial class OverviewManager
     private readonly HerdrSessions _herdrSessions = new();
     private MissionCardLayer? _missionCards;
     private MissionControlWindow? _missionControl;
+    internal MissionControlWindow? MissionControl => _missionControl;
     private System.Windows.Forms.Timer? _missionStatusTimer;
     private CancellationTokenSource? _missionStatusRequest;
     private Dictionary<Guid, HerdrSessions.Terminal> _missionTerminals = new();
@@ -230,7 +231,202 @@ internal sealed partial class OverviewManager
         _missionStatusTimer = null;
     }
 
-    private bool TryInspectMission(CanvasPointer pointer)
+    private bool IsAgentSessionLive(Guid cardId) =>
+        _missionTerminals.TryGetValue(cardId, out var t) && t.IsLive;
+
+    private HerdrSessions.Terminal? GetAgentTerminal(Guid cardId) =>
+        _missionTerminals.TryGetValue(cardId, out var t) ? t : null;
+
+    private string? ResolveCardFolder(MissionAgentCard card)
+    {
+        var data = MissionFor(card);
+        var project = AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], card.Layout);
+        return AgentCardContext.ResolveWorkingFolder(card.Layout, _telemetryProvider, data?.MissionWorkingFolder, project?.ProjectFolderPath);
+    }
+
+    internal void CycleAgentProfile(MissionAgentCard card)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == card.Id);
+        if (current == null) return;
+
+        var currentAgent = HerdrSessions.FindAgent(current.AgentRole);
+        int currentIndex = -1;
+        for (int i = 0; i < HerdrSessions.SupportedAgents.Count; i++)
+        {
+            if (string.Equals(HerdrSessions.SupportedAgents[i].Id, currentAgent.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        int nextIndex = (currentIndex + 1) % HerdrSessions.SupportedAgents.Count;
+        var nextAgent = HerdrSessions.SupportedAgents[nextIndex];
+
+        string newText = current.Text;
+        if (string.IsNullOrWhiteSpace(newText) || newText == "AI agent"
+            || string.Equals(newText, currentAgent.DisplayName, StringComparison.OrdinalIgnoreCase))
+        {
+            newText = nextAgent.DisplayName;
+        }
+
+        var updated = current with { AgentRole = nextAgent.Id, Text = newText };
+        _annotationDocument.Put(updated);
+        _annotationStore?.Save();
+        _visualFrames.Request();
+    }
+
+    private void ToggleAgentSession(MissionAgentCard card)
+    {
+        if (_disposed) return;
+        if (IsAgentSessionLive(card.Id))
+            StopAgentSession(card);
+        else
+            StartAgentSession(card);
+    }
+
+    private async void StartAgentSession(MissionAgentCard card)
+    {
+        if (_disposed) return;
+        var agent = HerdrSessions.FindAgent(card.Role);
+        var folder = ResolveCardFolder(card);
+        if (string.IsNullOrWhiteSpace(folder) || !System.IO.Directory.Exists(folder))
+        {
+            folder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var terminal = await _herdrSessions.StartAgent(agent, folder, card.Id, cts.Token, card.Prompt);
+            _missionTerminals[card.Id] = terminal;
+            _herdrDisconnected = false;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+        }
+        finally
+        {
+            RefreshMissionTerminals();
+            _visualFrames.Request();
+        }
+    }
+
+    private async void StopAgentSession(MissionAgentCard card)
+    {
+        if (_disposed) return;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _herdrSessions.StopAgent(card.Id, cts.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+        }
+        finally
+        {
+            RefreshMissionTerminals();
+            _visualFrames.Request();
+        }
+    }
+
+    private void PromptChangeWorkingFolder(MissionAgentCard card)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == card.Id);
+        if (current == null) return;
+
+        var resolved = ResolveCardFolder(card);
+        using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Select working directory for agent",
+            SelectedPath = !string.IsNullOrWhiteSpace(resolved) && System.IO.Directory.Exists(resolved) ? resolved : "",
+            UseDescriptionForTitle = true
+        };
+
+        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK && System.IO.Directory.Exists(dialog.SelectedPath))
+        {
+            var updated = current with { AgentWorkingFolder = dialog.SelectedPath };
+            _annotationDocument.Put(updated);
+            _annotationStore?.Save();
+            ReconcileVisuals();
+        }
+    }
+
+    private void PromptEditPrompt(MissionAgentCard card)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == card.Id);
+        if (current == null) return;
+
+        var (confirmed, prompt) = PromptConfirmationDialog(CanvasPanelOwner, card.Name, current.AgentPrompt ?? "");
+        if (confirmed)
+        {
+            string newPrompt = string.IsNullOrWhiteSpace(prompt) ? "" : prompt.Trim();
+            if (newPrompt.Length > AnnotationDocument.MaximumTextLength)
+                newPrompt = newPrompt.Substring(0, AnnotationDocument.MaximumTextLength);
+
+            var updated = current with { AgentPrompt = newPrompt };
+            _annotationDocument.Put(updated);
+            _annotationStore?.Save();
+            ReconcileVisuals();
+        }
+    }
+
+    internal void ToggleAgentConsoleDrawer(Guid cardId)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == cardId);
+        if (current == null) return;
+
+        double currentHeight = Math.Abs(current.B.Y - current.A.Y);
+        double newHeight = currentHeight > 200 ? 140 : 340;
+        var updated = current with { B = new(current.B.X, current.A.Y + newHeight) };
+        _annotationDocument.Put(updated);
+        _annotationStore?.Save();
+        _visualFrames.Request();
+    }
+
+    internal bool TryHandleAgentCardClick(CanvasPointer pointer)
+    {
+        var card = HitMissionCard(pointer);
+        if (card == null) return false;
+
+        var bounds = pointer.View.WorldToDip(card.Bounds);
+        var rect = new System.Windows.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        if (!MissionCardLayer.HasCardControls(rect.Width, rect.Height)) return false;
+
+        var pt = new System.Windows.Point(pointer.Position.X, pointer.Position.Y);
+
+        if (MissionCardLayout.AvatarRect(rect).Contains(pt))
+        {
+            CycleAgentProfile(card);
+            return true;
+        }
+
+        if (MissionCardLayout.PlayStopRect(rect).Contains(pt))
+        {
+            ToggleAgentSession(card);
+            return true;
+        }
+
+        if (MissionCardLayout.ConsoleToggleRect(rect).Contains(pt))
+        {
+            ToggleAgentConsoleDrawer(card.Id);
+            return true;
+        }
+
+        if (MissionCardLayout.EnvironmentRect(rect).Contains(pt))
+        {
+            PromptChangeWorkingFolder(card);
+            return true;
+        }
+
+        return false;
+    }
+
+    internal bool TryInspectMission(CanvasPointer pointer)
     {
         if (pointer.Button != CanvasPointerButton.Left || pointer.Modifiers != CanvasModifiers.None || _tools.Active
             || _annotationTool?.Mode is not (AnnotationMode.Select or AnnotationMode.Navigate)
@@ -243,22 +439,8 @@ internal sealed partial class OverviewManager
             if (header.MissionPositionLocked) { ShowMission(header); return true; }
             return false; // The existing zone tool owns the movable frame header.
         }
-        var card = HitMissionCard(pointer);
-        if (card == null) return false;
-        if (IsOpenAgentClick(card, pointer))
-        {
-            ShowMissionAgent(card);
-            return true;
-        }
-        return false;
-    }
 
-    private static bool IsOpenAgentClick(MissionAgentCard card, CanvasPointer pointer)
-    {
-        var bounds = pointer.View.WorldToDip(card.Bounds);
-        if (bounds.Height < 96) return false;
-        var openRect = new System.Windows.Rect(bounds.X + 8, bounds.Y + 68, Math.Min(110, bounds.Width - 16), 26);
-        return openRect.Contains(pointer.Position.X, pointer.Position.Y);
+        return TryHandleAgentCardClick(pointer);
     }
 
     private MissionAgentCard? HitMissionCard(CanvasPointer pointer)

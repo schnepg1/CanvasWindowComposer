@@ -22,6 +22,7 @@ internal interface IAgentSessionManager
 
     Task<HerdrSessions.Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null);
     Task<HerdrSessions.Terminal> StartCodex(string folder, Guid card, CancellationToken cancellation, string? prompt = null);
+    Task StopAgent(Guid card, CancellationToken cancellation);
     Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation);
     Task<Dictionary<Guid, HerdrSessions.Terminal>> Snapshot(CancellationToken cancellation);
     Task<HerdrSessions.Terminal?> Find(Guid card, CancellationToken cancellation);

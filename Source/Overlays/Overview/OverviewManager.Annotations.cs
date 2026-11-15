@@ -95,7 +95,7 @@ internal sealed partial class OverviewManager
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, _connectionTool, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
         _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
-        _missionCards = new(MissionCards, MissionReport, MissionRuntimeLabel);
+        _missionCards = new(MissionCards, MissionReport, MissionRuntimeLabel, ResolveCardFolder, IsAgentSessionLive, GetAgentTerminal);
         _drawingLayers=[_annotationLayer, _missionCards, _composerLayer, _selectionLayer!, _interactionLayer!];
         foreach(var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
         _tools.SetTool(_annotationRouter);

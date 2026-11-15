@@ -14,16 +14,40 @@ internal sealed class TelemetryStatusPill
     internal Badge Badge { get; }
     internal string Label { get; }
     internal VisualBrush Brush { get; }
+    private static Style? _badgeStyle;
+    private static bool _styleLoaded;
+    private static readonly object _styleGate = new();
+
+    private static Style? GetBadgeStyle()
+    {
+        lock (_styleGate)
+        {
+            if (_styleLoaded) return _badgeStyle;
+            _styleLoaded = true;
+            try
+            {
+                var dict = (ResourceDictionary)Application.LoadComponent(
+                    new Uri("/Wpf.Ui;component/Controls/Badge/Badge.xaml", UriKind.Relative));
+                if (dict.Contains(typeof(Badge)))
+                    _badgeStyle = dict[typeof(Badge)] as Style;
+            }
+            catch
+            {
+                _badgeStyle = null;
+            }
+            return _badgeStyle;
+        }
+    }
+
     public TelemetryStatusPill(AgentStatusReport report, double width, string? stateLabel = null)
     {
         Label = "● " + (stateLabel ?? report.State.ToString().ToUpperInvariant())
             + (string.IsNullOrWhiteSpace(report.Detail) ? "" : " · " + report.Detail.Replace('\r', ' ').Replace('\n', ' '));
         var color = ColorFor(report.State);
-        var styles = (ResourceDictionary)Application.LoadComponent(
-            new Uri("/Wpf.Ui;component/Controls/Badge/Badge.xaml", UriKind.Relative));
+        var badgeStyle = GetBadgeStyle();
         Badge = new Badge
         {
-            Style = (Style)styles[typeof(Badge)], Appearance = ControlAppearance.Primary,
+            Style = badgeStyle, Appearance = ControlAppearance.Primary,
             Foreground = new SolidColorBrush(color), Background = new SolidColorBrush(Color.FromRgb(19, 29, 43)),
             BorderBrush = new SolidColorBrush(color), Padding = new Thickness(9, 4, 9, 4),
             Width = width, Height = 28, IsHitTestVisible = false,

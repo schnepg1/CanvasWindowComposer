@@ -12,6 +12,7 @@ internal sealed partial class OverviewManager
     private ContextMenuStrip? _activeCardMenu;
     private ContextMenuStrip? _interactionMenu;
     private ContextMenuStrip? _annotationContextMenu;
+    internal ContextMenuStrip? AnnotationContextMenu => _annotationContextMenu;
 
     private bool TryShowWindowContextMenu(OverviewOverlay pass, Point location)
     {
@@ -157,7 +158,7 @@ internal sealed partial class OverviewManager
         return hadMenu;
     }
 
-    private bool TryShowAnnotationContextMenu(OverviewOverlay pass, Point location)
+    internal bool TryShowAnnotationContextMenu(OverviewOverlay pass, Point location)
     {
         var pointer = Pointer(pass, new MouseEventArgs(MouseButtons.Right, 1, location.X, location.Y, 0));
         if (_annotationDocument != null && _annotationTool != null)
@@ -168,41 +169,64 @@ internal sealed partial class OverviewManager
             if (note != null)
             {
                 _annotationContextMenu?.Dispose();
-                var menu = _annotationContextMenu = new ContextMenuStrip();
-                var putInBackpack = new ToolStripMenuItem("Put in backpack");
-                putInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
-                {
-                    if (!_disposed) CollectNoteInInventory(note.Id);
-                });
-                menu.Items.Add(putInBackpack);
-
-                menu.Items.Add(new ToolStripSeparator());
+                ContextMenuStrip menu;
 
                 if (MissionAgentCard.IsCard(note))
                 {
                     var card = new MissionAgentCard(note);
-                    var openAgent = new ToolStripMenuItem("Open agent");
-                    openAgent.Click += (_, _) => pass.BeginInvoke(() =>
-                    {
-                        if (!_disposed) ShowMissionAgent(card);
-                    });
-                    menu.Items.Add(openAgent);
-
-                    var deleteCard = new ToolStripMenuItem("Delete agent card");
-                    deleteCard.Click += (_, _) => pass.BeginInvoke(() =>
-                    {
-                        if (!_disposed)
+                    bool isLive = IsAgentSessionLive(card.Id);
+                    menu = _annotationContextMenu = AgentCardContextMenuBuilder.Build(
+                        note,
+                        isLive,
+                        agent => pass.BeginInvoke(() =>
                         {
-                            _annotationDocument.Delete(note.DesktopId, note.Id);
-                            _annotationStore?.Save();
-                            Selection.Clear();
-                            ReconcileVisuals();
-                        }
-                    });
-                    menu.Items.Add(deleteCard);
+                            if (!_disposed)
+                            {
+                                var current = _annotationDocument.Items.FirstOrDefault(i => i.Id == note.Id);
+                                if (current != null)
+                                {
+                                    var updated = current with { AgentRole = agent.Id };
+                                    _annotationDocument.Put(updated);
+                                    _annotationStore?.Save();
+                                    ReconcileVisuals();
+                                }
+                            }
+                        }),
+                        () => pass.BeginInvoke(() =>
+                        {
+                            if (!_disposed)
+                            {
+                                if (isLive) StopAgentSession(card);
+                                else StartAgentSession(card);
+                            }
+                        }),
+                        () => pass.BeginInvoke(() => { if (!_disposed) PromptChangeWorkingFolder(card); }),
+                        () => pass.BeginInvoke(() => { if (!_disposed) PromptEditPrompt(card); }),
+                        () => pass.BeginInvoke(() => { if (!_disposed) ToggleAgentConsoleDrawer(note.Id); }),
+                        () => pass.BeginInvoke(() => { if (!_disposed) CollectNoteInInventory(note.Id); }),
+                        () => pass.BeginInvoke(() =>
+                        {
+                            if (!_disposed)
+                            {
+                                _annotationDocument.Delete(note.DesktopId, note.Id);
+                                _annotationStore?.Save();
+                                Selection.Clear();
+                                ReconcileVisuals();
+                            }
+                        }));
                 }
                 else
                 {
+                    menu = _annotationContextMenu = new ContextMenuStrip();
+                    var putInBackpack = new ToolStripMenuItem("Put in backpack");
+                    putInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
+                    {
+                        if (!_disposed) CollectNoteInInventory(note.Id);
+                    });
+                    menu.Items.Add(putInBackpack);
+
+                    menu.Items.Add(new ToolStripSeparator());
+
                     var editNote = new ToolStripMenuItem("Edit note…");
                     editNote.Click += (_, _) => pass.BeginInvoke(() =>
                     {
