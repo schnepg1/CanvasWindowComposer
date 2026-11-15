@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using CanvasDesktop.CanvasView;
 
 namespace CanvasDesktop;
 
@@ -388,10 +389,166 @@ internal sealed partial class OverviewManager
         _visualFrames.Request();
     }
 
+    internal void ExpandAgentCard(Guid cardId)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == cardId);
+        if (current == null) return;
+
+        var obstacles = GetPlacementObstacles(current.DesktopId, excludeId: cardId);
+        var containerZone = GetContainerZoneForCard(current);
+
+        // Test if in-place 280x140 fits without collision
+        var inPlace = new CanvasRect(current.Bounds.X, current.Bounds.Y, SubagentPlacementPlanner.FullCardWidth, SubagentPlacementPlanner.FullCardHeight);
+        CanvasRect newBounds;
+        if (IsPlacementSlotValid(inPlace, obstacles, containerZone))
+        {
+            newBounds = inPlace;
+        }
+        else
+        {
+            // Relocate if needed to avoid overlap
+            newBounds = SubagentPlacementPlanner.PlanPlacement(current.Bounds, obstacles, containerZone);
+        }
+
+        var updated = current with
+        {
+            A = new CanvasPoint(newBounds.X, newBounds.Y),
+            B = new CanvasPoint(newBounds.Right, newBounds.Bottom)
+        };
+        _annotationDocument.Put(updated);
+        _annotationStore?.Save();
+        ReconcileVisuals();
+    }
+
+    internal void CollapseAgentCard(Guid cardId)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == cardId);
+        if (current == null) return;
+
+        var updated = current with
+        {
+            A = new CanvasPoint(current.Bounds.X, current.Bounds.Y),
+            B = new CanvasPoint(current.Bounds.X + SubagentPlacementPlanner.CompactPillWidth, current.Bounds.Y + SubagentPlacementPlanner.CompactPillHeight)
+        };
+        _annotationDocument.Put(updated);
+        _annotationStore?.Save();
+        ReconcileVisuals();
+    }
+
+    internal void ToggleAgentCardSize(Guid cardId)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == cardId);
+        if (current == null) return;
+
+        if (current.Bounds.Height <= 60)
+            ExpandAgentCard(cardId);
+        else
+            CollapseAgentCard(cardId);
+    }
+
+    internal CanvasAnnotation SpawnSubagent(Guid parentCardId, string subagentName, string? profileId = null, string? worktreeFolder = null)
+    {
+        if (_annotationDocument == null)
+            throw new InvalidOperationException("Annotation document is not available.");
+
+        var parent = _annotationDocument.Items.FirstOrDefault(a => a.Id == parentCardId);
+        if (parent == null)
+            throw new ArgumentException($"Parent agent card with ID {parentCardId} not found.", nameof(parentCardId));
+
+        var obstacles = GetPlacementObstacles(parent.DesktopId, excludeId: parentCardId);
+        var containerZone = GetContainerZoneForCard(parent);
+
+        var placement = SubagentPlacementPlanner.PlanPlacement(parent.Bounds, obstacles, containerZone);
+
+        var subagent = new CanvasAnnotation(
+            Id: Guid.NewGuid(),
+            DesktopId: parent.DesktopId,
+            Kind: AnnotationKind.Text,
+            A: new CanvasPoint(placement.X, placement.Y),
+            B: new CanvasPoint(placement.Right, placement.Bottom),
+            Text: subagentName,
+            AgentTaskId: parent.AgentTaskId,
+            AgentRole: profileId ?? parent.AgentRole)
+        {
+            AgentWorkingFolder = worktreeFolder ?? parent.AgentWorkingFolder
+        };
+
+        _annotationDocument.Put(subagent);
+        _annotationStore?.Save();
+        ReconcileVisuals();
+
+        return subagent;
+    }
+
+    private IReadOnlyList<CanvasRect> GetPlacementObstacles(Guid desktopId, Guid? excludeId = null)
+    {
+        var list = new List<CanvasRect>();
+        if (_annotationDocument != null)
+        {
+            foreach (var item in _annotationDocument.Items)
+            {
+                if (item.DesktopId == desktopId && !item.InInventory && item.Id != excludeId)
+                {
+                    list.Add(item.Bounds);
+                }
+            }
+        }
+        if (_windows != null)
+        {
+            foreach (var w in _windows.Windows)
+            {
+                if (!w.ScreenFixed && w.World.W > 0 && w.World.H > 0)
+                {
+                    list.Add(new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H));
+                }
+            }
+        }
+        return list;
+    }
+
+    private CanvasRect? GetContainerZoneForCard(CanvasAnnotation card)
+    {
+        var zone = _placeholderWorkspace?.Document.Zones
+            .FirstOrDefault(z => z.DesktopId == card.DesktopId && z.AgentTaskId == card.AgentTaskId);
+        if (zone != null && zone.Bounds.W > 0 && zone.Bounds.H > 0)
+        {
+            return new CanvasRect(zone.Bounds.X, zone.Bounds.Y, zone.Bounds.W, zone.Bounds.H);
+        }
+        return null;
+    }
+
+    private static bool IsPlacementSlotValid(CanvasRect slot, IReadOnlyList<CanvasRect> obstacles, CanvasRect? containerZone)
+    {
+        if (containerZone.HasValue)
+        {
+            var zone = containerZone.Value;
+            if (slot.X < zone.X || slot.Right > zone.Right || slot.Y < zone.Y || slot.Bottom > zone.Bottom)
+                return false;
+        }
+
+        for (int i = 0; i < obstacles.Count; i++)
+        {
+            if (slot.IntersectsWith(obstacles[i]))
+                return false;
+        }
+
+        return true;
+    }
+
     internal bool TryHandleAgentCardClick(CanvasPointer pointer)
     {
         var card = HitMissionCard(pointer);
         if (card == null) return false;
+
+        // When clicking a compact pill (height <= 60), expand it to full 280x140 card (relocating if needed to avoid overlap)
+        if (card.Bounds.Height <= 60)
+        {
+            ExpandAgentCard(card.Id);
+            return true;
+        }
 
         var bounds = pointer.View.WorldToDip(card.Bounds);
         var rect = new System.Windows.Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
