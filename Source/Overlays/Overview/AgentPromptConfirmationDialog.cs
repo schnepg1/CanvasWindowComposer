@@ -9,26 +9,36 @@ using Wpf.Ui.Controls;
 using Wpf.Ui.Markup;
 using Button = Wpf.Ui.Controls.Button;
 using TextBlock = System.Windows.Controls.TextBlock;
+using TextBox = Wpf.Ui.Controls.TextBox;
 
 namespace CanvasDesktop;
 
 /// <summary>
 /// A small Fluent WPF confirmation popup shown when dropping a text card onto an agent card.
-/// Pressing Enter confirms the prompt; Escape cancels.
+/// The prompt preview is editable before sending. Pressing Enter confirms the prompt; Escape cancels.
 /// </summary>
 internal sealed class AgentPromptConfirmationDialog : FluentWindow
 {
+    private readonly TextBox _promptBox;
     private readonly Button _confirmButton;
     private readonly Button _cancelButton;
+    private readonly string _initialPrompt;
 
     public string AgentName { get; }
-    public string PromptText { get; }
+    public string PromptText
+    {
+        get => _promptBox?.Text ?? _initialPrompt;
+        set
+        {
+            if (_promptBox != null) _promptBox.Text = value ?? "";
+        }
+    }
     public bool Confirmed { get; private set; }
 
     public AgentPromptConfirmationDialog(IntPtr owner, string agentName, string promptText)
     {
         AgentName = string.IsNullOrWhiteSpace(agentName) ? "Agent" : agentName;
-        PromptText = promptText ?? "";
+        _initialPrompt = promptText ?? "";
 
         if (owner != IntPtr.Zero)
         {
@@ -43,10 +53,10 @@ internal sealed class AgentPromptConfirmationDialog : FluentWindow
         }
 
         Title = "Assign Prompt";
-        Width = 420;
-        Height = 250;
-        MinWidth = 360;
-        MinHeight = 220;
+        Width = 440;
+        Height = 270;
+        MinWidth = 380;
+        MinHeight = 250;
         ShowInTaskbar = false;
         Topmost = true;
         ResizeMode = ResizeMode.NoResize;
@@ -85,29 +95,18 @@ internal sealed class AgentPromptConfirmationDialog : FluentWindow
         };
         body.Children.Add(heading);
 
-        var previewBorder = new Border
+        _promptBox = new TextBox
         {
-            Background = new SolidColorBrush(Color.FromRgb(26, 37, 56)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(71, 85, 105)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(10, 8, 10, 8),
-            MaxHeight = 85
-        };
-
-        var scroller = new ScrollViewer
-        {
+            Text = _initialPrompt,
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = false,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new TextBlock
-            {
-                Text = PromptText,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
-                FontSize = 13
-            }
+            MinHeight = 72,
+            MaxHeight = 110,
+            FontSize = 13,
+            PlaceholderText = "Enter prompt for agent..."
         };
-        previewBorder.Child = scroller;
-        body.Children.Add(previewBorder);
+        body.Children.Add(_promptBox);
 
         var buttonGrid = new System.Windows.Controls.Primitives.UniformGrid
         {
@@ -145,6 +144,17 @@ internal sealed class AgentPromptConfirmationDialog : FluentWindow
         {
             if (e.Key == Key.Enter)
             {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                {
+                    if (_promptBox.IsKeyboardFocusWithin)
+                    {
+                        int caret = _promptBox.CaretIndex;
+                        _promptBox.SelectedText = Environment.NewLine;
+                        _promptBox.CaretIndex = caret + Environment.NewLine.Length;
+                        e.Handled = true;
+                        return;
+                    }
+                }
                 e.Handled = true;
                 Confirm();
             }
@@ -157,7 +167,8 @@ internal sealed class AgentPromptConfirmationDialog : FluentWindow
 
         Loaded += (_, _) =>
         {
-            _confirmButton.Focus();
+            _promptBox.Focus();
+            _promptBox.CaretIndex = _promptBox.Text.Length;
         };
     }
 
@@ -177,10 +188,11 @@ internal sealed class AgentPromptConfirmationDialog : FluentWindow
         Close();
     }
 
-    public static bool? ShowPromptConfirmation(IntPtr owner, string agentName, string promptText)
+    public static (bool Confirmed, string Prompt) ShowPromptConfirmation(IntPtr owner, string agentName, string promptText)
     {
         var dialog = new AgentPromptConfirmationDialog(owner, agentName, promptText);
         var result = dialog.ShowDialog();
-        return result ?? (dialog.Confirmed ? true : false);
+        bool confirmed = result ?? dialog.Confirmed;
+        return (confirmed, dialog.PromptText);
     }
 }

@@ -161,16 +161,22 @@ internal sealed partial class OverviewManager
         RefreshToolPreview(); FocusOverview();
     }
 
-    internal Func<IntPtr, string, string, bool?> PromptConfirmationDialog { get; set; } = AgentPromptConfirmationDialog.ShowPromptConfirmation;
+    internal Func<IntPtr, string, string, (bool Confirmed, string Prompt)> PromptConfirmationDialog { get; set; } = AgentPromptConfirmationDialog.ShowPromptConfirmation;
 
     internal bool TryPromptAgentWithTextCard(CanvasAnnotation textCard, MissionAgentCard targetAgent)
     {
         if (_annotationDocument == null) return false;
-        string prompt = textCard.Text.Trim();
-        if (string.IsNullOrWhiteSpace(prompt)) return false;
+        string initialPrompt = textCard.Text.Trim();
+        if (string.IsNullOrWhiteSpace(initialPrompt)) return false;
 
-        bool? confirmed = PromptConfirmationDialog(CanvasPanelOwner, targetAgent.Name, prompt);
-        if (confirmed != true) return true;
+        var (confirmed, prompt) = PromptConfirmationDialog(CanvasPanelOwner, targetAgent.Name, initialPrompt);
+        if (!confirmed) return true;
+
+        prompt = string.IsNullOrWhiteSpace(prompt) ? initialPrompt : prompt.Trim();
+        if (prompt.Length > AnnotationDocument.MaximumTextLength)
+        {
+            prompt = prompt.Substring(0, AnnotationDocument.MaximumTextLength);
+        }
 
         var currentAgent = _annotationDocument.Items.FirstOrDefault(a => a.Id == targetAgent.Id);
         if (currentAgent != null)

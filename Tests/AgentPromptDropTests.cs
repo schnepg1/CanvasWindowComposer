@@ -54,6 +54,10 @@ public class AgentPromptDropTests
             Assert.Equal("Design multi-agent protocol", dialog.PromptText);
             Assert.True(dialog.Topmost);
 
+            // Verify prompt text can be edited
+            dialog.PromptText = "Design multi-agent protocol v2";
+            Assert.Equal("Design multi-agent protocol v2", dialog.PromptText);
+
             // Simulate pressing Enter to confirm
             var enterArgs = new KeyEventArgs(Keyboard.PrimaryDevice, new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "", IntPtr.Zero), 0, Key.Enter)
             {
@@ -63,9 +67,11 @@ public class AgentPromptDropTests
 
             Assert.True(enterArgs.Handled);
             Assert.True(dialog.Confirmed);
+            Assert.Equal("Design multi-agent protocol v2", dialog.PromptText);
 
             // Re-instantiate for Escape test
             var dialog2 = new AgentPromptConfirmationDialog(IntPtr.Zero, "Programmer", "Fix memory leak");
+            dialog2.PromptText = "Edited text that is cancelled";
             var escapeArgs = new KeyEventArgs(Keyboard.PrimaryDevice, new System.Windows.Interop.HwndSource(0, 0, 0, 0, 0, "", IntPtr.Zero), 0, Key.Escape)
             {
                 RoutedEvent = System.Windows.UIElement.PreviewKeyDownEvent
@@ -100,7 +106,7 @@ public class AgentPromptDropTests
                 {
                     capturedName = name;
                     capturedPrompt = prompt;
-                    return true; // Confirmed via Enter
+                    return (true, prompt); // Confirmed via Enter
                 };
 
                 bool handled = overview.TryPromptAgentWithTextCard(textCard, missionCard);
@@ -111,6 +117,40 @@ public class AgentPromptDropTests
 
                 var updatedAgent = overview.Annotations!.Items.First(a => a.Id == agentCard.Id);
                 Assert.Equal("Analyze repo performance", updatedAgent.AgentPrompt);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+    }
+
+    [Fact]
+    public void TryPromptAgentWithTextCard_WhenEditedInDialog_SetsEditedPromptOnCard()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop = Guid.NewGuid();
+            var agentCard = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(100, 100), new(340, 212), Text: "Lead Agent", AgentTaskId: "task-105", AgentRole: "lead");
+            var textCard = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(500, 500), new(740, 548), Text: "Implement cache");
+
+            string folder = Path.Combine(Path.GetTempPath(), "test-drop-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var overview = CreateTestOverview(desktop, folder, [agentCard, textCard]);
+                var missionCard = new MissionAgentCard(agentCard);
+
+                // User edited prompt in dialog before hitting Enter
+                overview.PromptConfirmationDialog = (owner, name, prompt) =>
+                    (true, prompt + " and add unit tests");
+
+                bool handled = overview.TryPromptAgentWithTextCard(textCard, missionCard);
+
+                Assert.True(handled);
+                var updatedAgent = overview.Annotations!.Items.First(a => a.Id == agentCard.Id);
+                Assert.Equal("Implement cache and add unit tests", updatedAgent.AgentPrompt);
             }
             finally
             {
@@ -136,7 +176,7 @@ public class AgentPromptDropTests
                 using var overview = CreateTestOverview(desktop, folder, [agentCard, textCard]);
                 var missionCard = new MissionAgentCard(agentCard);
 
-                overview.PromptConfirmationDialog = (owner, name, prompt) => false; // Cancelled
+                overview.PromptConfirmationDialog = (owner, name, prompt) => (false, prompt); // Cancelled
 
                 bool handled = overview.TryPromptAgentWithTextCard(textCard, missionCard);
 
@@ -172,7 +212,7 @@ public class AgentPromptDropTests
                     dialogShown = true;
                     Assert.Equal("Worker Agent", name);
                     Assert.Equal("Run full security audit", prompt);
-                    return true; // Confirmed
+                    return (true, prompt); // Confirmed
                 };
 
                 // Calculate translation to drop textCard on top of agentCard
