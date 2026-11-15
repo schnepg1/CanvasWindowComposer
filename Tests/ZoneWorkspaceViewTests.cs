@@ -119,6 +119,37 @@ public class ZoneWorkspaceViewTests
         });
     }
 
+    [Fact]
+    public void DeleteAreaDialogHasBothChoicesAndDefaultsToBorderOnly()
+    {
+        OnSta(() =>
+        {
+            var zone = new WorkspaceZone { Name = "Alpha Project", Bounds = new WorldRect { W = 400, H = 300 } };
+            var dialog = WorkspaceInteractionDialogs.CreateDeleteAreaDialog(IntPtr.Zero, zone.Name, out var getResult);
+            try
+            {
+                var radios = Descendants(dialog).OfType<RadioButton>().ToArray();
+                Assert.Equal(2, radios.Length);
+                var borderOnly = radios.Single(r => System.Windows.Automation.AutomationProperties.GetName(r) == "Delete zone border only");
+                var everything = radios.Single(r => System.Windows.Automation.AutomationProperties.GetName(r) == "Delete everything in the zone");
+                Assert.True(borderOnly.IsChecked);
+                Assert.False(everything.IsChecked);
+                Assert.Equal(ZoneDeleteMode.BorderOnly, getResult());
+
+                everything.IsChecked = true;
+                Assert.Equal(ZoneDeleteMode.Everything, getResult());
+
+                var buttons = Descendants(dialog).OfType<Button>().ToArray();
+                Assert.Contains(buttons, b => Equals(b.Content, "Delete"));
+                Assert.Contains(buttons, b => Equals(b.Content, "Cancel"));
+            }
+            finally
+            {
+                dialog.Close();
+            }
+        });
+    }
+
     private static TextBox Search(DependencyObject window) =>
         Descendants(window).OfType<TextBox>().Single(t => t.Name == "ProjectSearch");
 

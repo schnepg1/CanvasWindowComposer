@@ -280,6 +280,13 @@ internal sealed partial class OverviewManager
                 });
                 menu.Items.Add(putProjectInBackpack);
 
+                var deleteArea = new ToolStripMenuItem("Delete area…");
+                deleteArea.Click += (_, _) => pass.BeginInvoke(() =>
+                {
+                    if (!_disposed) DeleteProjectZone(pass, zone.Id);
+                });
+                menu.Items.Add(deleteArea);
+
                 PInvoke.SetForegroundWindow((HWND)pass.Handle);
                 menu.Show(pass, location);
                 return true;
@@ -290,6 +297,7 @@ internal sealed partial class OverviewManager
     }
 
     internal Func<string?, string?>? ProjectFolderPickerOverride { get; set; }
+    internal Func<ZoneView, ZoneDeleteMode?>? ConfirmDeleteZoneOverride { get; set; }
 
     private void ChooseProjectFolder(OverviewOverlay pass, Guid zoneId)
     {
@@ -297,5 +305,74 @@ internal sealed partial class OverviewManager
         WorkspaceDialogs.ChooseProjectFolder(pass, _placeholderWorkspace, zoneId,
             report: msg => _zoneWindow?.Report(msg),
             folderPicker: ProjectFolderPickerOverride);
+    }
+
+    private void DeleteProjectZone(OverviewOverlay pass, Guid zoneId)
+    {
+        var zone = _zones?.Items.FirstOrDefault(z => z.Id == zoneId);
+        if (zone == null) return;
+
+        ZoneDeleteMode? mode = ConfirmDeleteZoneOverride != null
+            ? ConfirmDeleteZoneOverride(zone)
+            : WorkspaceInteractionDialogs.PromptDeleteArea(pass.Handle, zone.Name);
+
+        if (mode == null) return;
+
+        if (mode.Value == ZoneDeleteMode.Everything)
+        {
+            var subtree = _zones?.Subtree(zone.Id) ?? [];
+            var allItemIds = subtree.SelectMany(z => z.ItemIds).ToHashSet();
+
+            if (_placeholderWorkspace != null)
+            {
+                var zoneRect = zone.Bounds;
+                var itemsToDelete = _placeholderWorkspace.Document.Items
+                    .Where(i => i.DesktopId == _zoneDesktop && (allItemIds.Contains(i.Id) || TemporaryAreaLayout.ContainsCenter(zoneRect, i.Bounds)))
+                    .Select(i => i.Id)
+                    .ToList();
+
+                foreach (var itemId in itemsToDelete)
+                {
+                    _placeholderWorkspace.Forget(itemId);
+                }
+            }
+
+            if (_annotationDocument != null)
+            {
+                var zRect = new CanvasRect(zone.Bounds.X, zone.Bounds.Y, zone.Bounds.W, zone.Bounds.H);
+                var notesToDelete = _annotationDocument.Items
+                    .Where(a => a.DesktopId == _zoneDesktop && CanvasSelection.Contains(zRect, CanvasSelection.Center(a.Bounds)))
+                    .Select(a => a.Id)
+                    .ToArray();
+
+                if (notesToDelete.Length > 0)
+                {
+                    _annotationDocument.DeleteWithConnectors(_zoneDesktop, notesToDelete);
+                    _annotationStore?.Save();
+                }
+            }
+
+            if (_zones != null)
+            {
+                foreach (var child in subtree.Where(c => c.Id != zone.Id))
+                {
+                    _zones.Remove(child.Id);
+                }
+            }
+        }
+
+        if (_zones != null)
+        {
+            _zones.Remove(zone.Id);
+        }
+        else if (_placeholderWorkspace != null)
+        {
+            _placeholderWorkspace.Zones.Remove(zone.Id);
+        }
+
+        Selection.Clear();
+        CleanOrphanedArrows();
+        RefreshZoneLayout();
+        ReconcileVisuals();
     }
 }

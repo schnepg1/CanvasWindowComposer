@@ -142,4 +142,91 @@ internal static partial class WorkspaceInteractionDialogs
         root.Children.Add(list);
         return dialog;
     }
+
+    public static ZoneDeleteMode? PromptDeleteArea(IntPtr owner, string areaName)
+    {
+        var dialog = CreateDeleteAreaDialog(owner, areaName, out var getResult);
+        if (dialog.ShowDialog() == true) return getResult();
+        return null;
+    }
+
+    internal static Window CreateDeleteAreaDialog(IntPtr owner, string areaName, out Func<ZoneDeleteMode> getResult)
+    {
+        var dialog = Create(owner, "Delete area", 500, 320);
+        var root = new StackPanel { Margin = new Thickness(24) };
+        dialog.Content = root;
+
+        root.Children.Add(new TextBlock
+        {
+            Text = $"Delete the project area ‘{areaName}’?",
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 16,
+            Foreground = ZoneTheme.Brush("#F1F5F9"),
+            Margin = new Thickness(0, 0, 0, 8),
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        root.Children.Add(new TextBlock
+        {
+            Text = "Choose whether to remove only the area boundary or delete all contents inside it:",
+            Foreground = ZoneTheme.Brush("#94A3B8"),
+            Margin = new Thickness(0, 0, 0, 16),
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var borderOnlyRadio = new RadioButton
+        {
+            Content = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = "Delete zone border only", FontWeight = FontWeights.Medium, Foreground = ZoneTheme.Brush("#F1F5F9") },
+                    new TextBlock { Text = "Keep all windows, folder placeholders, and notes in place on the canvas.", FontSize = 12, Foreground = ZoneTheme.Brush("#94A3B8"), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap }
+                }
+            },
+            GroupName = "DeleteOption",
+            IsChecked = true,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        System.Windows.Automation.AutomationProperties.SetName(borderOnlyRadio, "Delete zone border only");
+
+        var everythingRadio = new RadioButton
+        {
+            Content = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = "Delete everything in the zone", FontWeight = FontWeights.Medium, Foreground = ZoneTheme.Brush("#F1F5F9") },
+                    new TextBlock { Text = "Delete the area border and all windows, files, and notes inside this zone.", FontSize = 12, Foreground = ZoneTheme.Brush("#FCA5A5"), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap }
+                }
+            },
+            GroupName = "DeleteOption",
+            IsChecked = false,
+            Margin = new Thickness(0, 0, 0, 20)
+        };
+        System.Windows.Automation.AutomationProperties.SetName(everythingRadio, "Delete everything in the zone");
+
+        root.Children.Add(borderOnlyRadio);
+        root.Children.Add(everythingRadio);
+
+        var actions = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2, Margin = new Thickness(0, 8, 0, 0) };
+        var confirm = ZoneTheme.Button("Delete", () => dialog.DialogResult = true);
+        confirm.IsDefault = true;
+        var cancel = ZoneTheme.Button("Cancel", () => dialog.DialogResult = false);
+        cancel.IsCancel = true;
+        confirm.Margin = new Thickness(0, 0, 6, 0);
+        cancel.Margin = new Thickness(6, 0, 0, 0);
+        actions.Children.Add(confirm);
+        actions.Children.Add(cancel);
+        root.Children.Add(actions);
+
+        getResult = () => everythingRadio.IsChecked == true ? ZoneDeleteMode.Everything : ZoneDeleteMode.BorderOnly;
+        return dialog;
+    }
+}
+
+public enum ZoneDeleteMode
+{
+    BorderOnly,
+    Everything
 }
