@@ -216,9 +216,14 @@ internal sealed class OverviewOverlay : Form
 
     /// <summary>
     /// Apply mode-dependent ex-style flags in a single round-trip:
-    /// <c>WS_EX_LAYERED</c> (kicks DWM composition — used in Panning to
-    /// defeat background-throttle) and <c>WS_EX_NOACTIVATE</c> (prevents
-    /// the form from becoming foreground).
+    /// <para>
+    /// <c>WS_EX_LAYERED</c> prevents Windows DWM and modern graphics runtimes (Chromium, Edge, WPF/Direct3D)
+    /// from applying background occlusion throttling (~1 FPS) to the source app while the canvas overlay is active.
+    /// Toggled via DWM occlusion bypass during panning, startup animations, window interaction, and PeekWorking ("Work here").
+    /// </para>
+    /// <para>
+    /// <c>WS_EX_NOACTIVATE</c> prevents the overview overlay form from becoming foreground.
+    /// </para>
     /// </summary>
     public void SetModeStyle(bool layered, bool noActivate)
     {

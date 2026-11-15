@@ -887,6 +887,14 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         }
     }
 
+    /// <summary>
+    /// Indicates whether the overview overlay must enable WS_EX_LAYERED to prevent Windows DWM
+    /// and modern graphics runtimes (Chromium, Edge, WPF/Direct3D) from applying background occlusion throttling (~1 FPS)
+    /// to the source app. Required during Panning, startup animations, window interaction, and PeekWorking ("Work here").
+    /// </summary>
+    private bool RequiresDwmOcclusionBypass =>
+        CurrentMode == OverviewMode.Panning || IsStartupIntroActive || _windowInteraction.Active || PeekWorking;
+
     private void ApplyConfig()
 
     {
@@ -926,7 +934,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         }
 
-        bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive || _windowInteraction.Active || PeekWorking;
+        bool wantLayered = RequiresDwmOcclusionBypass;
 
         bool wantNoActivate = CurrentMode == OverviewMode.Panning || _windowInteraction.Active;
 

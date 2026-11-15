@@ -9,6 +9,18 @@ using Microsoft.Win32.SafeHandles;
 
 namespace CanvasDesktop;
 
+internal enum CanvasInputHostExitCode
+{
+    Success = 0,
+    InvalidCommandLineArgs = 1,
+    TargetThreadProcessMismatch = 2,
+    ModulePathResolutionFailed = 3,
+    FilterModuleLoadFailed = 4,
+    MouseHookInstallationFailed = 5,
+    CallWndProcHookInstallationFailed = 6,
+    ConfirmationVerificationFailed = 7
+}
+
 /// <summary>Owns native mouse filters in the receiving GUI threads, across process bitness.</summary>
 internal sealed class WindowInteractionInputGuard : IDisposable
 {
@@ -78,14 +90,20 @@ internal sealed class WindowInteractionInputGuard : IDisposable
                     completed = ready.Wait(TimeSpan.FromSeconds(2));
                 }
                 if (!completed || ready.Result != "ready" || host.HasExited)
-                    throw new InvalidOperationException("Native input filter did not become ready.");
+                {
+                    string details = host.HasExited ? $" ({FormatExitCode(host.ExitCode)})" : string.Empty;
+                    throw new InvalidOperationException($"Native input filter did not become ready{details}.");
+                }
                 _hosts.Add(thread, host);
                 _snapshot = System.Linq.Enumerable.ToArray(_hosts.Values);
                 return true;
             }
             catch (Exception ex)
             {
-                TrayApp.Log("Window interaction native input could not start: " + ex.Message);
+                string exitDetail = host is { HasExited: true } && !ex.Message.Contains("exitCode=")
+                    ? $" ({FormatExitCode(host.ExitCode)})"
+                    : string.Empty;
+                TrayApp.Log($"Window interaction native input could not start: {ex.Message}{exitDetail}");
                 if (host != null) Stop(host);
                 return false;
             }
@@ -103,6 +121,9 @@ internal sealed class WindowInteractionInputGuard : IDisposable
             _hosts.Clear();
         }
     }
+
+    private static string FormatExitCode(int exitCode) =>
+        $"exitCode={exitCode} ({(Enum.IsDefined(typeof(CanvasInputHostExitCode), exitCode) ? (CanvasInputHostExitCode)exitCode : "Unknown")})";
 
     private static void Stop(Process host)
     {
