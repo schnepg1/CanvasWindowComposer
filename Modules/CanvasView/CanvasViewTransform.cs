@@ -53,4 +53,10 @@ public readonly record struct CanvasViewTransform
     }
     public CanvasRect LocalToDip(CanvasRect r) => new(r.X / DpiX, r.Y / DpiY, r.Width / DpiX, r.Height / DpiY);
     public CanvasRect WorldToDip(CanvasRect r) => LocalToDip(WorldToLocal(r));
+    public CanvasPoint WorldToScreen(CanvasPoint p) => WorldToVirtual(p);
+    public CanvasRect WorldToScreen(CanvasRect r)
+    {
+        var p = WorldToVirtual(new CanvasPoint(r.X, r.Y));
+        return new CanvasRect(p.X, p.Y, r.Width * Zoom, r.Height * Zoom);
+    }
 }

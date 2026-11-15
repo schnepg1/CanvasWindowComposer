@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Windows;
 using CanvasDesktop.CanvasView;
 
 namespace CanvasDesktop;
@@ -15,6 +16,9 @@ internal sealed partial class OverviewManager
     private System.Windows.Forms.Timer? _missionStatusTimer;
     private CancellationTokenSource? _missionStatusRequest;
     private Dictionary<Guid, HerdrSessions.Terminal> _missionTerminals = new();
+    private readonly Dictionary<Guid, AgentTerminalOverlayWindow> _activeTerminalOverlays = new();
+    internal AgentTerminalOverlayWindow? ActiveTerminalOverlay => _activeTerminalOverlays.Values.FirstOrDefault();
+    internal IReadOnlyDictionary<Guid, AgentTerminalOverlayWindow> ActiveTerminalOverlays => _activeTerminalOverlays;
     private bool _herdrDisconnected;
     private Guid? _terminalCard;
     private bool _terminalWasAnchored;
@@ -227,9 +231,16 @@ internal sealed partial class OverviewManager
     private void DisposeMissionControl()
     {
         CloseMissionControl();
+        CloseTerminalOverlays();
         _missionStatusRequest?.Cancel();
         _missionStatusTimer?.Dispose();
         _missionStatusTimer = null;
+    }
+
+    internal void CloseMissions()
+    {
+        CloseMissionControl();
+        CloseTerminalOverlays();
     }
 
     private bool IsAgentSessionLive(Guid cardId) =>
@@ -386,7 +397,133 @@ internal sealed partial class OverviewManager
         var updated = current with { B = new(current.B.X, current.A.Y + newHeight) };
         _annotationDocument.Put(updated);
         _annotationStore?.Save();
+
+        if (newHeight >= 180)
+        {
+            OpenAgentTerminalOverlay(cardId, updated);
+        }
+        else
+        {
+            CloseAgentTerminalOverlay(cardId);
+        }
+
         _visualFrames.Request();
+    }
+
+    internal AgentTerminalOverlayWindow? OpenAgentTerminalOverlay(Guid cardId, CanvasAnnotation? card = null)
+    {
+        if (_disposed) return null;
+        card ??= _annotationDocument?.Items.FirstOrDefault(item => item.Id == cardId);
+        if (card == null) return null;
+
+        if (_activeTerminalOverlays.TryGetValue(cardId, out var existing))
+        {
+            UpdateTerminalOverlayPlacement(existing, card);
+            existing.Show();
+            existing.Activate();
+            existing.Focus();
+            return existing;
+        }
+
+        var profile = HerdrSessions.FindAgent(card.AgentRole);
+        var overlay = new AgentTerminalOverlayWindow(HerdrSessions, cardId, profile, onCollapse: () => ToggleAgentConsoleDrawer(cardId));
+        _activeTerminalOverlays[cardId] = overlay;
+
+        var pass = _passes.FirstOrDefault(p => p.Screen.Primary) ?? _passes.FirstOrDefault();
+        if (pass != null && pass.IsHandleCreated)
+        {
+            overlay.Show(pass);
+        }
+        else
+        {
+            overlay.Show();
+        }
+
+        UpdateTerminalOverlayPlacement(overlay, card);
+        _ = overlay.Attach(observe: false);
+        overlay.Activate();
+        overlay.Focus();
+        return overlay;
+    }
+
+    internal void CloseAgentTerminalOverlay(Guid cardId)
+    {
+        if (_activeTerminalOverlays.Remove(cardId, out var overlay))
+        {
+            overlay.Dispose();
+        }
+    }
+
+    internal void FocusAgentTerminalOverlay(Guid cardId)
+    {
+        if (_disposed) return;
+        if (_activeTerminalOverlays.TryGetValue(cardId, out var overlay))
+        {
+            overlay.Activate();
+            overlay.Focus();
+        }
+        else
+        {
+            OpenAgentTerminalOverlay(cardId);
+        }
+    }
+
+    internal void CloseTerminalOverlays()
+    {
+        foreach (var overlay in _activeTerminalOverlays.Values)
+        {
+            overlay.Dispose();
+        }
+        _activeTerminalOverlays.Clear();
+    }
+
+    internal void UpdateTerminalOverlaysPlacement()
+    {
+        if (_disposed || _activeTerminalOverlays.Count == 0) return;
+
+        var pass = _passes.FirstOrDefault(p => p.Screen.Primary) ?? _passes.FirstOrDefault();
+        double dpiX = (pass?.DeviceDpi ?? 96.0) / 96.0;
+        double dpiY = (pass?.DeviceDpi ?? 96.0) / 96.0;
+        var dpi = new DpiScale(dpiX, dpiY);
+        var monitorBounds = pass != null ? pass.Screen.Bounds : new System.Drawing.Rectangle(0, 0, 1920, 1080);
+        var workingArea = pass != null ? pass.Screen.WorkingArea : monitorBounds;
+        var transform = new CanvasViewTransform(_camera.X, _camera.Y, _camera.Zoom,
+            new CanvasRect(monitorBounds.X, monitorBounds.Y, monitorBounds.Width, monitorBounds.Height), dpiX, dpiY);
+
+        List<Guid>? toRemove = null;
+        foreach (var (cardId, overlay) in _activeTerminalOverlays)
+        {
+            var card = _annotationDocument?.Items.FirstOrDefault(item => item.Id == cardId);
+            if (card == null || Math.Abs(card.B.Y - card.A.Y) < 180)
+            {
+                (toRemove ??= new()).Add(cardId);
+                continue;
+            }
+
+            overlay.UpdatePlacement(transform, card.Bounds, dpi, workingArea);
+        }
+
+        if (toRemove != null)
+        {
+            foreach (var id in toRemove)
+            {
+                CloseAgentTerminalOverlay(id);
+            }
+        }
+    }
+
+    private void UpdateTerminalOverlayPlacement(AgentTerminalOverlayWindow overlay, CanvasAnnotation card)
+    {
+        var pass = _passes.FirstOrDefault(p => p.Screen.Primary) ?? _passes.FirstOrDefault();
+        double dpiX = (pass?.DeviceDpi ?? 96.0) / 96.0;
+        double dpiY = (pass?.DeviceDpi ?? 96.0) / 96.0;
+        var dpi = new DpiScale(dpiX, dpiY);
+        var monitorBounds = pass != null ? pass.Screen.Bounds : new System.Drawing.Rectangle(0, 0, 1920, 1080);
+        var workingArea = pass != null ? pass.Screen.WorkingArea : monitorBounds;
+        var transform = new CanvasViewTransform(_camera.X, _camera.Y, _camera.Zoom,
+            new CanvasRect(monitorBounds.X, monitorBounds.Y, monitorBounds.Width, monitorBounds.Height), dpiX, dpiY);
+
+        overlay.UpdatePlacement(transform, card.Bounds, dpi, workingArea);
     }
 
     internal void ExpandAgentCard(Guid cardId)
@@ -426,6 +563,8 @@ internal sealed partial class OverviewManager
         if (_disposed || _annotationDocument == null) return;
         var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == cardId);
         if (current == null) return;
+
+        CloseAgentTerminalOverlay(cardId);
 
         var updated = current with
         {

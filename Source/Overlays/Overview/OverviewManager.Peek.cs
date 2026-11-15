@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace CanvasDesktop;
@@ -33,7 +34,8 @@ internal sealed partial class OverviewManager
         || _windowContextMenu?.Visible == true
         || _interactionMenu?.Visible == true
         || _activeCardMenu?.Visible == true
-        || _annotationToolbar?.HasOpenDropDown == true;
+        || _annotationToolbar?.HasOpenDropDown == true
+        || _activeTerminalOverlays.Values.Any(o => o.IsVisible && (o.IsActive || o.IsKeyboardFocusWithin));
 
     private bool PeekToolsReady => !_disposed && _appConfig.EnableCanvasPeek
         && CurrentMode == OverviewMode.Zooming && _cfg.InputEnabled && InteractionToolReady

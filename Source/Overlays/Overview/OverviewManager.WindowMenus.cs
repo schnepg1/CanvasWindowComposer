@@ -202,12 +202,35 @@ internal sealed partial class OverviewManager
                         }),
                         () => pass.BeginInvoke(() => { if (!_disposed) PromptChangeWorkingFolder(card); }),
                         () => pass.BeginInvoke(() => { if (!_disposed) PromptEditPrompt(card); }),
-                        () => pass.BeginInvoke(() => { if (!_disposed) ToggleAgentConsoleDrawer(note.Id); }),
-                        () => pass.BeginInvoke(() => { if (!_disposed) CollectNoteInInventory(note.Id); }),
                         () => pass.BeginInvoke(() =>
                         {
                             if (!_disposed)
                             {
+                                var current = _annotationDocument?.Items.FirstOrDefault(i => i.Id == note.Id);
+                                double height = current != null ? Math.Abs(current.B.Y - current.A.Y) : note.Bounds.Height;
+                                if (isLive && height >= 180)
+                                {
+                                    FocusAgentTerminalOverlay(note.Id);
+                                }
+                                else
+                                {
+                                    ToggleAgentConsoleDrawer(note.Id);
+                                }
+                            }
+                        }),
+                        () => pass.BeginInvoke(() =>
+                        {
+                            if (!_disposed)
+                            {
+                                CloseAgentTerminalOverlay(note.Id);
+                                CollectNoteInInventory(note.Id);
+                            }
+                        }),
+                        () => pass.BeginInvoke(() =>
+                        {
+                            if (!_disposed)
+                            {
+                                CloseAgentTerminalOverlay(note.Id);
                                 _annotationDocument.Delete(note.DesktopId, note.Id);
                                 _annotationStore?.Save();
                                 Selection.Clear();

@@ -259,6 +259,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             || _wm.UsesCachedPreview(_windowInteraction.Window))) EndWindowInteraction(focus: true);
 
         RefreshZoneAnnotations();
+        UpdateTerminalOverlaysPlacement();
         if (!isMoving) RaiseCanvasPanels();
         // Publish the GPU background camera after DWM properties and the staged
 
@@ -1294,6 +1295,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         Attempt(DisposeBackgrounds);
         Attempt(DisposeAnnotations);
+        Attempt(CloseTerminalOverlays);
 
         Attempt(() => FinishStartupIntro(refresh: false));
 
