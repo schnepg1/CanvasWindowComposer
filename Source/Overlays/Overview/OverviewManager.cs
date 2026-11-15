@@ -926,7 +926,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         }
 
-        bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive;
+        bool wantLayered = CurrentMode == OverviewMode.Panning || IsStartupIntroActive || _windowInteraction.Active || PeekWorking;
 
         bool wantNoActivate = CurrentMode == OverviewMode.Panning || _windowInteraction.Active;
 

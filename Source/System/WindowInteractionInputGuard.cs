@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
 
 namespace CanvasDesktop;
@@ -60,7 +62,22 @@ internal sealed class WindowInteractionInputGuard : IDisposable
                 start.ArgumentList.Add(window.ToInt64().ToString(System.Globalization.CultureInfo.InvariantCulture));
                 host = _startHost(start) ?? throw new InvalidOperationException("Native input host did not start.");
                 var ready = host.StandardOutput.ReadLineAsync();
-                if (!ready.Wait(TimeSpan.FromSeconds(2)) || ready.Result != "ready" || host.HasExited)
+                bool completed;
+                if (thread == PInvoke.GetCurrentThreadId())
+                {
+                    var clock = Stopwatch.StartNew();
+                    while (!ready.IsCompleted && clock.Elapsed < TimeSpan.FromSeconds(2))
+                    {
+                        Application.DoEvents();
+                        Thread.Sleep(5);
+                    }
+                    completed = ready.IsCompleted;
+                }
+                else
+                {
+                    completed = ready.Wait(TimeSpan.FromSeconds(2));
+                }
+                if (!completed || ready.Result != "ready" || host.HasExited)
                     throw new InvalidOperationException("Native input filter did not become ready.");
                 _hosts.Add(thread, host);
                 _snapshot = System.Linq.Enumerable.ToArray(_hosts.Values);

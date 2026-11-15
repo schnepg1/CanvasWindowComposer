@@ -155,7 +155,7 @@ internal sealed partial class OverviewManager
         foreach (var pass in _passes)
         {
             pass.WindowInteractionActive = active;
-            pass.SetModeStyle(CurrentMode == OverviewMode.Panning || IsStartupIntroActive,
+            pass.SetModeStyle(active || CurrentMode == OverviewMode.Panning || IsStartupIntroActive,
                 active || CurrentMode == OverviewMode.Panning);
             pass.Cursor = active ? Cursors.Hand : Cursors.Default;
         }

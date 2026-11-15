@@ -313,7 +313,8 @@ internal sealed partial class OverviewManager
             CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
             HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation),
             AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode));
-        _unifiedDock.Present(true, new ScreenRect(toolbarArea.Left, toolbarArea.Top, toolbarArea.Width, toolbarArea.Height), _appConfig.ShowTaskbarInCanvas);
+        _unifiedDock.Present(true, new ScreenRect(toolbarArea.Left, toolbarArea.Top, toolbarArea.Width, toolbarArea.Height), _appConfig.ShowTaskbarInCanvas);
+        if (_peekWindow is { Visible: true } peek) peek.RaiseWithoutActivation();
     }
 
     private void ToggleControlsPopup(OverviewOverlay pass)

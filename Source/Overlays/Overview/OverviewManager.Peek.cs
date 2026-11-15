@@ -303,6 +303,7 @@ internal sealed partial class OverviewManager
         if (window == _peekSource) return true;
         if (window != _peekRoot && !_interactionApi.IsOwnedBy(window, _peekRoot)) return false;
         _peekSource = window;
+        _wm.SetTransientPreviewWindow(window);
         if (!_peekWindow!.ChangeSource(window, PeekSourceCrop(), _win32.GetWindowTitle(window), window != _peekRoot)
             || !_windowInteraction.Begin(window))
         {
