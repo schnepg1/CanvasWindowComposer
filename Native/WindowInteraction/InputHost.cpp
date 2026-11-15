@@ -16,6 +16,12 @@ int wmain(int argc, wchar_t** argv)
     const auto threadId = static_cast<DWORD>(wcstoul(argv[1], nullptr, 10));
     const auto processId = static_cast<DWORD>(wcstoul(argv[2], nullptr, 10));
     const auto window = reinterpret_cast<HWND>(static_cast<UINT_PTR>(wcstoull(argv[3], nullptr, 10)));
+    auto inputDesk = OpenInputDesktop(0, FALSE, 0x1ff);
+    if (inputDesk)
+    {
+        SetThreadDesktop(inputDesk);
+        CloseDesktop(inputDesk);
+    }
     if (GetWindowThreadProcessId(window, nullptr) != threadId) return 2;
     auto thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, threadId);
     if (!thread || GetProcessIdOfThread(thread) != processId) { if (thread) CloseHandle(thread); return 2; }

@@ -40,7 +40,8 @@ internal sealed class CanvasPeekWindow : Form
     {
         // CS_DBLCLKS (0x0008): the content must report double clicks so a quick
         // double-click can hand the preview over to Work here.
-        get { var cp = base.CreateParams; cp.ExStyle |= 0x08000080; cp.ClassStyle |= 0x0008; return cp; }
+        // WS_EX_TOPMOST (0x00000008): keep preview strictly above the canvas dock and tools.
+        get { var cp = base.CreateParams; cp.ExStyle |= 0x08000088; cp.ClassStyle |= 0x0008; return cp; }
     }
 
     public CanvasPeekWindow(IDwmThumbnailApi dwm)
@@ -137,7 +138,7 @@ internal sealed class CanvasPeekWindow : Form
 
     public void RaiseWithoutActivation()
     {
-        if (Visible && !IsDisposed) PInvoke.SetWindowPos((HWND)Handle, HWND.Null,
+        if (Visible && !IsDisposed) PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1),
             0, 0, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
     }
 

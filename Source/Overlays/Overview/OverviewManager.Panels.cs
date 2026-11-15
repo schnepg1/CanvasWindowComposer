@@ -29,11 +29,11 @@ internal sealed partial class OverviewManager
     {
         if (_disposed) return;
         if (_unifiedDock?.IsAlive == true) _unifiedDock.RaiseWithoutActivation();
-        _peekWindow?.RaiseWithoutActivation();
         _backpack?.RaiseWithoutActivation();
         _temporaryDrawer?.RaiseWithoutActivation();
         _backgroundEditor?.RaiseWithoutActivation();
         _zoneWindow?.RaiseWithoutActivation();
+        _peekWindow?.RaiseWithoutActivation();
         CanvasPanelsRaised?.Invoke();
     }
 

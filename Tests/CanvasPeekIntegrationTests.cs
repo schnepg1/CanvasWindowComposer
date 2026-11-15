@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace CanvasDesktop.Tests;
 
@@ -453,5 +454,33 @@ public class CanvasPeekIntegrationTests
                 Assert.NotEqual(image.GetPixel(1, 1), image.GetPixel(10, peek.Height / 2));
             }
             Save("preview"); h.Overview.BeginPeekInteraction(); Save("working");
+        });
+
+    [Fact]
+    [Trait("Category", "NativePreview")]
+    public void PeekWorkingEnablesLayeredOverlayToDefeatBackgroundThrottleAndHoldsTopmostZOrder()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            using var h = new Rig();
+            Assert.True(h.Overview.ShowWindowPeek(h.Pass, h.Source.Handle));
+            var peek = h.Overview.PeekWindow!;
+            int peekExStyle = PInvoke.GetWindowLong((HWND)peek.Handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+            Assert.NotEqual(0, peekExStyle & (int)WINDOW_EX_STYLE.WS_EX_TOPMOST);
+
+            int overlayExStyleBefore = PInvoke.GetWindowLong((HWND)h.Pass.Handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+            Assert.Equal(0, overlayExStyleBefore & (int)WINDOW_EX_STYLE.WS_EX_LAYERED);
+
+            h.Overview.BeginPeekInteraction();
+            Assert.True(h.Overview.PeekWorking);
+
+            int overlayExStyleWorking = PInvoke.GetWindowLong((HWND)h.Pass.Handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+            Assert.NotEqual(0, overlayExStyleWorking & (int)WINDOW_EX_STYLE.WS_EX_LAYERED);
+
+            h.Return();
+            Assert.Null(h.Overview.PeekWindow);
+            Assert.False(h.Overview.PeekWorking);
+
+            int overlayExStyleAfter = PInvoke.GetWindowLong((HWND)h.Pass.Handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+            Assert.Equal(0, overlayExStyleAfter & (int)WINDOW_EX_STYLE.WS_EX_LAYERED);
         });
 }
