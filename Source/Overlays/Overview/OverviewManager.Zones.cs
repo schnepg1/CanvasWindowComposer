@@ -320,7 +320,7 @@ internal sealed partial class OverviewManager
         RefreshTourUi();
     }
 
-    private bool HandleZoneKey(KeyEventArgs e)
+    private bool HandleZoneKey(OverviewOverlay pass, KeyEventArgs e)
     {
         if (_zones != null && e.Control && !e.Alt && (e.KeyCode == Keys.Z || e.KeyCode == Keys.Y))
         {
@@ -336,8 +336,10 @@ internal sealed partial class OverviewManager
         }
         if (_zones != null && !e.Control && !e.Alt && (e.KeyCode == Keys.Z || e.KeyCode == Keys.P))
         {
+            e.SuppressKeyPress = true; e.Handled = true;
             CancelInteraction();
-            ZonePanelRequested?.Invoke(); e.Handled = true; return true;
+            // Let WinForms finish suppressing the character before focus crosses to WPF.
+            pass.BeginInvoke((Action)(() => ZonePanelRequested?.Invoke())); return true;
         }
         return false;
     }

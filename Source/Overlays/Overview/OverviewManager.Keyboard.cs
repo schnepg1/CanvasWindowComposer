@@ -78,7 +78,7 @@ internal sealed partial class OverviewManager
             return;
         }
         if (HandleAnnotationKey(e)) return;
-        if (HandleZoneKey(e)) return;
+        if (HandleZoneKey(pass, e)) return;
         if (_tools.Active) { e.Handled = true; return; }
         if (_windows.Count == 0) return;
 

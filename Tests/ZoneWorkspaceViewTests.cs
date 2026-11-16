@@ -150,6 +150,65 @@ public class ZoneWorkspaceViewTests
         });
     }
 
+    [Theory]
+    [InlineData("Website")]
+    [InlineData("")]
+    [InlineData("reference")]
+    public void SaveUsesCanonicalNameAndRestoresSelectedProject(string query)
+    {
+        OnSta(() =>
+        {
+            var document = Document();
+            // A duplicate name and nested project exercise ID-based restoration.
+            document.Zones[1].Name = "Renamed";
+            document.Zones[0].Bounds = new WorldRect { X = 100, Y = 100, W = 600, H = 500 };
+            document.Zones[1].Bounds = new WorldRect { W = 1800, H = 1200 };
+            using var rig = new WorkspaceHarness(document); rig.Workspace.Start();
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
+            try
+            {
+                Search(window).Text = query;
+                window.Select(document.Zones[0].Id);
+                Descendants(window).OfType<TextBox>().Single(t => t.Name == "AreaName").Text = "  Renamed  ";
+                Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save changes"))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal("Renamed", Search(window).Text);
+                var selected = (TreeViewItem)Descendants(window).OfType<TreeView>().Single().SelectedItem;
+                Assert.Contains(Descendants(selected).OfType<TextBlock>(), t => t.Text == "Renamed");
+                // Selection remains the child, not the duplicate-named parent.
+                Assert.IsType<TreeViewItem>(ItemsControl.ItemsControlFromItemContainer(selected));
+                Assert.Equal(document.Zones[0].Id, rig.Workspace.Zones.Items.Single(z => z.Id == document.Zones[0].Id).Id);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailedSaveKeepsSearchAndShowsFailure(bool persistenceFailure)
+    {
+        OnSta(() =>
+        {
+            using var rig = new WorkspaceHarness(Document()); rig.Workspace.Start();
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
+            try
+            {
+                Search(window).Text = "Website";
+                Descendants(window).OfType<TextBox>().Single(t => t.Name == "AreaName").Text = persistenceFailure ? "New name" : " ";
+                if (persistenceFailure) rig.Store.SaveError = new IOException("save failed");
+                Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save changes"))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal("Website", Search(window).Text);
+                Assert.DoesNotContain(Descendants(window).OfType<TextBlock>(), t => t.Text == "Changes saved.");
+                Assert.Contains(Descendants(window).OfType<TextBlock>(), t => t.Text.Contains(persistenceFailure ? "saving failed" : "Enter an area name"));
+            }
+            finally { rig.Store.SaveError = null; window.Close(); }
+        });
+    }
+
     private static TextBox Search(DependencyObject window) =>
         Descendants(window).OfType<TextBox>().Single(t => t.Name == "ProjectSearch");
 

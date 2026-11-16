@@ -163,6 +163,7 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
             Content = "Draw an area", Appearance = ControlAppearance.Primary,
             Padding = new Thickness(16, 6, 16, 6), FontSize = 12.5
         };
+        draw.Style = (Style)FindResource("ProjectPrimaryButton");
         draw.Click += (_, _) => BeginDraw();
         headerActions.Children.Add(draw);
         Grid.SetColumn(headerActions, 1);
@@ -246,6 +247,7 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
             HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 10, 0, 0),
             Padding = new Thickness(12, 4, 12, 4), FontSize = 12
         };
+        _memberAction.Style = (Style)FindResource("ProjectButton");
         _memberAction.Click += (_, _) => ActivateMember();
         var memberStack = new StackPanel();
         memberStack.Children.Add(_memberTitle);
@@ -273,6 +275,9 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
             };
             System.Windows.Automation.AutomationProperties.SetName(swatch, "Use color " + hex);
             swatch.Click += (_, _) => { _color.Text = hex; _color.Focus(); };
+            void UpdateSwatch(object? sender, TextChangedEventArgs e) => swatch.Content =
+                string.Equals(_color.Text, hex, StringComparison.OrdinalIgnoreCase) ? "?" : null;
+            _color.TextChanged += UpdateSwatch;
             palette.Children.Add(swatch);
         }
         _editor.Children.Add(palette);
@@ -532,8 +537,24 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
         if (SelectedArea is not { } area) return;
         if (!ZoneService.ValidName(_name.Text) || !ZoneService.ValidColor(_color.Text))
         { Report("Enter an area name and a color such as #60A5FA."); return; }
-        bool saved = _zones.Update(area.Id, _name.Text, _color.Text);
-        Report(saved ? "Changes saved." : _statusOf() ?? "Changes are in memory; saving failed. Try again.");
+        var id = area.Id;
+        var name = _name.Text;
+        var color = _color.Text;
+        if (!_zones.Update(id, name, color))
+        {
+            Report(_statusOf() ?? "Changes are in memory; saving failed. Try again.");
+            return;
+        }
+        var saved = _zones.Items.FirstOrDefault(z => z.Id == id);
+        if (saved != null)
+        {
+            _search.Text = saved.Name;
+            Refresh();
+            var row = FindAreaRow(_tree.Items, id);
+            if (row != null) { row.IsSelected = true; row.BringIntoView(); }
+            UpdateSelection();
+        }
+        Report("Changes saved.");
     }
 
     private void ChooseMembers()
@@ -622,24 +643,27 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
         Foreground = Brush("#8FA1B8"), Margin = new Thickness(0, 14, 0, 6)
     };
 
-    private static Button TextButton(string text, Action click, string tip)
+    private Button TextButton(string text, Action click, string tip)
     {
         var button = new Button
         {
             Content = text, Appearance = ControlAppearance.Secondary, Padding = new Thickness(12, 5, 12, 5),
             FontSize = 12, ToolTip = tip
         };
+        button.Style = (Style)FindResource("ProjectButton");
         button.Click += (_, _) => click();
         return button;
     }
 
-    private static Button DetailButton(string text, Action click, ControlAppearance appearance = ControlAppearance.Secondary)
+    private Button DetailButton(string text, Action click, ControlAppearance appearance = ControlAppearance.Secondary)
     {
         var button = new Button
         {
             Content = text, Appearance = appearance, HorizontalAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(12, 6, 12, 6), FontSize = 12
         };
+        button.Style = (Style)FindResource(appearance == ControlAppearance.Primary ? "ProjectPrimaryButton"
+            : appearance == ControlAppearance.Danger ? "ProjectDangerButton" : "ProjectButton");
         button.Click += (_, _) => click();
         return button;
     }
@@ -680,7 +704,36 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
     // these local styles only replace the default TreeView/expander look.
     private const string SurfaceStyles = """
         <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                            xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+          <Style x:Key="ProjectButton" TargetType="{x:Type ui:Button}">
+            <Setter Property="Background" Value="#30445E"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#7187A3"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ui:Button}">
+                  <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#49637F"/></Trigger>
+                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#20344B"/></Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="#FFFFFF"/><Setter TargetName="Chrome" Property="BorderThickness" Value="2"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Background" Value="#263140"/><Setter Property="Foreground" Value="#AAB8C9"/><Setter TargetName="Chrome" Property="BorderBrush" Value="#526175"/></Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="ProjectPrimaryButton" TargetType="{x:Type ui:Button}" BasedOn="{StaticResource ProjectButton}">
+            <Setter Property="Background" Value="#175B9E"/><Setter Property="BorderBrush" Value="#83BFFF"/>
+          </Style>
+          <Style x:Key="ProjectDangerButton" TargetType="{x:Type ui:Button}" BasedOn="{StaticResource ProjectButton}">
+            <Setter Property="Background" Value="#71313B"/><Setter Property="BorderBrush" Value="#E69BA5"/>
+          </Style>
           <Style TargetType="TreeView">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -771,7 +824,8 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
                   <Grid>
                     <Border x:Name="Chip" CornerRadius="7" Background="{TemplateBinding Background}"
                             BorderThickness="2" BorderBrush="Transparent"/>
-                    <Border x:Name="Ring" CornerRadius="7" BorderThickness="2" BorderBrush="#BFDBFE" Visibility="Collapsed"/>
+                    <Border x:Name="Ring" CornerRadius="7" BorderThickness="2" BorderBrush="#FFFFFF" Visibility="Collapsed"/>
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="#101820" TextElement.FontWeight="Bold"/>
                   </Grid>
                   <ControlTemplate.Triggers>
                     <Trigger Property="IsMouseOver" Value="True">
