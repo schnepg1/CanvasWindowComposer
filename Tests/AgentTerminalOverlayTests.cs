@@ -95,6 +95,40 @@ public class AgentTerminalOverlayTests
     }
 
     [Fact]
+    public void Placement_SnapsToDevicePixelsAndSkipsUnchangedFrames()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var herdr = new MockAgentSessionManager();
+            var cardId = Guid.NewGuid();
+            var cardBounds = new CanvasRect(100, 200, 280, 340);
+            var dpi = new DpiScale(1.0, 1.0);
+            var workingArea = new System.Drawing.Rectangle(0, 0, 1920, 1080);
+            var monitor = new CanvasRect(0, 0, 1920, 1080);
+
+            using var overlay = new AgentTerminalOverlayWindow(herdr, cardId, herdr.DefaultAgent);
+
+            // Initial placement writes the HWND geometry exactly once.
+            overlay.UpdatePlacement(new CanvasViewTransform(50, 100, 1.5, monitor), cardBounds, dpi, workingArea);
+            Assert.Equal(1, overlay.PlacementWrites);
+
+            // A stationary camera must not re-apply geometry (no WebView2 bounds IPC, no re-fit).
+            for (int frame = 0; frame < 10; frame++)
+                overlay.UpdatePlacement(new CanvasViewTransform(50, 100, 1.5, monitor), cardBounds, dpi, workingArea);
+            Assert.Equal(1, overlay.PlacementWrites);
+
+            // Sub-pixel motion snaps to the same device pixel and is therefore skipped too.
+            overlay.UpdatePlacement(new CanvasViewTransform(50.1, 100.1, 1.5, monitor), cardBounds, dpi, workingArea);
+            Assert.Equal(1, overlay.PlacementWrites);
+
+            // A whole-pixel move is applied once.
+            overlay.UpdatePlacement(new CanvasViewTransform(52, 101, 1.5, monitor), cardBounds, dpi, workingArea);
+            Assert.Equal(2, overlay.PlacementWrites);
+            Assert.Equal(87, overlay.Left);
+        });
+    }
+
+    [Fact]
     public void LodThreshold_HidesWhenZoomIsBelowMinimum()
     {
         WorkspaceViewTests.OnSta(() =>
@@ -181,10 +215,13 @@ public class AgentTerminalOverlayTests
             try
             {
                 Assert.Equal(WindowStyle.None, overlay.WindowStyle);
-                Assert.True(overlay.AllowsTransparency);
-                Assert.True(overlay.Topmost);
+                // A layered (AllowsTransparency) window cannot composite the WebView2 child HWND
+                // and disables hardware acceleration, which is what made the console flicker.
+                Assert.False(overlay.AllowsTransparency);
+                Assert.False(overlay.Topmost);
                 Assert.False(overlay.ShowInTaskbar);
-                Assert.Equal(System.Windows.Media.Brushes.Transparent, overlay.Background);
+                var background = Assert.IsType<System.Windows.Media.SolidColorBrush>(overlay.Background);
+                Assert.Equal(System.Windows.Media.Color.FromRgb(10, 15, 29), background.Color);
                 Assert.Equal("Agent Terminal (Claude Code)", overlay.Title);
                 Assert.Equal(cardId, overlay.CardId);
                 Assert.Equal("claude", overlay.Profile.Id);
@@ -287,6 +324,8 @@ public class AgentTerminalOverlayTests
                 Assert.Single(overview.ActiveTerminalOverlays);
                 Assert.NotNull(overview.ActiveTerminalOverlay);
                 Assert.Equal(card.Id, overview.ActiveTerminalOverlay.CardId);
+                // The drawer participates in the shared layer stack instead of fighting for z-order.
+                Assert.True(overview.LayerCoordinator.IsRegistered($"AgentTerminal:{card.Id:N}"));
 
                 // 2. Collapse console drawer (height becomes 140 < 180) -> closes and disposes overlay
                 overview.ToggleAgentConsoleDrawer(card.Id);
@@ -295,6 +334,7 @@ public class AgentTerminalOverlayTests
 
                 Assert.Empty(overview.ActiveTerminalOverlays);
                 Assert.Null(overview.ActiveTerminalOverlay);
+                Assert.False(overview.LayerCoordinator.IsRegistered($"AgentTerminal:{card.Id:N}"));
             }
             finally
             {

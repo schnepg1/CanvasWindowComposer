@@ -428,6 +428,7 @@ internal sealed partial class OverviewManager
         var profile = HerdrSessions.FindAgent(card.AgentRole);
         var overlay = new AgentTerminalOverlayWindow(HerdrSessions, cardId, profile, onCollapse: () => ToggleAgentConsoleDrawer(cardId));
         _activeTerminalOverlays[cardId] = overlay;
+        RegisterTerminalLayer(cardId, overlay);
 
         var pass = _passes.FirstOrDefault(p => p.Screen.Primary) ?? _passes.FirstOrDefault();
         if (pass != null && pass.IsHandleCreated)
@@ -450,6 +451,7 @@ internal sealed partial class OverviewManager
     {
         if (_activeTerminalOverlays.Remove(cardId, out var overlay))
         {
+            UnregisterTerminalLayer(cardId);
             overlay.Dispose();
         }
     }
@@ -470,12 +472,29 @@ internal sealed partial class OverviewManager
 
     internal void CloseTerminalOverlays()
     {
-        foreach (var overlay in _activeTerminalOverlays.Values)
+        foreach (var (cardId, overlay) in _activeTerminalOverlays)
         {
+            UnregisterTerminalLayer(cardId);
             overlay.Dispose();
         }
         _activeTerminalOverlays.Clear();
     }
+
+    private static string TerminalLayerName(Guid cardId) => $"AgentTerminal:{cardId:N}";
+
+    /// <summary>
+    /// Registers the console drawer with the shared layer stack so it participates in the
+    /// same topmost raise order as every other canvas panel instead of fighting for z-order.
+    /// </summary>
+    private void RegisterTerminalLayer(Guid cardId, AgentTerminalOverlayWindow overlay)
+    {
+        _layerCoordinator.Register(CanvasLayerTier.AgentTerminal, TerminalLayerName(cardId),
+            overlay.RaiseWithoutActivation,
+            () => !overlay.IsDisposed && overlay.IsVisible);
+    }
+
+    private void UnregisterTerminalLayer(Guid cardId) =>
+        _layerCoordinator.Unregister(TerminalLayerName(cardId));
 
     internal void UpdateTerminalOverlaysPlacement()
     {

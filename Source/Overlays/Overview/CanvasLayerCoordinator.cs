@@ -11,6 +11,7 @@ internal enum CanvasLayerTier
     BackpackAndDrawers = 20,
     DockAndToolbars = 30,
     PeekPreview = 40,
+    AgentTerminal = 45,
     ContextPopups = 50,
     ModalDialogs = 60
 }

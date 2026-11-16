@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -13,16 +15,30 @@ namespace CanvasDesktop;
 internal sealed class AgentTerminalPane : Grid, IDisposable
 {
     private const string Page = "https://canvas-terminal.invalid/index.html";
+
+    // Terminal output is batched per dispatcher pass instead of one message and one
+    // paint acknowledgement per chunk. The high-water mark applies back-pressure to
+    // the Herdr pump so a fast producer cannot grow the queue without bound.
+    private const int MaximumQueuedBytes = 1 << 20;
+    private const int LowWaterBytes = 256 * 1024;
+
+    private static readonly object EnvironmentGate = new();
+    private static Task<CoreWebView2Environment>? _environment;
+
     private readonly WebView2 _view = new();
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly Queue<byte[]> _outbound = new();
+    private readonly object _outboundGate = new();
+    private readonly SemaphoreSlim _drained = new(0);
     private readonly IAgentSessionManager _herdr;
     private readonly Guid _card;
     private CancellationTokenSource? _attachment;
     private HerdrTerminalConnection? _connection;
-    private TaskCompletionSource? _painted;
-    private int _paintId;
+    private int _outboundBytes;
+    private volatile bool _drainQueued;
     private int _cols = 80, _rows = 24;
+    private bool? _hostResizing;
     private bool _disposed;
     private Task? _initialization;
 
@@ -32,6 +48,9 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
     {
         _herdr = herdr;
         _card = card;
+        // Chromium paints its own surface; keep it on the terminal palette so a
+        // resize or re-show never flashes the default white background.
+        _view.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x12, 0x18, 0x23);
         Children.Add(_view);
     }
 
@@ -62,7 +81,7 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
             Post(new { type = "reset", control = !observe });
             StatusChanged?.Invoke(observe ? "Watching live" : "Terminal input enabled");
             await connection.Pump(
-                bytes => Dispatcher.InvokeAsync(() => Paint(bytes, token)).Task.Unwrap(),
+                bytes => EnqueueAsync(bytes, token),
                 (cols, rows) => Dispatcher.InvokeAsync(() =>
                 {
                     if (!token.IsCancellationRequested) Post(new { type = "grid", cols, rows });
@@ -98,7 +117,7 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
     {
         var assets = Path.Combine(AppContext.BaseDirectory, "Assets", "Terminal");
         if (!File.Exists(Path.Combine(assets, "index.html"))) throw new IOException("The terminal assets are missing.");
-        var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: Path.Combine(AppConfig.ConfigDir, "TerminalWebView"));
+        var environment = await SharedEnvironment();
         if (_disposed) return;
         await _view.EnsureCoreWebView2Async(environment);
         if (_disposed) return;
@@ -121,18 +140,120 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
         core.Navigate(Page);
     }
 
+    /// <summary>
+    /// One WebView2 environment per process. Chromium does not allow two environments
+    /// on the same user data folder, and a shared environment keeps every terminal
+    /// overlay inside a single browser/GPU process.
+    /// </summary>
+    private static Task<CoreWebView2Environment> SharedEnvironment()
+    {
+        lock (EnvironmentGate)
+        {
+            if (_environment == null || _environment.IsFaulted || _environment.IsCanceled)
+            {
+                _environment = CoreWebView2Environment.CreateAsync(
+                    userDataFolder: Path.Combine(AppConfig.ConfigDir, "TerminalWebView"));
+            }
+            return _environment;
+        }
+    }
+
     private void Post<T>(T message)
     {
         if (!_disposed) _view.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message));
     }
 
-    private async Task Paint(byte[] bytes, CancellationToken token)
+    /// <summary>
+    /// Tells the page that the host window is being moved or resized so it can stop
+    /// re-fitting the grid (and re-sizing the remote PTY) on every intermediate frame.
+    /// </summary>
+    public void SetHostResizing(bool resizing)
     {
-        token.ThrowIfCancellationRequested();
-        var painted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _painted = painted;
-        Post(new { type = "data", data = Convert.ToBase64String(bytes), id = ++_paintId });
-        await painted.Task.WaitAsync(TimeSpan.FromSeconds(12), token);
+        if (_disposed || _hostResizing == resizing) return;
+        _hostResizing = resizing;
+        try
+        {
+            Post(new { type = "host", resizing });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    private async Task EnqueueAsync(byte[] bytes, CancellationToken token)
+    {
+        lock (_outboundGate)
+        {
+            if (_disposed) return;
+            _outbound.Enqueue(bytes);
+            _outboundBytes += bytes.Length;
+        }
+        RequestDrain();
+        while (!_disposed && Volatile.Read(ref _outboundBytes) > MaximumQueuedBytes)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                await _drained.WaitAsync(64, token).ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException) { return; }
+        }
+    }
+
+    private void RequestDrain()
+    {
+        if (_disposed || _drainQueued) return;
+        _drainQueued = true;
+        try
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)Drain);
+        }
+        catch (InvalidOperationException)
+        {
+            _drainQueued = false;
+        }
+    }
+
+    /// <summary>
+    /// Runs on the UI thread and posts at most one message per dispatcher pass, so a
+    /// burst of Herdr chunks becomes a single base64 encode, one JSON write and one
+    /// WebView2 round trip instead of one of each per chunk.
+    /// </summary>
+    private void Drain()
+    {
+        _drainQueued = false;
+        if (_disposed) return;
+        byte[] batch;
+        int total;
+        lock (_outboundGate)
+        {
+            if (_outbound.Count == 0) return;
+            total = 0;
+            foreach (var chunk in _outbound) total += chunk.Length;
+            batch = new byte[total];
+            int offset = 0;
+            while (_outbound.Count > 0)
+            {
+                var chunk = _outbound.Dequeue();
+                Buffer.BlockCopy(chunk, 0, batch, offset, chunk.Length);
+                offset += chunk.Length;
+            }
+            Volatile.Write(ref _outboundBytes, _outboundBytes - total);
+        }
+
+        if (Volatile.Read(ref _outboundBytes) <= LowWaterBytes && _drained.CurrentCount == 0)
+        {
+            try { _drained.Release(); }
+            catch (Exception ex) when (ex is SemaphoreFullException or ObjectDisposedException) { }
+        }
+
+        try
+        {
+            Post(new { type = "data", data = Convert.ToBase64String(batch) });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+
+        bool more;
+        lock (_outboundGate) more = _outbound.Count > 0;
+        if (more) RequestDrain();
     }
 
     private async void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -152,9 +273,6 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
             {
                 case "ready":
                     _ready.TrySetResult();
-                    break;
-                case "painted" when TryInt(root, "id", out int id) && id == _paintId:
-                    _painted?.TrySetResult();
                     break;
                 case "size" when TryInt(root, "cols", out int cols) && TryInt(root, "rows", out int rows)
                     && cols is >= 2 and <= 500 && rows is >= 2 and <= 300 && (cols != _cols || rows != _rows):
@@ -191,6 +309,11 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
         _disposed = true;
         _lifetime.Cancel();
         _connection?.Dispose();
+        lock (_outboundGate) _outbound.Clear();
+        Volatile.Write(ref _outboundBytes, 0);
+        try { _drained.Release(); }
+        catch (Exception ex) when (ex is SemaphoreFullException or ObjectDisposedException) { }
+        _drained.Dispose();
         _view.Dispose();
         _lifetime.Dispose();
     }
