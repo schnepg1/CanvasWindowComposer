@@ -46,10 +46,6 @@ internal sealed partial class OverviewManager
             () => _temporaryDrawer?.RaiseWithoutActivation(),
             () => _temporaryDrawer is { IsVisible: true });
 
-        _layerCoordinator.Register(CanvasLayerTier.DockAndToolbars, "AnnotationToolbar",
-            () => _annotationToolbar?.RaiseWithoutActivation(),
-            () => _annotationToolbar is { IsDisposed: false, Visible: true });
-
         _layerCoordinator.Register(CanvasLayerTier.DockAndToolbars, "UnifiedDock",
             () => _unifiedDock?.RaiseWithoutActivation(),
             () => _unifiedDock is { IsAlive: true, IsVisible: true });

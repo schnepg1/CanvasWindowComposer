@@ -124,10 +124,8 @@ internal sealed partial class OverviewManager
         if (waiting)
         {
             foreach (var pass in _passes) pass.HideZones();
-            if (_annotationToolbar is { IsDisposed: false } toolbar) toolbar.Hide();
         }
         SetOverviewTopmost(!waiting);
-        _annotationToolbar?.TopMost = !waiting;
         if (!waiting)
         {
             RefreshToolPreview();

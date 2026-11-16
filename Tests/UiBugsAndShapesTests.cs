@@ -110,19 +110,6 @@ public class UiBugsAndShapesTests
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ToolbarDropdownClosesOnCloseDropDownsAndHiding()
-        => WorkspaceViewTests.OnSta(() =>
-        {
-            using var toolbar = new AnnotationToolbar();
-            Assert.False(toolbar.HasOpenDropDown);
-
-            // CloseDropDowns runs safely even when none is open
-            toolbar.CloseDropDowns();
-            Assert.False(toolbar.HasOpenDropDown);
-        });
-
-    [Fact]
-    [Trait("Category", "NativeRendering")]
     public void OverviewManagerClosesActiveMenusOnEscapeAndHide()
         => WorkspaceViewTests.OnSta(() =>
         {

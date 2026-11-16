@@ -1,7 +1,9 @@
 using System;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using FormsKeys = System.Windows.Forms.Keys;
 
 namespace CanvasDesktop;
 
@@ -18,6 +20,15 @@ internal sealed class UnifiedDockWindow : CanvasPanelWindow, IDisposable
     private bool _isClosed;
 
     public bool IsAlive => !_isClosed && !_disposing;
+
+    /// <summary>Last laid-out window rect in physical pixels.</summary>
+    internal ScreenRect Bounds => _lastPosition;
+
+    /// <summary>
+    /// Raised when a key is pressed while the dock owns keyboard focus, so canvas shortcuts keep
+    /// working after the user clicks a dock button. Returns true when the canvas consumed the key.
+    /// </summary>
+    public event Func<FormsKeys, bool>? KeyPressed;
 
     public UnifiedDockWindow(ScreenRect work)
     {
@@ -112,6 +123,33 @@ internal sealed class UnifiedDockWindow : CanvasPanelWindow, IDisposable
 
         PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), left, top, width, height,
             SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW);
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        if (e.Handled || KeyPressed == null) return;
+        var keys = ToFormsKeys(e);
+        if (keys == FormsKeys.None) return;
+        e.Handled = KeyPressed.Invoke(keys);
+    }
+
+    /// <summary>
+    /// Translates a WPF key event into the WinForms <see cref="FormsKeys"/> shape the canvas
+    /// keyboard router already understands, so there is exactly one shortcut implementation.
+    /// </summary>
+    private static FormsKeys ToFormsKeys(KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        int virtualKey = KeyInterop.VirtualKeyFromKey(key);
+        if (virtualKey == 0) return FormsKeys.None;
+
+        var keys = (FormsKeys)virtualKey;
+        var modifiers = Keyboard.Modifiers;
+        if ((modifiers & ModifierKeys.Control) != 0) keys |= FormsKeys.Control;
+        if ((modifiers & ModifierKeys.Shift) != 0) keys |= FormsKeys.Shift;
+        if ((modifiers & ModifierKeys.Alt) != 0) keys |= FormsKeys.Alt;
+        return keys;
     }
 
     public void Dispose()

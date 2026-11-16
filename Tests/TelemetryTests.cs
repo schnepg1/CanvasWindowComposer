@@ -324,23 +324,6 @@ public class TelemetryTests : IDisposable
     }
 
     [Fact]
-    public void AnnotationToolbar_AiTeamsToggle_ControlsState()
-    {
-        using var toolbar = new AnnotationToolbar();
-        Assert.False(toolbar.IsAiTeamsActive);
-
-        bool toggled = false;
-        toolbar.AiTeamsToggled += () => toggled = true;
-
-        toolbar.SetAiTeamsActive(true);
-        Assert.True(toolbar.IsAiTeamsActive);
-
-        toolbar.SetAiTeamsActive(false);
-        Assert.False(toggled);
-        Assert.False(toolbar.IsAiTeamsActive);
-    }
-
-    [Fact]
     public void Provider_NullOrEmptyMutex_DisablesHardwarePollingTimer()
     {
         // Explicit null/empty mutex disables polling timer completely

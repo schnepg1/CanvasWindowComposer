@@ -235,8 +235,9 @@ internal sealed partial class OverviewManager
         var area=pass.Screen.WorkingArea;
         int dpiPadding=(int)(12*TutorialDpiScale);
         _tourPanel.FitToWidth(Math.Min((int)(640*TutorialDpiScale),area.Width-2*dpiPadding));
-        int bottom=!desktop && _annotationToolbar is { Visible:true }?_annotationToolbar.Top-dpiPadding:area.Bottom-dpiPadding;
-        if(!desktop && _annotationToolbar?.PropertiesSurface is { Visible:true } properties)bottom=Math.Min(bottom,properties.Top-dpiPadding);
+        int bottom = !desktop && _unifiedDock is { IsAlive: true, IsDockVisible: true } dock
+            ? dock.Bounds.Top - dpiPadding
+            : area.Bottom - dpiPadding;
         _tourPanel.Location=new(area.Left+Math.Max(dpiPadding,(area.Width-_tourPanel.Width)/2),Math.Max(area.Top,bottom-_tourPanel.Height));
     }
     private void DisposeGuidedTutorial()

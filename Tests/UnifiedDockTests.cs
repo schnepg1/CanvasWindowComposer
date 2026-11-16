@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using MenuItem = System.Windows.Controls.MenuItem;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using Xunit;
@@ -170,10 +171,10 @@ public class UnifiedDockTests
             Assert.Equal(Visibility.Collapsed, dock.InteractHudPanel.Visibility);
 
             // Tool state updates
-            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanUndo: true, CanRedo: true));
+            dock.UpdateState(new CanvasDockState(AnnotationMode.Select, CanUndo: true, CanRedo: true));
             bool undoFired = false;
             dock.UndoRequested += () => undoFired = true;
-            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanUndo: true));
+            dock.UpdateState(new CanvasDockState(AnnotationMode.Select, CanUndo: true));
             Assert.False(undoFired);
         });
 
@@ -266,7 +267,7 @@ public class UnifiedDockTests
             dock.PasteRequested += () => paste++;
 
             // Without selection
-            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanCopy: false, CanCut: false, CanPaste: true));
+            dock.UpdateState(new CanvasDockState(AnnotationMode.Select, CanCopy: false, CanCut: false, CanPaste: true));
             var menu1 = dock.OpenMoreMenu();
             Assert.NotNull(menu1);
 
@@ -283,7 +284,7 @@ public class UnifiedDockTests
             Assert.True(pasteItem1.IsEnabled);
 
             // With selection
-            dock.UpdateState(new AnnotationToolbarState(AnnotationMode.Select, CanCopy: true, CanCut: true, CanPaste: true));
+            dock.UpdateState(new CanvasDockState(AnnotationMode.Select, CanCopy: true, CanCut: true, CanPaste: true));
             var menu2 = dock.OpenMoreMenu();
             Assert.NotNull(menu2);
 
@@ -302,5 +303,275 @@ public class UnifiedDockTests
             Assert.Equal(1, cut);
             Assert.Equal(1, copy);
             Assert.Equal(1, paste);
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void SingleDockLayerReplacesTheLegacyToolbar()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-single-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.AttachAnnotations(new FakeVirtualDesktops(), Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                Assert.True(overview.LayerCoordinator.IsRegistered("UnifiedDock"));
+                Assert.False(overview.LayerCoordinator.IsRegistered("AnnotationToolbar"));
+                Assert.NotNull(overview.UnifiedDock);
+                Assert.True(overview.UnifiedDock!.IsDockVisible);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DockFollowsTaskbarSettingImmediatelyAndAcrossCanvasModeChanges()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-taskbar-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.AttachAnnotations(new FakeVirtualDesktops(), Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                void Check(bool taskbarVisible)
+                {
+                    var screen = System.Windows.Forms.Screen.PrimaryScreen!;
+                    var area = taskbarVisible ? screen.WorkingArea : screen.Bounds;
+                    var dock = overview.UnifiedDock!;
+                    Assert.True(dock.IsDockVisible);
+                    // The dock floats 10 physical pixels above the bottom edge of its work area.
+                    Assert.InRange(dock.Bounds.Bottom, area.Bottom - 24, area.Bottom);
+                    int dockCenter = dock.Bounds.Left + dock.Bounds.Width / 2;
+                    int areaCenter = area.Left + area.Width / 2;
+                    Assert.InRange(Math.Abs(dockCenter - areaCenter), 0, 4);
+                }
+
+                Check(true);
+                config.ShowTaskbarInCanvas = false; overview.RefreshConfig(); Check(false);
+                overview.TransitionTo(OverviewMode.Panning);
+                overview.TransitionTo(OverviewMode.Zooming); Check(false);
+                config.ShowTaskbarInCanvas = true; overview.RefreshConfig(); Check(true);
+                overview.TransitionTo(OverviewMode.Hidden);
+                overview.TransitionTo(OverviewMode.Zooming); Check(true);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void OpenDockMenuBlocksPeekAndClosesOnEscape()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-menu-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.AttachAnnotations(new FakeVirtualDesktops(), Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var panel = overview.UnifiedDock!.Panel;
+                Assert.False(panel.HasOpenDropDown);
+
+                var menu = panel.OpenMoreMenu();
+                Assert.NotNull(menu);
+                Assert.True(panel.HasOpenDropDown);
+
+                overview.HandleEscape();
+
+                Assert.False(panel.HasOpenDropDown);
+                Assert.Equal(OverviewMode.Zooming, overview.CurrentMode);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DockForwardsKeyboardShortcutsToTheCanvas()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-keys-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.AttachAnnotations(new FakeVirtualDesktops(), Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var dock = overview.UnifiedDock!;
+                Assert.True(dock.IsDockVisible);
+                // The dock window is a live HWND. Resolve its HwndSource directly: without a
+                // dispatcher pump the visual tree may not be connected yet, but the class handler
+                // for PreviewKeyDown still runs when the event is raised on the window.
+                var handle = new WindowInteropHelper(dock).EnsureHandle();
+                var source = HwndSource.FromHwnd(handle);
+                Assert.NotNull(source);
+
+                var args = new System.Windows.Input.KeyEventArgs(
+                    System.Windows.Input.Keyboard.PrimaryDevice, source!, 0, System.Windows.Input.Key.Escape)
+                {
+                    RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent
+                };
+                dock.RaiseEvent(args);
+
+                Assert.True(args.Handled);
+                Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DockContextualCommandsEditRealSelectedAnnotationsAndKeepHistoryWorking()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-style-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+                var note = new CanvasAnnotation(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text,
+                    new(10, 10), new(240, 120), Text: "Dock style test");
+                overview.Annotations!.Put(note);
+                overview.Selection.Replace([new(CanvasItemKind.Annotation, note.Id)]);
+                overview.SelectAnnotationMode(AnnotationMode.Select);
+
+                var panel = overview.UnifiedDock!.Panel;
+                panel.UpdateState(new CanvasDockState(AnnotationMode.Select, Selected: note, SelectedCount: 1));
+
+                void ChooseColor(string name)
+                {
+                    var swatch = panel.ColorSwatchesPanel.Children.OfType<System.Windows.Controls.Border>()
+                        .Single(border => (string?)border.ToolTip == name);
+                    swatch.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                        System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                    {
+                        RoutedEvent = System.Windows.UIElement.MouseLeftButtonUpEvent
+                    });
+                }
+
+                void ChooseMenu(string property, string value)
+                {
+                    var menu = property switch
+                    {
+                        "Size" => panel.OpenSizeMenu(),
+                        "Style" => panel.OpenStyleMenu(),
+                        "Fill" => panel.OpenFillMenu(),
+                        _ => throw new ArgumentOutOfRangeException(nameof(property))
+                    };
+                    Assert.NotNull(menu);
+                    var item = menu!.Items.OfType<MenuItem>().Single(entry => (string)entry.Header == value);
+                    item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                }
+
+                ChooseColor("Mint");
+                ChooseMenu("Size", "Size 56");
+                ChooseMenu("Style", "Bold");
+                ChooseMenu("Style", "Align center");
+                ChooseMenu("Fill", "Outline");
+
+                var changed = Assert.Single(overview.Annotations.Items);
+                Assert.Equal("#34D399", changed.Color);
+                Assert.Equal(56, changed.FontSize);
+                Assert.Equal(AnnotationTextEmphasis.Bold, changed.Emphasis);
+                Assert.Equal(AnnotationTextAlign.Center, changed.TextAlign);
+                Assert.Equal(AnnotationCardFill.None, changed.CardFill);
+
+                var moreMenu = panel.OpenMoreMenu();
+                Assert.NotNull(moreMenu);
+                var deleteItem = moreMenu!.Items.OfType<MenuItem>().Single(entry => (string)entry.Header == "Delete annotation");
+                deleteItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Assert.Empty(overview.Annotations.Items);
+
+                panel.UndoButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                Assert.Equal(changed, Assert.Single(overview.Annotations.Items));
+
+                panel.RedoButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                Assert.Empty(overview.Annotations.Items);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void GuidedTutorialPanelSitsAboveTheDock()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-tour-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                canvas.SetCamera(700, -300);
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var desktops = new FakeVirtualDesktops { CurrentDesktopId = Guid.NewGuid() };
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config, prefersReducedStartupMotion: () => false);
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.AttachTutorial(Path.Combine(folder, "tutorial.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var dock = overview.UnifiedDock;
+                Assert.NotNull(dock);
+                Assert.True(dock!.IsDockVisible);
+
+                overview.StartGuidedTutorial();
+                System.Windows.Forms.Application.DoEvents();
+
+                var tour = overview.TourPanel;
+                Assert.NotNull(tour);
+                Assert.True(tour!.Visible);
+                Assert.True(tour.Bottom <= dock.Bounds.Top,
+                    $"tour bottom {tour.Bottom} must sit above dock top {dock.Bounds.Top}");
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
         });
 }

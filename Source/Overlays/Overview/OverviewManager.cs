@@ -806,7 +806,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         _annotationCards = Array.Empty<PlaceholderAnnotation>();
 
-        _annotationToolbar?.CloseDropDowns();
+        _unifiedDock?.Panel.CloseDropDowns();
 
         HideAnnotationUi();
 
@@ -927,7 +927,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
             CloseSettingsPopup(canvasOnly: true);
             CancelInteraction();
 
-            _annotationToolbar?.CloseDropDowns();
+            _unifiedDock?.Panel.CloseDropDowns();
 
             HideAnnotationUi();
 

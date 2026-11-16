@@ -168,10 +168,8 @@ internal sealed partial class OverviewManager
             _terminalCard = null;
             _terminalWasAnchored = false;
             _isAiTeamsActive = false;
-            _annotationToolbar?.SetAiTeamsActive(false);
             _unifiedDock?.Panel.SetAiTeamsActive(false);
         };
-        _annotationToolbar?.SetAiTeamsActive(true);
         _unifiedDock?.Panel.SetAiTeamsActive(true);
         return window;
     }
