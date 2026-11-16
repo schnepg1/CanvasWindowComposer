@@ -150,6 +150,35 @@ public class ZoneWorkspaceViewTests
         });
     }
 
+    [Fact]
+    public void ColorSwatchesMarkInitialAndChangedSelection()
+    {
+        OnSta(() =>
+        {
+            using var rig = new WorkspaceHarness(Document()); rig.Workspace.Start();
+            using var navigation = new ZoneNavigation(rig.Workspace.Zones, rig.Workspace, _ => { }, () => { });
+            var window = new ZoneWorkspaceWindow(rig.Workspace.Zones, navigation, () => { }, () => null);
+            try
+            {
+                var swatches = Descendants(window).OfType<Button>()
+                    .Where(b => b.Tag is string tag && tag.StartsWith("#")).ToArray();
+                var initial = swatches.Single(b => Equals(b.Tag, "#60A5FA"));
+                var changed = swatches.Single(b => Equals(b.Tag, "#A78BFA"));
+                Assert.Equal("\u2713", initial.Content);
+                Assert.Null(changed.Content);
+                changed.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Null(initial.Content);
+                Assert.Equal("\u2713", changed.Content);
+                var color = Descendants(window).OfType<TextBox>().Single(t => t.Name == "AreaColor");
+                color.Text = "#abcdef";
+                Assert.All(swatches, swatch => Assert.Null(swatch.Content));
+                color.Text = "#60a5fa";
+                Assert.Equal("\u2713", initial.Content);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Theory]
     [InlineData("Website")]
     [InlineData("")]

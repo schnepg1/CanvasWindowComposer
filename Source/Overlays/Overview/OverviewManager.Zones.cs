@@ -339,7 +339,21 @@ internal sealed partial class OverviewManager
             e.SuppressKeyPress = true; e.Handled = true;
             CancelInteraction();
             // Let WinForms finish suppressing the character before focus crosses to WPF.
-            pass.BeginInvoke((Action)(() => ZonePanelRequested?.Invoke())); return true;
+            if (!_disposed && !pass.IsDisposed && pass.IsHandleCreated)
+            {
+                try
+                {
+                    pass.BeginInvoke((Action)(() =>
+                    {
+                        if (!_disposed && !pass.IsDisposed) ZonePanelRequested?.Invoke();
+                    }));
+                }
+                catch (InvalidOperationException) when (_disposed || pass.IsDisposed || !pass.IsHandleCreated)
+                {
+                    // The overlay was torn down before the callback could be queued.
+                }
+            }
+            return true;
         }
         return false;
     }

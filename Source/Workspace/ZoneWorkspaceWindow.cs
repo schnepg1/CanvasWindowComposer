@@ -276,7 +276,7 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
             System.Windows.Automation.AutomationProperties.SetName(swatch, "Use color " + hex);
             swatch.Click += (_, _) => { _color.Text = hex; _color.Focus(); };
             void UpdateSwatch(object? sender, TextChangedEventArgs e) => swatch.Content =
-                string.Equals(_color.Text, hex, StringComparison.OrdinalIgnoreCase) ? "?" : null;
+                string.Equals(_color.Text, hex, StringComparison.OrdinalIgnoreCase) ? "\u2713" : null;
             _color.TextChanged += UpdateSwatch;
             palette.Children.Add(swatch);
         }
