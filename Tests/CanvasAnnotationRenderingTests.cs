@@ -271,6 +271,7 @@ public class CanvasAnnotationRenderingTests
             Assert.Equal(AnnotationTextAlign.Center,editor.TextAlign);
             Assert.Equal(AnnotationTextEmphasis.BoldItalic,editor.Emphasis);
             Assert.Equal(AnnotationCardFill.Tinted,editor.CardFill);
+            Assert.Equal(3,editor.Stroke);
             Assert.Equal(System.Windows.TextAlignment.Center,editor.Editor.TextAlignment);
             Assert.Equal(FontWeights.Bold,editor.Editor.FontWeight);
             Assert.Equal(FontStyles.Italic,editor.Editor.FontStyle);
@@ -283,6 +284,9 @@ public class CanvasAnnotationRenderingTests
             editor.ToggleItalic();Assert.Equal(AnnotationTextEmphasis.Italic,editor.Emphasis);
             editor.ToggleBold();Assert.Equal(AnnotationTextEmphasis.BoldItalic,editor.Emphasis);
             editor.SetCardFill(AnnotationCardFill.None);Assert.Equal(AnnotationCardFill.None,editor.CardFill);
+            editor.SetStroke(20);Assert.Equal(20,editor.Stroke);Assert.Equal(20,editor.CurrentItem.Stroke);
+            Assert.Throws<ArgumentException>(()=>editor.SetStroke(0));
+            Assert.Throws<ArgumentException>(()=>editor.SetStroke(AnnotationDocument.MaximumStroke+1));
             Assert.Throws<ArgumentException>(()=>editor.SetTextAlign((AnnotationTextAlign)99));
             Assert.Throws<ArgumentException>(()=>editor.SetEmphasis((AnnotationTextEmphasis)99));
             Assert.Throws<ArgumentException>(()=>editor.SetCardFill((AnnotationCardFill)99));

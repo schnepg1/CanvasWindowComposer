@@ -99,6 +99,7 @@ internal sealed class UnifiedDockControl : UserControl
     internal Wpf.Ui.Controls.Button MoreButton => _moreButton;
     internal ContextMenu? OpenMoreMenu() { ShowMoreMenu(); return _openMenu; }
     internal ContextMenu? OpenShapesMenu() { ShowShapesMenu(); return _openMenu; }
+    internal ContextMenu? OpenStrokeMenu() { ShowStrokeMenu(); return _openMenu; }
     internal ContextMenu? OpenSizeMenu() { ShowSizeMenu(); return _openMenu; }
     internal ContextMenu? OpenStyleMenu() { ShowStyleMenu(); return _openMenu; }
     internal ContextMenu? OpenFillMenu() { ShowFillMenu(); return _openMenu; }
@@ -106,6 +107,7 @@ internal sealed class UnifiedDockControl : UserControl
     internal StackPanel InteractHudPanel => _interactHudPanel;
     internal Border PropertiesShelf => _propertiesShelf;
     internal StackPanel ColorSwatchesPanel => _colorSwatchesPanel;
+    internal Wpf.Ui.Controls.Button StrokeButton => _strokeButton;
     internal Wpf.Ui.Controls.Button UndoButton => _undoButton;
     internal Wpf.Ui.Controls.Button RedoButton => _redoButton;
 
@@ -562,7 +564,7 @@ internal sealed class UnifiedDockControl : UserControl
         }
 
         // Update Properties Shelf values
-        _strokeButton.Content = $"{state.Stroke:0.#} px";
+        _strokeButton.Content = $"{(state.Selected?.Stroke ?? state.Stroke):0.#} px";
         _sizeButton.Content = $"Size {state.FontSize:0}";
 
         UpdatePropertiesVisibility();
@@ -583,7 +585,7 @@ internal sealed class UnifiedDockControl : UserControl
         bool showProperties = shape || text || hasSelection;
         _propertiesShelf.Visibility = showProperties ? Visibility.Visible : Visibility.Collapsed;
 
-        _strokeButton.Visibility = showProperties && !text ? Visibility.Visible : Visibility.Collapsed;
+        _strokeButton.Visibility = showProperties ? Visibility.Visible : Visibility.Collapsed;
         _sizeButton.Visibility = text || (_currentMode == AnnotationMode.Arrow) ? Visibility.Visible : Visibility.Collapsed;
         _styleButton.Visibility = text || (_currentMode == AnnotationMode.Arrow) ? Visibility.Visible : Visibility.Collapsed;
         _fillButton.Visibility = text || (_state?.Selected?.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) ? Visibility.Visible : Visibility.Collapsed;

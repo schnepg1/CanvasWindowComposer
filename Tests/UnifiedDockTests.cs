@@ -548,13 +548,15 @@ public class UnifiedDockTests
                 overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
                 overview.TransitionTo(OverviewMode.Zooming);
                 var note = new CanvasAnnotation(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text,
-                    new(10, 10), new(240, 120), Text: "Dock style test");
+                    new(10, 10), new(240, 120), Text: "Dock style test", Stroke: 12);
                 overview.Annotations!.Put(note);
                 overview.Selection.Replace([new(CanvasItemKind.Annotation, note.Id)]);
                 overview.SelectAnnotationMode(AnnotationMode.Select);
 
                 var panel = overview.UnifiedDock!.Panel;
                 panel.UpdateState(new CanvasDockState(AnnotationMode.Select, Selected: note, SelectedCount: 1));
+                Assert.Equal(Visibility.Visible, panel.StrokeButton.Visibility);
+                Assert.Equal("12 px", panel.StrokeButton.Content);
 
                 void ChooseColor(string name)
                 {
@@ -571,6 +573,7 @@ public class UnifiedDockTests
                 {
                     var menu = property switch
                     {
+                        "Stroke" => panel.OpenStrokeMenu(),
                         "Size" => panel.OpenSizeMenu(),
                         "Style" => panel.OpenStyleMenu(),
                         "Fill" => panel.OpenFillMenu(),
@@ -582,6 +585,7 @@ public class UnifiedDockTests
                 }
 
                 ChooseColor("Mint");
+                ChooseMenu("Stroke", "8 px");
                 ChooseMenu("Size", "Size 56");
                 ChooseMenu("Style", "Bold");
                 ChooseMenu("Style", "Align center");
@@ -589,6 +593,7 @@ public class UnifiedDockTests
 
                 var changed = Assert.Single(overview.Annotations.Items);
                 Assert.Equal("#34D399", changed.Color);
+                Assert.Equal(8, changed.Stroke);
                 Assert.Equal(56, changed.FontSize);
                 Assert.Equal(AnnotationTextEmphasis.Bold, changed.Emphasis);
                 Assert.Equal(AnnotationTextAlign.Center, changed.TextAlign);

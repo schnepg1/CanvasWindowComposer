@@ -26,7 +26,7 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     private readonly WpfCanvas _card;
     private readonly CardArtwork _artwork;
     private readonly ScrollViewer _viewport;
-    private readonly WpfComboBox _size, _align, _fill;
+    private readonly WpfComboBox _size, _align, _fill, _border;
     private readonly ToggleButton _bold, _italic;
     private readonly TextBlock _hint;
     private readonly double _minimumHeight;
@@ -38,6 +38,7 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     private bool _projectionInitialized;
 
     public new double FontSize { get => Editor.FontSize; set => SetFontSize(value); }
+    public double Stroke { get => CurrentItem.Stroke; set => SetStroke(value); }
     public AnnotationTextAlign TextAlign { get => CurrentItem.TextAlign; set => SetTextAlign(value); }
     public AnnotationTextEmphasis Emphasis { get => CurrentItem.Emphasis; set => SetEmphasis(value); }
     public AnnotationCardFill CardFill { get => CurrentItem.CardFill; set => SetCardFill(value); }
@@ -118,6 +119,10 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         };
         color.DropDownClosed += (_, _) => FocusEditor();
         row.Children.Add(color);
+        _border = Combo("Border width", 64, new[] { 1d, 2d, 3d, 4d, 6d, 8d, 12d, 16d, 24d, 32d, 64d });
+        _border.SelectionChanged += (_, _) => { if (!_updating && _border.SelectedItem is double stroke) SetStroke(stroke); };
+        _border.DropDownClosed += (_, _) => FocusEditor();
+        row.Children.Add(_border);
         _align = Combo("Text alignment", 78, new[] { "Left", "Center", "Right" });
         _align.SelectionChanged += (_, _) => { if (!_updating && _align.SelectedIndex >= 0) SetTextAlign((AnnotationTextAlign)_align.SelectedIndex); };
         _align.DropDownClosed += (_, _) => FocusEditor();
@@ -216,6 +221,13 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         CurrentItem = CurrentItem with { FontSize = value };
         SyncStyle(); UpdateCard();
     }
+    public void SetStroke(double value)
+    {
+        if (!double.IsFinite(value) || value < AnnotationDocument.MinimumStroke || value > AnnotationDocument.MaximumStroke)
+            throw new ArgumentException("Invalid border width.");
+        CurrentItem = CurrentItem with { Stroke = value };
+        SyncStyle(); UpdateCard();
+    }
     public void SetTextAlign(AnnotationTextAlign value)
     {
         if (!Enum.IsDefined(value)) throw new ArgumentException("Invalid text alignment.");
@@ -243,6 +255,7 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         _bold.IsChecked = Editor.FontWeight == FontWeights.Bold;
         _italic.IsChecked = Editor.FontStyle == FontStyles.Italic;
         _size.Text = FontSize.ToString("0.##", CultureInfo.CurrentCulture);
+        _border.SelectedItem = CurrentItem.Stroke;
         _align.SelectedIndex = (int)TextAlign; _fill.SelectedIndex = (int)CardFill;
         _updating = false;
     }
