@@ -1,4 +1,15 @@
-html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #121823; }
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #121823;
+  color-scheme: dark;
+}
 
 /*
  * Exactly one scroll surface: xterm owns the viewport scrollbar. The container must
@@ -10,3 +21,47 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
 
 /* FitAddon subtracts the padding of the .xterm element, so padding belongs there. */
 #terminal .xterm { padding: 6px; box-sizing: border-box; }
+
+/*
+ * Ensure the xterm viewport has a visible, high-contrast scroll handle and track.
+ * Default Chromium / WebView2 Fluent overlay scrollbars hide the handle or lack
+ * contrast against the dark background. Custom scrollbar rules disable overlay auto-hide
+ * and provide a smooth, persistent handle whenever scrollback exists.
+ */
+.xterm .xterm-viewport {
+  overflow-y: auto !important;
+  background-color: #121823 !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.4);
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 5px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 5px;
+  min-height: 24px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+  background-clip: padding-box;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background: rgba(148, 163, 184, 0.9);
+  background-clip: padding-box;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent;
+}

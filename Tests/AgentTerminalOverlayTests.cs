@@ -482,4 +482,33 @@ public class AgentTerminalOverlayTests
             overlay.RaiseWithoutActivation();
         });
     }
+
+    [Fact]
+    public void TerminalAssets_IncludeDarkModeAndCustomScrollHandleStyling()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var candidateDir = Path.Combine(baseDir, "Assets", "Terminal");
+        if (!Directory.Exists(candidateDir))
+        {
+            candidateDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Assets", "Terminal"));
+        }
+
+        Assert.True(Directory.Exists(candidateDir), $"Assets/Terminal directory should exist at {candidateDir}");
+
+        var htmlPath = Path.Combine(candidateDir, "index.html");
+        Assert.True(File.Exists(htmlPath), $"index.html should exist at {htmlPath}");
+        var htmlContent = File.ReadAllText(htmlPath);
+        Assert.Contains("color-scheme", htmlContent, StringComparison.OrdinalIgnoreCase);
+
+        var cssPath = Path.Combine(candidateDir, "terminal.css");
+        Assert.True(File.Exists(cssPath), $"terminal.css should exist at {cssPath}");
+        var cssContent = File.ReadAllText(cssPath);
+        Assert.Contains("::-webkit-scrollbar", cssContent);
+        Assert.Contains("::-webkit-scrollbar-thumb", cssContent);
+        Assert.Contains("::-webkit-scrollbar-track", cssContent);
+        Assert.Contains("scrollbar-width", cssContent);
+        Assert.Contains("scrollbar-color", cssContent);
+        Assert.Contains("color-scheme: dark", cssContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("overflow-y: auto", cssContent);
+    }
 }
