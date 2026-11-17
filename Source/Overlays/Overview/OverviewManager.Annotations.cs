@@ -23,13 +23,10 @@ internal sealed partial class OverviewManager
     private Func<Guid> _annotationDesktop=()=>Guid.Empty;
     private IVirtualDesktops? _annotationDesktops;
     private DesktopStateCache? _annotationDesktopState;
-    private AnnotationToolbar? _annotationToolbar;
-    private UnifiedDockWindow? _unifiedDock;
-    internal UnifiedDockWindow? UnifiedDock => _unifiedDock;
-    private CanvasControlsButton? _controlsButton;
-    private CanvasControlsPopup? _controlsPopup;
-    internal CanvasControlsButton? ControlsButton => _controlsButton;
-    internal CanvasControlsPopup? ControlsPopup => _controlsPopup;
+    private UnifiedDockWindow? _unifiedDock;
+    internal UnifiedDockWindow? UnifiedDock => _unifiedDock;
+    private CanvasControlsPopup? _controlsPopup;
+    internal CanvasControlsPopup? ControlsPopup => _controlsPopup;
     private AnnotationTextEditor? _annotationEditor;
     private AnnotationShapeEditor? _shapeEditor;
     private long _annotationEditGeneration;
@@ -39,8 +36,7 @@ internal sealed partial class OverviewManager
     public bool OverviewHotkeySuspended => (CanvasEditorInputSuspended && _composerWindow == null) || _backgroundEditor?.IsChoosingImage == true;
     private bool CanvasEditorInputSuspended => _missionControl?.IsActive == true || PeekWorking || PlacingWebResource || _webResourceDialogOpen || _desktopStopSurface != null || _settingsWindow?.IsVisible == true || _composerWindow != null || _annotationEditor != null || _shapeEditor != null || (_annotationTool?.HasPendingInteraction == true) || (_selectionTool?.HasPendingInteraction == true) || (_connectionTool?.HasPendingInteraction == true);
 
-    internal AnnotationDocument? Annotations => _annotationDocument;
-    internal AnnotationToolbar? AnnotationToolbar => _annotationToolbar;
+    internal AnnotationDocument? Annotations => _annotationDocument;
     internal AnnotationCanvasTool? AnnotationTool => _annotationTool;
     internal ConnectionCanvasTool? ConnectionTool => _connectionTool;
     internal AnnotationTextEditor? AnnotationEditor => _annotationEditor;
@@ -174,111 +170,45 @@ internal sealed partial class OverviewManager
         AnnotationMode.Navigate => $"{Selection.Ids.Count} selected  ·  Drag empty space: select  ·  Ctrl+click: toggle  ·  Drag: move  ·  Space / Right drag: pan  ·  Middle drag: pan",
         _ => null
     });
-    private void HideAnnotationUi()
-    {
-        if (_unifiedDock?.IsAlive == true) _unifiedDock.Present(false);
-        _annotationToolbar?.Hide();
-        _controlsButton?.Hide();
-        _controlsPopup?.Hide();
-    }
+    private void HideAnnotationUi()
+    {
+        if (_unifiedDock?.IsAlive == true) _unifiedDock.Present(false);
+        _controlsPopup?.Hide();
+    }
+
+    private void RefreshAnnotationUi()
+    {
+        if(_annotationTool==null) return;
+        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser || _annotationEditor != null)
+        {
+            HideAnnotationUi();
+            return;
+        }
+        var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
+        if(pass==null) return;
+        var area=pass.Screen.WorkingArea;
+        var toolbarArea = _appConfig.ShowTaskbarInCanvas ? area : pass.Screen.Bounds;
+        RefreshDock(pass, area, toolbarArea);
+    }
 
-    private void RefreshAnnotationUi()
-    {
-        if(_annotationTool==null) return;
-        if(_disposed || CurrentMode!=OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser || _annotationEditor != null)
-        {
-            HideAnnotationUi();
-            return;
-        }
-        var pass=_passes.FirstOrDefault(p=>p.Visible && p.Screen.Primary)??_passes.FirstOrDefault(p=>p.Visible);
-        if(pass==null) return;
-        var area=pass.Screen.WorkingArea;
-
-        if (_controlsButton?.IsDisposed == true) _controlsButton = null;
-        if (_controlsButton == null)
-        {
-            _controlsButton = new();
-            _controlsButton.ControlsClicked += () => ToggleControlsPopup(pass);
-            _controlsButton.InteractionModeRequested += SetInteractMode;
-            _controlsButton.KeyDown += (_, e) => HandleKeyDown(pass, e);
-        }
-        _controlsButton.SetInteractMode(_interactMode);
-        if (!_controlsButton.Visible)
-        {
-            // Unified into _unifiedDock; do not show top-right button separately
-            // _controlsButton.Show(pass);
-            // _controlsButton.Location = new Point(area.Right - _controlsButton.Width - 16, area.Top + 14);
-        }
-
-        if (_annotationToolbar?.IsDisposed == true) _annotationToolbar = null;
-        if(_annotationToolbar==null)
-        {
-            _annotationToolbar=new();
-            _annotationToolbar.AiTeamsToggled += () => ToggleAiTeams();
-            _annotationToolbar.ModeRequested+=SelectAnnotationMode;
-            _annotationToolbar.ComposerRequested+=() => OpenCanvasComposer();
-            _annotationToolbar.WebResourceRequested += ShowAddWebResource;
-            _annotationToolbar.BackgroundsRequested += () => BackgroundsRequested?.Invoke();
-            _annotationToolbar.ProjectsRequested += () => ZonePanelRequested?.Invoke();
-            _annotationToolbar.ExportAllWorkflowsRequested += () => ExportCurrentWorkflowToClipboard(null);
-            _annotationToolbar.ImportWorkflowRequested += ShowImportWorkflowDialog;
-            _annotationToolbar.NearbyRequested+=radius => SelectNearby(radius);
-            _annotationToolbar.SetSelectionRadius(_selectionRadius);
-            _annotationToolbar.ColorRequested+=color=>ChangeAnnotationStyle(color,_annotationTool.Selected?.Stroke ?? _annotationTool.Stroke);
-            _annotationToolbar.StrokeRequested+=stroke=>ChangeAnnotationStyle(_annotationTool.Selected?.Color ?? _annotationTool.Color,stroke);
-            _annotationToolbar.EditRequested+=()=> { if (_annotationTool?.Selected is {} item) { if (item.Kind == AnnotationKind.Text) QueueAnnotationTextEdit(item); else if (item.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) QueueAnnotationShapeEdit(item); } };
-            _annotationToolbar.FontSizeRequested+=ChangeAnnotationFontSize;
-            _annotationToolbar.TextAlignRequested+=align=>ChangeAnnotationTextStyle(align:align);
-            _annotationToolbar.EmphasisRequested+=emphasis=>ChangeAnnotationTextStyle(emphasis:emphasis);
-            _annotationToolbar.CardFillRequested+=fill=>ChangeAnnotationTextStyle(fill:fill);
-            _annotationToolbar.UndoRequested+=()=>AnnotationHistory(false);
-            _annotationToolbar.RedoRequested+=()=>AnnotationHistory(true);
-            _annotationToolbar.CutRequested += () => CutSelectedAnnotations();
-            _annotationToolbar.CopyRequested += () => CopySelectedAnnotations();
-            _annotationToolbar.PasteRequested += () => PasteAnnotations();
-            _annotationToolbar.DeleteRequested+=DeleteAnnotation;
-            _annotationToolbar.RetrySaveRequested+=()=>
-            {
-                _annotationStore?.Save(); RefreshAnnotationUi();
-                if(_annotationStore?.Status is {} message) MessageBox.Show(_annotationToolbar,message,"Canvas annotations");
-                FocusOverview();
-            };
-            _annotationToolbar.KeyDown+=(_,e)=>HandleKeyDown(pass,e);
-        }
-        var toolbarArea = _appConfig.ShowTaskbarInCanvas ? area : pass.Screen.Bounds;
-        _annotationToolbar.UpdateState(new AnnotationToolbarState(
-            _annotationTool.Mode, _annotationError ?? _annotationStore?.Status, Selection.Ids.Count, _annotationTool.Selected,
-            _annotationTool.Color, _annotationTool.Stroke, _annotationTool.FontSize, _annotationTool.TextAlign,
-            _annotationTool.Emphasis, _annotationTool.CardFill,
-            CanUndo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), false) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(false) ?? 0) > 0,
-            CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
-            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
-            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode,
-            CanCopy: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
-            CanCut: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
-            CanPaste: true));
-        _annotationToolbar.SetAiTeamsActive(_isAiTeamsActive);
-        _annotationToolbar.SetAvailableWidth(toolbarArea.Width);
-        if(!_annotationToolbar.Visible)
-        {
-            _annotationToolbar.Show(pass);
-            _annotationToolbar.Location=new Point(Math.Max(toolbarArea.Left,toolbarArea.Left+(toolbarArea.Width-_annotationToolbar.Width)/2),toolbarArea.Bottom-_annotationToolbar.Height);
-            RefreshUnifiedDock(pass, area, toolbarArea);
-        }
-        else
-        {
-            _annotationToolbar.Location=new Point(Math.Max(toolbarArea.Left,toolbarArea.Left+(toolbarArea.Width-_annotationToolbar.Width)/2),toolbarArea.Bottom-_annotationToolbar.Height);
-            RefreshUnifiedDock(pass, area, toolbarArea);
-        }
-    }
-
-    private void RefreshUnifiedDock(OverviewOverlay pass, Rectangle area, Rectangle toolbarArea)
-    {
-        if (_unifiedDock == null || !_unifiedDock.IsAlive)
-        {
-            _unifiedDock?.Dispose();
-            var work = new ScreenRect(area.Left, area.Top, area.Width, area.Height);
-            _unifiedDock = new UnifiedDockWindow(work);
+    private void RefreshDock(OverviewOverlay pass, Rectangle area, Rectangle toolbarArea)
+    {
+        if (_unifiedDock == null || !_unifiedDock.IsAlive)
+        {
+            _unifiedDock?.Dispose();
+            var work = new ScreenRect(area.Left, area.Top, area.Width, area.Height);
+            _unifiedDock = new UnifiedDockWindow(work);
+            _unifiedDock.KeyPressed += keys =>
+            {
+                // The dock can own keyboard focus after a click; route its keys through the
+                // single canvas shortcut implementation instead of duplicating the table.
+                // Resolve the pass on every key so a monitor change cannot leave a stale target.
+                var target = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
+                if (target == null) return false;
+                var args = new KeyEventArgs(keys);
+                HandleKeyDown(target, args);
+                return args.Handled;
+            };
             _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
             _unifiedDock.Panel.InteractionModeRequested += SetInteractMode;
             _unifiedDock.Panel.ControlsClicked += () => ToggleControlsPopup(pass);
@@ -308,14 +238,14 @@ internal sealed partial class OverviewManager
             _unifiedDock.Panel.RetrySaveRequested += () =>
             {
                 _annotationStore?.Save(); RefreshAnnotationUi();
-                if (_annotationStore?.Status is {} message) MessageBox.Show(_annotationToolbar, message, "Canvas annotations");
+                if (_annotationStore?.Status is {} message) MessageBox.Show(pass, message, "Canvas annotations");
                 FocusOverview();
             };
         }
         _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
         _unifiedDock.Panel.SetInteractMode(_interactMode);
         _unifiedDock.Panel.SetAiTeamsActive(_isAiTeamsActive);
-        _unifiedDock.Panel.UpdateState(new AnnotationToolbarState(
+        _unifiedDock.Panel.UpdateState(new CanvasDockState(
             _annotationTool?.Mode ?? AnnotationMode.Select, _annotationError ?? _annotationStore?.Status, Selection.Ids.Count, _annotationTool?.Selected,
             _annotationTool?.Color ?? "#FBBF24", _annotationTool?.Stroke ?? 3, _annotationTool?.FontSize ?? 18, _annotationTool?.TextAlign ?? AnnotationTextAlign.Left,
             _annotationTool?.Emphasis ?? AnnotationTextEmphasis.Normal, _annotationTool?.CardFill ?? AnnotationCardFill.Solid,
@@ -768,11 +698,9 @@ internal sealed partial class OverviewManager
         _wm.WindowRemoving-=OnSelectionWindowRemoving;
         if (_annotationDesktopState != null) _annotationDesktopState.AfterStateLoaded -= OnAnnotationDesktopChanged;
         if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
-        if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
-        _annotationToolbar?.Dispose(); _annotationToolbar=null;
-        _unifiedDock?.Dispose(); _unifiedDock=null;
+        if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
+        _unifiedDock?.Dispose(); _unifiedDock=null;
         _controlsPopup?.Dispose(); _controlsPopup=null;
-        _controlsButton?.Dispose(); _controlsButton=null;
         AfterModeChanged -= OnTeamTelemetryModeChanged;
         DisposeMissionControl();
         _telemetryProvider?.Dispose(); _telemetryProvider=null; _teamPods=null;

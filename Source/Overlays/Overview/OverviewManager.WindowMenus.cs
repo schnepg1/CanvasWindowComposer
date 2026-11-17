@@ -149,10 +149,9 @@ internal sealed partial class OverviewManager
             _annotationContextMenu = null;
             hadMenu = true;
         }
-        if (_annotationToolbar != null && _annotationToolbar.HasOpenDropDown)
+        if (_unifiedDock?.Panel.HasOpenDropDown == true)
         {
-            _annotationToolbar.CloseDropDowns();
-            _unifiedDock?.Panel.CloseDropDowns();
+            _unifiedDock.Panel.CloseDropDowns();
             hadMenu = true;
         }
         return hadMenu;

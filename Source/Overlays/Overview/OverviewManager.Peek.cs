@@ -34,7 +34,7 @@ internal sealed partial class OverviewManager
         || _windowContextMenu?.Visible == true
         || _interactionMenu?.Visible == true
         || _activeCardMenu?.Visible == true
-        || _annotationToolbar?.HasOpenDropDown == true
+        || _unifiedDock?.Panel.HasOpenDropDown == true
         || _activeTerminalOverlays.Values.Any(o => o.IsVisible && (o.IsActive || o.IsKeyboardFocusWithin));
 
     private bool PeekToolsReady => !_disposed && _appConfig.EnableCanvasPeek

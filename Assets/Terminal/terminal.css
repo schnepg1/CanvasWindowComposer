@@ -1,2 +1,12 @@
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #121823; }
-#terminal { width: 100%; height: 100%; padding: 6px; box-sizing: border-box; overflow: auto; }
+
+/*
+ * Exactly one scroll surface: xterm owns the viewport scrollbar. The container must
+ * not scroll as well, otherwise a wheel gesture moves both the terminal buffer and
+ * the canvas element, and the appearance of an outer scrollbar keeps re-triggering
+ * the fit observer.
+ */
+#terminal { position: absolute; inset: 0; overflow: hidden; }
+
+/* FitAddon subtracts the padding of the .xterm element, so padding belongs there. */
+#terminal .xterm { padding: 6px; box-sizing: border-box; }

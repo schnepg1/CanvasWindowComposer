@@ -44,7 +44,7 @@ internal sealed partial class OverviewManager
         // Local canvas shortcuts never intercept an app's keyboard or a text/number editor.
         if (_disposed || CurrentMode != OverviewMode.Zooming || !_cfg.InputEnabled || _cameraBookmarks == null
             || CanvasInputSuspended || _tools.Active || _tools.ToolHasPendingInteraction || WindowInteractionActive
-            || _annotationToolbar?.HasOpenDropDown == true
+            || _unifiedDock?.Panel.HasOpenDropDown == true
             || !TryCameraBookmarkKey(e.KeyData, out int slot, out bool save)) return false;
 
         e.Handled = true;

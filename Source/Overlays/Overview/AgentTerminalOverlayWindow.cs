@@ -15,6 +15,16 @@ namespace CanvasDesktop;
 /// </summary>
 internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
 {
+    private const int WS_EX_TOPMOST = 0x00000008;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+
+    // Last window rectangle that was actually pushed to the HWND, in device pixels.
+    // Placement is snapped and de-duplicated so a stationary card costs nothing.
+    private int _appliedX, _appliedY, _appliedWidth, _appliedHeight;
+    private double _appliedDpiX, _appliedDpiY;
+    private bool _hasApplied;
+    private DispatcherTimer? _resizeSettleTimer;
+
     private readonly AgentTerminalPane _pane;
     private readonly TextBlock _statusText;
     private readonly Border _containerBorder;
@@ -33,6 +43,10 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
     public CanvasRect LastScreenRect { get; private set; }
     public CanvasRect LastDrawerWorld { get; private set; }
     public bool IsBelowLodThreshold { get; private set; }
+    public bool IsDisposed => _disposed;
+
+    /// <summary>Number of times window geometry was actually written (diagnostics/tests).</summary>
+    internal int PlacementWrites { get; private set; }
 
     public AgentTerminalOverlayWindow(
         IAgentSessionManager herdr,
@@ -48,11 +62,13 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         Title = $"Agent Terminal ({profile.DisplayName})";
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = true;
-        Background = Brushes.Transparent;
         ShowInTaskbar = false;
-        Topmost = true;
         WindowStartupLocation = WindowStartupLocation.Manual;
+
+        // This window hosts a WebView2 child HWND. Layered (AllowsTransparency) windows
+        // cannot composite a child HWND reliably and lose hardware acceleration, which
+        // shows up as terminal flicker. Keep the window opaque and let DWM composite it.
+        SourceInitialized += (_, _) => ApplyTopmostExStyle();
 
         var accentColor = (Color)ColorConverter.ConvertFromString(profile.AccentColorHex);
         var accentBrush = new SolidColorBrush(accentColor);
@@ -61,6 +77,8 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         subtleBorderBrush.Freeze();
         var darkBg = new SolidColorBrush(Color.FromRgb(10, 15, 29)); // #0A0F1D (matches TerminalBg in MissionCardLayer)
         darkBg.Freeze();
+        Background = darkBg;
+
         var headerBg = new SolidColorBrush(Color.FromArgb(240, 15, 23, 42)); // #0F172A
         headerBg.Freeze();
         var headerBorder = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
@@ -266,8 +284,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         if (transform.Zoom < 0.35 || heightDips < 60)
         {
             IsBelowLodThreshold = true;
-            Visibility = Visibility.Hidden;
-            Opacity = 0;
+            HideOverlay();
             return;
         }
 
@@ -281,36 +298,98 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         if (screenRect.Right < area.X || screenRect.X > area.Right ||
             screenRect.Bottom < area.Y || screenRect.Y > area.Bottom)
         {
-            Visibility = Visibility.Hidden;
-            Opacity = 0;
+            HideOverlay();
             return;
         }
 
-        double leftDip = screenRect.X / dpi.DpiScaleX;
-        double topDip = screenRect.Y / dpi.DpiScaleY;
-        double widthDip = Math.Max(1, screenRect.Width / dpi.DpiScaleX);
-        double heightDip = Math.Max(1, screenRect.Height / dpi.DpiScaleY);
+        // Snap to whole device pixels. Sub-pixel geometry would turn every canvas frame
+        // into a WebView2 bounds update (synchronous IPC plus a full re-raster) and an
+        // xterm re-fit, which is what made the console flicker while the camera moved.
+        int x = (int)Math.Round(screenRect.X);
+        int y = (int)Math.Round(screenRect.Y);
+        int width = Math.Max(1, (int)Math.Round(screenRect.Width));
+        int height = Math.Max(1, (int)Math.Round(screenRect.Height));
+        bool dpiChanged = dpi.DpiScaleX != _appliedDpiX || dpi.DpiScaleY != _appliedDpiY;
+        bool sizeChanged = !_hasApplied || dpiChanged || width != _appliedWidth || height != _appliedHeight;
 
-        Left = leftDip;
-        Top = topDip;
-        Width = widthDip;
-        Height = heightDip;
+        // Nothing moved since the last frame: leave the HWND, the WebView2 controller and
+        // the xterm grid completely alone.
+        if (!sizeChanged && x == _appliedX && y == _appliedY)
+        {
+            if (Visibility != Visibility.Visible) ShowOverlay();
+            return;
+        }
 
+        _appliedX = x;
+        _appliedY = y;
+        _appliedWidth = width;
+        _appliedHeight = height;
+        _appliedDpiX = dpi.DpiScaleX;
+        _appliedDpiY = dpi.DpiScaleY;
+        _hasApplied = true;
+        PlacementWrites++;
+
+        // WPF applies Left/Top/Width/Height in a single SetWindowPos for the HWND. Do not
+        // follow up with a second native call: doubling the geometry work re-composited
+        // the terminal and its neighbours every frame.
+        Left = x / dpi.DpiScaleX;
+        Top = y / dpi.DpiScaleY;
+        Width = width / dpi.DpiScaleX;
+        Height = height / dpi.DpiScaleY;
+
+        if (sizeChanged) SuspendTerminalFit();
+
+        if (Visibility != Visibility.Visible) ShowOverlay();
+        else if (Opacity < 1) Opacity = 1;
+    }
+
+    private void ShowOverlay()
+    {
         Visibility = Visibility.Visible;
         Opacity = 1;
+    }
 
-        var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd != IntPtr.Zero && IsVisible)
+    private void HideOverlay()
+    {
+        if (Visibility != Visibility.Hidden) Visibility = Visibility.Hidden;
+        if (Opacity != 0) Opacity = 0;
+    }
+
+    /// <summary>
+    /// Stops the page from re-fitting its grid (and resizing the remote PTY) on every
+    /// intermediate drag/zoom frame. The page re-fits once the geometry goes quiet.
+    /// </summary>
+    private void SuspendTerminalFit()
+    {
+        _pane.SetHostResizing(true);
+        if (_resizeSettleTimer == null)
         {
-            PInvoke.SetWindowPos(
-                (HWND)hwnd,
-                (HWND)new IntPtr(-1),
-                (int)Math.Round(screenRect.X),
-                (int)Math.Round(screenRect.Y),
-                (int)Math.Max(1, Math.Ceiling(screenRect.Width)),
-                (int)Math.Max(1, Math.Ceiling(screenRect.Height)),
-                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            _resizeSettleTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(180)
+            };
+            _resizeSettleTimer.Tick += (_, _) =>
+            {
+                _resizeSettleTimer?.Stop();
+                if (!_disposed) _pane.SetHostResizing(false);
+            };
         }
+        _resizeSettleTimer.Stop();
+        _resizeSettleTimer.Start();
+    }
+
+    /// <summary>
+    /// Applies the topmost tool-window ex-style once the HWND exists. The WPF Topmost
+    /// property is deliberately left alone so the CanvasLayerCoordinator owns z-order.
+    /// </summary>
+    private void ApplyTopmostExStyle()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        int ex = PInvoke.GetWindowLong((HWND)hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        int updated = ex | WS_EX_TOPMOST | WS_EX_TOOLWINDOW;
+        if (updated == ex) return;
+        PInvoke.SetWindowLong((HWND)hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, updated);
     }
 
     public void SetOwner(IntPtr ownerHwnd)
@@ -363,6 +442,8 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         if (_disposed) return;
         _disposed = true;
         _onCollapse = null;
+        _resizeSettleTimer?.Stop();
+        _resizeSettleTimer = null;
         _pane.StatusChanged -= OnStatusChanged;
         _pane.Dispose();
         try

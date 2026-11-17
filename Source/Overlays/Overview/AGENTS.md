@@ -23,7 +23,7 @@ All floating windows and panels must register with `CanvasLayerCoordinator` unde
 | `CanvasSurface` | `0` | Base canvas render surfaces (`OverviewOverlay`) |
 | `Zones` | `10` | Zone boundary overlays, `ZoneWindow` |
 | `BackpackAndDrawers` | `20` | `BackpackWindow`, `TemporaryDrawer`, `BackgroundEditor` |
-| `DockAndToolbars` | `30` | `UnifiedDockWindow`, `AnnotationToolbar` |
+| `DockAndToolbars` | `30` | `UnifiedDockWindow` (the only canvas toolbelt) |
 | `PeekPreview` | `40` | `CanvasPeekWindow` (hover pop-out preview) |
 | `ContextPopups` | `50` | `CanvasControlsPopup`, context menus |
 | `ModalDialogs` | `60` | Modal confirmation dialogs |
@@ -73,7 +73,7 @@ private bool HasBlockingModalOrDropdownUi =>
     || _windowContextMenu?.Visible == true
     || _interactionMenu?.Visible == true
     || _activeCardMenu?.Visible == true
-    || _annotationToolbar?.HasOpenDropDown == true;
+    || _unifiedDock?.Panel.HasOpenDropDown == true;
 ```
 When introducing a new drawer, dropdown, or popup, add it to `HasBlockingModalOrDropdownUi` so dwell previews and canvas gestures do not trigger over it.
 
@@ -91,4 +91,4 @@ When modifying components in this subsystem, verify against:
 - `Tests/CanvasLayerCoordinatorTests.cs` (layer hierarchy, sequencing, exception safety)
 - `Tests/CanvasPeekIntegrationTests.cs` (dwell activation, topmost Z-order, occlusion bypass)
 - `Tests/CanvasPeekPolicyTests.cs` (layout math, state machine enums)
-- `Tests/UnifiedDockTests.cs` and `Tests/AnnotationToolbarTests.cs` (dock and toolbar integration)
+- `Tests/UnifiedDockTests.cs` and `Tests/UnifiedCanvasControlTests.cs` (dock integration and controls popup)
