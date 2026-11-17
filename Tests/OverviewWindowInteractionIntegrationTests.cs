@@ -193,28 +193,6 @@ public class OverviewWindowInteractionIntegrationTests
         }));
 
     [Fact]
-    public void ControlsExposeBothModesAndRenderPreview()
-        => WorkspaceViewTests.OnSta(() =>
-        {
-            using var form = new CanvasControlsButton();
-            form.Show();
-            var buttons = form.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>().ToArray();
-            bool? requested = null;
-            form.InteractionModeRequested += enabled => requested = enabled;
-            buttons.Single(b => b.Text == "Interact").PerformClick();
-            Assert.True(requested);
-            form.SetInteractMode(true);
-            Assert.Contains("active", buttons.Single(b => b.Text == "Interact").AccessibleDescription);
-            buttons.Single(b => b.Text == "Arrange").PerformClick();
-            Assert.False(requested);
-            using var image = new Bitmap(form.Width, form.Height);
-            form.DrawToBitmap(image, new Rectangle(0, 0, image.Width, image.Height));
-            string folder = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TestResults"));
-            System.IO.Directory.CreateDirectory(folder);
-            image.Save(System.IO.Path.Combine(folder, "canvas-interact-toggle.png"));
-        });
-
-    [Fact]
     [Trait("Category", "NativeRendering")]
     public void StartupAttachmentKeepsChromeAndHookDispatchesCanvasDoubleClicks()
         => WorkspaceViewTests.OnSta(() => WithOverview((overview, pass, source, input, api, second) =>

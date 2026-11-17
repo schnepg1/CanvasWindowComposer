@@ -267,7 +267,7 @@ internal sealed partial class OverviewManager
         if (_disposed || CurrentMode == OverviewMode.Hidden) return;
         if (_composerWindow is { WaitingForBrowser: true })
         {
-            if (_annotationToolbar is { IsDisposed: false } toolbar) toolbar.Hide();
+            if (_unifiedDock?.IsAlive == true) _unifiedDock.Present(false);
             return;
         }
         var camera = SceneCamera;

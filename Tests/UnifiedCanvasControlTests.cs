@@ -1,6 +1,7 @@
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using System.Windows.Forms;
+using MenuItem = System.Windows.Controls.MenuItem;
 using Xunit;
 
 namespace CanvasDesktop.Tests;
@@ -10,53 +11,53 @@ public class UnifiedCanvasControlTests
 {
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ToolbarHasUnifiedSelectAndShapesDropdown()
-    {
-        var toolbar = new AnnotationToolbar();
-        var strip = toolbar.Controls.OfType<ToolStrip>().Single();
-        var topLevelTexts = strip.Items.OfType<ToolStripItem>().Select(b => b.Text).ToArray();
+    public void DockHasUnifiedSelectAndShapesMenu()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var dock = new UnifiedDockControl();
+            var toolLabels = dock.CreationToolsPanel.Children.OfType<System.Windows.Controls.Button>()
+                .Select(button => button.Content as string)
+                .ToArray();
 
-        // Separate Windows and separate shape buttons should not exist at top level
-        Assert.DoesNotContain("Windows", topLevelTexts);
-        Assert.DoesNotContain("Arrow", topLevelTexts);
-        Assert.DoesNotContain("Rectangle", topLevelTexts);
-        Assert.DoesNotContain("Ellipse", topLevelTexts);
+            // Unified Select, a single Shapes button, Note and the AI agent placement tool exist.
+            Assert.Contains("Select", toolLabels);
+            Assert.Contains("Note", toolLabels);
+            Assert.Contains("AI agent", toolLabels);
+            // The Shapes button label mirrors the last used shape, so any of these is valid.
+            Assert.Contains(toolLabels, label => label is "Shapes" or "Rectangle" or "Ellipse" or "Arrow");
+            Assert.DoesNotContain("Windows", toolLabels);
 
-        // Unified Select, combined Shapes dropdown, and Text should exist
-        Assert.Contains("Select", topLevelTexts);
-        Assert.Contains("Shapes", topLevelTexts);
-        Assert.Contains("Text", topLevelTexts);
-
-        // Shapes dropdown contains Arrow, Rectangle, Ellipse
-        var shapesBtn = strip.Items.OfType<ToolStripSplitButton>().Single(b => b.Name == "Shapes");
-        var shapeItems = shapesBtn.DropDownItems.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
-        Assert.Contains("Arrow", shapeItems);
-        Assert.Contains("Rectangle", shapeItems);
-        Assert.Contains("Ellipse", shapeItems);
-    }
+            var shapesMenu = dock.OpenShapesMenu();
+            Assert.NotNull(shapesMenu);
+            var shapeItems = shapesMenu!.Items.OfType<MenuItem>().Select(i => (string)i.Header).ToArray();
+            Assert.Contains("Arrow", shapeItems);
+            Assert.Contains("Rectangle", shapeItems);
+            Assert.Contains("Ellipse", shapeItems);
+        });
 
     [Fact]
     [Trait("Category", "NativeRendering")]
-    public void ToolbarMoreDropdownOffersOneProjectsWindowEntry()
-    {
-        var toolbar = new AnnotationToolbar();
-        var strip = toolbar.Controls.OfType<ToolStrip>().Single();
-        var moreBtn = strip.Items.OfType<ToolStripDropDownButton>().Single(b => b.Name == "More");
-        var moreItems = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
+    public void DockMoreMenuOffersOneProjectsEntry()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var dock = new UnifiedDockControl();
+            bool requested = false;
+            dock.ProjectsRequested += () => requested = true;
 
-        Assert.Contains("Projects…", moreItems);
-        Assert.DoesNotContain("Project Navigator…", moreItems);
-        Assert.DoesNotContain("Project areas…", moreItems);
+            var moreMenu = dock.OpenMoreMenu();
+            Assert.NotNull(moreMenu);
+            var headers = moreMenu!.Items.OfType<MenuItem>().Select(i => (string)i.Header).ToArray();
 
-        bool requested = false;
-        toolbar.ProjectsRequested += () => requested = true;
+            Assert.Contains("Projects…", headers);
+            Assert.DoesNotContain("Project Navigator…", headers);
+            Assert.DoesNotContain("Project areas…", headers);
 
-        var projectsItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Projects…");
-        Assert.Equal("P", projectsItem.ShortcutKeyDisplayString);
+            var projectsItem = moreMenu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Projects…");
+            Assert.Equal("P", projectsItem.InputGestureText);
 
-        projectsItem.PerformClick();
-        Assert.True(requested);
-    }
+            projectsItem.RaiseEvent(new System.Windows.RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.True(requested);
+        });
 
     [Fact]
     [Trait("Category", "NativeRendering")]

@@ -96,13 +96,14 @@ public class ZoneOverviewIntegrationTests
                 using var zoneUi = new ZoneUi(rig.Workspace, overview);
 
                 overview.TransitionTo(OverviewMode.Zooming);
-                Assert.NotNull(overview.AnnotationToolbar);
+                Assert.NotNull(overview.UnifiedDock);
+                Assert.True(overview.UnifiedDock.IsDockVisible);
 
-                var strip = overview.AnnotationToolbar.Controls.OfType<ToolStrip>().Single();
-                var moreBtn = strip.Items.OfType<ToolStripDropDownButton>().Single(b => b.Name == "More");
-
-                var projectsItem = moreBtn.DropDownItems.OfType<ToolStripMenuItem>().Single(i => i.Text == "Projects…");
-                projectsItem.PerformClick();
+                var menu = overview.UnifiedDock.Panel.OpenMoreMenu();
+                Assert.NotNull(menu);
+                var projectsItem = menu!.Items.OfType<System.Windows.Controls.MenuItem>()
+                    .Single(i => (string)i.Header == "Projects…");
+                projectsItem.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));
 
                 Assert.NotNull(zoneUi.Window);
                 Assert.True(zoneUi.Window.IsVisible);

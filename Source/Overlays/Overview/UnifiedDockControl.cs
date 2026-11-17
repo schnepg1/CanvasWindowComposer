@@ -67,11 +67,11 @@ internal sealed class UnifiedDockControl : UserControl
     private readonly Wpf.Ui.Controls.Button _agentButton;
     private AnnotationMode _currentMode = AnnotationMode.Select;
     private AnnotationMode _lastShape = AnnotationMode.Rectangle;
-    private AnnotationToolbarState? _state;
+    private CanvasDockState? _state;
     private double _selectionRadius = 1200;
     private ContextMenu? _openMenu;
 
-    // Events matching AnnotationToolbar & CanvasControlsButton
+    // Events consumed by OverviewManager for canvas dock actions.
     public event Action<bool>? InteractionModeRequested;
     public event Action? ControlsClicked;
     public event Action<AnnotationMode>? ModeRequested;
@@ -98,9 +98,16 @@ internal sealed class UnifiedDockControl : UserControl
     internal Wpf.Ui.Controls.Button InteractModeButton => _interactModeButton;
     internal Wpf.Ui.Controls.Button MoreButton => _moreButton;
     internal ContextMenu? OpenMoreMenu() { ShowMoreMenu(); return _openMenu; }
+    internal ContextMenu? OpenShapesMenu() { ShowShapesMenu(); return _openMenu; }
+    internal ContextMenu? OpenSizeMenu() { ShowSizeMenu(); return _openMenu; }
+    internal ContextMenu? OpenStyleMenu() { ShowStyleMenu(); return _openMenu; }
+    internal ContextMenu? OpenFillMenu() { ShowFillMenu(); return _openMenu; }
     internal StackPanel CreationToolsPanel => _creationToolsPanel;
     internal StackPanel InteractHudPanel => _interactHudPanel;
     internal Border PropertiesShelf => _propertiesShelf;
+    internal StackPanel ColorSwatchesPanel => _colorSwatchesPanel;
+    internal Wpf.Ui.Controls.Button UndoButton => _undoButton;
+    internal Wpf.Ui.Controls.Button RedoButton => _redoButton;
 
     public UnifiedDockControl()
     {
@@ -525,7 +532,7 @@ internal sealed class UnifiedDockControl : UserControl
         }
     }
 
-    public void UpdateState(AnnotationToolbarState state)
+    public void UpdateState(CanvasDockState state)
     {
         _state = state;
         _currentMode = state.Mode == AnnotationMode.Navigate ? AnnotationMode.Select : state.Mode;
