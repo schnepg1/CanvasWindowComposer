@@ -17,7 +17,7 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
     public static readonly IReadOnlyList<AgentProfile> SupportedAgents = [
         new("codex", "Codex", "OpenAI Codex CLI", ["codex.cmd", "codex.exe", "codex.bat"], ["--no-daemon"], "#10B981"),
         new("claude", "Claude Code", "Anthropic Claude Code CLI", ["claude.cmd", "claude.exe", "claude.bat"], [], "#EA580C"),
-        new("gemini", "Gemini CLI", "Google Gemini CLI / Antigravity", ["gemini.cmd", "gemini.exe", "gemini.bat", "agy.cmd", "agy.exe"], [], "#2563EB"),
+        new("gemini", "Gemini CLI", "Google Gemini CLI / Antigravity", ["gemini.cmd", "gemini.exe", "gemini.bat", "agy.cmd", "agy.exe", "agy.bat"], [], "#2563EB"),
         new("aider", "Aider", "Aider AI Pair Programming", ["aider.exe", "aider.cmd", "aider.bat"], [], "#7C3AED"),
         new("opencode", "OpenCode", "OpenCode Autonomous Agent", ["opencode.cmd", "opencode.exe", "opencode.bat"], [], "#DB2777"),
     ];
@@ -39,12 +39,45 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
     [GeneratedRegex(@"\At[0-9a-z]+\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     internal static partial Regex LocalAddress();
 
-    public async Task<Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null)
+    internal static bool IsAntigravityExecutable(string? executablePath)
     {
-        if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder))
-            throw new HerdrException("Choose an existing local working folder.");
-        var executable = FindCandidateOnPath(agent.CandidateExecutables)
-            ?? throw new HerdrException($"{agent.DisplayName} ({agent.CandidateExecutables.FirstOrDefault() ?? agent.Id}) was not found on PATH.");
+        if (string.IsNullOrWhiteSpace(executablePath)) return false;
+        var fileName = Path.GetFileNameWithoutExtension(executablePath);
+        return string.Equals(fileName, "agy", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static List<string> BuildAgentArgs(AgentProfile agent, string executablePath, string? prompt = null)
+    {
+        var args = new List<string>(agent.DefaultArgs);
+        var isAntigravity = IsAntigravityExecutable(executablePath);
+        if (isAntigravity)
+        {
+            // Gemini CLI uses --yolo, which agy.exe rejects; Antigravity CLI uses --dangerously-skip-permissions (Turbo).
+            args.RemoveAll(arg => string.Equals(arg, "--yolo", StringComparison.OrdinalIgnoreCase));
+            if (!args.Any(arg => string.Equals(arg, "--dangerously-skip-permissions", StringComparison.Ordinal)))
+            {
+                args.Add("--dangerously-skip-permissions");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(prompt))
+        {
+            if (isAntigravity)
+            {
+                args.Add("--prompt-interactive");
+                args.Add(prompt);
+            }
+            else
+            {
+                args.Add(prompt);
+            }
+        }
+
+        return args;
+    }
+
+    internal static string[] BuildRunArgs(AgentProfile agent, string executable, string folder, Guid card, string? prompt = null)
+    {
         var args = new List<string>
         {
             "run", "--json", "--bg", "--no-parent", "--cwd", folder,
@@ -53,9 +86,17 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
             "--label", $"agent_type={agent.Id}",
             "--", executable
         };
-        args.AddRange(agent.DefaultArgs);
-        if (!string.IsNullOrWhiteSpace(prompt)) args.Add(prompt);
-        var reply = await Run(cancellation, [.. args]);
+        args.AddRange(BuildAgentArgs(agent, executable, prompt));
+        return [.. args];
+    }
+
+    public async Task<Terminal> StartAgent(AgentProfile agent, string folder, Guid card, CancellationToken cancellation, string? prompt = null)
+    {
+        if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder))
+            throw new HerdrException("Choose an existing local working folder.");
+        var executable = FindCandidateOnPath(agent.CandidateExecutables)
+            ?? throw new HerdrException($"{agent.DisplayName} ({agent.CandidateExecutables.FirstOrDefault() ?? agent.Id}) was not found on PATH.");
+        var reply = await Run(cancellation, BuildRunArgs(agent, executable, folder, card, prompt));
         using var json = JsonDocument.Parse(reply);
         return ReadTerminal(json.RootElement);
     }
@@ -72,7 +113,7 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
         }
     }
 
-    public async Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation)
+    public async Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation, AgentProfile? agent = null)
     {
         var terminal = await Find(card, cancellation);
         if (terminal is { IsLive: true })
@@ -82,7 +123,7 @@ internal sealed partial class HerdrSessions : IAgentSessionManager
         }
         if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
         {
-            await StartCodex(folder, card, cancellation, prompt);
+            await StartAgent(agent ?? DefaultAgent, folder, card, cancellation, prompt);
         }
     }
 
