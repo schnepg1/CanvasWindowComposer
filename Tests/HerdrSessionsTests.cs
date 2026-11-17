@@ -137,4 +137,109 @@ public class HerdrSessionsTests
         await Assert.ThrowsAsync<HerdrException>(() =>
             sessions.StartAgent(agent, "C:\\NonExistentFolder_123456789", card, default));
     }
+
+    [Theory]
+    [InlineData("agy.exe", true)]
+    [InlineData("agy.cmd", true)]
+    [InlineData("agy.bat", true)]
+    [InlineData(@"C:\Users\Dev\AppData\Local\agy\bin\agy.exe", true)]
+    [InlineData(@"C:\Tools\AGY.CMD", true)]
+    [InlineData("gemini.exe", false)]
+    [InlineData("gemini.cmd", false)]
+    [InlineData("codex.cmd", false)]
+    [InlineData("myagy.exe", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsAntigravityExecutableIdentifiesAgyBinariesOnly(string? executablePath, bool expected)
+    {
+        Assert.Equal(expected, HerdrSessions.IsAntigravityExecutable(executablePath));
+    }
+
+    [Fact]
+    public void BuildAgentArgsEnablesTurboPermissionsForAgyWithoutPrompt()
+    {
+        var geminiProfile = HerdrSessions.FindAgent("gemini");
+        var agyPath = @"C:\Users\Dev\AppData\Local\agy\bin\agy.exe";
+
+        Assert.Equal(["--dangerously-skip-permissions"], HerdrSessions.BuildAgentArgs(geminiProfile, agyPath));
+        Assert.Equal(["--dangerously-skip-permissions"], HerdrSessions.BuildAgentArgs(geminiProfile, agyPath, "   "));
+    }
+
+    [Fact]
+    public void BuildAgentArgsUsesPromptInteractiveAndTurboPermissionsForAgyWithPrompt()
+    {
+        var geminiProfile = HerdrSessions.FindAgent("gemini");
+        var agyPath = @"C:\Users\Dev\AppData\Local\agy\bin\agy.cmd";
+
+        var args = HerdrSessions.BuildAgentArgs(geminiProfile, agyPath, "Investigate permissions");
+
+        Assert.Equal(["--dangerously-skip-permissions", "--prompt-interactive", "Investigate permissions"], args);
+    }
+
+    [Fact]
+    public void BuildAgentArgsStripsGeminiYoloAndDeduplicatesTurboFlagForAgy()
+    {
+        var profileWithYolo = new AgentProfile(
+            "gemini",
+            "Gemini CLI",
+            "Google Gemini CLI / Antigravity",
+            ["gemini.cmd", "agy.exe"],
+            ["--yolo", "--dangerously-skip-permissions"],
+            "#2563EB");
+
+        var args = HerdrSessions.BuildAgentArgs(profileWithYolo, @"C:\bin\agy.exe");
+
+        Assert.Equal(["--dangerously-skip-permissions"], args);
+    }
+
+    [Fact]
+    public void BuildAgentArgsPreservesNonAgyCliArguments()
+    {
+        var geminiProfile = HerdrSessions.FindAgent("gemini");
+
+        var argsNoPrompt = HerdrSessions.BuildAgentArgs(geminiProfile, @"C:\tools\nodejs\gemini.cmd");
+        Assert.Empty(argsNoPrompt);
+
+        var argsWithPrompt = HerdrSessions.BuildAgentArgs(geminiProfile, @"C:\tools\nodejs\gemini.cmd", "Run tests");
+        Assert.Equal(["Run tests"], argsWithPrompt);
+
+        var codexProfile = HerdrSessions.FindAgent("codex");
+        var codexArgs = HerdrSessions.BuildAgentArgs(codexProfile, @"C:\tools\nodejs\codex.cmd", "Fix bug");
+        Assert.Equal(["--no-daemon", "Fix bug"], codexArgs);
+    }
+
+    [Fact]
+    public void BuildRunArgsPassesAgyExecutableWithTurboFlagAfterHerdrSeparator()
+    {
+        var geminiProfile = HerdrSessions.FindAgent("gemini");
+        var agyPath = @"C:\Users\Dev\AppData\Local\agy\bin\agy.exe";
+        var cardId = Guid.Parse("8a0fe3a5-e00b-4c29-8e85-a52f88aa751c");
+        var folder = @"C:\Projects\CanvasWindowComposer";
+
+        var runArgs = HerdrSessions.BuildRunArgs(geminiProfile, agyPath, folder, cardId);
+
+        Assert.Equal(
+            [
+                "run", "--json", "--bg", "--no-parent", "--cwd", folder,
+                "--name", "8a0fe3a5e00b4c298e85a52f88aa751c",
+                "--label", "canvas_managed=1",
+                "--label", "canvas_agent=8a0fe3a5e00b4c298e85a52f88aa751c",
+                "--label", "agent_type=gemini",
+                "--", agyPath, "--dangerously-skip-permissions"
+            ],
+            runArgs);
+
+        var runArgsWithPrompt = HerdrSessions.BuildRunArgs(geminiProfile, agyPath, folder, cardId, "Start task");
+
+        Assert.Equal(
+            [
+                "run", "--json", "--bg", "--no-parent", "--cwd", folder,
+                "--name", "8a0fe3a5e00b4c298e85a52f88aa751c",
+                "--label", "canvas_managed=1",
+                "--label", "canvas_agent=8a0fe3a5e00b4c298e85a52f88aa751c",
+                "--label", "agent_type=gemini",
+                "--", agyPath, "--dangerously-skip-permissions", "--prompt-interactive", "Start task"
+            ],
+            runArgsWithPrompt);
+    }
 }

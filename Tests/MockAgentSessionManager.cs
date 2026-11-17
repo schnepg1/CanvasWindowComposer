@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ internal sealed class MockAgentSessionManager : IAgentSessionManager
     public AgentProfile FindAgent(string? id) => HerdrSessions.FindAgent(id);
 
     public List<(Guid Card, string Prompt, string? Folder)> SentPrompts { get; } = [];
+    public ConcurrentQueue<(Guid Card, string Prompt, string? Folder, AgentProfile? Agent)> SentPromptRequests { get; } = new();
     public List<(Guid Card, AgentProfile Agent, string Folder)> StartedAgents { get; } = [];
     public List<Guid> StoppedAgents { get; } = [];
 
@@ -33,9 +35,10 @@ internal sealed class MockAgentSessionManager : IAgentSessionManager
         return Task.CompletedTask;
     }
 
-    public Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation)
+    public Task SendPrompt(Guid card, string prompt, string? folder, CancellationToken cancellation, AgentProfile? agent = null)
     {
         SentPrompts.Add((card, prompt, folder));
+        SentPromptRequests.Enqueue((card, prompt, folder, agent));
         return Task.CompletedTask;
     }
 

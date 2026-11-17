@@ -191,12 +191,15 @@ internal sealed partial class OverviewManager
         var project = AgentCardContext.ProjectAt(_placeholderWorkspace?.Document.Zones ?? [], targetAgent.Layout);
         var folder = AgentCardContext.ResolveWorkingFolder(targetAgent.Layout, _telemetryProvider, data?.MissionWorkingFolder, project?.ProjectFolderPath);
 
+        var sessions = HerdrSessions;
+        var agentProfile = sessions.FindAgent(targetAgent.Role);
+
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
             try
             {
                 using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15));
-                await HerdrSessions.SendPrompt(targetAgent.Id, prompt, folder, cts.Token);
+                await sessions.SendPrompt(targetAgent.Id, prompt, folder, cts.Token, agentProfile);
             }
             catch (Exception)
             {

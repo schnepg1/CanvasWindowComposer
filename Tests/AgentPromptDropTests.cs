@@ -244,6 +244,41 @@ public class AgentPromptDropTests
         });
     }
 
+    [Fact]
+    public void TryPromptAgentWithTextCard_PassesCardsAgentProfileToSendPrompt()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop = Guid.NewGuid();
+            var agentCard = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(100, 100), new(340, 212), Text: "Gemini CLI", AgentTaskId: "task-103", AgentRole: "gemini");
+            var textCard = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(500, 500), new(740, 548), Text: "Check turbo permissions");
+
+            string folder = Path.Combine(Path.GetTempPath(), "test-drop-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var overview = CreateTestOverview(desktop, folder, [agentCard, textCard]);
+                var mockHerdr = (MockAgentSessionManager)overview.HerdrSessions;
+                overview.PromptConfirmationDialog = (_, _, prompt) => (true, prompt);
+
+                bool handled = overview.TryPromptAgentWithTextCard(textCard, new MissionAgentCard(agentCard));
+
+                Assert.True(handled);
+                Assert.True(System.Threading.SpinWait.SpinUntil(() => !mockHerdr.SentPromptRequests.IsEmpty, TimeSpan.FromSeconds(5)));
+                Assert.True(mockHerdr.SentPromptRequests.TryDequeue(out var sent));
+                Assert.Equal(agentCard.Id, sent.Card);
+                Assert.Equal("Check turbo permissions", sent.Prompt);
+                Assert.NotNull(sent.Agent);
+                Assert.Equal("gemini", sent.Agent!.Id);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+    }
+
     private static OverviewManager CreateTestOverview(Guid desktop, string folder, CanvasAnnotation[] items)
     {
         Directory.CreateDirectory(folder);
