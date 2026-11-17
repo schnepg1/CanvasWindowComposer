@@ -94,21 +94,26 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
             or System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException
             or JsonException or System.Collections.Generic.KeyNotFoundException or ArgumentException)
         {
-            if (!token.IsCancellationRequested) StatusChanged?.Invoke(ex.Message);
+            if (!token.IsCancellationRequested)
+            {
+                string message = ex is EndOfStreamException || ex.Message.Contains("beyond the end of the stream", StringComparison.OrdinalIgnoreCase)
+                    ? "The agent terminal was stopped."
+                    : ex.Message;
+                StatusChanged?.Invoke(message);
+            }
         }
         finally
         {
-            connection?.Dispose();
-            attachment.Dispose();
+            var c = Interlocked.Exchange(ref _connection, null);
+            c?.Dispose();
             if (_attachment == attachment)
             {
                 _attachment = null;
-                _connection = null;
-                if (!_disposed && _ready.Task.IsCompletedSuccessfully)
-                {
-                    try { Post(new { type = "disable" }); }
-                    catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
-                }
+            }
+            try { attachment.Dispose(); } catch { }
+            if (!_disposed && _ready.Task.IsCompletedSuccessfully)
+            {
+                Post(new { type = "disable" });
             }
         }
     }
@@ -160,7 +165,49 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
 
     private void Post<T>(T message)
     {
-        if (!_disposed) _view.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message));
+        if (_disposed) return;
+        if (!Dispatcher.CheckAccess())
+        {
+            try
+            {
+                Dispatcher.BeginInvoke(() => Post(message));
+            }
+            catch (InvalidOperationException) { }
+            return;
+        }
+
+        try
+        {
+            _view.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    /// <summary>
+    /// Explicitly disconnects and disables the terminal without destroying the view,
+    /// safe to call concurrently when an agent session is stopped.
+    /// </summary>
+    public void Disconnect()
+    {
+        if (_disposed) return;
+        try { _attachment?.Cancel(); } catch { }
+        var c = Interlocked.Exchange(ref _connection, null);
+        c?.Dispose();
+        Post(new { type = "disable" });
+        try
+        {
+            StatusChanged?.Invoke("The agent terminal was stopped.");
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Clears the terminal screen and resets scrollback.
+    /// </summary>
+    public void Clear()
+    {
+        if (_disposed) return;
+        Post(new { type = "reset", control = _connection is { IsObserver: false } });
     }
 
     /// <summary>
@@ -258,17 +305,28 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
 
     private async void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        if (_disposed || !string.Equals(e.Source, Page, StringComparison.Ordinal)) return;
-        var json = e.WebMessageAsJson;
-        if (json.Length > 70_000) return;
-        using var message = JsonDocument.Parse(json);
-        var root = message.RootElement;
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var kind)
-            || kind.ValueKind != JsonValueKind.String) return;
-        var connection = _connection;
-        var token = _attachment?.Token ?? _lifetime.Token;
+        if (_disposed) return;
         try
         {
+            if (!string.Equals(e.Source, Page, StringComparison.Ordinal)) return;
+            var json = e.WebMessageAsJson;
+            if (string.IsNullOrEmpty(json) || json.Length > 70_000) return;
+            using var message = JsonDocument.Parse(json);
+            var root = message.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var kind)
+                || kind.ValueKind != JsonValueKind.String) return;
+
+            var connection = _connection;
+            CancellationToken token;
+            try
+            {
+                token = _attachment?.Token ?? _lifetime.Token;
+            }
+            catch (ObjectDisposedException)
+            {
+                token = _lifetime.Token;
+            }
+
             switch (kind.GetString())
             {
                 case "ready":
@@ -290,10 +348,19 @@ internal sealed class AgentTerminalPane : Grid, IDisposable
                     break;
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or ObjectDisposedException)
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or ObjectDisposedException
+            or JsonException or TimeoutException or ArgumentException)
         {
-            if (!token.IsCancellationRequested) StatusChanged?.Invoke("Terminal input disconnected.");
+            try
+            {
+                StatusChanged?.Invoke("Terminal input disconnected.");
+            }
+            catch { }
+        }
+        catch (Exception)
+        {
+            // async void must never allow unhandled exceptions to crash the process
         }
     }
 

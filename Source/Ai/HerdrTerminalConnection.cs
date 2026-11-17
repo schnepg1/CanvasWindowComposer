@@ -165,15 +165,22 @@ internal sealed class HerdrTerminalConnection : IDisposable
 
     private static string CloseMessage(byte[] payload)
     {
-        using var close = JsonDocument.Parse(payload);
-        var reason = close.RootElement.TryGetProperty("reason", out var value) ? value.GetString() : null;
-        return reason switch
+        try
         {
-            "exited" => "The agent terminal ended.",
-            "killed" => "The agent terminal was stopped.",
-            "server_stop" => "Herdr Core stopped.",
-            _ => "Herdr Core closed the terminal stream."
-        };
+            using var close = JsonDocument.Parse(payload);
+            var reason = close.RootElement.TryGetProperty("reason", out var value) ? value.GetString() : null;
+            return reason switch
+            {
+                "exited" => "The agent terminal ended.",
+                "killed" => "The agent terminal was stopped.",
+                "server_stop" => "Herdr Core stopped.",
+                _ => "Herdr Core closed the terminal stream."
+            };
+        }
+        catch (JsonException)
+        {
+            return "The agent terminal was stopped.";
+        }
     }
 
     private static void ValidateGrid(int cols, int rows)

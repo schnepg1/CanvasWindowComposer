@@ -381,4 +381,105 @@ public class AgentTerminalOverlayTests
             }
         });
     }
+
+    [Fact]
+    public void OverviewManager_StopAgentSession_WithFoldedOutTerminal_DisconnectsCleanlyWithoutCrashing()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop = Guid.NewGuid();
+            var folder = Path.Combine(Path.GetTempPath(), "overlay_stop_test_" + Guid.NewGuid().ToString("N"));
+            var card = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(100, 100), new(380, 240), Text: "Codex", AgentTaskId: "task-01", AgentRole: "codex");
+
+            Directory.CreateDirectory(folder);
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                var desktops = new FakeVirtualDesktops { CurrentDesktopId = desktop };
+                var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+
+                var mockHerdr = new MockAgentSessionManager();
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.HerdrSessions = mockHerdr;
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+                overview.Annotations!.Put(card);
+
+                var missionCard = new MissionAgentCard(card);
+
+                // 1. Expand the console drawer to open the active overlay
+                overview.ToggleAgentConsoleDrawer(card.Id);
+                Assert.Single(overview.ActiveTerminalOverlays);
+                var overlay = overview.ActiveTerminalOverlay;
+                Assert.NotNull(overlay);
+
+                // 2. Stop the agent session while the terminal is folded out
+                overview.StopAgentSession(missionCard);
+                System.Windows.Forms.Application.DoEvents();
+
+                // Verify that mockHerdr recorded the stop request and overlay status was safely updated
+                Assert.Contains(card.Id, mockHerdr.StoppedAgents);
+                Assert.Contains("stopped", overlay.StatusText, StringComparison.OrdinalIgnoreCase);
+
+                // Verify that subsequent placement updates while terminal is stopped do not throw
+                overview.UpdateTerminalOverlaysPlacement();
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+    }
+
+    [Fact]
+    public void AgentTerminalPane_DisconnectAndClear_DoesNotThrow()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var herdr = new MockAgentSessionManager();
+            var cardId = Guid.NewGuid();
+            using var pane = new AgentTerminalPane(herdr, cardId);
+
+            // Disconnect on fresh pane should not throw and should be idempotent
+            pane.Disconnect();
+            pane.Disconnect();
+
+            // Clear on fresh pane should not throw
+            pane.Clear();
+        });
+    }
+
+    [Fact]
+    public void AgentTerminalOverlayWindow_IsClosing_GuardsWindowOperations()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var herdr = new MockAgentSessionManager();
+            var cardId = Guid.NewGuid();
+            var profile = herdr.DefaultAgent;
+            var overlay = new AgentTerminalOverlayWindow(herdr, cardId, profile);
+
+            var transform = new CanvasViewTransform(50, 100, 1.5, new CanvasRect(0, 0, 1920, 1080));
+            var cardBounds = new CanvasRect(100, 200, 280, 340);
+            var dpi = new DpiScale(1.0, 1.0);
+            var workingArea = new System.Drawing.Rectangle(0, 0, 1920, 1080);
+
+            // Verify initial placement works
+            overlay.UpdatePlacement(transform, cardBounds, dpi, workingArea);
+            Assert.False(overlay.IsClosing);
+
+            // Dispose window (which marks it closing and closes it)
+            overlay.Dispose();
+            Assert.True(overlay.IsClosing);
+            Assert.True(overlay.IsDisposed);
+
+            // Operations while closing/disposed must not throw InvalidOperationException
+            overlay.UpdatePlacement(transform, cardBounds, dpi, workingArea);
+            overlay.RaiseWithoutActivation();
+        });
+    }
 }

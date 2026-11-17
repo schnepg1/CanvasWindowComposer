@@ -30,6 +30,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
     private readonly Border _containerBorder;
     private Action? _onCollapse;
     private bool _disposed;
+    private bool _isClosing;
 
     public event Action? CollapseRequested;
     public event Action? DetachRequested;
@@ -44,6 +45,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
     public CanvasRect LastDrawerWorld { get; private set; }
     public bool IsBelowLodThreshold { get; private set; }
     public bool IsDisposed => _disposed;
+    public bool IsClosing => _isClosing;
 
     /// <summary>Number of times window geometry was actually written (diagnostics/tests).</summary>
     internal int PlacementWrites { get; private set; }
@@ -178,6 +180,8 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         // 4. Embedded Live Terminal UI
         _pane = customPane ?? new AgentTerminalPane(herdr, cardId);
         _pane.StatusChanged += OnStatusChanged;
+        ClearRequested += () => _pane.Clear();
+        DetachRequested += () => _pane.Disconnect();
 
         var rootGrid = new Grid();
         rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -203,6 +207,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
 
         Closing += (_, e) =>
         {
+            _isClosing = true;
             if (_disposed) return;
             e.Cancel = true;
             Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
@@ -210,6 +215,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
                 if (!_disposed) Dispose();
             }));
         };
+        Closed += (_, _) => _isClosing = true;
 
         try
         {
@@ -243,14 +249,27 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
 
     private void OnStatusChanged(string status)
     {
-        if (_disposed) return;
-        Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+        if (_disposed || _isClosing) return;
+        if (Dispatcher.CheckAccess())
         {
-            if (!_disposed)
+            if (!_disposed && !_isClosing)
             {
                 _statusText.Text = status;
             }
-        });
+            return;
+        }
+
+        try
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+            {
+                if (!_disposed && !_isClosing)
+                {
+                    _statusText.Text = status;
+                }
+            });
+        }
+        catch (InvalidOperationException) { }
     }
 
     public Task Attach(bool observe = false)
@@ -269,7 +288,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         DpiScale dpi,
         System.Drawing.Rectangle workingArea)
     {
-        if (_disposed) return;
+        if (_disposed || _isClosing) return;
 
         var drawerWorld = MissionCardLayout.TerminalDrawerRect(cardBounds);
         LastDrawerWorld = drawerWorld;
@@ -332,10 +351,17 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         // WPF applies Left/Top/Width/Height in a single SetWindowPos for the HWND. Do not
         // follow up with a second native call: doubling the geometry work re-composited
         // the terminal and its neighbours every frame.
-        Left = x / dpi.DpiScaleX;
-        Top = y / dpi.DpiScaleY;
-        Width = width / dpi.DpiScaleX;
-        Height = height / dpi.DpiScaleY;
+        try
+        {
+            Left = x / dpi.DpiScaleX;
+            Top = y / dpi.DpiScaleY;
+            Width = width / dpi.DpiScaleX;
+            Height = height / dpi.DpiScaleY;
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
 
         if (sizeChanged) SuspendTerminalFit();
 
@@ -345,14 +371,24 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
 
     private void ShowOverlay()
     {
-        Visibility = Visibility.Visible;
-        Opacity = 1;
+        if (_disposed || _isClosing) return;
+        try
+        {
+            if (Visibility != Visibility.Visible) Visibility = Visibility.Visible;
+            if (Opacity < 1) Opacity = 1;
+        }
+        catch (InvalidOperationException) { }
     }
 
     private void HideOverlay()
     {
-        if (Visibility != Visibility.Hidden) Visibility = Visibility.Hidden;
-        if (Opacity != 0) Opacity = 0;
+        if (_disposed || _isClosing) return;
+        try
+        {
+            if (Visibility != Visibility.Hidden) Visibility = Visibility.Hidden;
+            if (Opacity != 0) Opacity = 0;
+        }
+        catch (InvalidOperationException) { }
     }
 
     /// <summary>
@@ -428,7 +464,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
 
     public void RaiseWithoutActivation()
     {
-        if (_disposed || !IsVisible) return;
+        if (_disposed || _isClosing || !IsVisible) return;
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
@@ -441,6 +477,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _isClosing = true;
         _onCollapse = null;
         _resizeSettleTimer?.Stop();
         _resizeSettleTimer = null;

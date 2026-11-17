@@ -73,8 +73,7 @@ internal sealed partial class OverviewManager
             _herdrDisconnected = false;
         }
         catch (OperationCanceledException) { return; }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
-            or System.Text.Json.JsonException or System.IO.IOException or ArgumentException or KeyNotFoundException)
+        catch (Exception)
         {
             _herdrDisconnected = true;
         }
@@ -287,7 +286,7 @@ internal sealed partial class OverviewManager
         _visualFrames.Request();
     }
 
-    private void ToggleAgentSession(MissionAgentCard card)
+    internal void ToggleAgentSession(MissionAgentCard card)
     {
         if (_disposed) return;
         if (IsAgentSessionLive(card.Id))
@@ -296,7 +295,7 @@ internal sealed partial class OverviewManager
             StartAgentSession(card);
     }
 
-    private async void StartAgentSession(MissionAgentCard card)
+    internal async void StartAgentSession(MissionAgentCard card)
     {
         if (_disposed) return;
         var agent = HerdrSessions.FindAgent(card.Role);
@@ -312,8 +311,13 @@ internal sealed partial class OverviewManager
             var terminal = await HerdrSessions.StartAgent(agent, folder, card.Id, cts.Token, card.Prompt);
             _missionTerminals[card.Id] = terminal;
             _herdrDisconnected = false;
+            if (_activeTerminalOverlays.TryGetValue(card.Id, out var overlay))
+            {
+                _ = overlay.Attach(observe: false);
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException) { }
+        catch (Exception)
         {
         }
         finally
@@ -323,15 +327,20 @@ internal sealed partial class OverviewManager
         }
     }
 
-    private async void StopAgentSession(MissionAgentCard card)
+    internal async void StopAgentSession(MissionAgentCard card)
     {
         if (_disposed) return;
+        if (_activeTerminalOverlays.TryGetValue(card.Id, out var overlay))
+        {
+            overlay.TerminalPane.Disconnect();
+        }
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await HerdrSessions.StopAgent(card.Id, cts.Token);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException) { }
+        catch (Exception)
         {
         }
         finally
@@ -470,12 +479,13 @@ internal sealed partial class OverviewManager
 
     internal void CloseTerminalOverlays()
     {
-        foreach (var (cardId, overlay) in _activeTerminalOverlays)
+        var overlays = _activeTerminalOverlays.ToArray();
+        _activeTerminalOverlays.Clear();
+        foreach (var (cardId, overlay) in overlays)
         {
             UnregisterTerminalLayer(cardId);
             overlay.Dispose();
         }
-        _activeTerminalOverlays.Clear();
     }
 
     private static string TerminalLayerName(Guid cardId) => $"AgentTerminal:{cardId:N}";
@@ -488,7 +498,7 @@ internal sealed partial class OverviewManager
     {
         _layerCoordinator.Register(CanvasLayerTier.AgentTerminal, TerminalLayerName(cardId),
             overlay.RaiseWithoutActivation,
-            () => !overlay.IsDisposed && overlay.IsVisible);
+            () => !overlay.IsDisposed && !overlay.IsClosing && overlay.IsVisible);
     }
 
     private void UnregisterTerminalLayer(Guid cardId) =>
@@ -508,7 +518,7 @@ internal sealed partial class OverviewManager
             new CanvasRect(monitorBounds.X, monitorBounds.Y, monitorBounds.Width, monitorBounds.Height), dpiX, dpiY);
 
         List<Guid>? toRemove = null;
-        foreach (var (cardId, overlay) in _activeTerminalOverlays)
+        foreach (var (cardId, overlay) in _activeTerminalOverlays.ToArray())
         {
             var card = _annotationDocument?.Items.FirstOrDefault(item => item.Id == cardId);
             if (card == null || Math.Abs(card.B.Y - card.A.Y) < 180)
