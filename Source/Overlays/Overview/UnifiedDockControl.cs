@@ -99,7 +99,6 @@ internal sealed class UnifiedDockControl : UserControl
     internal Wpf.Ui.Controls.Button MoreButton => _moreButton;
     internal ContextMenu? OpenMoreMenu() { ShowMoreMenu(); return _openMenu; }
     internal ContextMenu? OpenShapesMenu() { ShowShapesMenu(); return _openMenu; }
-    internal ContextMenu? OpenStrokeMenu() { ShowStrokeMenu(); return _openMenu; }
     internal ContextMenu? OpenSizeMenu() { ShowSizeMenu(); return _openMenu; }
     internal ContextMenu? OpenStyleMenu() { ShowStyleMenu(); return _openMenu; }
     internal ContextMenu? OpenFillMenu() { ShowFillMenu(); return _openMenu; }

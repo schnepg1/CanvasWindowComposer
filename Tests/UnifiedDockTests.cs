@@ -5,6 +5,10 @@ using System.Windows;
 using MenuItem = System.Windows.Controls.MenuItem;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
+using System.Windows.Media;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 using CanvasDesktop;
 using CanvasDesktop.CanvasView;
 using Xunit;
@@ -356,9 +360,14 @@ public class UnifiedDockTests
                     var area = taskbarVisible ? screen.WorkingArea : screen.Bounds;
                     var dock = overview.UnifiedDock!;
                     Assert.True(dock.IsDockVisible);
-                    // The dock floats 10 physical pixels above the bottom edge of its work area.
-                    Assert.InRange(dock.Bounds.Bottom, area.Bottom - 24, area.Bottom);
-                    int dockCenter = dock.Bounds.Left + dock.Bounds.Width / 2;
+
+                    // Assert against the real HWND rect, not the cached layout, and derive the
+                    // floating margin from the monitor DPI instead of hard-coding physical pixels.
+                    var handle = new WindowInteropHelper(dock).EnsureHandle();
+                    Assert.True(PInvoke.GetWindowRect((HWND)handle, out var rect), "GetWindowRect failed");
+                    int margin = (int)Math.Round(10 * VisualTreeHelper.GetDpi(dock).DpiScaleY);
+                    Assert.InRange(rect.bottom, area.Bottom - margin - 1, area.Bottom - margin + 1);
+                    int dockCenter = (rect.left + rect.right) / 2;
                     int areaCenter = area.Left + area.Width / 2;
                     Assert.InRange(Math.Abs(dockCenter - areaCenter), 0, 4);
                 }
@@ -370,6 +379,63 @@ public class UnifiedDockTests
                 config.ShowTaskbarInCanvas = true; overview.RefreshConfig(); Check(true);
                 overview.TransitionTo(OverviewMode.Hidden);
                 overview.TransitionTo(OverviewMode.Zooming); Check(true);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
+    [Trait("Category", "NativeRendering")]
+    public void DockStaysOnTopAcrossRaiseCanvasPanelsAndComposerWaitCycle()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-raise-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.AttachAnnotations(new FakeVirtualDesktops(), Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var dock = overview.UnifiedDock!;
+                var dockHandle = new WindowInteropHelper(dock).EnsureHandle();
+                Assert.NotEqual(IntPtr.Zero, dockHandle);
+
+                void Invoke(string name, params object?[] arguments) =>
+                    typeof(OverviewManager).GetMethod(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                        .Invoke(overview, arguments);
+
+                // The legacy strip used to be re-shown from these refresh paths, which is exactly
+                // what made it flicker through the dock. Every cycle must leave the dock as the
+                // only toolbelt and above every canvas overlay.
+                void AssertDockIsTheOnlyToolbeltAndOnTop()
+                {
+                    Assert.True(dock.IsDockVisible);
+                    Assert.True(overview.LayerCoordinator.IsRegistered("UnifiedDock"));
+                    Assert.False(overview.LayerCoordinator.IsRegistered("AnnotationToolbar"));
+                    foreach (var pass in overview.MonitorHandles) AssertAbove(dockHandle, pass);
+                }
+
+                Invoke("RaiseCanvasPanels");
+                AssertDockIsTheOnlyToolbeltAndOnTop();
+
+                // The composer browser hand-off flips the overview topmost state on and off.
+                Invoke("SetComposerWaitingForBrowser", true);
+                Assert.True(dock.IsAlive);
+                Invoke("SetComposerWaitingForBrowser", false);
+                Invoke("RaiseCanvasPanels");
+                AssertDockIsTheOnlyToolbeltAndOnTop();
+
+                // A settings refresh re-runs the annotation UI refresh that used to resurrect it.
+                overview.RefreshConfig();
+                Invoke("RaiseCanvasPanels");
+                AssertDockIsTheOnlyToolbeltAndOnTop();
             }
             finally
             {
@@ -447,6 +513,16 @@ public class UnifiedDockTests
 
                 Assert.True(args.Handled);
                 Assert.Equal(OverviewMode.Hidden, overview.CurrentMode);
+
+                // An unbound key must fall through so focused dock buttons keep their own input.
+                overview.TransitionTo(OverviewMode.Zooming);
+                var unbound = new System.Windows.Input.KeyEventArgs(
+                    System.Windows.Input.Keyboard.PrimaryDevice, source!, 0, System.Windows.Input.Key.F9)
+                {
+                    RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent
+                };
+                dock.RaiseEvent(unbound);
+                Assert.False(unbound.Handled);
             }
             finally
             {
@@ -566,12 +642,43 @@ public class UnifiedDockTests
                 var tour = overview.TourPanel;
                 Assert.NotNull(tour);
                 Assert.True(tour!.Visible);
-                Assert.True(tour.Bottom <= dock.Bounds.Top,
-                    $"tour bottom {tour.Bottom} must sit above dock top {dock.Bounds.Top}");
+                var handle = new WindowInteropHelper(dock).EnsureHandle();
+                Assert.True(PInvoke.GetWindowRect((HWND)handle, out var dockRect), "GetWindowRect failed");
+                Assert.True(tour.Bottom <= dockRect.top,
+                    $"tour bottom {tour.Bottom} must sit above dock top {dockRect.top}");
             }
             finally
             {
                 if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
         });
+
+    [Fact]
+    public void DockKeyboardBridgeMapsWpfKeysToTheFormsShortcutTable()
+    {
+        const System.Windows.Forms.Keys ControlShiftK =
+            System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.K;
+
+        Assert.Equal(System.Windows.Forms.Keys.Escape,
+            UnifiedDockWindow.ToFormsKeys(System.Windows.Input.Key.Escape, System.Windows.Input.ModifierKeys.None));
+        Assert.Equal(ControlShiftK,
+            UnifiedDockWindow.ToFormsKeys(System.Windows.Input.Key.K,
+                System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift));
+        Assert.Equal(System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.F4,
+            UnifiedDockWindow.ToFormsKeys(System.Windows.Input.Key.F4, System.Windows.Input.ModifierKeys.Alt));
+        // Keys WPF cannot map (e.g. Key.None) must not be forwarded as a bogus shortcut.
+        Assert.Equal(System.Windows.Forms.Keys.None,
+            UnifiedDockWindow.ToFormsKeys(System.Windows.Input.Key.None, System.Windows.Input.ModifierKeys.None));
+    }
+
+    private static void AssertAbove(IntPtr upper, IntPtr lower)
+    {
+        var current = PInvoke.GetWindow((HWND)lower, GET_WINDOW_CMD.GW_HWNDPREV);
+        while (current != HWND.Null)
+        {
+            if ((IntPtr)current == upper) return;
+            current = PInvoke.GetWindow(current, GET_WINDOW_CMD.GW_HWNDPREV);
+        }
+        Assert.Fail($"Expected window {upper} above {lower}.");
+    }
 }

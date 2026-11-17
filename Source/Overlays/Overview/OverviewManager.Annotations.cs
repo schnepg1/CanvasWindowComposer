@@ -202,8 +202,11 @@ internal sealed partial class OverviewManager
             {
                 // The dock can own keyboard focus after a click; route its keys through the
                 // single canvas shortcut implementation instead of duplicating the table.
+                // Resolve the pass on every key so a monitor change cannot leave a stale target.
+                var target = _passes.FirstOrDefault(p => p.Visible && p.Screen.Primary) ?? _passes.FirstOrDefault(p => p.Visible);
+                if (target == null) return false;
                 var args = new KeyEventArgs(keys);
-                HandleKeyDown(pass, args);
+                HandleKeyDown(target, args);
                 return args.Handled;
             };
             _unifiedDock.SetCanvasOwner(CanvasPanelOwner);

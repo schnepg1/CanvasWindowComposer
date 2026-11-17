@@ -129,23 +129,24 @@ internal sealed class UnifiedDockWindow : CanvasPanelWindow, IDisposable
     {
         base.OnPreviewKeyDown(e);
         if (e.Handled || KeyPressed == null) return;
-        var keys = ToFormsKeys(e);
+        // Alt combinations arrive as Key.System with the real key in SystemKey.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var keys = ToFormsKeys(key, Keyboard.Modifiers);
         if (keys == FormsKeys.None) return;
         e.Handled = KeyPressed.Invoke(keys);
     }
 
     /// <summary>
-    /// Translates a WPF key event into the WinForms <see cref="FormsKeys"/> shape the canvas
-    /// keyboard router already understands, so there is exactly one shortcut implementation.
+    /// Translates a WPF key and modifier set into the WinForms <see cref="FormsKeys"/> shape the
+    /// canvas keyboard router already understands, so there is exactly one shortcut implementation.
+    /// Kept pure so the mapping can be unit tested without real keyboard state.
     /// </summary>
-    private static FormsKeys ToFormsKeys(KeyEventArgs e)
+    internal static FormsKeys ToFormsKeys(Key key, ModifierKeys modifiers)
     {
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
         int virtualKey = KeyInterop.VirtualKeyFromKey(key);
         if (virtualKey == 0) return FormsKeys.None;
 
         var keys = (FormsKeys)virtualKey;
-        var modifiers = Keyboard.Modifiers;
         if ((modifiers & ModifierKeys.Control) != 0) keys |= FormsKeys.Control;
         if ((modifiers & ModifierKeys.Shift) != 0) keys |= FormsKeys.Shift;
         if ((modifiers & ModifierKeys.Alt) != 0) keys |= FormsKeys.Alt;
