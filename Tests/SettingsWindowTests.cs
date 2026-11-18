@@ -459,4 +459,37 @@ public class SettingsWindowTests
             }
             finally { Directory.Delete(directory, true); }
         });
+
+    [Fact]
+    public void DictationServerUrlValidatesAndSavesOnlyWhenValid()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "canvas-dictation-settings-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                using var config = new AppConfig(directory: directory); config.Load();
+                int applied = 0;
+                var window = new SettingsWindow(config, () => applied++);
+                var urlBox = WorkspaceViewTests.Descendants(window).OfType<TextBox>()
+                    .Single(tb => System.Windows.Automation.AutomationProperties.GetName(tb) == "Local transcription server URL");
+                Assert.Equal(CanvasDesktop.Dictation.DictationDefaults.DefaultBaseUrl, urlBox.Text);
+
+                urlBox.Text = "ftp://invalid-scheme";
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(0, applied);
+                Assert.Equal(CanvasDesktop.Dictation.DictationDefaults.DefaultBaseUrl, config.DictationServerUrl);
+
+                urlBox.Text = "http://127.0.0.1:9001/";
+                WorkspaceViewTests.Descendants(window).OfType<Button>().Single(b => Equals(b.Content, "Save settings"))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(1, applied);
+                Assert.Equal("http://127.0.0.1:9001", config.DictationServerUrl);
+
+                using var reopened = new AppConfig(directory: directory); reopened.Load();
+                Assert.Equal("http://127.0.0.1:9001", reopened.DictationServerUrl);
+                window.Close();
+            }
+            finally { Directory.Delete(directory, true); }
+        });
 }

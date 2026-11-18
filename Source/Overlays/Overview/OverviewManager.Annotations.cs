@@ -452,7 +452,7 @@ internal sealed partial class OverviewManager
             var intersection = System.Windows.Rect.Intersect(projected,new System.Windows.Rect(screen.X,screen.Y,screen.Width,screen.Height));
             return intersection.IsEmpty ? 0 : intersection.Width*intersection.Height;
         }).First();
-        var editor = new AnnotationTextEditor(item);
+        var editor = new AnnotationTextEditor(item, dictationServerUrl: _appConfig.DictationServerUrl);
         _annotationEditor = editor;
         double dpi = pass.DeviceDpi / 96.0;
         var area = pass.Screen.Bounds;

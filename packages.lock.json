@@ -172,6 +172,9 @@
       },
       "canvasdesktop.canvasview": {
         "type": "Project"
+      },
+      "canvasdesktop.dictation": {
+        "type": "Project"
       }
     }
   }

@@ -226,6 +226,7 @@
         "dependencies": {
           "CanvasDesktop.Ai": "[1.0.0, )",
           "CanvasDesktop.CanvasView": "[1.0.0, )",
+          "CanvasDesktop.Dictation": "[1.0.0, )",
           "Microsoft.Web.WebView2": "[1.0.4314.35, )",
           "Velopack": "[1.2.161, )",
           "Vortice.D3DCompiler": "[3.8.3, )",
@@ -241,6 +242,9 @@
         }
       },
       "canvasdesktop.canvasview": {
+        "type": "Project"
+      },
+      "canvasdesktop.dictation": {
         "type": "Project"
       }
     }
