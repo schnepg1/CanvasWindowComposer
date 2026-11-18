@@ -22,6 +22,7 @@ internal sealed partial class OverviewManager
         if (_tutorialLayer != null) attached.Add(_tutorialLayer);
         if (_annotationLayer != null) attached.Add(_annotationLayer);
         if (_missionCards != null) attached.Add(_missionCards);
+        if (_dissolutionLayer != null) attached.Add(_dissolutionLayer);
         if (_composerLayer != null) attached.Add(_composerLayer);
         if (_selectionLayer != null) attached.Add(_selectionLayer);
         if (_interactionLayer != null) attached.Add(_interactionLayer);

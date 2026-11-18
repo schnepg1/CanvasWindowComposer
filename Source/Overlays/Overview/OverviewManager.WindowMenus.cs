@@ -231,6 +231,7 @@ internal sealed partial class OverviewManager
                             {
                                 CloseAgentTerminalOverlay(note.Id);
                                 _annotationDocument.Delete(note.DesktopId, note.Id);
+                                SpawnDissolution([note]);
                                 _annotationStore?.Save();
                                 Selection.Clear();
                                 ReconcileVisuals();
@@ -289,6 +290,7 @@ internal sealed partial class OverviewManager
                         if (!_disposed)
                         {
                             _annotationDocument.Delete(note.DesktopId, note.Id);
+                            SpawnDissolution([note]);
                             _annotationStore?.Save();
                             Selection.Clear();
                             ReconcileVisuals();
@@ -394,7 +396,7 @@ internal sealed partial class OverviewManager
 
                 if (notesToDelete.Length > 0)
                 {
-                    _annotationDocument.DeleteWithConnectors(_zoneDesktop, notesToDelete);
+                    DeleteAnnotationsWithDissolution(_zoneDesktop, notesToDelete);
                     _annotationStore?.Save();
                 }
             }
@@ -417,6 +419,8 @@ internal sealed partial class OverviewManager
             _placeholderWorkspace.Zones.Remove(zone.Id);
         }
 
+        if (_dissolutionLayer != null && _zoneDesktop == _annotationDesktop())
+            _dissolutionLayer.Spawn(new CanvasRect(zone.Bounds.X, zone.Bounds.Y, zone.Bounds.W, zone.Bounds.H), zone.Color);
         Selection.Clear();
         CleanOrphanedArrows();
         RefreshZoneLayout();

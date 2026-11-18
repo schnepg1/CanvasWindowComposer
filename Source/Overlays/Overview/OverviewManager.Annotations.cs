@@ -14,7 +14,8 @@ internal sealed partial class OverviewManager
     private AnnotationCanvasTool? _annotationTool;
     private ConnectionCanvasTool? _connectionTool;
     private ICanvasTool? _annotationRouter;
-    private CanvasAnnotationLayer? _annotationLayer;
+    private CanvasAnnotationLayer? _annotationLayer;
+    private DissolutionEffectLayer? _dissolutionLayer;
     private ITeamTelemetryProvider? _telemetryProvider;
     private TeamPodService? _teamPods;
     internal ITeamTelemetryProvider? TelemetryProvider => _telemetryProvider;
@@ -88,11 +89,12 @@ internal sealed partial class OverviewManager
         }
         catch { }
         _annotationLayer=new(_annotationDocument,_annotationTool,_annotationDesktop,()=>CurrentMode==OverviewMode.Zooming && !IsStartupIntroActive, id => _composerPreviewIds.Contains(id) || _annotationEditor?.CurrentItem.Id == id, () => _windows.Windows.Where(w => !w.ScreenFixed).Select(w => new CanvasRect(w.World.X, w.World.Y, w.World.W, w.World.H)).ToArray(), () => _connectionTool?.Preview, item => _telemetryProvider?.GetReportForCard(item));
+        _dissolutionLayer=new(()=>_appConfig.ReduceStartupMotion || _appConfig.LowQualityMode || _prefersReducedStartupMotion());
         AttachSelection();
         _annotationRouter=new OverviewAnnotationToolRouter(_annotationTool,_zoneTool,_selectionTool!, _connectionTool, () => { if (_annotationTool.SelectedId is {} id) Selection.Replace([new(CanvasItemKind.Annotation,id)]); });
         _composerLayer = new(() => CurrentMode == OverviewMode.Zooming && !IsStartupIntroActive);
         _missionCards = new(MissionCards, MissionReport, MissionRuntimeLabel, ResolveCardFolder, IsAgentSessionLive, GetAgentTerminal);
-        _drawingLayers=[_annotationLayer, _missionCards, _composerLayer, _selectionLayer!, _interactionLayer!];
+        _drawingLayers=[_annotationLayer, _missionCards, _dissolutionLayer!, _composerLayer, _selectionLayer!, _interactionLayer!];
         foreach(var pass in _passes) pass.SetDrawingLayers(_drawingLayers);
         _tools.SetTool(_annotationRouter);
         _annotationDocument.Changed+=OnAnnotationsChanged;
@@ -309,19 +311,40 @@ internal sealed partial class OverviewManager
         catch(ArgumentException ex) { _annotationError=ex.Message; }
         RefreshToolPreview(); FocusOverview();
     }
+    private bool DeleteAnnotationsWithDissolution(Guid desktop, IReadOnlyCollection<Guid> ids)
+    {
+        if (_annotationDocument == null) return false;
+        var before = _annotationDocument.Items.Where(i => i.DesktopId == desktop).ToArray();
+        if (!_annotationDocument.DeleteWithConnectors(desktop, ids)) return false;
+        var remaining = _annotationDocument.Items.Where(i => i.DesktopId == desktop).Select(i => i.Id).ToHashSet();
+        SpawnDissolution(before.Where(i => !remaining.Contains(i.Id)));
+        return true;
+    }
+
+    private void SpawnDissolution(IEnumerable<CanvasAnnotation> items)
+    {
+        if (_dissolutionLayer == null) return;
+        bool spawned = false;
+        foreach (var item in items)
+            if (item.DesktopId == _annotationDesktop())
+                spawned |= _dissolutionLayer.Spawn(item.Bounds, item.Color, item.Kind != AnnotationKind.Arrow);
+        if (spawned && CurrentMode != OverviewMode.Hidden) ReconcileVisuals();
+    }
+
     private void DeleteAnnotation()
     {
         CancelInteraction();
         var selectedAnnotations = Selection.Ids.Where(id => id.Kind == CanvasItemKind.Annotation).Select(id => id.Id).ToArray();
         if (selectedAnnotations.Length > 0 && _annotationDocument != null)
         {
-            _annotationDocument.DeleteWithConnectors(_annotationDesktop(), _annotationDocument.Items
+            DeleteAnnotationsWithDissolution(_annotationDesktop(), _annotationDocument.Items
                 .Where(item => item.AgentTaskId.Length == 0 && selectedAnnotations.Contains(item.Id)).Select(item => item.Id).ToArray());
             Selection.Replace(Selection.Ids.Where(id => id.Kind != CanvasItemKind.Annotation));
         }
         else
         {
-            _annotationTool?.Delete();
+            if (_annotationTool?.Selected is { } single) { DeleteAnnotationsWithDissolution(single.DesktopId, [single.Id]); _annotationTool.ClearSelection(); }
+            else _annotationTool?.Delete();
         }
         CleanOrphanedArrows();
         RefreshToolPreview(); FocusOverview();
@@ -407,7 +430,7 @@ internal sealed partial class OverviewManager
                     {
                         if (item.Kind != AnnotationKind.Arrow)
                         {
-                            _annotationDocument!.DeleteWithConnectors(item.DesktopId, [item.Id]);
+                            DeleteAnnotationsWithDissolution(item.DesktopId, [item.Id]);
                             Selection.Clear(); _annotationTool?.ClearSelection();
                         }
                         else
@@ -457,7 +480,7 @@ internal sealed partial class OverviewManager
             if(_shapeEditor!=editor) return;
             if(result.Delete)
             {
-                _annotationDocument!.DeleteWithConnectors(item.DesktopId, [item.Id]);
+                DeleteAnnotationsWithDissolution(item.DesktopId, [item.Id]);
                 Selection.Clear(); _annotationTool?.ClearSelection();
             }
             else if(result.Save && item.DesktopId==_annotationDesktop())
@@ -700,7 +723,8 @@ internal sealed partial class OverviewManager
         if(_annotationDesktops!=null) _annotationDesktops.DesktopChanged-=OnAnnotationDesktopChanged;
         if(_annotationDocument!=null) _annotationDocument.Changed-=OnAnnotationsChanged;
         _unifiedDock?.Dispose(); _unifiedDock=null;
-        _controlsPopup?.Dispose(); _controlsPopup=null;
+        _controlsPopup?.Dispose(); _controlsPopup=null;
+        _dissolutionLayer?.Clear();
         AfterModeChanged -= OnTeamTelemetryModeChanged;
         DisposeMissionControl();
         _telemetryProvider?.Dispose(); _telemetryProvider=null; _teamPods=null;

@@ -74,13 +74,14 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
     {
         _glowTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Render)
         {
-            Interval = TimeSpan.FromMilliseconds(33)
+            Interval = TimeSpan.FromMilliseconds(16)
         };
         _glowTimer.Tick += (_, _) =>
         {
-            if (!_hasActiveCards || _frame == null || Opacity <= 0)
+            if (!HasAnimatedFrameContent() || Opacity <= 0)
             {
                 _glowTimer.Stop();
+                InvalidateVisual();
                 return;
             }
             InvalidateVisual();
@@ -101,8 +102,7 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         _frame = frame;
         Opacity = frame.Intro?.RevealOpacity ?? 1;
         _placeholders.Clear();
-        _hasActiveCards = !frame.ReduceMotion && !frame.MotionActive && (frame.Placeholders.Any(p => (p.IsActiveWindow || p.IsMinimizedWindow) && p.Opacity >= 0.99)
-            || _drawingLayers.Any(layer => layer.HasAnimatedContent));
+        _hasActiveCards = HasAnimatedFrameContent();
         if (_hasActiveCards)
         {
             if (!_glowTimer.IsEnabled) _glowTimer.Start();
@@ -113,6 +113,11 @@ internal sealed class OverviewAnnotationSurface : FrameworkElement
         }
         InvalidateVisual();
     }
+
+    private bool HasAnimatedFrameContent()
+        => _frame is { ReduceMotion: false, MotionActive: false } frame
+            && (frame.Placeholders.Any(p => (p.IsActiveWindow || p.IsMinimizedWindow) && p.Opacity >= 0.99)
+                || _drawingLayers.Any(layer => layer.HasAnimatedContent));
 
     public void ClearAnimation()
     {
