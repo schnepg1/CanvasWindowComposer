@@ -454,6 +454,19 @@ internal sealed partial class OverviewManager
         return overlay;
     }
 
+    internal void DeleteAgentCard(Guid cardId)
+    {
+        if (_disposed || _annotationDocument == null) return;
+        var note = _annotationDocument.Items.FirstOrDefault(item => item.Id == cardId);
+        if (note == null) return;
+        CloseAgentTerminalOverlay(cardId);
+        _annotationDocument.Delete(note.DesktopId, cardId);
+        SpawnDissolution([note]);
+        _annotationStore?.Save();
+        Selection.Clear();
+        ReconcileVisuals();
+    }
+
     internal void CloseAgentTerminalOverlay(Guid cardId)
     {
         if (_activeTerminalOverlays.Remove(cardId, out var overlay))
@@ -737,6 +750,12 @@ internal sealed partial class OverviewManager
         if (MissionCardLayout.ConsoleToggleRect(rect).Contains(pt))
         {
             ToggleAgentConsoleDrawer(card.Id);
+            return true;
+        }
+
+        if (MissionCardLayout.CloseRect(rect).Contains(pt))
+        {
+            DeleteAgentCard(card.Id);
             return true;
         }
 

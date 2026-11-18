@@ -28,9 +28,12 @@ internal static class MissionCardLayout
         new(card.X + 10, card.Y + 10, 26, 26);
 
     public static Rect PlayStopRect(Rect card) =>
-        new(card.Right - 80, card.Y + 11, 46, 22);
+        new(card.Right - 106, card.Y + 11, 44, 22);
 
     public static Rect ConsoleToggleRect(Rect card) =>
+        new(card.Right - 56, card.Y + 11, 22, 22);
+
+    public static Rect CloseRect(Rect card) =>
         new(card.Right - 30, card.Y + 11, 22, 22);
 
     public static Rect TelemetryRect(Rect card) =>
@@ -60,6 +63,9 @@ internal sealed class MissionCardLayer(
     private static readonly Brush TextMuted = Frozen(Color.FromRgb(148, 163, 184)); // #94A3B8
     private static readonly Brush TextFeedback = Frozen(Color.FromRgb(203, 213, 225)); // #CBD5E1
     private static readonly Pen BorderSubtle = FrozenPen(Color.FromRgb(51, 65, 85), 1); // #334155
+    private static readonly Brush CloseButtonBg = Frozen(Color.FromRgb(42, 18, 21)); // #2A1215
+    private static readonly Pen CloseButtonBorder = FrozenPen(Color.FromRgb(127, 29, 29), 1); // #7F1D1D
+    private static readonly Pen CloseButtonGlyph = FrozenPen(Color.FromRgb(252, 165, 165), 1.4); // #FCA5A5
 
     private readonly Dictionary<Guid, (AgentStatusReport Report, double Width, string? State, TelemetryStatusPill Pill)> _pills = [];
     public bool HasAnimatedContent => false;
@@ -133,7 +139,7 @@ internal sealed class MissionCardLayer(
 
             // 2. Title / Name
             var title = context.Text(card.Name, 13, Brushes.White);
-            title.MaxTextWidth = Math.Max(10, rect.Width - 140);
+            title.MaxTextWidth = Math.Max(10, rect.Width - 160);
             title.MaxTextHeight = 20;
             title.Trimming = TextTrimming.CharacterEllipsis;
             dc.DrawText(title, new Point(rect.X + 40, rect.Y + 12));
@@ -159,7 +165,18 @@ internal sealed class MissionCardLayer(
             double consoleTextY = consoleRect.Y + (consoleRect.Height - consoleText.Height) / 2.0;
             dc.DrawText(consoleText, new Point(consoleTextX, consoleTextY));
 
-            // 5. Telemetry Status Pill
+            // 5. Close Button (top-right)
+            var closeRect = MissionCardLayout.CloseRect(rect);
+            dc.DrawRoundedRectangle(CloseButtonBg, CloseButtonBorder, closeRect, 4, 4);
+            double closeInset = Math.Min(6.0, closeRect.Width / 4);
+            dc.DrawLine(CloseButtonGlyph,
+                new Point(closeRect.X + closeInset, closeRect.Y + closeInset),
+                new Point(closeRect.Right - closeInset, closeRect.Bottom - closeInset));
+            dc.DrawLine(CloseButtonGlyph,
+                new Point(closeRect.Right - closeInset, closeRect.Y + closeInset),
+                new Point(closeRect.X + closeInset, closeRect.Bottom - closeInset));
+
+            // 6. Telemetry Status Pill
             var reported = status(card);
             var report = reported ?? new(card.Role, AgentExecutionState.Idle);
             var state = stateOverride(card.Id) ?? (reported == null ? "No status reported" : null);
@@ -186,7 +203,7 @@ internal sealed class MissionCardLayer(
                 dc.DrawEllipse(Frozen(TelemetryStatusPill.ColorFor(report.State)), null, new Point(rect.Right - 10, rect.Bottom - 10), 3, 3);
             }
 
-            // 6. Environment Pill (Git worktree / repo info)
+            // 7. Environment Pill (Git worktree / repo info)
             if (rect.Height >= 95)
             {
                 string? folder = resolveFolder?.Invoke(card) ?? card.WorkingFolder;
@@ -201,7 +218,7 @@ internal sealed class MissionCardLayer(
                 dc.DrawText(envText, new Point(envRect.X + 6, envRect.Y + 3));
             }
 
-            // 7. Expanded Live Console Drawer
+            // 8. Expanded Live Console Drawer
             if (rect.Height >= 180)
             {
                 var drawerRect = MissionCardLayout.TerminalDrawerRect(rect);

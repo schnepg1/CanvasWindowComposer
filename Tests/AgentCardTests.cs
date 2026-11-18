@@ -280,6 +280,21 @@ public class AgentCardTests
     }
 
     [Fact]
+    public void AgentCardLayout_ReservesTopRightCornerForCloseAndKeepsControlsApart()
+    {
+        var card = new Rect(100, 100, 280, 140);
+        var close = MissionCardLayout.CloseRect(card);
+        var console = MissionCardLayout.ConsoleToggleRect(card);
+        var play = MissionCardLayout.PlayStopRect(card);
+
+        Assert.Equal(card.Right - 8, close.Right);
+        Assert.Equal(card.Y + 11, close.Y);
+        Assert.False(close.IntersectsWith(console));
+        Assert.False(console.IntersectsWith(play));
+        Assert.All([close, console, play], r => Assert.True(r.Left >= card.Left && r.Right <= card.Right));
+    }
+
+    [Fact]
     public void MissionCardLayer_RendersFluentStyleWithoutOpenAgentText()
         => WorkspaceViewTests.OnSta(() =>
         {
@@ -356,14 +371,22 @@ public class AgentCardTests
                 Assert.Equal("gemini", afterAvatarClick.AgentRole);
 
                 // 4. Verify in-place click on console toggle expands bounds without popup
-                // Console toggle is at offset (Right - 30 + 10, 10 + 10) = (100 + 280 - 20, 100 + 20) = (360, 120)
-                var consoleClickPointer = new CanvasPointer(0, new(360, 120), CanvasPointerButton.Left,
+                // Console toggle is at offset (Right - 56 + 11, 11 + 11) = (380 - 45, 100 + 22) = (335, 122)
+                var consoleClickPointer = new CanvasPointer(0, new(335, 122), CanvasPointerButton.Left,
                     CanvasModifiers.None, new CanvasViewTransform(0, 0, 1.0, new CanvasRect(0, 0, 1920, 1080)));
                 handled = overview.TryHandleAgentCardClick(consoleClickPointer);
                 Assert.True(handled);
                 Assert.Null(overview.MissionControl);
                 var afterConsoleClick = overview.Annotations!.Items.Single(i => i.Id == card.Id);
                 Assert.Equal(340, afterConsoleClick.Bounds.Height);
+
+                // 5. Verify the top-right close button removes the card without a popup
+                var closeClickPointer = new CanvasPointer(0, new(361, 122), CanvasPointerButton.Left,
+                    CanvasModifiers.None, new CanvasViewTransform(0, 0, 1.0, new CanvasRect(0, 0, 1920, 1080)));
+                handled = overview.TryHandleAgentCardClick(closeClickPointer);
+                Assert.True(handled);
+                Assert.DoesNotContain(overview.Annotations!.Items, i => i.Id == card.Id);
+                Assert.Null(overview.MissionControl);
             }
             finally
             {

@@ -229,12 +229,7 @@ internal sealed partial class OverviewManager
                         {
                             if (!_disposed)
                             {
-                                CloseAgentTerminalOverlay(note.Id);
-                                _annotationDocument.Delete(note.DesktopId, note.Id);
-                                SpawnDissolution([note]);
-                                _annotationStore?.Save();
-                                Selection.Clear();
-                                ReconcileVisuals();
+                                DeleteAgentCard(note.Id);
                             }
                         }),
                         onToggleExpandCollapse: () => pass.BeginInvoke(() => { if (!_disposed) ToggleAgentCardSize(note.Id); }));
