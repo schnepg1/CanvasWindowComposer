@@ -36,6 +36,15 @@ internal sealed partial class OverviewManager
         _backpack.Panel.PlaceRequested += id => DropInventory(id, null);
         _backpack.Panel.DropRequested += (id, point) => DropInventory(id, point);
         _backpack.Panel.KeepRequested += id => _placeholderWorkspace?.CollectInInventory(id);
+        _backpack.Panel.FolderRequested += id =>
+        {
+            if (_disposed || _placeholderWorkspace == null) return;
+            WorkspaceDialogs.ChooseProjectFolder(null, _placeholderWorkspace, id,
+                report: msg => _backpack?.Panel.SetHint(msg),
+                folderPicker: ProjectFolderPickerOverride,
+                wpfOwner: _backpack);
+            RefreshInventory();
+        };
         _backpack.Panel.OpenItemRequested += id => _placeholderWorkspace?.Open(id);
         _backpack.Panel.ForgetRequested += id =>
         {

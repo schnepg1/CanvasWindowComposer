@@ -66,7 +66,7 @@ internal sealed class BackpackPanel : UserControl
     public bool Dragging => Drag.IsDragging;
     public event Action<bool>? OpenRequested;
     public event Action<bool>? HelpDismissedChanged;
-    public event Action<Guid>? PlaceRequested, KeepRequested, OpenItemRequested, ForgetRequested;
+    public event Action<Guid>? PlaceRequested, KeepRequested, OpenItemRequested, ForgetRequested, FolderRequested;
     public event Action<Guid, Point>? DropRequested;
 
     public BackpackPanel()
@@ -835,6 +835,8 @@ internal sealed class BackpackPanel : UserControl
                 m.Click += (_, _) => action();
                 menu.Items.Add(m);
             }
+            if (item.State == "Project")
+                Entry("Choose project folder…", SymbolRegular.Folder20, () => FolderRequested?.Invoke(item.Id));
             Entry("Place near camera", SymbolRegular.Open20, () => PlaceRequested?.Invoke(item.Id));
             if (item.State is not ("Note" or "Agent" or "Project"))
                 Entry("Open app", SymbolRegular.ArrowUpRight20, () => OpenItemRequested?.Invoke(item.Id));

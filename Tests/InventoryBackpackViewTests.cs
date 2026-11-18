@@ -452,13 +452,20 @@ public class InventoryBackpackViewTests
             var projectTile = Descendants(panel).OfType<Border>().First(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Backend Engine");
             Assert.NotNull(projectTile.ContextMenu);
             var projectMenuItems = projectTile.ContextMenu.Items.OfType<MenuItem>().Select(m => m.Header?.ToString()).ToArray();
+            Assert.Contains("Choose project folder…", projectMenuItems);
             Assert.Contains("Place near camera", projectMenuItems);
             Assert.Contains("Delete from backpack", projectMenuItems);
             Assert.DoesNotContain("Open app", projectMenuItems);
+            Assert.DoesNotContain("Choose project folder…", agentMenuItems);
 
             // Forget agent and project requests
             var forgottenIds = new List<Guid>();
             panel.ForgetRequested += id => forgottenIds.Add(id);
+
+            var folderRequests = new List<Guid>();
+            panel.FolderRequested += folderRequests.Add;
+            var chooseFolder = projectTile.ContextMenu.Items.OfType<MenuItem>().First(m => m.Header?.ToString() == "Choose project folder…");
+            chooseFolder.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
             var deleteAgent = agentTile.ContextMenu.Items.OfType<MenuItem>().First(m => m.Header?.ToString() == "Delete agent card");
             deleteAgent.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
@@ -467,6 +474,7 @@ public class InventoryBackpackViewTests
             deleteProject.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
             Assert.Equal([agentId, projectId], forgottenIds);
+            Assert.Equal([projectId], folderRequests);
         });
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
