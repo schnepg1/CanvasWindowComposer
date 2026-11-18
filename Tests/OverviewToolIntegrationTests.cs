@@ -141,6 +141,41 @@ public class OverviewToolIntegrationTests
             Assert.False(overview.CloseActiveMenus());
         });
 
+    [Fact]
+    public void ProjectMenuReportsTheAssignedFolderAndOffersToChangeIt()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var zone = new ZoneView(Guid.NewGuid(), "Project", "#4B7BEC", new WorldRect { X = 0, Y = 0, W = 800, H = 600 });
+            int chosen = 0;
+
+            using (var unassigned = new ContextMenuStrip())
+            {
+                OverviewManager.AddProjectFolderItems(unassigned, zone, () => chosen++);
+                var items = unassigned.Items.OfType<ToolStripMenuItem>().ToArray();
+                Assert.DoesNotContain(items, i => i.Text!.StartsWith("Folder: "));
+                Assert.Single(items, i => i.Text == "Choose project folder…").PerformClick();
+            }
+            Assert.Equal(1, chosen);
+
+            zone = zone with { ProjectFolderPath = @"C:\Coding\Projects\CanvasWindowComposer" };
+            using var menu = new ContextMenuStrip();
+            OverviewManager.AddProjectFolderItems(menu, zone, () => chosen++);
+            var info = Assert.Single(menu.Items.OfType<ToolStripMenuItem>(), i => i.Text!.StartsWith("Folder: "));
+            Assert.False(info.Enabled);
+            Assert.Equal(zone.ProjectFolderPath, info.ToolTipText);
+            Assert.Equal($"Folder: {zone.ProjectFolderPath}", info.Text);
+            Assert.DoesNotContain(menu.Items.OfType<ToolStripMenuItem>(), i => i.Text == "Choose project folder…");
+            Assert.Single(menu.Items.OfType<ToolStripMenuItem>(), i => i.Text == "Change project folder…").PerformClick();
+            Assert.Equal(2, chosen);
+
+            string deep = @"C:\" + string.Join('\\', Enumerable.Repeat("a-fairly-long-folder-name", 6));
+            string fitted = OverviewManager.FitProjectFolderMenuText(deep);
+            Assert.Equal(72, fitted.Length);
+            Assert.StartsWith(deep[..35], fitted);
+            Assert.EndsWith(deep[^36..], fitted);
+            Assert.Contains("…", fitted);
+        });
+
     [Theory]
     [InlineData(ZoneDeleteMode.BorderOnly)]
     [InlineData(ZoneDeleteMode.Everything)]

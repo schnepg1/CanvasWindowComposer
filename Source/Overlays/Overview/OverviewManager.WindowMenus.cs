@@ -309,13 +309,10 @@ internal sealed partial class OverviewManager
             {
                 _annotationContextMenu?.Dispose();
                 var menu = _annotationContextMenu = new ContextMenuStrip();
-                var chooseFolder = new ToolStripMenuItem("Choose project folder…");
-                chooseFolder.Click += (_, _) => pass.BeginInvoke(() =>
+                AddProjectFolderItems(menu, zone, () => pass.BeginInvoke(() =>
                 {
                     if (!_disposed) ChooseProjectFolder(pass, zone.Id);
-                });
-                menu.Items.Add(chooseFolder);
-                menu.Items.Add(new ToolStripSeparator());
+                }));
 
                 var putProjectInBackpack = new ToolStripMenuItem("Put in backpack");
                 putProjectInBackpack.Click += (_, _) => pass.BeginInvoke(() =>
@@ -338,6 +335,37 @@ internal sealed partial class OverviewManager
         }
 
         return false;
+    }
+
+    private const int ProjectFolderMenuTextLimit = 72;
+
+    // The project menu reports the folder it already manages, then offers to replace it.
+    internal static void AddProjectFolderItems(ContextMenuStrip menu, ZoneView zone, Action chooseFolder)
+    {
+        string? path = zone.ProjectFolderPath;
+        bool assigned = !string.IsNullOrWhiteSpace(path);
+        if (assigned)
+        {
+            menu.Items.Add(new ToolStripMenuItem($"Folder: {FitProjectFolderMenuText(path!)}")
+            {
+                Enabled = false,
+                ToolTipText = path
+            });
+        }
+        var action = new ToolStripMenuItem(assigned ? "Change project folder…" : "Choose project folder…")
+        {
+            ToolTipText = assigned ? path : string.Empty
+        };
+        action.Click += (_, _) => chooseFolder();
+        menu.Items.Add(action);
+        menu.Items.Add(new ToolStripSeparator());
+    }
+
+    internal static string FitProjectFolderMenuText(string path, int limit = ProjectFolderMenuTextLimit)
+    {
+        if (path.Length <= limit) return path;
+        int head = (limit - 1) / 2;
+        return path[..head] + "…" + path[^(limit - 1 - head)..];
     }
 
     internal Func<string?, string?>? ProjectFolderPickerOverride { get; set; }
