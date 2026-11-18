@@ -289,9 +289,62 @@ public class AgentCardTests
 
         Assert.Equal(card.Right - 8, close.Right);
         Assert.Equal(card.Y + 11, close.Y);
+        Assert.Equal(card.Bottom - 8, console.Bottom);
+        Assert.True(console.Height >= 24);
+        Assert.True(console.Width > 100);
         Assert.False(close.IntersectsWith(console));
         Assert.False(console.IntersectsWith(play));
         Assert.All([close, console, play], r => Assert.True(r.Left >= card.Left && r.Right <= card.Right));
+    }
+
+    [Fact]
+    public void ExpandingCollapsedAgentCardAlsoFliesToIt()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var desktop = Guid.NewGuid();
+            var folder = Path.Combine(Path.GetTempPath(), "agent_card_fly_" + Guid.NewGuid().ToString("N"));
+            var card = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text,
+                new(100, 100), new(380, 240), Text: "Codex", AgentTaskId: "fly-task", AgentRole: "codex");
+            Directory.CreateDirectory(folder);
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false, AnimateWindowNavigation = false };
+                var desktops = new FakeVirtualDesktops { CurrentDesktopId = desktop };
+                var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                overview.HerdrSessions = new MockAgentSessionManager();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+                overview.Annotations!.Put(card);
+
+                bool flightStarted = false;
+                overview.WindowNavigationStarted += () => flightStarted = true;
+
+                Assert.True(overview.ExpandAndFlyToAgentCard(new MissionAgentCard(card)));
+                Assert.True(flightStarted);
+
+                var expanded = overview.Annotations.Items.Single(i => i.Id == card.Id);
+                Assert.Equal(340, expanded.Bounds.Height);
+
+                // The flight lands at desktop scale and centers the expanded card in the working area.
+                var camera = overview.ViewCamera;
+                Assert.Equal(1.0, camera.Zoom, 3);
+                var center = new CanvasPoint(expanded.Bounds.X + expanded.Bounds.Width / 2.0,
+                    expanded.Bounds.Y + expanded.Bounds.Height / 2.0);
+                Assert.InRange(Math.Abs(center.X - (camera.X + 1920 / 2.0 / camera.Zoom)), 0, 6);
+                Assert.InRange(Math.Abs(center.Y - (camera.Y + 1040 / 2.0 / camera.Zoom)), 0, 6);
+
+                // A second double-click on the already-expanded card leaves size and view alone.
+                Assert.False(overview.ExpandAndFlyToAgentCard(new MissionAgentCard(expanded)));
+                Assert.Equal(340, overview.Annotations.Items.Single(i => i.Id == card.Id).Bounds.Height);
+                Assert.Equal(camera, overview.ViewCamera);
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+        });
     }
 
     [Fact]
@@ -370,9 +423,9 @@ public class AgentCardTests
                 var afterAvatarClick = overview.Annotations!.Items.Single(i => i.Id == card.Id);
                 Assert.Equal("gemini", afterAvatarClick.AgentRole);
 
-                // 4. Verify in-place click on console toggle expands bounds without popup
-                // Console toggle is at offset (Right - 56 + 11, 11 + 11) = (380 - 45, 100 + 22) = (335, 122)
-                var consoleClickPointer = new CanvasPointer(0, new(335, 122), CanvasPointerButton.Left,
+                // 4. Verify in-place click on the bottom terminal toggle expands bounds without popup
+                // Bottom bar center: (100 + 140, 100 + 140 - 34 + 13) = (240, 219)
+                var consoleClickPointer = new CanvasPointer(0, new(240, 219), CanvasPointerButton.Left,
                     CanvasModifiers.None, new CanvasViewTransform(0, 0, 1.0, new CanvasRect(0, 0, 1920, 1080)));
                 handled = overview.TryHandleAgentCardClick(consoleClickPointer);
                 Assert.True(handled);

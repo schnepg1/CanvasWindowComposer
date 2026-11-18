@@ -408,7 +408,11 @@ internal sealed partial class OverviewManager
             return;
         }
         if (_composerWindow != null || ((_dispatchInteractionKeys ?? Control.ModifierKeys) & Keys.Control) != 0) return;
-        if (e.Button == MouseButtons.Left && HitMissionCard(Pointer(pass, e)) != null) return;
+        if (e.Button == MouseButtons.Left && HitMissionCard(Pointer(pass, e)) is { } missionCard)
+        {
+            ExpandAndFlyToAgentCard(missionCard);
+            return;
+        }
         if (_annotationTool is { Mode: not AnnotationMode.Navigate } annotationTool)
         {
             if (e.Button == MouseButtons.Left && annotationTool.Mode == AnnotationMode.Select)

@@ -393,6 +393,35 @@ internal sealed partial class OverviewManager
         }
     }
 
+    /// <summary>
+    /// Double-click on a folded card opens the terminal drawer and flies the camera
+    /// so the expanded card is readable. Already expanded cards keep the current view.
+    /// </summary>
+    internal bool ExpandAndFlyToAgentCard(MissionAgentCard card)
+    {
+        if (_disposed || _annotationDocument == null) return false;
+        var current = _annotationDocument.Items.FirstOrDefault(item => item.Id == card.Id);
+        if (current == null || Math.Abs(current.B.Y - current.A.Y) >= 180) return false;
+
+        ToggleAgentConsoleDrawer(card.Id);
+        var expanded = _annotationDocument.Items.FirstOrDefault(item => item.Id == card.Id);
+        if (expanded == null) return false;
+
+        var area = _screens.PrimaryWorkingArea;
+        var bounds = new WorldRect
+        {
+            X = expanded.Bounds.X, Y = expanded.Bounds.Y,
+            W = expanded.Bounds.Width, H = expanded.Bounds.Height
+        };
+        double zoom = Math.Clamp(ZoneGeometry.Fit(bounds, area).Zoom, 0.45, 1.25);
+        double centerX = bounds.X + bounds.W / 2.0;
+        double centerY = bounds.Y + bounds.H / 2.0;
+        var target = new CanvasCamera(centerX - (area.X + area.Width / 2.0) / zoom,
+            centerY - (area.Y + area.Height / 2.0) / zoom, zoom);
+        NavigateToCamera(target);
+        return true;
+    }
+
     internal void ToggleAgentConsoleDrawer(Guid cardId)
     {
         if (_disposed || _annotationDocument == null) return;

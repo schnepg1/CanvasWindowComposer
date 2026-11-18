@@ -28,10 +28,10 @@ internal static class MissionCardLayout
         new(card.X + 10, card.Y + 10, 26, 26);
 
     public static Rect PlayStopRect(Rect card) =>
-        new(card.Right - 106, card.Y + 11, 44, 22);
+        new(card.Right - 80, card.Y + 11, 46, 22);
 
     public static Rect ConsoleToggleRect(Rect card) =>
-        new(card.Right - 56, card.Y + 11, 22, 22);
+        new(card.X + 10, card.Bottom - 34, Math.Max(20, card.Width - 20), 26);
 
     public static Rect CloseRect(Rect card) =>
         new(card.Right - 30, card.Y + 11, 22, 22);
@@ -43,10 +43,10 @@ internal static class MissionCardLayout
         new(card.X + 10, card.Y + 74, Math.Max(20, card.Width - 20), 24);
 
     public static Rect TerminalDrawerRect(Rect card) =>
-        new(card.X + 10, card.Y + 108, Math.Max(20, card.Width - 20), Math.Max(10, card.Height - 118));
+        new(card.X + 10, card.Y + 108, Math.Max(20, card.Width - 20), Math.Max(10, card.Height - 150));
 
     public static CanvasRect TerminalDrawerRect(CanvasRect card) =>
-        new(card.X + 10, card.Y + 108, Math.Max(20, card.Width - 20), Math.Max(10, card.Height - 118));
+        new(card.X + 10, card.Y + 108, Math.Max(20, card.Width - 20), Math.Max(10, card.Height - 150));
 }
 
 internal sealed class MissionCardLayer(
@@ -139,7 +139,7 @@ internal sealed class MissionCardLayer(
 
             // 2. Title / Name
             var title = context.Text(card.Name, 13, Brushes.White);
-            title.MaxTextWidth = Math.Max(10, rect.Width - 160);
+            title.MaxTextWidth = Math.Max(10, rect.Width - 140);
             title.MaxTextHeight = 20;
             title.Trimming = TextTrimming.CharacterEllipsis;
             dc.DrawText(title, new Point(rect.X + 40, rect.Y + 12));
@@ -157,15 +157,7 @@ internal sealed class MissionCardLayer(
             double playTextY = playRect.Y + (playRect.Height - playText.Height) / 2.0;
             dc.DrawText(playText, new Point(playTextX, playTextY));
 
-            // 4. Console Toggle Button
-            var consoleRect = MissionCardLayout.ConsoleToggleRect(rect);
-            dc.DrawRoundedRectangle(CardRowBg, BorderSubtle, consoleRect, 4, 4);
-            var consoleText = context.Text(">_", 10, Brushes.White);
-            double consoleTextX = consoleRect.X + (consoleRect.Width - consoleText.Width) / 2.0;
-            double consoleTextY = consoleRect.Y + (consoleRect.Height - consoleText.Height) / 2.0;
-            dc.DrawText(consoleText, new Point(consoleTextX, consoleTextY));
-
-            // 5. Close Button (top-right)
+            // 4. Close Button (top-right)
             var closeRect = MissionCardLayout.CloseRect(rect);
             dc.DrawRoundedRectangle(CloseButtonBg, CloseButtonBorder, closeRect, 4, 4);
             double closeInset = Math.Min(6.0, closeRect.Width / 4);
@@ -176,7 +168,7 @@ internal sealed class MissionCardLayer(
                 new Point(closeRect.Right - closeInset, closeRect.Y + closeInset),
                 new Point(closeRect.X + closeInset, closeRect.Bottom - closeInset));
 
-            // 6. Telemetry Status Pill
+            // 5. Telemetry Status Pill
             var reported = status(card);
             var report = reported ?? new(card.Role, AgentExecutionState.Idle);
             var state = stateOverride(card.Id) ?? (reported == null ? "No status reported" : null);
@@ -203,7 +195,7 @@ internal sealed class MissionCardLayer(
                 dc.DrawEllipse(Frozen(TelemetryStatusPill.ColorFor(report.State)), null, new Point(rect.Right - 10, rect.Bottom - 10), 3, 3);
             }
 
-            // 7. Environment Pill (Git worktree / repo info)
+            // 6. Environment Pill (Git worktree / repo info)
             if (rect.Height >= 95)
             {
                 string? folder = resolveFolder?.Invoke(card) ?? card.WorkingFolder;
@@ -218,7 +210,7 @@ internal sealed class MissionCardLayer(
                 dc.DrawText(envText, new Point(envRect.X + 6, envRect.Y + 3));
             }
 
-            // 8. Expanded Live Console Drawer
+            // 7. Expanded Live Console Drawer
             if (rect.Height >= 180)
             {
                 var drawerRect = MissionCardLayout.TerminalDrawerRect(rect);
@@ -244,6 +236,18 @@ internal sealed class MissionCardLayer(
                     dc.DrawText(promptText, new Point(drawerRect.X + 8, drawerRect.Y + 40));
                 }
             }
+
+            // 8. Terminal drawer toggle along the bottom border
+            bool drawerOpen = card.Bounds.Height >= 180;
+            var consoleRect = MissionCardLayout.ConsoleToggleRect(rect);
+            dc.DrawRoundedRectangle(drawerOpen ? Frozen(Color.FromArgb(40, accentColor.R, accentColor.G, accentColor.B)) : CardRowBg,
+                drawerOpen ? borderPen : BorderSubtle, consoleRect, 5, 5);
+            var consoleText = context.Text(drawerOpen ? "▲  Fold terminal" : "▼  Open terminal", 10,
+                drawerOpen ? Brushes.White : TextFeedback);
+            consoleText.Trimming = TextTrimming.None;
+            double consoleTextX = consoleRect.X + (consoleRect.Width - consoleText.Width) / 2.0;
+            double consoleTextY = consoleRect.Y + (consoleRect.Height - consoleText.Height) / 2.0;
+            dc.DrawText(consoleText, new Point(consoleTextX, consoleTextY));
 
             dc.Pop();
         }

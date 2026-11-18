@@ -26,11 +26,12 @@ public class AgentTerminalOverlayTests
             var expectedDrawerWorld = MissionCardLayout.TerminalDrawerRect(cardBounds);
 
             // Verify world drawer rect math:
-            // X: 100 + 10 = 110, Y: 200 + 108 = 308, Width: 280 - 20 = 260, Height: 340 - 118 = 222
+            // X: 100 + 10 = 110, Y: 200 + 108 = 308, Width: 280 - 20 = 260
+            // Height: 340 - 150 = 190, reserving the card's bottom terminal toggle bar
             Assert.Equal(110, expectedDrawerWorld.X);
             Assert.Equal(308, expectedDrawerWorld.Y);
             Assert.Equal(260, expectedDrawerWorld.Width);
-            Assert.Equal(222, expectedDrawerWorld.Height);
+            Assert.Equal(190, expectedDrawerWorld.Height);
 
             // Transform: camera at (50, 100), zoom 1.5, monitor 1920x1080
             var transform = new CanvasViewTransform(50, 100, 1.5, new CanvasRect(0, 0, 1920, 1080));
@@ -40,11 +41,11 @@ public class AgentTerminalOverlayTests
             // Screen X: (110 - 50) * 1.5 = 90
             // Screen Y: (308 - 100) * 1.5 = 312
             // Screen Width: 260 * 1.5 = 390
-            // Screen Height: 222 * 1.5 = 333
+            // Screen Height: 190 * 1.5 = 285
             Assert.Equal(90, expectedScreenRect.X);
             Assert.Equal(312, expectedScreenRect.Y);
             Assert.Equal(390, expectedScreenRect.Width);
-            Assert.Equal(333, expectedScreenRect.Height);
+            Assert.Equal(285, expectedScreenRect.Height);
 
             using var overlay = new AgentTerminalOverlayWindow(herdr, cardId, profile);
             var dpi = new DpiScale(1.0, 1.0);
@@ -57,7 +58,7 @@ public class AgentTerminalOverlayTests
             Assert.Equal(90, overlay.Left);
             Assert.Equal(312, overlay.Top);
             Assert.Equal(390, overlay.Width);
-            Assert.Equal(333, overlay.Height);
+            Assert.Equal(285, overlay.Height);
             Assert.Equal(Visibility.Visible, overlay.Visibility);
             Assert.Equal(1.0, overlay.Opacity);
             Assert.False(overlay.IsBelowLodThreshold);
@@ -81,16 +82,16 @@ public class AgentTerminalOverlayTests
             using var overlay = new AgentTerminalOverlayWindow(herdr, cardId, profile);
             overlay.UpdatePlacement(transform, cardBounds, dpi, workingArea);
 
-            // Screen pixels: 90, 312, 390, 333
+            // Screen pixels: 90, 312, 390, 285
             // DIPs (divided by 1.5):
             // Left: 90 / 1.5 = 60
             // Top: 312 / 1.5 = 208
             // Width: 390 / 1.5 = 260
-            // Height: 333 / 1.5 = 222
+            // Height: 285 / 1.5 = 190
             Assert.Equal(60, overlay.Left);
             Assert.Equal(208, overlay.Top);
             Assert.Equal(260, overlay.Width);
-            Assert.Equal(222, overlay.Height);
+            Assert.Equal(190, overlay.Height);
         });
     }
 
