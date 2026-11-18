@@ -81,6 +81,29 @@ public class CanvasAnnotationTests
         Assert.Equal(AnnotationTextAlign.Right,tool.TextAlign);
         Assert.Throws<ArgumentException>(()=>tool.SetTextStyle(align:(AnnotationTextAlign)99));
     }
+    [Fact]
+    public void MultiSelectionEditsApplyToEveryTargetAsOneHistoryStep()
+    {
+        var first=Item(AnnotationKind.Rectangle); var second=Item(AnnotationKind.Rectangle); var untouched=Item(AnnotationKind.Ellipse);
+        var doc=new AnnotationDocument([first,second,untouched]);
+        var tool=new AnnotationCanvasTool(doc,()=>Desktop);tool.SetMode(AnnotationMode.Select);
+        Guid[] targets=[first.Id,second.Id];
+        tool.SetStyle("#34D399",8,targets);
+        Assert.All(doc.Items.Where(a=>targets.Contains(a.Id)),a=>{Assert.Equal("#34D399",a.Color);Assert.Equal(8,a.Stroke);});
+        Assert.Equal(untouched,doc.Items.Single(a=>a.Id==untouched.Id));
+        tool.SetFontSize(40,targets);
+        Assert.All(doc.Items.Where(a=>targets.Contains(a.Id)),a=>Assert.Equal(40,a.FontSize));
+        tool.SetTextStyle(align:AnnotationTextAlign.Right,emphasis:AnnotationTextEmphasis.Bold,targets:targets);
+        Assert.All(doc.Items.Where(a=>targets.Contains(a.Id)),a=>{Assert.Equal(AnnotationTextAlign.Right,a.TextAlign);Assert.Equal(AnnotationTextEmphasis.Bold,a.Emphasis);});
+        // Each edit is one step for the whole group, never one step per element.
+        Assert.True(doc.Undo(Desktop));
+        Assert.All(doc.Items.Where(a=>targets.Contains(a.Id)),a=>{Assert.Equal(AnnotationTextAlign.Left,a.TextAlign);Assert.Equal(AnnotationTextEmphasis.Normal,a.Emphasis);});
+        Assert.True(doc.Undo(Desktop));
+        Assert.All(doc.Items.Where(a=>targets.Contains(a.Id)),a=>Assert.Equal(AnnotationDocument.DefaultFontSize,a.FontSize));
+        Assert.True(doc.Undo(Desktop));
+        Assert.All(doc.Items.Where(a=>targets.Contains(a.Id)),a=>{Assert.Equal(first.Color,a.Color);Assert.Equal(first.Stroke,a.Stroke);});
+        Assert.False(doc.Undo(Desktop));
+    }
     [Theory]
     [InlineData(AnnotationMode.Arrow,AnnotationKind.Arrow)]
     [InlineData(AnnotationMode.Rectangle,AnnotationKind.Rectangle)]

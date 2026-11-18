@@ -597,6 +597,81 @@ public class UnifiedDockTests
         });
 
     [Fact]
+    public void ShelfEditsApplyToEverySelectedAnnotationOfTheSameKind()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-multi-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var desktop = desktops.CurrentDesktopId;
+                CanvasAnnotation Shape(double x) => new(Guid.NewGuid(), desktop, AnnotationKind.Rectangle, new(x, 10), new(x + 120, 90));
+                var left = Shape(10);
+                var right = Shape(200);
+                var note = new CanvasAnnotation(Guid.NewGuid(), desktop, AnnotationKind.Text, new(10, 200), new(260, 260), Text: "Checklist");
+                var second = note with { Id = Guid.NewGuid(), B = new(260, 320) };
+                overview.Annotations!.Put(left);
+                overview.Annotations.Put(right);
+                overview.Annotations.Put(note);
+                overview.Annotations.Put(second);
+
+                void Select(params CanvasAnnotation[] items)
+                {
+                    // Marquee-style selection never focuses the annotation tool.
+                    overview.AnnotationTool!.ClearSelection();
+                    overview.Selection.Replace(items.Select(i => new CanvasItemId(CanvasItemKind.Annotation, i.Id)).ToArray());
+                }
+
+                // Same-kind group: the shelf restyles both shapes at once, as one undo step.
+                Select(left, right);
+                Assert.Equal(AnnotationKind.Rectangle, overview.BuildDockState().Selected!.Kind);
+                overview.ChangeAnnotationStyle("#34D399", 8);
+                Assert.All(new[] { left.Id, right.Id }, id =>
+                {
+                    var item = overview.Annotations.Items.Single(a => a.Id == id);
+                    Assert.Equal("#34D399", item.Color);
+                    Assert.Equal(8, item.Stroke);
+                });
+                Assert.Equal("#FBBF24", overview.Annotations.Items.Single(a => a.Id == note.Id).Color);
+                Assert.True(overview.Annotations.Undo(desktop));
+                Assert.All(new[] { left.Id, right.Id }, id => Assert.Equal("#FBBF24", overview.Annotations.Items.Single(a => a.Id == id).Color));
+                Assert.True(left == overview.Annotations.Items.Single(a => a.Id == left.Id));
+
+                // Same-kind text group: size and text style travel together for every card.
+                Select(note, second);
+                overview.ChangeAnnotationFontSize(40);
+                overview.ChangeAnnotationTextStyle(emphasis: AnnotationTextEmphasis.Bold, fill: AnnotationCardFill.None);
+                Assert.All(new[] { note.Id, second.Id }, id =>
+                {
+                    var item = overview.Annotations.Items.Single(a => a.Id == id);
+                    Assert.Equal(40, item.FontSize);
+                    Assert.Equal(AnnotationTextEmphasis.Bold, item.Emphasis);
+                    Assert.Equal(AnnotationCardFill.None, item.CardFill);
+                });
+
+                // Mixed selection keeps the other kind untouched instead of restyling it blindly.
+                Select(left, note);
+                Assert.Equal(note.Id, overview.BuildDockState().Selected!.Id);
+                overview.ChangeAnnotationStyle("#60A5FA", 4);
+                Assert.Equal("#60A5FA", overview.Annotations.Items.Single(a => a.Id == note.Id).Color);
+                Assert.Equal("#FBBF24", overview.Annotations.Items.Single(a => a.Id == left.Id).Color);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
     [Trait("Category", "NativeRendering")]
     public void DockContextualCommandsEditRealSelectedAnnotationsAndKeepHistoryWorking()
         => WorkspaceViewTests.OnSta(() =>

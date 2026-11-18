@@ -28,24 +28,23 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
     public event Action<CanvasAnnotation>? EditTextRequested;
     public void SetMode(AnnotationMode mode) { Cancel(); Mode=mode; if (mode==AnnotationMode.Navigate) SelectedId=null; }
     public void ClearSelection() { Cancel(); SelectedId=null; }
-    public void SetStyle(string color, double stroke)
+    public void SetStyle(string color, double stroke, IReadOnlyCollection<Guid>? targets = null)
     {
         if (!AnnotationDocument.ValidColor(color) || !double.IsFinite(stroke) || stroke < AnnotationDocument.MinimumStroke || stroke > AnnotationDocument.MaximumStroke) throw new ArgumentException("Invalid style.");
         Cancel(); Color=color; Stroke=stroke;
-        if (Selected is {} item) document.Put(item with { Color=color,Stroke=stroke });
+        ApplyToTargets(targets, item => item with { Color=color,Stroke=stroke });
     }
-    public void SetFontSize(double fontSize)
+    public void SetFontSize(double fontSize, IReadOnlyCollection<Guid>? targets = null)
     {
         if (!double.IsFinite(fontSize) || fontSize<AnnotationDocument.MinimumFontSize || fontSize>AnnotationDocument.MaximumFontSize)
             throw new ArgumentException("Invalid text size.");
         Cancel(); FontSize=fontSize;
-        if (Selected is {} item)
-        {
-            if (item.Kind == AnnotationKind.Arrow) document.Put(item with { FontSize=fontSize });
-            else document.Put(FitText(item with { FontSize=fontSize }));
-        }
+        ApplyToTargets(targets, item => item.Kind == AnnotationKind.Arrow
+            ? item with { FontSize=fontSize }
+            : FitText(item with { FontSize=fontSize }));
     }
-    public void SetTextStyle(AnnotationTextAlign? align=null, AnnotationTextEmphasis? emphasis=null, AnnotationCardFill? fill=null)
+    public void SetTextStyle(AnnotationTextAlign? align=null, AnnotationTextEmphasis? emphasis=null, AnnotationCardFill? fill=null,
+        IReadOnlyCollection<Guid>? targets = null)
     {
         if (align is {} a && !Enum.IsDefined(a)) throw new ArgumentException("Invalid text alignment.");
         if (emphasis is {} e && !Enum.IsDefined(e)) throw new ArgumentException("Invalid text emphasis.");
@@ -54,15 +53,26 @@ public sealed class AnnotationCanvasTool(AnnotationDocument document, Func<Guid>
         if (align is {} newAlign) TextAlign=newAlign;
         if (emphasis is {} newEmphasis) Emphasis=newEmphasis;
         if (fill is {} newFill) CardFill=newFill;
-        if (Selected is {} item)
+        ApplyToTargets(targets, item =>
         {
             var updated=item;
             if (align is {} selectedAlign) updated=updated with { TextAlign=selectedAlign };
             if (emphasis is {} selectedEmphasis) updated=updated with { Emphasis=selectedEmphasis };
             if (fill is {} selectedFill && item.Kind != AnnotationKind.Arrow) updated=updated with { CardFill=selectedFill };
-            if (item.Kind == AnnotationKind.Arrow) document.Put(updated);
-            else document.Put(FitText(updated));
-        }
+            return item.Kind == AnnotationKind.Arrow ? updated : FitText(updated);
+        });
+    }
+    /// <summary>
+    /// Style edits always refresh the creation defaults; they also land on the focused element or,
+    /// for a same-kind multi-selection, on every member as a single undoable step.
+    /// </summary>
+    private void ApplyToTargets(IReadOnlyCollection<Guid>? targets, Func<CanvasAnnotation, CanvasAnnotation> edit)
+    {
+        var items = targets is { Count: > 0 }
+            ? document.Items.Where(a => targets.Contains(a.Id) && a.DesktopId == desktop() && a.AgentTaskId.Length == 0).ToArray()
+            : Selected is {} selected ? [selected] : [];
+        if (items.Length == 0) return;
+        document.ApplyBatch(document.Revision, desktop(), items.Select(edit).ToArray());
     }
     public CanvasAnnotation? Hit(CanvasPointer pointer) => document.Items.LastOrDefault(a=>a.DesktopId==desktop() && !a.InInventory
         && a.AgentTaskId.Length==0 && AnnotationGeometry.Hit(a,pointer.World,pointer.View));

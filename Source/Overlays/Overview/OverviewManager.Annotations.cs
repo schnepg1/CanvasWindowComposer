@@ -224,8 +224,8 @@ internal sealed partial class OverviewManager
             _unifiedDock.Panel.ImportWorkflowRequested += ShowImportWorkflowDialog;
             _unifiedDock.Panel.NearbyRequested += radius => SelectNearby(radius);
             _unifiedDock.Panel.SetSelectionRadius(_selectionRadius);
-            _unifiedDock.Panel.ColorRequested += color => ChangeAnnotationStyle(color, _annotationTool?.Selected?.Stroke ?? _annotationTool?.Stroke ?? 3);
-            _unifiedDock.Panel.StrokeRequested += stroke => ChangeAnnotationStyle(_annotationTool?.Selected?.Color ?? _annotationTool?.Color ?? "#FBBF24", stroke);
+            _unifiedDock.Panel.ColorRequested += color => ChangeAnnotationStyle(color, SelectedDockAnnotation()?.Stroke ?? _annotationTool?.Stroke ?? 3);
+            _unifiedDock.Panel.StrokeRequested += stroke => ChangeAnnotationStyle(SelectedDockAnnotation()?.Color ?? _annotationTool?.Color ?? "#FBBF24", stroke);
             _unifiedDock.Panel.EditRequested += () => { if (_annotationTool?.Selected is {} item) { if (item.Kind == AnnotationKind.Text) QueueAnnotationTextEdit(item); else if (item.Kind is AnnotationKind.Rectangle or AnnotationKind.Ellipse) QueueAnnotationShapeEdit(item); } };
             _unifiedDock.Panel.FontSizeRequested += ChangeAnnotationFontSize;
             _unifiedDock.Panel.TextAlignRequested += align => ChangeAnnotationTextStyle(align: align);
@@ -264,6 +264,21 @@ internal sealed partial class OverviewManager
             if (focused != null) return focused;
         }
         return _annotationTool?.Selected;
+    }
+
+    /// <summary>
+    /// The shelf edits every selected element that shares the focused element's kind, so a
+    /// same-kind multi-selection is restyled at once. Mixed selections leave the other kinds alone.
+    /// </summary>
+    private Guid[] DockStyleTargets()
+    {
+        var focused = SelectedDockAnnotation();
+        if (focused == null || _annotationDocument == null) return [];
+        var ids = Selection.Ids.Where(id => id.Kind == CanvasItemKind.Annotation).Select(id => id.Id).ToHashSet();
+        if (ids.Count < 2) return [];
+        var group = _annotationDocument.Items.Where(a => ids.Contains(a.Id) && a.DesktopId == _annotationDesktop()
+            && !a.InInventory && a.AgentTaskId.Length == 0 && a.Kind == focused.Kind).ToArray();
+        return group.Select(a => a.Id).ToArray();
     }
 
     internal CanvasDockState BuildDockState()
@@ -315,24 +330,24 @@ internal sealed partial class OverviewManager
             _controlsPopup.Activate();
         }
     }
-    private void ChangeAnnotationStyle(string color,double stroke)
+    internal void ChangeAnnotationStyle(string color,double stroke)
     {
         CancelInteraction();
-        try { _annotationTool?.SetStyle(color,stroke); }
+        try { _annotationTool?.SetStyle(color,stroke,DockStyleTargets()); }
         catch(ArgumentException ex) { _annotationError=ex.Message; }
         RefreshToolPreview(); FocusOverview();
     }
-    private void ChangeAnnotationFontSize(double fontSize)
+    internal void ChangeAnnotationFontSize(double fontSize)
     {
         CancelInteraction();
-        try { _annotationTool?.SetFontSize(fontSize); }
+        try { _annotationTool?.SetFontSize(fontSize,DockStyleTargets()); }
         catch(ArgumentException ex) { _annotationError=ex.Message; }
         RefreshToolPreview(); FocusOverview();
     }
-    private void ChangeAnnotationTextStyle(AnnotationTextAlign? align=null,AnnotationTextEmphasis? emphasis=null,AnnotationCardFill? fill=null)
+    internal void ChangeAnnotationTextStyle(AnnotationTextAlign? align=null,AnnotationTextEmphasis? emphasis=null,AnnotationCardFill? fill=null)
     {
         CancelInteraction();
-        try { _annotationTool?.SetTextStyle(align,emphasis,fill); }
+        try { _annotationTool?.SetTextStyle(align,emphasis,fill,DockStyleTargets()); }
         catch(ArgumentException ex) { _annotationError=ex.Message; }
         RefreshToolPreview(); FocusOverview();
     }
