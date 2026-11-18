@@ -610,8 +610,11 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         {
             if (_disposed || _finished) return;
             ApplyDictationState(state);
-            if (state is DictationState.Starting or DictationState.Recording && _showingDictationError)
+            if ((state is DictationState.Starting or DictationState.Recording && _showingDictationError)
+                || (state == DictationState.Idle && _showingDictationError && !_hintResetTimer.IsEnabled))
+            {
                 RestoreDefaultHint();
+            }
             if (state is DictationState.Recording or DictationState.Idle && IsVisible)
                 FocusEditor();
             QueueRepositionToolbar();
@@ -817,8 +820,9 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         if (_disposed || !_toolbar.IsVisible) return;
         Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
         {
-            if (!_disposed && _toolbar.IsVisible)
-                PositionToolbar();
+            if (_disposed || !_toolbar.IsVisible) return;
+            _toolbar.UpdateLayout();
+            PositionToolbar();
         }));
     }
 

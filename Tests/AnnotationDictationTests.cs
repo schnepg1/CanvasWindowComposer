@@ -188,6 +188,8 @@ public class AnnotationDictationTests
                 PumpUntil(editor.Dispatcher, () => editor.DictationState == DictationState.Idle);
 
                 Assert.Equal("Select me", editor.Editor.Text);
+                Assert.Equal(0, editor.Editor.SelectionStart);
+                Assert.Equal(6, editor.Editor.SelectionLength);
             }
 
             var abortStopSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

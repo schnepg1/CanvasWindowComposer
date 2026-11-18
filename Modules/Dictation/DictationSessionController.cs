@@ -9,7 +9,7 @@ public readonly record struct DictationEditorSnapshot(
 
 /// <summary>
 /// Coordinates a dictation session lifecycle against a local transcription server with an explicit
-/// state machine (Idle -> Starting -> Recording -> Finalizing -> Idle), SSE buffering/replay,
+/// state machine (Idle -> Starting -> Recording -> Finalizing -> Idle), strict FIFO SSE buffering/replay,
 /// and non-blocking abort cleanup.
 /// </summary>
 public sealed class DictationSessionController : IDisposable
@@ -25,9 +25,9 @@ public sealed class DictationSessionController : IDisposable
     private long _sessionGeneration;
     private string? _activeRecordingId;
     private bool _startRequestDispatched;
-    private bool _awaitingStartResponse;
+    private bool _bufferingStreamEvents;
     private bool _suppressStreamUpdates;
-    private List<DictationStreamEvent>? _bufferedEvents;
+    private Queue<DictationStreamEvent>? _bufferedEvents;
     private IDictationStream? _activeStream;
     private CancellationTokenSource? _sessionCts;
     private string _trackedText = string.Empty;
@@ -99,7 +99,7 @@ public sealed class DictationSessionController : IDisposable
             sessionToken = _sessionCts.Token;
             _activeRecordingId = null;
             _startRequestDispatched = false;
-            _awaitingStartResponse = false;
+            _bufferingStreamEvents = false;
             _suppressStreamUpdates = false;
             _bufferedEvents = null;
             _state = DictationState.Starting;
@@ -116,6 +116,10 @@ public sealed class DictationSessionController : IDisposable
         catch (OperationCanceledException)
         {
             await ResetSessionAsync(gen).ConfigureAwait(false);
+            return;
+        }
+        catch (ObjectDisposedException) when (IsDisposed())
+        {
             return;
         }
         catch (DictationClientException ex)
@@ -163,6 +167,10 @@ public sealed class DictationSessionController : IDisposable
                 await ResetSessionAsync(gen).ConfigureAwait(false);
                 return;
             }
+            catch (ObjectDisposedException) when (IsDisposed())
+            {
+                return;
+            }
             catch (DictationClientException ex)
             {
                 await ResetSessionAsync(gen, ex.Message).ConfigureAwait(false);
@@ -176,8 +184,8 @@ public sealed class DictationSessionController : IDisposable
                 if (attachStream)
                 {
                     _activeStream = openedStream;
-                    _awaitingStartResponse = true;
-                    _bufferedEvents = new List<DictationStreamEvent>();
+                    _bufferingStreamEvents = true;
+                    _bufferedEvents = new Queue<DictationStreamEvent>();
                 }
             }
 
@@ -208,13 +216,17 @@ public sealed class DictationSessionController : IDisposable
             await ResetSessionAsync(gen).ConfigureAwait(false);
             return;
         }
+        catch (ObjectDisposedException) when (IsDisposed())
+        {
+            return;
+        }
         catch (DictationClientException ex)
         {
             await ResetSessionAsync(gen, ex.Message).ConfigureAwait(false);
             return;
         }
 
-        List<DictationStreamEvent>? replayEvents = null;
+        bool keepStreaming = false;
         IDictationStream? streamToClose = null;
         bool abortedInFlight = false;
 
@@ -227,18 +239,12 @@ public sealed class DictationSessionController : IDisposable
             else
             {
                 _activeRecordingId = startResponse.RecordingId;
-                _awaitingStartResponse = false;
-
-                bool keepStreaming = startResponse.Streaming && _activeStream != null;
-                if (keepStreaming)
-                {
-                    replayEvents = _bufferedEvents;
-                    _bufferedEvents = null;
-                }
-                else
+                keepStreaming = startResponse.Streaming && _activeStream != null;
+                if (!keepStreaming)
                 {
                     streamToClose = _activeStream;
                     _activeStream = null;
+                    _bufferingStreamEvents = false;
                     _bufferedEvents = null;
                 }
 
@@ -250,7 +256,7 @@ public sealed class DictationSessionController : IDisposable
         {
             await DisposeStreamQuietlyAsync(openedStream).ConfigureAwait(false);
             // The server accepted start right as we aborted; send a short best-effort stop.
-            _ = SendBestEffortAbortStopAsync(disposeClientAfter: false);
+            _ = SendBestEffortAbortStopAsync();
             return;
         }
 
@@ -259,13 +265,8 @@ public sealed class DictationSessionController : IDisposable
 
         EmitState(DictationState.Recording);
 
-        if (replayEvents != null)
-        {
-            foreach (var ev in replayEvents)
-            {
-                await ProcessStreamEventAsync(gen, ev).ConfigureAwait(false);
-            }
-        }
+        if (keepStreaming)
+            await DrainBufferedEventsAsync(gen).ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
@@ -282,6 +283,8 @@ public sealed class DictationSessionController : IDisposable
 
             gen = _sessionGeneration;
             _suppressStreamUpdates = true;
+            _bufferingStreamEvents = false;
+            _bufferedEvents = null;
             _state = DictationState.Finalizing;
             streamToClose = _activeStream;
             _activeStream = null;
@@ -303,10 +306,12 @@ public sealed class DictationSessionController : IDisposable
             {
                 if (!_disposed && _sessionGeneration == gen)
                 {
+                    bool hadApplied = _span.HasAppliedTranscript;
                     var update = _span.Apply(_trackedText, response.Text, _maxTextLength);
                     if (update.Changed)
                         _trackedText = update.Text;
-                    finalUpdate = update;
+                    if (update.Changed || hadApplied)
+                        finalUpdate = update;
                 }
             }
 
@@ -319,13 +324,7 @@ public sealed class DictationSessionController : IDisposable
             {
                 if (!_disposed && _sessionGeneration == gen)
                 {
-                    stopCts = _sessionCts;
-                    _sessionCts = null;
-                    _activeRecordingId = null;
-                    _startRequestDispatched = false;
-                    _awaitingStartResponse = false;
-                    _bufferedEvents = null;
-                    _span.Reset();
+                    (_, stopCts) = ClearSessionLocked(suppressUpdates: false);
                     _state = DictationState.Idle;
                     transitionedToIdle = true;
                 }
@@ -339,6 +338,10 @@ public sealed class DictationSessionController : IDisposable
         catch (OperationCanceledException)
         {
             await ResetSessionAsync(gen).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) when (IsDisposed())
+        {
+            return;
         }
         catch (DictationClientException ex)
         {
@@ -372,40 +375,42 @@ public sealed class DictationSessionController : IDisposable
             EmitState(DictationState.Idle);
 
         if (abort.NeedsServerStop)
-            await SendBestEffortAbortStopAsync(disposeClientAfter: false).ConfigureAwait(false);
+            await SendBestEffortAbortStopAsync().ConfigureAwait(false);
     }
 
     /// <summary>Immediately suppresses UI updates and cancels local resources without blocking the calling thread.</summary>
     public void AbortInBackground()
     {
-        var abort = BeginAbort(disposing: false);
+        AbortWork abort;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+
+            abort = BeginAbortLocked(disposing: false);
+            if (abort.StreamToClose != null || abort.NeedsServerStop)
+            {
+                var stream = abort.StreamToClose;
+                bool needsStop = abort.NeedsServerStop;
+                _pendingAbortTask = Task.Run(async () =>
+                {
+                    await DisposeStreamQuietlyAsync(stream).ConfigureAwait(false);
+                    if (needsStop)
+                        await SendBestEffortAbortStopAsync().ConfigureAwait(false);
+                });
+            }
+        }
+
         CancelAndDisposeCts(abort.CtsToCancel);
 
         if (abort.StateChangedToIdle)
             EmitState(DictationState.Idle);
-
-        if (abort.StreamToClose == null && !abort.NeedsServerStop)
-            return;
-
-        var backgroundTask = Task.Run(async () =>
-        {
-            await DisposeStreamQuietlyAsync(abort.StreamToClose).ConfigureAwait(false);
-            if (abort.NeedsServerStop)
-                await SendBestEffortAbortStopAsync(disposeClientAfter: false).ConfigureAwait(false);
-        });
-
-        lock (_gate)
-        {
-            _pendingAbortTask = backgroundTask;
-        }
     }
 
     public void Dispose()
     {
         AbortWork abort;
         Task? priorAbortTask;
-        bool disposeClientImmediately = false;
-        bool deferClientDisposeToPriorAbort = false;
 
         lock (_gate)
         {
@@ -414,59 +419,68 @@ public sealed class DictationSessionController : IDisposable
 
             abort = BeginAbortLocked(disposing: true);
             priorAbortTask = _pendingAbortTask;
-
-            if (_ownsClient)
-            {
-                if (abort.NeedsServerStop)
-                {
-                    // New abort stop task will dispose the owned client in its finally block.
-                }
-                else if (priorAbortTask != null && !priorAbortTask.IsCompleted)
-                {
-                    deferClientDisposeToPriorAbort = true;
-                }
-                else
-                {
-                    disposeClientImmediately = true;
-                }
-            }
         }
 
         CancelAndDisposeCts(abort.CtsToCancel);
 
-        if (abort.NeedsServerStop || abort.StreamToClose != null)
+        bool hasAsyncCleanup = abort.NeedsServerStop
+            || abort.StreamToClose != null
+            || (priorAbortTask != null && !priorAbortTask.IsCompleted);
+
+        if (hasAsyncCleanup)
         {
-            bool disposeAfterStop = _ownsClient && abort.NeedsServerStop;
             _ = Task.Run(async () =>
             {
                 try
                 {
                     await DisposeStreamQuietlyAsync(abort.StreamToClose).ConfigureAwait(false);
                     if (abort.NeedsServerStop)
-                        await SendBestEffortAbortStopAsync(disposeClientAfter: false).ConfigureAwait(false);
-                }
-                finally
-                {
-                    if (disposeAfterStop)
+                        await SendBestEffortAbortStopAsync().ConfigureAwait(false);
+                    if (priorAbortTask != null && !priorAbortTask.IsCompleted)
                     {
-                        try { _client.Dispose(); }
+                        try { await priorAbortTask.ConfigureAwait(false); }
                         catch { }
                     }
                 }
+                finally
+                {
+                    if (_ownsClient)
+                        DisposeClientQuietly();
+                }
             });
         }
-        else if (deferClientDisposeToPriorAbort && priorAbortTask != null)
+        else if (_ownsClient)
         {
-            _ = priorAbortTask.ContinueWith(_ =>
-            {
-                try { _client.Dispose(); }
-                catch { }
-            }, TaskScheduler.Default);
+            DisposeClientQuietly();
         }
-        else if (disposeClientImmediately)
+    }
+
+    private async Task DrainBufferedEventsAsync(long gen)
+    {
+        // Keep PumpStreamAsync enqueuing under _gate until the queue is empty, guaranteeing strict FIFO replay.
+        while (true)
         {
-            try { _client.Dispose(); }
-            catch { }
+            DictationStreamEvent nextEvent;
+            lock (_gate)
+            {
+                if (_disposed || _sessionGeneration != gen || _suppressStreamUpdates || _state != DictationState.Recording)
+                {
+                    _bufferingStreamEvents = false;
+                    _bufferedEvents = null;
+                    return;
+                }
+
+                if (_bufferedEvents == null || _bufferedEvents.Count == 0)
+                {
+                    _bufferingStreamEvents = false;
+                    _bufferedEvents = null;
+                    return;
+                }
+
+                nextEvent = _bufferedEvents.Dequeue();
+            }
+
+            await ProcessStreamEventAsync(gen, nextEvent).ConfigureAwait(false);
         }
     }
 
@@ -483,9 +497,9 @@ public sealed class DictationSessionController : IDisposable
                     if (_disposed || _sessionGeneration != gen || _suppressStreamUpdates)
                         return;
 
-                    if (_awaitingStartResponse)
+                    if (_bufferingStreamEvents)
                     {
-                        _bufferedEvents?.Add(ev);
+                        _bufferedEvents?.Enqueue(ev);
                         buffered = true;
                     }
                 }
@@ -515,14 +529,14 @@ public sealed class DictationSessionController : IDisposable
             if (_disposed || _sessionGeneration != gen || _suppressStreamUpdates)
                 return;
 
+            // Only emit a disconnect notice if this stream was still the active stream (not closed intentionally on fallback).
             if (ReferenceEquals(_activeStream, stream))
             {
                 streamToClose = _activeStream;
                 _activeStream = null;
+                if (_state == DictationState.Recording)
+                    emitNotice = true;
             }
-
-            if (_state == DictationState.Recording)
-                emitNotice = true;
         }
 
         await DisposeStreamQuietlyAsync(streamToClose).ConfigureAwait(false);
@@ -550,6 +564,9 @@ public sealed class DictationSessionController : IDisposable
                     return;
 
                 string? transcript = ev.FullText ?? ev.Text;
+                if (transcript is null)
+                    return;
+
                 var update = _span.Apply(_trackedText, transcript, _maxTextLength);
                 if (update.Changed)
                 {
@@ -567,8 +584,8 @@ public sealed class DictationSessionController : IDisposable
         if (eventType.Equals("completed", StringComparison.OrdinalIgnoreCase))
         {
             DictationTextUpdate? finalUpdate = null;
-            IDictationStream? streamToClose = null;
-            CancellationTokenSource? ctsToCancel = null;
+            IDictationStream? streamToClose;
+            CancellationTokenSource? ctsToCancel;
             bool transitionedToIdle = false;
 
             lock (_gate)
@@ -579,25 +596,18 @@ public sealed class DictationSessionController : IDisposable
                 if (!MatchesRecordingId(_activeRecordingId, ev.RecordingId))
                     return;
 
-                _suppressStreamUpdates = true;
                 string? finalTranscript = ev.Text ?? ev.FullText;
                 if (finalTranscript != null)
                 {
+                    bool hadApplied = _span.HasAppliedTranscript;
                     var update = _span.Apply(_trackedText, finalTranscript, _maxTextLength);
                     if (update.Changed)
                         _trackedText = update.Text;
-                    finalUpdate = update;
+                    if (update.Changed || hadApplied)
+                        finalUpdate = update;
                 }
 
-                streamToClose = _activeStream;
-                _activeStream = null;
-                ctsToCancel = _sessionCts;
-                _sessionCts = null;
-                _activeRecordingId = null;
-                _startRequestDispatched = false;
-                _awaitingStartResponse = false;
-                _bufferedEvents = null;
-                _span.Reset();
+                (streamToClose, ctsToCancel) = ClearSessionLocked(suppressUpdates: true);
             }
 
             CancelAndDisposeCts(ctsToCancel);
@@ -610,6 +620,7 @@ public sealed class DictationSessionController : IDisposable
             {
                 if (!_disposed && _sessionGeneration == gen && _state != DictationState.Idle)
                 {
+                    _suppressStreamUpdates = false;
                     _state = DictationState.Idle;
                     transitionedToIdle = true;
                 }
@@ -623,8 +634,8 @@ public sealed class DictationSessionController : IDisposable
 
         if (eventType.Equals("error", StringComparison.OrdinalIgnoreCase))
         {
-            IDictationStream? streamToClose = null;
-            CancellationTokenSource? ctsToCancel = null;
+            IDictationStream? streamToClose;
+            CancellationTokenSource? ctsToCancel;
             bool transitionedToIdle = false;
 
             lock (_gate)
@@ -635,16 +646,7 @@ public sealed class DictationSessionController : IDisposable
                 if (!MatchesRecordingId(_activeRecordingId, ev.RecordingId))
                     return;
 
-                _suppressStreamUpdates = true;
-                streamToClose = _activeStream;
-                _activeStream = null;
-                ctsToCancel = _sessionCts;
-                _sessionCts = null;
-                _activeRecordingId = null;
-                _startRequestDispatched = false;
-                _awaitingStartResponse = false;
-                _bufferedEvents = null;
-                _span.Reset();
+                (streamToClose, ctsToCancel) = ClearSessionLocked(suppressUpdates: true);
             }
 
             CancelAndDisposeCts(ctsToCancel);
@@ -656,6 +658,7 @@ public sealed class DictationSessionController : IDisposable
             {
                 if (!_disposed && _sessionGeneration == gen && _state != DictationState.Idle)
                 {
+                    _suppressStreamUpdates = false;
                     _state = DictationState.Idle;
                     transitionedToIdle = true;
                 }
@@ -668,8 +671,8 @@ public sealed class DictationSessionController : IDisposable
 
     private async Task ResetSessionAsync(long gen, string? errorMessage = null)
     {
-        IDictationStream? streamToClose = null;
-        CancellationTokenSource? ctsToCancel = null;
+        IDictationStream? streamToClose;
+        CancellationTokenSource? ctsToCancel;
         bool transitionedToIdle = false;
 
         lock (_gate)
@@ -677,16 +680,7 @@ public sealed class DictationSessionController : IDisposable
             if (_disposed || _sessionGeneration != gen)
                 return;
 
-            _suppressStreamUpdates = true;
-            streamToClose = _activeStream;
-            _activeStream = null;
-            ctsToCancel = _sessionCts;
-            _sessionCts = null;
-            _activeRecordingId = null;
-            _startRequestDispatched = false;
-            _awaitingStartResponse = false;
-            _bufferedEvents = null;
-            _span.Reset();
+            (streamToClose, ctsToCancel) = ClearSessionLocked(suppressUpdates: false);
             if (_state != DictationState.Idle)
             {
                 _state = DictationState.Idle;
@@ -702,6 +696,21 @@ public sealed class DictationSessionController : IDisposable
 
         if (!string.IsNullOrWhiteSpace(errorMessage))
             EmitError(errorMessage);
+    }
+
+    private (IDictationStream? Stream, CancellationTokenSource? Cts) ClearSessionLocked(bool suppressUpdates)
+    {
+        _suppressStreamUpdates = suppressUpdates;
+        var stream = _activeStream;
+        _activeStream = null;
+        var cts = _sessionCts;
+        _sessionCts = null;
+        _activeRecordingId = null;
+        _startRequestDispatched = false;
+        _bufferingStreamEvents = false;
+        _bufferedEvents = null;
+        _span.Reset();
+        return (stream, cts);
     }
 
     private AbortWork BeginAbort(bool disposing)
@@ -720,23 +729,13 @@ public sealed class DictationSessionController : IDisposable
         bool stateChanged = _state != DictationState.Idle;
 
         _sessionGeneration++;
-        _suppressStreamUpdates = true;
-        _startRequestDispatched = false;
-        _awaitingStartResponse = false;
-        _bufferedEvents = null;
-        _activeRecordingId = null;
-        _span.Reset();
+        var (stream, cts) = ClearSessionLocked(suppressUpdates: true);
         _state = DictationState.Idle;
-
-        var stream = _activeStream;
-        _activeStream = null;
-        var cts = _sessionCts;
-        _sessionCts = null;
 
         return new AbortWork(stream, cts, needsServerStop, !disposing && stateChanged);
     }
 
-    private async Task SendBestEffortAbortStopAsync(bool disposeClientAfter)
+    private async Task SendBestEffortAbortStopAsync()
     {
         try
         {
@@ -747,14 +746,12 @@ public sealed class DictationSessionController : IDisposable
         {
             // Abort cleanup is best-effort and must never surface unhandled exceptions.
         }
-        finally
-        {
-            if (disposeClientAfter)
-            {
-                try { _client.Dispose(); }
-                catch { }
-            }
-        }
+    }
+
+    private void DisposeClientQuietly()
+    {
+        try { _client.Dispose(); }
+        catch { }
     }
 
     private bool IsGenerationCurrent(long gen)

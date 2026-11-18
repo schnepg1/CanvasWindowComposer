@@ -111,19 +111,146 @@ public class DictationSessionControllerTests
         };
 
         string currentText = "";
+        var errors = new List<string>();
         using var controller = new DictationSessionController(
             client,
             () => new DictationEditorSnapshot(currentText, IsFocused: true, SelectionStart: 0, SelectionLength: 0),
             maxTextLength: 500);
         controller.TextUpdated += u => currentText = u.Text;
+        controller.ErrorOccurred += errors.Add;
 
         await controller.StartAsync();
         Assert.Equal(DictationState.Recording, controller.State);
         Assert.True(client.ActiveStream!.Disposed);
+        // Allow the background stream pump to observe stream closure and exit cleanly.
+        await Task.Delay(50);
+        Assert.Empty(errors);
 
         await controller.StopAsync();
         Assert.Equal("fallback text", currentText);
         Assert.Equal(DictationState.Idle, controller.State);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public async Task ConcurrentLiveEventDuringBufferedReplayPreservesStrictFifoOrder()
+    {
+        var client = new FakeDictationClient
+        {
+            HealthResponse = new DictationHealthResponse("ok", Ready: true, StreamingSupported: true),
+            StartResponse = new DictationStartResponse("recording", RecordingId: "rec-fifo", Mode: "mic", Streaming: true),
+            StopResponse = new DictationStopResponse("stopped", RecordingId: "rec-fifo", Text: "one two", Streaming: true)
+        };
+
+        var startEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.OnStartRecording = async () =>
+        {
+            startEntered.TrySetResult();
+            await releaseStart.Task;
+        };
+
+        var observedTexts = new List<string>();
+        string currentText = "";
+        using var controller = new DictationSessionController(
+            client,
+            () => new DictationEditorSnapshot(currentText, IsFocused: true, SelectionStart: 0, SelectionLength: 0),
+            maxTextLength: 500);
+
+        bool pushedLiveEventDuringReplay = false;
+        controller.TextUpdated += u =>
+        {
+            currentText = u.Text;
+            observedTexts.Add(u.Text);
+            if (!pushedLiveEventDuringReplay && u.Text == "one")
+            {
+                pushedLiveEventDuringReplay = true;
+                // Push a newer live SSE event while the buffered event replay callback is still executing.
+                client.ActiveStream!.Push(new DictationStreamEvent(Type: "partial", RecordingId: "rec-fifo", FullText: "one two"));
+                Thread.Sleep(40);
+            }
+        };
+
+        var startTask = controller.StartAsync();
+        await startEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // Buffer an early event before POST /recording/start returns.
+        client.ActiveStream!.Push(new DictationStreamEvent(Type: "partial", RecordingId: "rec-fifo", FullText: "one"));
+        await Task.Delay(30);
+
+        releaseStart.TrySetResult();
+        await startTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // A null partial payload must not wipe the active partial span.
+        client.ActiveStream.Push(new DictationStreamEvent(Type: "partial", RecordingId: "rec-fifo", FullText: null, Text: null));
+        await Task.Delay(30);
+
+        Assert.Equal(["one", "one two"], observedTexts);
+        Assert.Equal("one two", currentText);
+    }
+
+    [Fact]
+    public async Task DisposeDuringOpenStreamAndWithPendingAbortAlwaysDisposesOwnedClient()
+    {
+        // Case 1: Dispose while OpenStreamAsync is completing (before StartRecordingAsync is dispatched)
+        var openEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOpen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client1 = new FakeDictationClient
+        {
+            HealthResponse = new DictationHealthResponse("ok", Ready: true, StreamingSupported: true),
+            OnOpenStream = async () =>
+            {
+                openEntered.TrySetResult();
+                await releaseOpen.Task;
+            }
+        };
+
+        var controller1 = new DictationSessionController(client1, () => new("", true, 0, 0), 500, ownsClient: true);
+        var startTask1 = controller1.StartAsync();
+        await openEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        controller1.Dispose();
+        releaseOpen.TrySetResult();
+        await startTask1.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await WaitUntilAsync(() => client1.Disposed);
+        Assert.True(client1.ActiveStream!.Disposed);
+        Assert.DoesNotContain("start", client1.Calls);
+        Assert.DoesNotContain("stop", client1.Calls);
+
+        // Case 2: AbortInBackground leaves a pending stop task, then a second session opens and Dispose runs
+        var firstAbortStopEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstAbortStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int stopCalls = 0;
+        var client2 = new FakeDictationClient
+        {
+            HealthResponse = new DictationHealthResponse("ok", Ready: true, StreamingSupported: true),
+            StartResponse = new DictationStartResponse("recording", RecordingId: "rec-a", Mode: "mic", Streaming: true),
+            OnStopRecording = async _ =>
+            {
+                if (Interlocked.Increment(ref stopCalls) == 1)
+                {
+                    firstAbortStopEntered.TrySetResult();
+                    await releaseFirstAbortStop.Task;
+                }
+            }
+        };
+
+        var controller2 = new DictationSessionController(client2, () => new("", true, 0, 0), 500, ownsClient: true);
+        await controller2.StartAsync();
+        controller2.AbortInBackground();
+        await firstAbortStopEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // Start a second session while the prior abort stop is still in flight, then dispose.
+        await controller2.StartAsync();
+        var secondStream = client2.ActiveStream!;
+        controller2.Dispose();
+        await Task.Delay(30);
+        Assert.False(client2.Disposed);
+
+        releaseFirstAbortStop.TrySetResult();
+        await WaitUntilAsync(() => client2.Disposed);
+        Assert.True(secondStream.Disposed);
     }
 
     [Fact]
@@ -302,6 +429,7 @@ public class DictationSessionControllerTests
         public Exception? HealthException { get; set; }
         public DictationStartResponse StartResponse { get; set; } = new("recording", RecordingId: "rec-1", Mode: "mic");
         public DictationStopResponse StopResponse { get; set; } = new("stopped", RecordingId: "rec-1", Text: "");
+        public Func<Task>? OnOpenStream { get; set; }
         public Func<Task>? OnStartRecording { get; set; }
         public Func<TimeSpan?, Task>? OnStopRecording { get; set; }
         public FakeDictationStream? ActiveStream { get; private set; }
@@ -314,11 +442,12 @@ public class DictationSessionControllerTests
             return Task.FromResult(HealthResponse);
         }
 
-        public Task<IDictationStream> OpenStreamAsync(CancellationToken cancellationToken = default)
+        public async Task<IDictationStream> OpenStreamAsync(CancellationToken cancellationToken = default)
         {
             Calls.Add("stream");
+            if (OnOpenStream != null) await OnOpenStream();
             ActiveStream = new FakeDictationStream();
-            return Task.FromResult<IDictationStream>(ActiveStream);
+            return ActiveStream;
         }
 
         public async Task<DictationStartResponse> StartRecordingAsync(CancellationToken cancellationToken = default)
