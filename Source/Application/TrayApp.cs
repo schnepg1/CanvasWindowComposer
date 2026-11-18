@@ -227,6 +227,7 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(startupItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);
+            CanvasZOrder.RegisterPriorityMenu(menu);
 
             var icon = CreateIcon();
             // The image is acquired before NotifyIcon but must outlive its disposal.

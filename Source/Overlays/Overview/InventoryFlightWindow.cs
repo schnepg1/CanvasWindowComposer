@@ -33,6 +33,7 @@ internal sealed class InventoryFlightWindow : Window, IDisposable
         AllowsTransparency = true; Background = Brushes.Transparent; ShowInTaskbar = false;
         ShowActivated = false; Focusable = false; IsHitTestVisible = false; Topmost = true; Content = _surface;
         var hwnd = (HWND)new WindowInteropHelper(this).EnsureHandle();
+        CanvasZOrder.AttachWpfClampHook(this, () => true);
         int style = PInvoke.GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
         PInvoke.SetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, style | 0x20 | 0x80 | 0x08000000);
         _timer.Tick += (_, _) =>
@@ -49,8 +50,9 @@ internal sealed class InventoryFlightWindow : Window, IDisposable
         _surface.Title = title; _surface.Source = source; _surface.Target = target; _surface.Screen = screen;
         _surface.Reduced = reduceMotion; _surface.Progress = 0; _started = Environment.TickCount64; _duration = reduceMotion ? 220 : 720;
         if (!IsVisible) Show();
-        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), screen.X, screen.Y, screen.Width, screen.Height,
-            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+        CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, clampBelowTaskbar: true,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER,
+            screen.X, screen.Y, screen.Width, screen.Height);
         _surface.InvalidateVisual(); _timer.Start();
     }
 

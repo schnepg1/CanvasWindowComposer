@@ -43,6 +43,9 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     public AnnotationTextEmphasis Emphasis { get => CurrentItem.Emphasis; set => SetEmphasis(value); }
     public AnnotationCardFill CardFill { get => CurrentItem.CardFill; set => SetCardFill(value); }
 
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
+    private bool ShouldClampBelowTaskbar => ClampBelowTaskbar?.Invoke() ?? true;
+
     public AnnotationTextEditor(CanvasAnnotation item)
     {
         CurrentItem = item;
@@ -156,6 +159,8 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
             }
         };
         try { _toolbar.Owner = this; } catch { }
+        CanvasZOrder.AttachWpfClampHook(this, () => ShouldClampBelowTaskbar);
+        CanvasZOrder.AttachWpfClampHook(_toolbar, () => ShouldClampBelowTaskbar);
         _toolbar.Deactivated += (_, _) => QueueFinishOnFocusLeave();
         _toolbar.DpiChanged += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
         {
@@ -324,9 +329,9 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         Left = left / dpi.DpiScaleX; Top = top / dpi.DpiScaleY;
         if (IsVisible)
         {
-            PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1),
-                (int)Math.Round(left), (int)Math.Round(top), (int)Math.Ceiling(width), (int)Math.Ceiling(height),
-                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, ShouldClampBelowTaskbar,
+                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE,
+                (int)Math.Round(left), (int)Math.Round(top), (int)Math.Ceiling(width), (int)Math.Ceiling(height));
             if (resetOffset)
             {
                 _viewport.ScrollToHorizontalOffset(offset.X);
@@ -347,7 +352,8 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         int top = (int)Math.Round(point.Y) - height - 8;
         if (top < _workingArea.Top) top = (int)Math.Ceiling(point.Y + ActualHeight*VisualTreeHelper.GetDpi(this).DpiScaleY) + 8;
         top = Math.Clamp(top, _workingArea.Top, Math.Max(_workingArea.Top, _workingArea.Bottom - height));
-        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(_toolbar).Handle, (HWND)new IntPtr(-1), left, top, width, height, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(_toolbar).Handle, ShouldClampBelowTaskbar,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE, left, top, width, height);
     }
     public void Show(System.Windows.Forms.Form owner)
     {

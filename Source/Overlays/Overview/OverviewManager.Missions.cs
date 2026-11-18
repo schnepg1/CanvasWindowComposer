@@ -157,6 +157,7 @@ internal sealed partial class OverviewManager
     {
         CloseMissionControl();
         var window = new MissionControlWindow(CanvasPanelOwner, HerdrSessions);
+        CanvasZOrder.AttachWpfClampHook(window, () => ShouldClampCanvasPanelsBelowTaskbar);
         _missionControl = window;
         _isAiTeamsActive = true;
         window.TerminalChanged += RefreshMissionTerminals;
@@ -462,7 +463,10 @@ internal sealed partial class OverviewManager
         }
 
         var profile = HerdrSessions.FindAgent(card.AgentRole);
-        var overlay = new AgentTerminalOverlayWindow(HerdrSessions, cardId, profile, onCollapse: () => ToggleAgentConsoleDrawer(cardId));
+        var overlay = new AgentTerminalOverlayWindow(HerdrSessions, cardId, profile, onCollapse: () => ToggleAgentConsoleDrawer(cardId))
+        {
+            ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar
+        };
         _activeTerminalOverlays[cardId] = overlay;
         RegisterTerminalLayer(cardId, overlay);
 

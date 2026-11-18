@@ -14,6 +14,7 @@ internal sealed record TaskbarPreviewSnapshot(bool Enabled, bool LifetimeHookAva
 internal sealed class OverviewTaskbarPreviews : IDisposable
 {
     private readonly Action<Rectangle[]> _changed;
+    private readonly Action<IntPtr>? _shellPopupShown;
     private readonly Dictionary<IntPtr, Rectangle> _previews = new();
     private readonly WINEVENTPROC _callback;
     private UnhookWinEventSafeHandle? _lifetimeHook, _locationHook;
@@ -23,9 +24,10 @@ internal sealed class OverviewTaskbarPreviews : IDisposable
     private DateTime? _lastScanUtc;
     private int _recoveredUpdates;
 
-    public OverviewTaskbarPreviews(Action<Rectangle[]> changed)
+    public OverviewTaskbarPreviews(Action<Rectangle[]> changed, Action<IntPtr>? shellPopupShown = null)
     {
         _changed = changed;
+        _shellPopupShown = shellPopupShown;
         _callback = OnWinEvent;
         _recoveryTimer.Tick += (_, _) => Refresh();
     }
@@ -63,6 +65,19 @@ internal sealed class OverviewTaskbarPreviews : IDisposable
         bool changed = type is PInvoke.EVENT_OBJECT_HIDE or PInvoke.EVENT_OBJECT_DESTROY
             ? _previews.Remove(window) : Update(window);
         if (changed) Publish();
+        if (type == PInvoke.EVENT_OBJECT_SHOW && _shellPopupShown != null && IsShellTrayPopupWindow(window))
+            _shellPopupShown(window);
+    }
+
+    private static bool IsShellTrayPopupWindow(HWND window)
+    {
+        if (!PInvoke.IsWindowVisible(window)) return false;
+        int exStyle = PInvoke.GetWindowLong(window, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
+        if ((exStyle & (int)WINDOW_EX_STYLE.WS_EX_TOPMOST) == 0) return false;
+        Span<char> name = stackalloc char[128];
+        int length = PInvoke.GetClassName(window, name);
+        if (length <= 0 || !CanvasZOrder.IsShellTrayPopupClass(name[..length])) return false;
+        return !CanvasZOrder.IsCloaked(window) && CanvasZOrder.HasNonEmptyBounds(window);
     }
 
     private bool Update(HWND window)

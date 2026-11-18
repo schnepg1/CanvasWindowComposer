@@ -49,6 +49,8 @@ internal sealed class BackgroundWindow : Window
     internal bool HasPendingChanges => _dirty || _busy;
     internal bool IsChoosingImage { get; private set; }
 
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
+
     internal void SetCanvasOwner(IntPtr owner)
     {
         var interop=new WindowInteropHelper(this);
@@ -59,8 +61,7 @@ internal sealed class BackgroundWindow : Window
     internal void RaiseWithoutActivation()
     {
         if(!IsVisible || !Topmost)return;
-        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle,(HWND)new IntPtr(-1),0,0,0,0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE|SET_WINDOW_POS_FLAGS.SWP_NOSIZE|SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, ClampBelowTaskbar?.Invoke() ?? true);
     }
     public void SetRenderingStatus(string? status) { _renderingStatus=status;if(status!=null)Report(status); }
 
@@ -70,6 +71,7 @@ internal sealed class BackgroundWindow : Window
     {
         _service = service; _assets = assets; _cache = cache; _zones = zones;
         _defaultBounds = defaultBounds; _editOnCanvas = editOnCanvas; _navigate = navigate;
+        CanvasZOrder.AttachWpfClampHook(this, () => Topmost && (ClampBelowTaskbar?.Invoke() ?? true));
         _desktop = service.DesktopId;
         Title = "Backgrounds · Canvas";
         Width = 1040; Height = 880; MinWidth = 880; MinHeight = 680;

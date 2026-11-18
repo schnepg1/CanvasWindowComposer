@@ -48,6 +48,8 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
     public OverviewMode CurrentMode { get { return _state.CurrentMode; } }
 
+    public bool ShowTaskbarInCanvas => _appConfig.ShowTaskbarInCanvas;
+
     internal bool MotionActive => !_disposed && CurrentMode != OverviewMode.Hidden
         && (IsZoomSettling || _tools.Kind == CanvasInteractionKind.Pan || CurrentMode == OverviewMode.Panning
             || MomentumActive || WindowNavigationActive || IsStartupIntroActive || _tourFlight != null);
@@ -320,7 +322,7 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
         _taskbarPreviews = new(previews =>
         {
             foreach (var pass in _passes) pass.SetTaskbarPreviews(previews);
-        });
+        }, OnShellTrayPopupShown);
         _mainCanvas = mainCanvas;
         _requestDesktopPlacement = requestDesktopPlacement;
 
@@ -759,6 +761,11 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         if (_passes.Count > 0) _passes[0].Activate();
 
+        if (CurrentMode == OverviewMode.Zooming && !_composerWaitingForBrowser)
+            RaiseOverviewPassesAboveTopmostWindows();
+        else if (CurrentMode == OverviewMode.Panning && _appConfig.ShowTaskbarInCanvas)
+            PlaceOverviewPassesAtCeiling();
+
         RefreshPlaceholderTitles();
 
         if (ShouldShowScreenFixedWindowsDuringPan)
@@ -963,10 +970,13 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
         ReconcileVisuals();
 
-        if (ShouldShowScreenFixedWindowsDuringPan && AnyPassVisible())
-
-            RaiseMyDockFinderWindowsAboveOverview();
-
+        if (CurrentMode == OverviewMode.Panning && AnyPassVisible())
+        {
+            if (_appConfig.ShowTaskbarInCanvas)
+                PlaceOverviewPassesAtCeiling();
+            if (ShouldShowScreenFixedWindowsDuringPan)
+                RaiseMyDockFinderWindowsAboveOverview();
+        }
         else if (CurrentMode == OverviewMode.Zooming && AnyPassVisible() && !_composerWaitingForBrowser)
 
             RaiseOverviewPassesAboveTopmostWindows();
@@ -1008,34 +1018,56 @@ internal sealed partial class OverviewManager : IDisposable, IOverviewController
 
 
 
-    private void RaiseOverviewPassesAboveTopmostWindows()
-
+    private void PlaceOverviewPassesAtCeiling()
     {
+        bool clampBelowTaskbar = _appConfig.ShowTaskbarInCanvas;
+        foreach (var p in _passes)
+        {
+            if (p.IsHandleCreated)
+                CanvasZOrder.PlaceAtCeiling(p.Handle, clampBelowTaskbar);
+        }
+    }
 
-        HWND topMost = (HWND)new IntPtr(-1);
-
-        var flags =
-
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE |
-
-            SET_WINDOW_POS_FLAGS.SWP_NOSIZE |
-
-            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE |
-
-            SET_WINDOW_POS_FLAGS.SWP_NOSENDCHANGING;
-
-
+    private void RaiseOverviewPassesAboveTopmostWindows()
+    {
+        bool clampBelowTaskbar = _appConfig.ShowTaskbarInCanvas;
+        PlaceOverviewPassesAtCeiling();
 
         foreach (var p in _passes)
-
         {
-
-            if (p.IsHandleCreated)
-
-                PInvoke.SetWindowPos((HWND)p.Handle, topMost, 0, 0, 0, 0, flags);
-
+            if (p.IsHandleCreated && p.Visible)
+                p.RaiseOwnedChrome(clampBelowTaskbar);
         }
 
+        RaiseCanvasPanels();
+    }
+
+    private void OnShellTrayPopupShown(IntPtr popup)
+    {
+        if (_disposed || CurrentMode == OverviewMode.Hidden || !_appConfig.ShowTaskbarInCanvas
+            || _composerWaitingForBrowser || popup == IntPtr.Zero)
+            return;
+
+        bool anyPassAbovePopup = false;
+        foreach (var p in _passes)
+        {
+            if (p.IsHandleCreated && p.Visible && p.IsAnySurfaceAbove(popup))
+            {
+                anyPassAbovePopup = true;
+                break;
+            }
+        }
+
+        if (anyPassAbovePopup)
+        {
+            RaiseOverviewPassesAboveTopmostWindows();
+            if (ShouldShowScreenFixedWindowsDuringPan)
+                RaiseMyDockFinderWindowsAboveOverview();
+            return;
+        }
+
+        // Even if all passes are already below the popup, floating panels or MinimapOverlay
+        // (which floats over the bottom-right tray area) may still sit above the popup.
         RaiseCanvasPanels();
     }
 

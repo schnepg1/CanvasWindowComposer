@@ -12,6 +12,7 @@ internal interface IOverviewController
     event Action<OverviewMode, OverviewMode>? BeforeModeChanged;
     IReadOnlyList<IntPtr> MonitorHandles { get; }
     OverviewMode CurrentMode { get; }
+    bool ShowTaskbarInCanvas => true;
     void TransitionTo(OverviewMode target, bool syncCameraOnClose = true, bool zoomOutOnOpen = false);
     bool NavigateToWindow(IntPtr window);
     bool WindowNavigationActive => false;

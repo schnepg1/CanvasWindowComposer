@@ -87,6 +87,15 @@ internal sealed class AnnotationShapeEditor : Form
     private readonly ElementHost _host;
     private readonly (int Index, int Total) _initialZOrder;
     private bool _suppressHexEvents;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ClampBelowTaskbar?.Invoke() ?? true);
+        base.WndProc(ref m);
+    }
 
     public AnnotationShapeEditor(CanvasAnnotation item, AnnotationDocument? document = null, Guid? currentDesktop = null)
     {

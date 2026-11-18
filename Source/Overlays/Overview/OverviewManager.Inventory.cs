@@ -28,7 +28,7 @@ internal sealed partial class OverviewManager
     private BackpackWindow EnsureBackpack()
     {
         if (_backpack != null) return _backpack;
-        _backpack = new(_screens.PrimaryWorkingArea);
+        _backpack = new(_screens.PrimaryWorkingArea) { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
         _backpack.SetCanvasOwner(CanvasPanelOwner);
         _backpack.CloseRequested += () => SetInventoryVisible(false);
         _backpack.Panel.OpenRequested += open => SetInventoryVisible(open, activate: open);

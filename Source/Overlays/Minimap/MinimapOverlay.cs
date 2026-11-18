@@ -98,6 +98,7 @@ internal sealed class MinimapOverlay : Form
         Cursor = Cursors.Cross;
         _pinItem.Click += (_, _) => SetPinned(!_pinned);
         _mapMenu.Items.Add(_pinItem);
+        CanvasZOrder.RegisterPriorityMenu(_mapMenu);
         ContextMenuStrip = _mapMenu;
         _mapMenu.Closed += (_, _) => { _hovered = ClientRectangle.Contains(PointToClient(Cursor.Position)); RestartFade(); };
         if (_overview != null)
@@ -296,15 +297,19 @@ internal sealed class MinimapOverlay : Form
         RestartFade();
     }
 
+    private bool ShouldClampBelowTaskbar =>
+        _overview == null || _overview.CurrentMode == OverviewMode.Hidden || _overview.ShowTaskbarInCanvas;
+
     private void RaiseWithoutActivation()
     {
         if (_closing || IsDisposed || !IsHandleCreated) return;
-        PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(Handle, ShouldClampBelowTaskbar);
     }
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ShouldClampBelowTaskbar);
         if (m.Msg == 0x21) { m.Result = (IntPtr)3; return; } // MA_NOACTIVATE
         base.WndProc(ref m);
     }

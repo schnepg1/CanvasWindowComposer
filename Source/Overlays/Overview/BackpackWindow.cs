@@ -107,8 +107,7 @@ internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
     {
         if (!IsVisible) return;
         var handle = new WindowInteropHelper(this).Handle;
-        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(handle, ShouldClampBelowTaskbar);
     }
 
     private void Position()
@@ -122,8 +121,9 @@ internal sealed class BackpackWindow : CanvasPanelWindow, IDisposable
         if (_lastPosition == newPosition) return;
         if (Panel.IsContextMenuOpen) return;
         _lastPosition = newPosition;
-        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), left, _work.Top, width, height,
-            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+        CanvasZOrder.PlaceAtCeiling(handle, ShouldClampBelowTaskbar,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER,
+            left, _work.Top, width, height);
     }
 
     public void Dispose() { if (_disposing) return; _disposing = true; Panel.Drag.Cancel(); _timer.Dispose(); Close(); }

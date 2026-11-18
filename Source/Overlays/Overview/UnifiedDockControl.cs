@@ -116,7 +116,7 @@ internal sealed class UnifiedDockControl : UserControl
     {
         if (Application.Current == null)
         {
-            try { _ = new Application(); } catch { }
+            try { _ = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; } catch { }
         }
 
         Resources.MergedDictionaries.Add(new ThemesDictionary { Theme = ApplicationTheme.Dark });

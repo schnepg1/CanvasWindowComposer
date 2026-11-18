@@ -46,6 +46,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
     public bool IsBelowLodThreshold { get; private set; }
     public bool IsDisposed => _disposed;
     public bool IsClosing => _isClosing;
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
 
     /// <summary>Number of times window geometry was actually written (diagnostics/tests).</summary>
     internal int PlacementWrites { get; private set; }
@@ -71,6 +72,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         // cannot composite a child HWND reliably and lose hardware acceleration, which
         // shows up as terminal flicker. Keep the window opaque and let DWM composite it.
         SourceInitialized += (_, _) => ApplyTopmostExStyle();
+        CanvasZOrder.AttachWpfClampHook(this, () => ClampBelowTaskbar?.Invoke() ?? true);
 
         var accentColor = (Color)ColorConverter.ConvertFromString(profile.AccentColorHex);
         var accentBrush = new SolidColorBrush(accentColor);
@@ -468,8 +470,7 @@ internal sealed class AgentTerminalOverlayWindow : Window, IDisposable
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
-            PInvoke.SetWindowPos((HWND)hwnd, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-                SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            CanvasZOrder.PlaceAtCeiling(hwnd, ClampBelowTaskbar?.Invoke() ?? true);
         }
     }
 

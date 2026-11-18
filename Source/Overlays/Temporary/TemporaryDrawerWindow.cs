@@ -90,15 +90,15 @@ internal sealed class TemporaryDrawerWindow : CanvasPanelWindow, IDisposable
         var bounds = new ScreenRect(_work.Right - width, top, width, height);
         if (_bounds == bounds) return;
         _bounds = bounds;
-        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), bounds.X, bounds.Y, width, height,
-            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+        CanvasZOrder.PlaceAtCeiling(handle, ShouldClampBelowTaskbar,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER,
+            bounds.X, bounds.Y, width, height);
     }
 
     public void RaiseWithoutActivation()
     {
         if (!IsVisible || _disposing) return;
-        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, ShouldClampBelowTaskbar);
     }
 
     public void Dispose()

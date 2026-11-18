@@ -20,6 +20,7 @@ internal sealed partial class OverviewManager
         _backgroundEditor=editor;
         if(_disposed)return;
         UpdateCanvasPanelOwners();
+        EnsurePassesBelowCeilingIfNeeded();
         _backgroundEditor?.RaiseWithoutActivation();
     }
 

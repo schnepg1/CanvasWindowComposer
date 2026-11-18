@@ -28,6 +28,7 @@ internal sealed partial class OverviewManager
         if (owner == null) return;
         var form = new CanvasComposerWindow(key => provider ?? new OpenAiCanvasComposerProvider(AiServices.Http, key), credentials ?? new ComposerCredentials(), accounts ?? AiServices.Accounts,
             BuildComposerContext, ApplyComposerPreview, CurrentComposerNotes(), selectedId, selected, CurrentComposerReferences(), owner.Handle);
+        CanvasZOrder.AttachWpfClampHook(form, () => ShouldClampCanvasPanelsBelowTaskbar);
         _composerWindow = form;
         form.PreviewChanged += preview =>
         {

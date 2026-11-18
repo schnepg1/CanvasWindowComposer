@@ -16,7 +16,7 @@ internal sealed partial class OverviewManager
         if (_disposed || _placeholderWorkspace == null) return;
         if (_temporaryDrawer == null)
         {
-            _temporaryDrawer = new(_screens.PrimaryWorkingArea);
+            _temporaryDrawer = new(_screens.PrimaryWorkingArea) { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
             _temporaryDrawer.Panel.ShowAreaRequested += ShowTemporaryArea;
             _temporaryDrawer.Panel.PlaceRequested += id => PlaceTemporaryDrawerItem(id, null);
             _temporaryDrawer.Panel.FocusRequested += FocusTemporaryDrawerItem;

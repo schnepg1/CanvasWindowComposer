@@ -57,19 +57,22 @@ internal sealed class CanvasPlacementFeedbackView(IScreens screens, bool clickTo
             ShowActivated = false; Focusable = false; IsHitTestVisible = false; Topmost = true;
             Width = 1; Height = 1; Content = surface;
             var hwnd = (HWND)new WindowInteropHelper(this).EnsureHandle();
+            CanvasZOrder.AttachWpfClampHook(this, () => true);
             int style = PInvoke.GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
             PInvoke.SetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (style | 0x20 | 0x80 | 0x08000000) & ~0x40000);
         }
 
         public void MoveTo(Point point)
-            => PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), (int)point.X, (int)point.Y, 0, 0,
-                SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+            => CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, clampBelowTaskbar: true,
+                SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER,
+                (int)point.X, (int)point.Y, 0, 0);
 
         public void Present(ScreenRect rect)
         {
             if (!IsVisible) Show();
-            PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), rect.X, rect.Y, rect.Width, rect.Height,
-                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+            CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, clampBelowTaskbar: true,
+                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER,
+                rect.X, rect.Y, rect.Width, rect.Height);
         }
     }
 }

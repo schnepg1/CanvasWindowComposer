@@ -36,17 +36,42 @@ internal sealed class OverviewOverlay : Form
         _taskbarRegion.Apply(Handle, Bounds, Screen.WorkingArea, visible, _taskbarPreviews);
         _annotations?.SetTaskbarVisible(Screen.WorkingArea, visible, _taskbarPreviews);
     }
+    internal bool ClampBelowTaskbar => _showTaskbar;
+
+    internal bool IsAnySurfaceAbove(IntPtr window)
+    {
+        if (window == IntPtr.Zero) return false;
+        if (IsHandleCreated && Visible && CanvasZOrder.IsWindowAbove(Handle, window))
+            return true;
+        if (_annotations is { IsVisible: true } && CanvasZOrder.IsWindowAbove(_annotations.WindowHandle, window))
+            return true;
+        if (_zoomControls is { Visible: true, IsDisposed: false, IsHandleCreated: true }
+            && CanvasZOrder.IsWindowAbove(_zoomControls.Handle, window))
+            return true;
+        if (_desktopHandoffRecovery is { Visible: true, IsDisposed: false, IsHandleCreated: true }
+            && CanvasZOrder.IsWindowAbove(_desktopHandoffRecovery.Handle, window))
+            return true;
+        return false;
+    }
+
+    internal void RaiseOwnedChrome(bool clampBelowTaskbar)
+    {
+        _annotations?.RaiseWithoutActivation(clampBelowTaskbar);
+        _zoomControls?.RaiseWithoutActivation(clampBelowTaskbar);
+        _desktopHandoffRecovery?.RaiseWithoutActivation(clampBelowTaskbar);
+    }
+
     private DesktopHandoffRecoveryWindow? _desktopHandoffRecovery;
 
     internal void ShowDesktopHandoffRecovery(Action recover)
     {
-        _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover);
+        _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover) { ClampBelowTaskbar = () => _showTaskbar };
         _desktopHandoffRecovery.ShowFor(this);
     }
 
     internal void ShowDesktopHandoffRecoveryMap(Action recover, DesktopHandoffRecoveryMap map)
     {
-        _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover);
+        _desktopHandoffRecovery ??= new DesktopHandoffRecoveryWindow(recover) { ClampBelowTaskbar = () => _showTaskbar };
         _desktopHandoffRecovery.ShowMap(this, map);
     }
 
@@ -90,11 +115,15 @@ internal sealed class OverviewOverlay : Form
         {
             if (_zoomControls == null)
             {
-                _zoomControls = new CanvasZoomControls();
+                _zoomControls = new CanvasZoomControls { ClampBelowTaskbar = () => _showTaskbar };
                 _zoomControls.SettingsRequested += zoomOnly => OnSettingsRequested?.Invoke(this, zoomOnly);
             }
             _zoomControls.UpdateZoom(frame.Zoom);
-            if (!_zoomControls.Visible) _zoomControls.Show(this);
+            if (!_zoomControls.Visible)
+            {
+                _zoomControls.Show(this);
+                _zoomControls.RaiseWithoutActivation(_showTaskbar);
+            }
             double scale = DeviceDpi / 96.0;
             _zoomControls.Location = new Point(OriginX + (int)Math.Round(20 * scale), OriginY + (int)Math.Round(20 * scale));
         }
@@ -258,6 +287,8 @@ internal sealed class OverviewOverlay : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, _showTaskbar);
         if (WindowInteractionActive && m.Msg == 0x21) // WM_MOUSEACTIVATE
         {
             m.Result = (IntPtr)3; // MA_NOACTIVATE: leave real typing/shortcuts with the source app.
