@@ -46,6 +46,21 @@ public class TeamTelemetryTests
     }
 
     [Fact]
+    public void TextCardsNeverBecomeAgentCardsFromTheirWording()
+    {
+        var snapshot = TeamTelemetryJson.Parse(TwoTeams);
+        CanvasAnnotation Note(string text) => new(Guid.NewGuid(), Guid.Empty, AnnotationKind.Text,
+            new(0, 0), new(300, 120), Text: text);
+
+        // Root roles report programmer Error, so a wording match would badge these user notes.
+        Assert.Null(TeamTelemetryJson.ReportForCard(snapshot, Note("Ask the programmer to review this merge")));
+        Assert.Null(TeamTelemetryJson.ReportForCard(snapshot, Note("Worktree Programmer")));
+        // A card that really is a role card keeps inheriting the legacy role table.
+        Assert.Equal(AgentExecutionState.Error,
+            TeamTelemetryJson.ReportForCard(snapshot, Note("Worktree Programmer") with { AgentRole = "programmer" })!.State);
+    }
+
+    [Fact]
     public void TemplateInstancesHaveStableDisjointIdsAndBoundConnectors()
     {
         var desktop = Guid.NewGuid();

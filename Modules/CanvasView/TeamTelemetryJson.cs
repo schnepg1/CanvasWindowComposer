@@ -76,7 +76,8 @@ public static class TeamTelemetryJson
                 && string.Equals(team.Status, "Active", StringComparison.OrdinalIgnoreCase) ? AgentExecutionState.Working : AgentExecutionState.Idle,
                 Timestamp: snapshot.UpdatedAt, TaskId: team.TaskId);
         }
-        return LegacyReport(snapshot, card.Text);
+        // Wording alone never makes a card an agent: only a role-bound card inherits the legacy role table.
+        return card.AgentRole.Length > 0 ? LegacyReport(snapshot, card.Text) : null;
     }
 
     public static AgentStatusReport? LegacyReport(TeamTelemetrySnapshot snapshot, string text)
