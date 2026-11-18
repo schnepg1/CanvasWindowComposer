@@ -47,6 +47,7 @@ internal sealed partial class OverviewManager
             window.BorderBrush = ZoneTheme.Brush("#475569");
             window.BorderThickness = new Thickness(1);
             new WindowInteropHelper(window) { Owner = pass.Handle }.EnsureHandle();
+            CanvasZOrder.AttachWpfClampHook(window, () => ShouldClampCanvasPanelsBelowTaskbar);
             // Place in physical pixels after creating the HWND so mixed-DPI monitors work.
             var area = pass.Screen.WorkingArea;
             double scale = pass.DeviceDpi / 96.0;
@@ -59,8 +60,8 @@ internal sealed partial class OverviewManager
             int height = (int)Math.Ceiling(window.ActualHeight * scale);
             int x = Math.Clamp(pass.OriginX + (int)(20 * scale), area.Left, Math.Max(area.Left, area.Right - width));
             int y = Math.Clamp(pass.OriginY + (int)(62 * scale), area.Top, Math.Max(area.Top, area.Bottom - height));
-            PInvoke.SetWindowPos((HWND)new WindowInteropHelper(window).Handle, (HWND)new IntPtr(-1), x, y, width, height,
-                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(window).Handle, ShouldClampCanvasPanelsBelowTaskbar,
+                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE, x, y, width, height);
             void DismissOnDeactivate(object? sender, EventArgs args)
             {
                 // Let a click-away keep focus on its destination.

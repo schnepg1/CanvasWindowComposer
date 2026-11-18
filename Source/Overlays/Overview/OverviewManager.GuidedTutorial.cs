@@ -204,7 +204,7 @@ internal sealed partial class OverviewManager
         if(pass==null)return;
         if(_tourPanel==null)
         {
-            _tourPanel=new();
+            _tourPanel=new() { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
             _tourPanel.StartRequested+=()=>StartGuidedTutorial();
             _tourPanel.ExploreRequested+=SkipGuidedTutorial;
             _tourPanel.SkipRequested+=SkipGuidedTutorial;
@@ -231,7 +231,11 @@ internal sealed partial class OverviewManager
         else _tourPanel.Offer(_tutorialStore?.TourForDesktop(_annotationDesktop())?.Status is TutorialTourStatus.Paused or TutorialTourStatus.InProgress,_tutorialStore?.Status);
         // An owned form disappears with its owner. Desktop prompts must be independent.
         _tourPanel.Owner=desktop?null:pass;
-        if(!_tourPanel.Visible)_tourPanel.Show();
+        if(!_tourPanel.Visible)
+        {
+            _tourPanel.Show();
+            _tourPanel.RaiseWithoutActivation();
+        }
         var area=pass.Screen.WorkingArea;
         int dpiPadding=(int)(12*TutorialDpiScale);
         _tourPanel.FitToWidth(Math.Min((int)(640*TutorialDpiScale),area.Width-2*dpiPadding));

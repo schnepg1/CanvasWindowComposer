@@ -14,16 +14,40 @@ internal sealed partial class OverviewManager
         MouseHook = _interactionMouseHook?.Diagnostics
     };
 
+    private bool ShouldClampCanvasPanelsBelowTaskbar =>
+        CurrentMode == OverviewMode.Hidden || _appConfig.ShowTaskbarInCanvas;
+
     private IntPtr CanvasPanelOwner => CurrentMode == OverviewMode.Hidden ? IntPtr.Zero
         : (_passes.Find(p => p.Screen.Primary) ?? _passes.Find(p => p.IsHandleCreated))?.Handle ?? IntPtr.Zero;
 
     private void UpdateCanvasPanelOwners()
     {
-        if (_unifiedDock?.IsAlive == true) _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
-        _backpack?.SetCanvasOwner(CanvasPanelOwner);
-        _temporaryDrawer?.SetCanvasOwner(CanvasPanelOwner);
-        _backgroundEditor?.SetCanvasOwner(CanvasPanelOwner);
-        _zoneWindow?.SetCanvasOwner(CanvasPanelOwner);
+        Func<bool> clamp = () => ShouldClampCanvasPanelsBelowTaskbar;
+        if (_unifiedDock?.IsAlive == true)
+        {
+            _unifiedDock.ClampBelowTaskbar = clamp;
+            _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
+        }
+        if (_backpack != null)
+        {
+            _backpack.ClampBelowTaskbar = clamp;
+            _backpack.SetCanvasOwner(CanvasPanelOwner);
+        }
+        if (_temporaryDrawer != null)
+        {
+            _temporaryDrawer.ClampBelowTaskbar = clamp;
+            _temporaryDrawer.SetCanvasOwner(CanvasPanelOwner);
+        }
+        if (_backgroundEditor != null)
+        {
+            _backgroundEditor.ClampBelowTaskbar = clamp;
+            _backgroundEditor.SetCanvasOwner(CanvasPanelOwner);
+        }
+        if (_zoneWindow != null)
+        {
+            _zoneWindow.ClampBelowTaskbar = clamp;
+            _zoneWindow.SetCanvasOwner(CanvasPanelOwner);
+        }
     }
 
     internal event Action? CanvasPanelsRaised;
@@ -48,16 +72,47 @@ internal sealed partial class OverviewManager
 
         _layerCoordinator.Register(CanvasLayerTier.DockAndToolbars, "UnifiedDock",
             () => _unifiedDock?.RaiseWithoutActivation(),
-            () => _unifiedDock is { IsAlive: true, IsVisible: true });
+            () => _unifiedDock is { IsAlive: true, IsDockVisible: true });
 
         _layerCoordinator.Register(CanvasLayerTier.PeekPreview, "PeekPreview",
             () => _peekWindow?.RaiseWithoutActivation(),
             () => _peekWindow is { IsDisposed: false, Visible: true });
     }
 
+    private void EnsurePassesBelowCeilingIfNeeded()
+    {
+        if (_disposed || CurrentMode == OverviewMode.Hidden || _composerWaitingForBrowser)
+            return;
+
+        bool clampBelowTaskbar = _appConfig.ShowTaskbarInCanvas;
+        IntPtr ceiling = CanvasZOrder.ResolveCeilingInsertAfter(clampBelowTaskbar);
+        if (ceiling == CanvasZOrder.HwndTopmost)
+            return;
+
+        bool anyAbove = false;
+        foreach (var p in _passes)
+        {
+            if (p.IsHandleCreated && p.Visible && p.IsAnySurfaceAbove(ceiling))
+            {
+                anyAbove = true;
+                break;
+            }
+        }
+
+        if (!anyAbove) return;
+
+        PlaceOverviewPassesAtCeiling();
+        foreach (var p in _passes)
+        {
+            if (p.IsHandleCreated && p.Visible)
+                p.RaiseOwnedChrome(clampBelowTaskbar);
+        }
+    }
+
     private void RaiseCanvasPanels()
     {
         if (_disposed) return;
+        EnsurePassesBelowCeilingIfNeeded();
         RegisterCanvasLayers();
         _layerCoordinator.RaiseAll();
         CanvasPanelsRaised?.Invoke();
@@ -70,6 +125,7 @@ internal sealed partial class OverviewManager
         _zoneWindow = window;
         if (_disposed) return;
         UpdateCanvasPanelOwners();
+        EnsurePassesBelowCeilingIfNeeded();
         _zoneWindow?.RaiseWithoutActivation();
         CanvasPanelsRaised?.Invoke();
     }

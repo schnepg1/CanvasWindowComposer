@@ -72,7 +72,9 @@ internal sealed class BackpackPanel : UserControl
     public BackpackPanel()
     {
         if (Application.Current == null)
-            _ = new Application();
+        {
+            try { _ = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; } catch { }
+        }
         Resources.MergedDictionaries.Add(new ThemesDictionary { Theme = ApplicationTheme.Dark });
         void AddResource(string relativePath) => Resources.MergedDictionaries.Add(new ResourceDictionary
         {

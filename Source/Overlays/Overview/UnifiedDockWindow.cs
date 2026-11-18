@@ -93,11 +93,10 @@ internal sealed class UnifiedDockWindow : CanvasPanelWindow, IDisposable
 
     public void RaiseWithoutActivation()
     {
-        if (!IsVisible || _disposing) return;
+        if ((!IsVisible && !IsDockVisible) || _disposing) return;
         var handle = new WindowInteropHelper(this).EnsureHandle();
-        if (handle == IntPtr.Zero) return;
-        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        if (handle == IntPtr.Zero || !PInvoke.IsWindowVisible((HWND)handle)) return;
+        CanvasZOrder.PlaceAtCeiling(handle, ShouldClampBelowTaskbar);
     }
 
     public void Position(bool showTaskbar = true)
@@ -121,8 +120,9 @@ internal sealed class UnifiedDockWindow : CanvasPanelWindow, IDisposable
         if (_lastPosition == newPosition && !Panel.HasOpenDropDown) return;
         _lastPosition = newPosition;
 
-        PInvoke.SetWindowPos((HWND)handle, (HWND)new IntPtr(-1), left, top, width, height,
-            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW);
+        CanvasZOrder.PlaceAtCeiling(handle, ShouldClampBelowTaskbar,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW,
+            left, top, width, height);
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)

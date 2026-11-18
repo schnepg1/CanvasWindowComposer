@@ -139,7 +139,10 @@ internal sealed partial class OverviewManager
         bool animate = live && !_appConfig.LowQualityMode && !_appConfig.ReduceStartupMotion && !_prefersReducedStartupMotion();
         _peekState = animate ? CanvasPeekState.OpeningAnimation : CanvasPeekState.PreviewOnly;
         _peekOpenedAt = _gestureClock.TickCount64;
-        var window = _peekWindow = new CanvasPeekWindow(_peekDwm);
+        var window = _peekWindow = new CanvasPeekWindow(_peekDwm)
+        {
+            ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar
+        };
         window.WorkRequested += BeginPeekInteraction;
         window.ReturnRequested += () => CloseWindowPeek(focus: true);
         window.OpenRequested += OpenPeekAtDesktop;

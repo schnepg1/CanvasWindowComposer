@@ -175,11 +175,20 @@ internal sealed class SearchOverlay : Form
         HideOverlay();
     }
 
+    private bool ShouldClampBelowTaskbar =>
+        _overview == null || _overview.CurrentMode == OverviewMode.Hidden || _overview.ShowTaskbarInCanvas;
+
     public void RaiseWithoutActivation()
     {
         if (!Visible || IsDisposed) return;
-        PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(Handle, ShouldClampBelowTaskbar);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ShouldClampBelowTaskbar);
+        base.WndProc(ref m);
     }
 
     private void ApplyRoundedRegion()
@@ -249,7 +258,7 @@ internal sealed class SearchOverlay : Form
                 if (ownerHandle != IntPtr.Zero)
                     SetWindowLongPtr(Handle, GWLP_HWNDPARENT, ownerHandle);
 
-                PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
+                CanvasZOrder.PlaceAtCeiling(Handle, ShouldClampBelowTaskbar,
                     SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
             }
             Activate();

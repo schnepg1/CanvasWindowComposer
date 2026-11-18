@@ -8,6 +8,9 @@ namespace CanvasDesktop;
 /// <summary>Interactive screen-space UI, owned by the canvas while it is visible.</summary>
 internal class CanvasPanelWindow : Window
 {
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
+    protected bool ShouldClampBelowTaskbar => ClampBelowTaskbar?.Invoke() ?? true;
+
     protected CanvasPanelWindow()
     {
         WindowStyle = WindowStyle.None;
@@ -27,6 +30,7 @@ internal class CanvasPanelWindow : Window
         // ShowInTaskbar alone does not exclude borderless WPF windows from Alt-Tab.
         // Keep activation and mouse input available for search, buttons and capture.
         PInvoke.SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, (style | 0x80) & ~0x40000);
+        CanvasZOrder.AttachWpfClampHook(this, () => ShouldClampBelowTaskbar);
     }
 
     public void SetCanvasOwner(IntPtr owner)

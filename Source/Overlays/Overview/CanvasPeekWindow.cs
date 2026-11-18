@@ -29,6 +29,8 @@ internal sealed class CanvasPeekWindow : Form
     public event Action? WorkRequested, ReturnRequested, OpenRequested;
     public event Action<MouseEventArgs, bool, bool>? ContentPointer;
     public event Action? PreviewFailed;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
 
     public IEnumerable<IntPtr> InputHandles
     {
@@ -88,6 +90,7 @@ internal sealed class CanvasPeekWindow : Form
         Bounds = bounds;
         _animating = animate;
         Show(owner);
+        RaiseWithoutActivation();
         if (source != IntPtr.Zero)
         {
             if (_dwm.Register((HWND)Handle, (HWND)source, out _thumbnail).Failed)
@@ -138,8 +141,7 @@ internal sealed class CanvasPeekWindow : Form
 
     public void RaiseWithoutActivation()
     {
-        if (Visible && !IsDisposed) PInvoke.SetWindowPos((HWND)Handle, (HWND)new IntPtr(-1),
-            0, 0, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        if (Visible && !IsDisposed) CanvasZOrder.PlaceAtCeiling(Handle, ClampBelowTaskbar?.Invoke() ?? true);
     }
 
     private void LayoutPreview()
@@ -234,6 +236,8 @@ internal sealed class CanvasPeekWindow : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ClampBelowTaskbar?.Invoke() ?? true);
         if (m.Msg == 0x21) { m.Result = (IntPtr)3; return; } // MA_NOACTIVATE, including passive peeks.
         base.WndProc(ref m);
     }

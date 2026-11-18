@@ -7,6 +7,8 @@ namespace CanvasDesktop;
 internal sealed class CanvasControlsPopup : Form
 {
     public event Action? ClosedRequested;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
     protected override bool ShowWithoutActivation => false;
     protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x80; return cp; } }
 
@@ -184,6 +186,13 @@ internal sealed class CanvasControlsPopup : Form
         {
             if (e.KeyCode == Keys.Escape) { ClosedRequested?.Invoke(); e.Handled = true; }
         };
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ClampBelowTaskbar?.Invoke() ?? true);
+        base.WndProc(ref m);
     }
 
     protected override void OnPaint(PaintEventArgs e)

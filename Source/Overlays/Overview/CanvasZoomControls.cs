@@ -11,6 +11,8 @@ internal sealed class CanvasZoomControls : Form
     private readonly Button _settings, _zoom;
     private readonly ToolTip _tips = new();
     public event Action<bool>? SettingsRequested;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x80; return cp; } }
 
@@ -47,6 +49,19 @@ internal sealed class CanvasZoomControls : Form
     }
 
     public void UpdateZoom(double zoom) => _zoom.Text = $"{Math.Round(zoom * 100):0}%";
+
+    internal void RaiseWithoutActivation(bool clampBelowTaskbar)
+    {
+        if (!Visible || IsDisposed || !IsHandleCreated) return;
+        CanvasZOrder.PlaceAtCeiling(Handle, clampBelowTaskbar);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ClampBelowTaskbar?.Invoke() ?? true);
+        base.WndProc(ref m);
+    }
 
     protected override void Dispose(bool disposing)
     {

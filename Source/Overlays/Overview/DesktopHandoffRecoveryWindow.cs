@@ -8,6 +8,8 @@ internal sealed class DesktopHandoffRecoveryWindow : Form
 {
     private readonly Button _openRecovery;
     private DesktopHandoffRecoveryMap? _map;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
 
     protected override bool ShowWithoutActivation => true;
 
@@ -44,6 +46,7 @@ internal sealed class DesktopHandoffRecoveryWindow : Form
         Location = new(work.Left + inset, work.Top + inset);
         ClientSize = new(preferred.Width + 16, Math.Max(preferred.Height, inset + 12));
         if (!Visible) Show(owner);
+        RaiseWithoutActivation(ClampBelowTaskbar?.Invoke() ?? true);
     }
 
     public void ShowMap(OverviewOverlay owner, DesktopHandoffRecoveryMap map)
@@ -75,6 +78,7 @@ internal sealed class DesktopHandoffRecoveryWindow : Form
         layout.Controls.Add(buttons, 0, 2);
         Controls.Add(layout);
         if (!Visible) Show(owner);
+        RaiseWithoutActivation(ClampBelowTaskbar?.Invoke() ?? true);
 
         static Button Button(string label, Action click)
         {
@@ -84,8 +88,16 @@ internal sealed class DesktopHandoffRecoveryWindow : Form
         }
     }
 
+    internal void RaiseWithoutActivation(bool clampBelowTaskbar)
+    {
+        if (!Visible || IsDisposed || !IsHandleCreated) return;
+        CanvasZOrder.PlaceAtCeiling(Handle, clampBelowTaskbar);
+    }
+
     protected override void WndProc(ref Message message)
     {
+        if (message.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, message.LParam, ClampBelowTaskbar?.Invoke() ?? true);
         if (message.Msg == 0x21) // WM_MOUSEACTIVATE
         {
             message.Result = (IntPtr)3; // MA_NOACTIVATE, while still delivering the click.

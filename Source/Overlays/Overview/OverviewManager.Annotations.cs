@@ -199,7 +199,7 @@ internal sealed partial class OverviewManager
         {
             _unifiedDock?.Dispose();
             var work = new ScreenRect(area.Left, area.Top, area.Width, area.Height);
-            _unifiedDock = new UnifiedDockWindow(work);
+            _unifiedDock = new UnifiedDockWindow(work) { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
             _unifiedDock.KeyPressed += keys =>
             {
                 // The dock can own keyboard focus after a click; route its keys through the
@@ -313,7 +313,7 @@ internal sealed partial class OverviewManager
         if (_controlsPopup?.IsDisposed == true) _controlsPopup = null;
         if (_controlsPopup == null)
         {
-            _controlsPopup = new();
+            _controlsPopup = new() { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
             _controlsPopup.ClosedRequested += () => { _controlsPopup.Hide(); FocusOverview(); };
             _controlsPopup.KeyDown += (_, e) => HandleKeyDown(pass, e);
         }
@@ -452,7 +452,7 @@ internal sealed partial class OverviewManager
             var intersection = System.Windows.Rect.Intersect(projected,new System.Windows.Rect(screen.X,screen.Y,screen.Width,screen.Height));
             return intersection.IsEmpty ? 0 : intersection.Width*intersection.Height;
         }).First();
-        var editor = new AnnotationTextEditor(item, dictationServerUrl: _appConfig.DictationServerUrl);
+        var editor = new AnnotationTextEditor(item, dictationServerUrl: _appConfig.DictationServerUrl) { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
         _annotationEditor = editor;
         double dpi = pass.DeviceDpi / 96.0;
         var area = pass.Screen.Bounds;
@@ -511,7 +511,7 @@ internal sealed partial class OverviewManager
         _annotationTool?.Select(item.Id);
         var point=new Point((int)Math.Round((item.Bounds.X-_camera.X)*_camera.Zoom),(int)Math.Round((item.Bounds.Y-_camera.Y)*_camera.Zoom));
         var pass=_passes.FirstOrDefault(p=>p.Screen.Bounds.Contains(point))??_passes[0];
-        var editor=new AnnotationShapeEditor(item, _annotationDocument, _annotationDesktop());
+        var editor=new AnnotationShapeEditor(item, _annotationDocument, _annotationDesktop()) { ClampBelowTaskbar = () => ShouldClampCanvasPanelsBelowTaskbar };
         _shapeEditor=editor;
         var area=pass.Screen.WorkingArea;
         editor.Location=new Point(Math.Clamp(point.X,area.Left,Math.Max(area.Left,area.Right-editor.Width)),Math.Clamp(point.Y,area.Top,Math.Max(area.Top,area.Bottom-editor.Height)));

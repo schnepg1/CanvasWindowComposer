@@ -16,6 +16,8 @@ internal sealed class TutorialTourPanel : Form
     internal event Action? StartRequested,ExploreRequested,BackRequested,NextRequested,SkipRequested,RecenterRequested,ControlsRequested;
     internal bool IsOffer { get; private set; }
     internal string StatusText => _status.Text;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
     protected override bool ShowWithoutActivation => true;
     protected override CreateParams CreateParams { get { var p=base.CreateParams;p.ExStyle|=0x80;return p; } }
     internal TutorialTourPanel()
@@ -102,6 +104,19 @@ internal sealed class TutorialTourPanel : Form
     {
         for(int i=0;i<buttons.Length;i++)_buttons.Controls.SetChildIndex(buttons[i],i);
     }
+    internal void RaiseWithoutActivation()
+    {
+        if (!Visible || IsDisposed || !IsHandleCreated) return;
+        CanvasZOrder.PlaceAtCeiling(Handle, ClampBelowTaskbar?.Invoke() ?? true);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == CanvasZOrder.WM_WINDOWPOSCHANGING)
+            CanvasZOrder.ClampWindowPosChanging(Handle, m.LParam, ClampBelowTaskbar?.Invoke() ?? true);
+        base.WndProc(ref m);
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;

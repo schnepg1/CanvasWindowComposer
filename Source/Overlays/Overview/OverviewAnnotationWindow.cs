@@ -17,6 +17,7 @@ internal sealed class OverviewAnnotationWindow : Window
 {
     private OverviewAnnotationSurface _drawing = new();
     private readonly IntPtr _handle;
+    internal IntPtr WindowHandle => _handle;
     private readonly PerformanceDiagnostics _diagnostics;
     private static readonly Action RenderBarrier = static () => { };
     private System.Drawing.Rectangle _bounds;
@@ -69,8 +70,15 @@ internal sealed class OverviewAnnotationWindow : Window
         var interop = new WindowInteropHelper(this) { Owner = owner };
         var hwnd = (HWND)interop.EnsureHandle();
         _handle = (IntPtr)hwnd;
+        CanvasZOrder.AttachWpfClampHook(this, () => _showTaskbar);
         int style = PInvoke.GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE);
         PInvoke.SetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE, style | 0x20 | 0x80 | 0x08000000);
+    }
+
+    internal void RaiseWithoutActivation(bool clampBelowTaskbar)
+    {
+        if (!IsVisible || _handle == IntPtr.Zero) return;
+        CanvasZOrder.PlaceAtCeiling(_handle, clampBelowTaskbar);
     }
 
     public void Update(OverviewAnnotationSnapshot frame)
@@ -87,12 +95,19 @@ internal sealed class OverviewAnnotationWindow : Window
         bool opening = !IsVisible;
         _taskbarRegion.Apply(_handle, screen, _workingArea, _showTaskbar, _taskbarPreviews);
         if (opening) Show();
-        if (opening || _bounds != screen)
+        if (opening)
         {
             _bounds = screen;
-            PInvoke.SetWindowPos((HWND)_handle, (HWND)new IntPtr(-1),
+            CanvasZOrder.PlaceAtCeiling(_handle, _showTaskbar,
+                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER,
+                screen.X, screen.Y, screen.Width, screen.Height);
+        }
+        else if (_bounds != screen)
+        {
+            _bounds = screen;
+            PInvoke.SetWindowPos((HWND)_handle, HWND.Null,
                 screen.X, screen.Y, screen.Width, screen.Height,
-                SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
+                SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOOWNERZORDER);
         }
         _drawing.Update(frame);
     }

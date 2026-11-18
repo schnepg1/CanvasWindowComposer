@@ -93,6 +93,7 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
     {
         _zones = zones; _navigation = navigation; _draw = draw; _statusOf = status;
         _history = history; _replay = replay; _chooseProjectFolder = chooseProjectFolder;
+        CanvasZOrder.AttachWpfClampHook(this, () => Topmost && (ClampBelowTaskbar?.Invoke() ?? true));
 
         Title = "Projects · Canvas";
         Width = 940; Height = 660; MinWidth = 700; MinHeight = 460;
@@ -686,6 +687,8 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
         catch (FormatException) { return new(Color.FromRgb(0x60, 0xA5, 0xFA)); }
     }
 
+    internal Func<bool>? ClampBelowTaskbar { get; set; }
+
     internal void SetCanvasOwner(IntPtr owner)
     {
         var interop = new WindowInteropHelper(this);
@@ -696,8 +699,7 @@ internal sealed class ZoneWorkspaceWindow : FluentWindow
     internal void RaiseWithoutActivation()
     {
         if (!IsVisible || !Topmost) return;
-        PInvoke.SetWindowPos((HWND)new WindowInteropHelper(this).Handle, (HWND)new IntPtr(-1), 0, 0, 0, 0,
-            SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        CanvasZOrder.PlaceAtCeiling(new WindowInteropHelper(this).Handle, ClampBelowTaskbar?.Invoke() ?? true);
     }
 
     // Fluent row chrome for the project tree. Wpf.Ui supplies window, button and text styling;
