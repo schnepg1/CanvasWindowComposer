@@ -21,7 +21,6 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Canvas _canvas;
     private readonly WindowManager _wm;
     private readonly VirtualDesktopService _vds;
-    private readonly MinimapOverlay _minimap;
     private readonly SearchOverlay _search;
     private readonly OverviewManager _overview;
     private readonly Win32InputRouter _input;
@@ -56,7 +55,6 @@ internal sealed class TrayApp : ApplicationContext
             _config.Load();
             _config.StartObservingChanges();
             GridRenderer.CompileShaders();
-            MinimapRenderer.CompileShaders();
 
             var winApi = new Win32WindowApi(_screens);
             _vds = _lifecycle.Own(new VirtualDesktopService(), ShutdownPhase.StopServices, "Virtual desktop poller");
@@ -91,8 +89,6 @@ internal sealed class TrayApp : ApplicationContext
             _overview.AttachTutorial();
             _backgrounds = _lifecycle.Own(new BackgroundCoordinator(_canvas, _overview, _vds, _workspace.Zones, _config), ShutdownPhase.FinalizeLayout, "Background surfaces");
 
-            // Constructed last so they can self-subscribe to canvas/input/desktops events.
-            _minimap = _lifecycle.Own(new MinimapOverlay(_canvas, _input, _desktops, _screens, _config.EnableFlipRendering, _overview), ShutdownPhase.ReleaseUi, "Minimap");
             _search = _lifecycle.Own(new SearchOverlay(_canvas, _wm, winApi, _input, _screens, _overview), ShutdownPhase.ReleaseUi, "Search overlay");
             _ = _dispatcher.Handle;
 
@@ -138,10 +134,6 @@ internal sealed class TrayApp : ApplicationContext
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(toggleItem);
             menu.Items.Add(showScreenFixedItem);
-            var minimapItem = new ToolStripMenuItem("Keep minimap visible") { Checked = _minimap.Pinned };
-            minimapItem.Click += (_, _) => _minimap.SetPinned(!_minimap.Pinned);
-            _minimap.PinnedChanged += () => minimapItem.Checked = _minimap.Pinned;
-            menu.Items.Add(minimapItem);
             menu.Items.Add(refreshItem);
             menu.Items.Add(new ToolStripMenuItem("Backgrounds…", null, (_, _) => _backgrounds.Show()));
             menu.Items.Add(new ToolStripMenuItem("Export performance diagnostics...", null, (_, _) =>
