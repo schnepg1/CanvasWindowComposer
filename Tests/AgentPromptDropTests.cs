@@ -84,6 +84,39 @@ public class AgentPromptDropTests
     }
 
     [Fact]
+    public void AgentPromptConfirmationDialog_UsesExplicitHighContrastDarkPaletteAndStyles()
+    {
+        WorkspaceViewTests.OnSta(() =>
+        {
+            var dialog = new AgentPromptConfirmationDialog(IntPtr.Zero, "Gemini CLI", "Audit scrollbars");
+            try
+            {
+                var windowBg = Assert.IsType<System.Windows.Media.SolidColorBrush>(dialog.Background);
+                Assert.Equal(MissionControlTheme.WindowBackground.Color, windowBg.Color);
+
+                var promptBg = Assert.IsType<System.Windows.Media.SolidColorBrush>(dialog.PromptBox.Background);
+                var promptFg = Assert.IsType<System.Windows.Media.SolidColorBrush>(dialog.PromptBox.Foreground);
+                var promptBorder = Assert.IsType<System.Windows.Media.SolidColorBrush>(dialog.PromptBox.BorderBrush);
+                Assert.Equal(MissionControlTheme.CardBackground.Color, promptBg.Color);
+                Assert.Equal(MissionControlTheme.TextPrimary.Color, promptFg.Color);
+                Assert.Equal(MissionControlTheme.CardBorder.Color, promptBorder.Color);
+
+                var focusedBg = Assert.IsType<System.Windows.Media.SolidColorBrush>(dialog.TryFindResource("TextControlBackgroundFocused"));
+                var focusedBorder = Assert.IsType<System.Windows.Media.SolidColorBrush>(dialog.TryFindResource("TextControlBorderBrushFocused"));
+                Assert.Equal(System.Windows.Media.Color.FromRgb(0x16, 0x20, 0x32), focusedBg.Color);
+                Assert.Equal(MissionControlTheme.AccentBlue.Color, focusedBorder.Color);
+
+                Assert.Same(dialog.FindResource("PromptPrimaryButton"), dialog.ConfirmButton.Style);
+                Assert.Same(dialog.FindResource("PromptSecondaryButton"), dialog.CancelButton.Style);
+            }
+            finally
+            {
+                dialog.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void TryPromptAgentWithTextCard_WhenConfirmed_SetsAgentPromptOnCard()
     {
         WorkspaceViewTests.OnSta(() =>
