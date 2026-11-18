@@ -333,5 +333,22 @@ public class CanvasPreferencesTests : IDisposable
         Assert.Equal(OverviewZoomDefaults.MaximumZoom, clampedLow.MaximumZoom);
     }
 
+    [Fact]
+    public void DictationServerUrlDefaultsNormalizesAndRoundTrips()
+    {
+        using var config = new AppConfig(directory: _directory); config.Load();
+        Assert.Equal(CanvasDesktop.Dictation.DictationDefaults.DefaultBaseUrl, config.DictationServerUrl);
+        Assert.Contains(";DictationServerUrl=http://127.0.0.1:8765", File.ReadAllText(Path.Combine(_directory, "config.ini")));
+
+        config.SavePreferences(config.Preferences with { DictationServerUrl = "http://localhost:9123/" });
+        using var reopened = new AppConfig(directory: _directory); reopened.Load();
+        Assert.Equal("http://localhost:9123", reopened.DictationServerUrl);
+        Assert.Equal("http://localhost:9123", reopened.Preferences.DictationServerUrl);
+
+        File.WriteAllText(Path.Combine(_directory, "config.ini"), "DictationServerUrl=not-a-valid-url\n");
+        using var fallback = new AppConfig(directory: _directory); fallback.Load();
+        Assert.Equal(CanvasDesktop.Dictation.DictationDefaults.DefaultBaseUrl, fallback.DictationServerUrl);
+    }
+
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
 }

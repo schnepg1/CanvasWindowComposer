@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using CanvasDesktop.Dictation;
 
 namespace CanvasDesktop;
 
@@ -65,6 +66,7 @@ internal interface IAppConfig
     double MaximumZoom => OverviewZoomDefaults.MaximumZoom;
     long OverviewCardImageBudgetBytes => OverviewZoomDefaults.DefaultCardImageBudgetBytes;
     int OverviewCardImageMaxCount => OverviewZoomDefaults.DefaultCardImageMaxCount;
+    string DictationServerUrl => DictationDefaults.DefaultBaseUrl;
 }
 
 /// <summary>
@@ -132,6 +134,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
     public double OverviewSimpleCardEnterZoom { get; private set; } = OverviewZoomDefaults.SimpleCardEnter;
     public double OverviewSimpleCardExitZoom { get; private set; } = OverviewZoomDefaults.SimpleCardExit;
     public double MaximumZoom { get; private set; } = OverviewZoomDefaults.MaximumZoom;
+    public string DictationServerUrl { get; private set; } = DictationDefaults.DefaultBaseUrl;
 
     public AppConfig(IClock? clock = null, string? directory = null)
     {
@@ -201,6 +204,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
             OverviewSimpleCardEnterZoom = GetDouble(values, "OverviewSimpleCardEnterZoom", defaultValue: OverviewZoomDefaults.SimpleCardEnter, min: 0.01, max: 1.0);
             OverviewSimpleCardExitZoom = GetDouble(values, "OverviewSimpleCardExitZoom", defaultValue: OverviewZoomDefaults.SimpleCardExit, min: 0.01, max: 1.0);
             MaximumZoom = GetDouble(values, "MaximumZoom", defaultValue: OverviewZoomDefaults.MaximumZoom, min: OverviewZoomDefaults.MagnifierMin, max: OverviewZoomDefaults.MagnifierMax);
+            DictationServerUrl = values.TryGetValue("DictationServerUrl", out var dictationServerUrl)
+                ? DictationDefaults.NormalizeOrDefault(dictationServerUrl)
+                : DictationDefaults.DefaultBaseUrl;
         }
     }
 
@@ -247,7 +253,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 OverviewCardEnterZoom, OverviewCardExitZoom, OverviewSimpleCardEnterZoom, OverviewSimpleCardExitZoom, ShowTaskbarInCanvas, AnimateWindowNavigation, DesktopPanMomentum, CanvasPanMomentum, EnableShortcutZoomOut, ShortcutZoomOutAmount,
                 EnableCanvasPeek, CanvasPeekDelayMs, SmoothZoom, MaximumZoom,
                 ZoomAcceleration, FlightDurationSeconds, FlightCruisingScale, FlightProfile, FlightFullDurationDistance, FlightFullClimbDistance,
-                SimplifyWindowCardsDuringMotion, EnableAsyncDesktopHandoff, EnableShortcutFlight, ShortcutFlightDuration);
+                SimplifyWindowCardsDuringMotion, EnableAsyncDesktopHandoff, EnableShortcutFlight, ShortcutFlightDuration, DictationServerUrl);
         }
     }
 
@@ -297,6 +303,7 @@ internal sealed class AppConfig : IAppConfig, IDisposable
                 ["FlightProfile"] = preferences.FlightProfile,
                 ["FlightFullDurationDistance"] = preferences.FlightFullDurationDistance.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
                 ["FlightFullClimbDistance"] = preferences.FlightFullClimbDistance.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+                ["DictationServerUrl"] = DictationDefaults.NormalizeOrDefault(preferences.DictationServerUrl),
             });
             Load();
         }
@@ -458,6 +465,9 @@ internal sealed class AppConfig : IAppConfig, IDisposable
 ;OverviewCardExitZoom=0.45
 ;OverviewSimpleCardEnterZoom=0.10
 ;OverviewSimpleCardExitZoom=0.13
+
+; Local speech-to-text transcription server URL for text card dictation
+;DictationServerUrl=http://127.0.0.1:8765
 ");
     }
 
@@ -568,4 +578,5 @@ internal sealed record CanvasPreferences(bool Search, bool AltPan, bool ZoomHotk
     double FlightFullDurationDistance = WindowNavigationFlight.DefaultFullDurationDistance,
     double FlightFullClimbDistance = WindowNavigationFlight.DefaultFullClimbDistance,
     bool SimplifyWindowCardsDuringMotion = false, bool AsyncDesktopHandoff = false,
-    bool ShortcutFlight = true, double ShortcutFlightDuration = OverviewZoomDefaults.DefaultShortcutFlightDuration);
+    bool ShortcutFlight = true, double ShortcutFlightDuration = OverviewZoomDefaults.DefaultShortcutFlightDuration,
+    string DictationServerUrl = DictationDefaults.DefaultBaseUrl);

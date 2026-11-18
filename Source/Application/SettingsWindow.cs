@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Automation;
+using CanvasDesktop.Dictation;
 
 namespace CanvasDesktop;
 
@@ -10,6 +11,7 @@ internal sealed class SettingsWindow : Window
 {
     private readonly CheckBox _search, _altPan, _zoom, _curve, _fixed, _clip, _parking, _flip, _intro, _reducedMotion, _lowQuality, _taskbar, _navigation, _desktopMomentum, _canvasMomentum;
     private readonly CheckBox _simplifyMovingCards, _asyncDesktopHandoff;
+    private readonly TextBox _dictationServerUrl;
     private readonly FlightSettingsControl? _flightSettings;
     private readonly ZoomSettingsControl _zoomSettings;
     internal bool ZoomOnly { get; }
@@ -79,6 +81,27 @@ internal sealed class SettingsWindow : Window
         Hint("Hides window images, icons and titles on distant or tiny cards while the camera moves. Optional for slower PCs. Applies immediately.");
         _flip = Option("Use flip-model presentation · Experimental", preferences.FlipRendering);
         Hint("Requires a restart. Keep off if overview previews or minimap opacity render incorrectly. Canvas uses the compatibility renderer if initialization fails.");
+        Heading("Dictation");
+        body.Children.Add(new TextBlock
+        {
+            Text = "Local transcription server URL",
+            FontSize = 13,
+            FontWeight = FontWeights.Medium,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+        _dictationServerUrl = new TextBox
+        {
+            Text = preferences.DictationServerUrl,
+            Background = ZoneTheme.Brush("#131B27"),
+            Foreground = ZoneTheme.Brush("#E2E8F0"),
+            BorderBrush = ZoneTheme.Brush("#2D3B4E"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 6, 8, 6),
+            Margin = new Thickness(0, 0, 0, 6)
+        };
+        AutomationProperties.SetName(_dictationServerUrl, "Local transcription server URL");
+        body.Children.Add(_dictationServerUrl);
+        Hint($"Address of your local headless speech-to-text server used by the canvas text card microphone button (default: {DictationDefaults.DefaultBaseUrl}).");
         if (zoomOnly) body.Children.Clear();
         _zoomSettings = new ZoomSettingsControl(preferences);
         body.Children.Add(_zoomSettings);
@@ -108,6 +131,12 @@ internal sealed class SettingsWindow : Window
                         }
                         draft = flightDraft;
                     }
+                    if (!DictationDefaults.TryNormalizeBaseUrl(_dictationServerUrl.Text, out var normalizedDictationUrl))
+                    {
+                        _status.Text = $"Transcription server URL must be a valid http:// or https:// address (default: {DictationDefaults.DefaultBaseUrl}).";
+                        return;
+                    }
+                    draft = draft with { DictationServerUrl = normalizedDictationUrl };
                 }
                 if (!_zoomSettings.TryApply(draft, out var updated, out var error)) { _status.Text = error; return; }
                 config.SavePreferences(updated);

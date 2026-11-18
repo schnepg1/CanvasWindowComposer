@@ -1,36 +1,61 @@
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Threading;
+using CanvasDesktop.Dictation;
 using WpfTextBox = System.Windows.Controls.TextBox;
 using WpfButton = System.Windows.Controls.Button;
 using WpfComboBox = System.Windows.Controls.ComboBox;
 using WpfCanvas = System.Windows.Controls.Canvas;
+using WpfPath = System.Windows.Shapes.Path;
+using WpfRectangle = System.Windows.Shapes.Rectangle;
 
 namespace CanvasDesktop;
 
 /// <summary>A transparent editor over the actual canvas card, with a separate contextual toolbar.</summary>
 internal sealed class AnnotationTextEditor : Window, IDisposable
 {
+    private const string DefaultHintText = "Click outside to finish · Esc cancels · Corners scale text";
+    private static readonly TimeSpan DictationErrorResetDelay = TimeSpan.FromSeconds(6);
+    private static readonly SolidColorBrush RecordingBackgroundBrush = CreateFrozenBrush(Color.FromRgb(0xDC, 0x26, 0x26));
+    private static readonly SolidColorBrush RecordingBorderBrush = CreateFrozenBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+    private static readonly Geometry MicGlyphGeometry = CreateFrozenGeometry(
+        "M7,1.5 A2.2,2.2 0 0 1 9.2,3.7 L9.2,7.3 A2.2,2.2 0 0 1 4.8,7.3 L4.8,3.7 A2.2,2.2 0 0 1 7,1.5 Z M3,7 A4,4 0 0 0 11,7 M7,11 L7,13 M4.8,13 L9.2,13");
+    private static readonly Geometry SpinnerArcGeometry = CreateFrozenGeometry("M6,1.2 A4.8,4.8 0 1 1 1.6,7.9");
+
     public WpfTextBox Editor { get; }
     public event Action<bool>? Finished;
     public CanvasAnnotation CurrentItem { get; private set; }
     internal bool ReturnFocusOnFinish { get; private set; } = true;
     internal Window FormattingToolbar => _toolbar;
+    internal WpfButton DictationButton => _mic;
+    internal TextBlock HintTextBlock => _hint;
+    internal DictationState DictationState => _dictation.State;
     private readonly Window _toolbar;
     private readonly WpfCanvas _card;
     private readonly CardArtwork _artwork;
     private readonly ScrollViewer _viewport;
     private readonly WpfComboBox _size, _align, _fill, _border;
     private readonly ToggleButton _bold, _italic;
+    private readonly WpfButton _mic;
     private readonly TextBlock _hint;
     private readonly double _minimumHeight;
-    private bool _updating, _finished, _disposed;
+    private readonly DictationSessionController _dictation;
+    private readonly DispatcherTimer _hintResetTimer;
+    private readonly object _snapshotGate = new();
+    private DictationEditorSnapshot _editorSnapshot;
+    private RotateTransform? _spinnerTransform;
+    private bool _updating, _finished, _disposed, _applyingDictation, _showingDictationError, _toolbarControlFocused;
     private CanvasViewTransform _view = new(0, 0, 1, new(0, 0, 1920, 1080));
     private System.Drawing.Rectangle _workingArea;
     private CanvasPoint _projectionOffset;
@@ -43,7 +68,7 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     public AnnotationTextEmphasis Emphasis { get => CurrentItem.Emphasis; set => SetEmphasis(value); }
     public AnnotationCardFill CardFill { get => CurrentItem.CardFill; set => SetCardFill(value); }
 
-    public AnnotationTextEditor(CanvasAnnotation item)
+    public AnnotationTextEditor(CanvasAnnotation item, string? dictationServerUrl = null, IDictationClient? dictationClient = null)
     {
         CurrentItem = item;
         _minimumHeight = item.Bounds.Height;
@@ -132,14 +157,28 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         _fill.SelectionChanged += (_, _) => { if (!_updating && _fill.SelectedIndex >= 0) SetCardFill((AnnotationCardFill)_fill.SelectedIndex); };
         _fill.DropDownClosed += (_, _) => FocusEditor();
         row.Children.Add(_fill);
+        _mic = new WpfButton
+        {
+            MinWidth = 30,
+            Height = 28,
+            Padding = new Thickness(7, 0, 7, 0),
+            Margin = new Thickness(0, 0, 5, 0),
+            Focusable = false
+        };
+        _mic.Click += (_, _) => _ = ToggleDictationAsync();
+        row.Children.Add(_mic);
         row.Children.Add(ActionButton("Done", "Finish editing · Ctrl+Enter", () => Complete(true)));
         row.Children.Add(ActionButton("×", "Cancel changes · Esc", () => Complete(false)));
         var panel = new StackPanel();
         panel.Children.Add(row);
         _hint = new TextBlock
         {
-            Text = "Click outside to finish · Esc cancels · Corners scale text",
-            Foreground = Brushes.LightSlateGray, FontSize = 11, Margin = new Thickness(3, 7, 0, 0)
+            Text = DefaultHintText,
+            Foreground = Brushes.LightSlateGray,
+            FontSize = 11,
+            Margin = new Thickness(3, 7, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 560
         };
         panel.Children.Add(_hint);
         _toolbar = new Window
@@ -168,9 +207,49 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
             if (!_disposed) UpdateProjection();
         }));
         PreviewKeyDown += HandleKey;
-        Editor.TextChanged += (_, _) => UpdateCard();
+        var client = dictationClient ?? new LocalTranscriptionClient(dictationServerUrl);
+        _editorSnapshot = new DictationEditorSnapshot(Editor.Text, IsFocused: false, Editor.SelectionStart, Editor.SelectionLength);
+        _dictation = new DictationSessionController(
+            client,
+            ReadEditorSnapshot,
+            AnnotationDocument.MaximumTextLength,
+            ownsClient: dictationClient == null);
+        _dictation.StateChanged += OnDictationStateChanged;
+        _dictation.TextUpdated += OnDictationTextUpdated;
+        _dictation.ErrorOccurred += OnDictationErrorOccurred;
+        _hintResetTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = DictationErrorResetDelay
+        };
+        _hintResetTimer.Tick += (_, _) =>
+        {
+            _hintResetTimer.Stop();
+            if (!_disposed && !_finished && _dictation.State == DictationState.Idle)
+                RestoreDefaultHint();
+        };
+        ApplyDictationState(DictationState.Idle);
+
+        Editor.GotFocus += (_, _) => { _toolbarControlFocused = false; RefreshEditorSnapshot(); };
+        Editor.GotKeyboardFocus += (_, _) => { _toolbarControlFocused = false; RefreshEditorSnapshot(); };
+        Editor.LostKeyboardFocus += (_, _) => RefreshEditorSnapshot();
+        foreach (var control in new UIElement[] { _size, color, _border, _align, _fill })
+        {
+            control.GotFocus += (_, _) => { _toolbarControlFocused = true; RefreshEditorSnapshot(); };
+            control.GotKeyboardFocus += (_, _) => { _toolbarControlFocused = true; RefreshEditorSnapshot(); };
+        }
+        Editor.TextChanged += (_, e) =>
+        {
+            RefreshEditorSnapshot();
+            if (!_applyingDictation)
+            {
+                foreach (var change in e.Changes)
+                    _dictation.NotifyExternalTextEdit(change.Offset, change.RemovedLength, change.AddedLength, Editor.Text);
+            }
+            UpdateCard();
+        };
         Editor.SelectionChanged += (_, _) =>
         {
+            RefreshEditorSnapshot();
             if (IsVisible) Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
             {
                 if (_disposed) return;
@@ -373,10 +452,12 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
         // deferred and can otherwise overwrite a click/Home made before the
         // first frame, scrolling a large title back to its end.
         Editor.CaretIndex = Editor.Text.Length;
+        RefreshEditorSnapshot();
     }
     private void FocusEditor()
     {
         if (_disposed) return;
+        _toolbarControlFocused = false;
         Activate(); Editor.Focus();
     }
     private void BringCaretIntoView()
@@ -412,14 +493,21 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     internal void RejectCompletion(string message)
     {
         _finished = false;
+        _showingDictationError = false;
+        _hintResetTimer.Stop();
         _hint.Text = message;
         _hint.Foreground = Brushes.LightCoral;
+        QueueRepositionToolbar();
     }
     internal bool Complete(bool save, bool returnFocus = true)
     {
         if (_finished || _disposed) return _finished;
         if (save && !ApplyPendingFontSize()) return false;
-        ReturnFocusOnFinish = returnFocus; _finished = true; Finished?.Invoke(save);
+        ReturnFocusOnFinish = returnFocus;
+        _finished = true;
+        _hintResetTimer.Stop();
+        _dictation.AbortInBackground();
+        Finished?.Invoke(save);
         return _finished;
     }
     private void HandleKey(object sender, System.Windows.Input.KeyEventArgs e)
@@ -445,7 +533,307 @@ internal sealed class AnnotationTextEditor : Window, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; _toolbar.Close(); Close();
+        _disposed = true;
+        _hintResetTimer.Stop();
+        StopSpinnerAnimation();
+        _dictation.StateChanged -= OnDictationStateChanged;
+        _dictation.TextUpdated -= OnDictationTextUpdated;
+        _dictation.ErrorOccurred -= OnDictationErrorOccurred;
+        _dictation.Dispose();
+        _toolbar.Close(); Close();
+    }
+
+    internal Task ToggleDictationAsync()
+    {
+        if (_disposed || _finished) return Task.CompletedTask;
+        bool editorFocused = IsEditorFocusedForDictation();
+        CaptureEditorSnapshot(editorFocused);
+        if (_dictation.State == DictationState.Recording && IsVisible)
+            FocusEditor();
+        return ToggleDictationCoreAsync();
+    }
+
+    private async Task ToggleDictationCoreAsync()
+    {
+        try
+        {
+            await _dictation.ToggleAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Expected protocol and transport errors are surfaced via ErrorOccurred.
+        }
+    }
+
+    private bool IsEditorFocusedForDictation()
+    {
+        if (Editor.IsKeyboardFocusWithin)
+            return true;
+        if (_toolbarControlFocused || HasFocusableToolbarControlFocus())
+            return false;
+        return ReferenceEquals(FocusManager.GetFocusedElement(this), Editor);
+    }
+
+    private bool HasFocusableToolbarControlFocus()
+    {
+        if (Keyboard.FocusedElement is not DependencyObject focused || ReferenceEquals(focused, _toolbar))
+            return false;
+
+        DependencyObject? current = focused;
+        while (current != null)
+        {
+            if (ReferenceEquals(current, _toolbar))
+                return true;
+            current = VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+        }
+        return false;
+    }
+
+    private void RefreshEditorSnapshot()
+        => CaptureEditorSnapshot(IsEditorFocusedForDictation());
+
+    private void CaptureEditorSnapshot(bool isFocused)
+    {
+        var snapshot = new DictationEditorSnapshot(Editor.Text, isFocused, Editor.SelectionStart, Editor.SelectionLength);
+        lock (_snapshotGate)
+            _editorSnapshot = snapshot;
+    }
+
+    private DictationEditorSnapshot ReadEditorSnapshot()
+    {
+        lock (_snapshotGate)
+            return _editorSnapshot;
+    }
+
+    private void OnDictationStateChanged(DictationState state)
+        => DispatchUi(() =>
+        {
+            if (_disposed || _finished) return;
+            ApplyDictationState(state);
+            if (state is DictationState.Starting or DictationState.Recording && _showingDictationError)
+                RestoreDefaultHint();
+            if (state is DictationState.Recording or DictationState.Idle && IsVisible)
+                FocusEditor();
+            QueueRepositionToolbar();
+        });
+
+    private void OnDictationTextUpdated(DictationTextUpdate update)
+        => DispatchUi(() =>
+        {
+            if (_disposed || _finished) return;
+            _applyingDictation = true;
+            try
+            {
+                if (!string.Equals(Editor.Text, update.Text, StringComparison.Ordinal))
+                    Editor.Text = update.Text;
+                int caret = Math.Clamp(update.CaretIndex, 0, Editor.Text.Length);
+                Editor.SelectionStart = caret;
+                Editor.SelectionLength = 0;
+                Editor.CaretIndex = caret;
+                RefreshEditorSnapshot();
+            }
+            finally
+            {
+                _applyingDictation = false;
+            }
+            if (IsVisible)
+                BringCaretIntoView();
+        });
+
+    private void OnDictationErrorOccurred(string message)
+        => DispatchUi(() =>
+        {
+            if (_disposed || _finished || string.IsNullOrWhiteSpace(message)) return;
+            _showingDictationError = true;
+            _hint.Text = message;
+            _hint.Foreground = Brushes.LightCoral;
+            _hintResetTimer.Stop();
+            _hintResetTimer.Start();
+            QueueRepositionToolbar();
+        });
+
+    private void RestoreDefaultHint()
+    {
+        _showingDictationError = false;
+        _hintResetTimer.Stop();
+        _hint.Text = DefaultHintText;
+        _hint.Foreground = Brushes.LightSlateGray;
+        QueueRepositionToolbar();
+    }
+
+    private void ApplyDictationState(DictationState state)
+    {
+        StopSpinnerAnimation();
+
+        switch (state)
+        {
+            case DictationState.Idle:
+                _mic.IsEnabled = true;
+                _mic.ClearValue(Control.BackgroundProperty);
+                _mic.ClearValue(Control.BorderBrushProperty);
+                _mic.ClearValue(Control.ForegroundProperty);
+                _mic.Content = BuildMicGlyph();
+                _mic.ToolTip = "Dictate text (local microphone transcription)";
+                AutomationProperties.SetName(_mic, "Start dictation");
+                break;
+
+            case DictationState.Starting:
+                _mic.IsEnabled = false;
+                _mic.ClearValue(Control.BackgroundProperty);
+                _mic.ClearValue(Control.BorderBrushProperty);
+                _mic.ClearValue(Control.ForegroundProperty);
+                _mic.Content = "…";
+                _mic.ToolTip = "Starting dictation…";
+                AutomationProperties.SetName(_mic, "Starting dictation");
+                break;
+
+            case DictationState.Recording:
+                _mic.IsEnabled = true;
+                _mic.Background = RecordingBackgroundBrush;
+                _mic.BorderBrush = RecordingBorderBrush;
+                _mic.Foreground = Brushes.White;
+                _mic.Content = BuildRecordingContent();
+                _mic.ToolTip = "Stop dictation";
+                AutomationProperties.SetName(_mic, "Stop dictation");
+                break;
+
+            case DictationState.Finalizing:
+                _mic.IsEnabled = false;
+                _mic.ClearValue(Control.BackgroundProperty);
+                _mic.ClearValue(Control.BorderBrushProperty);
+                _mic.ClearValue(Control.ForegroundProperty);
+                _mic.Content = BuildFinalizingContent();
+                _mic.ToolTip = "Finalizing transcription…";
+                AutomationProperties.SetName(_mic, "Finalizing transcription");
+                break;
+        }
+    }
+
+    private FrameworkElement BuildMicGlyph()
+    {
+        var path = new WpfPath
+        {
+            Data = MicGlyphGeometry,
+            StrokeThickness = 1.4,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+            Width = 14,
+            Height = 14,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        path.SetBinding(Shape.StrokeProperty, new Binding(nameof(Control.Foreground)) { Source = _mic });
+        return path;
+    }
+
+    private static FrameworkElement BuildRecordingContent()
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        panel.Children.Add(new WpfRectangle
+        {
+            Width = 8,
+            Height = 8,
+            RadiusX = 1.5,
+            RadiusY = 1.5,
+            Fill = Brushes.White,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Stop",
+            Foreground = Brushes.White,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(5, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        return panel;
+    }
+
+    private FrameworkElement BuildFinalizingContent()
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _spinnerTransform = new RotateTransform(0, 6, 6);
+        var spinner = new WpfPath
+        {
+            Data = SpinnerArcGeometry,
+            StrokeThickness = 1.6,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Width = 12,
+            Height = 12,
+            RenderTransform = _spinnerTransform,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        spinner.SetBinding(Shape.StrokeProperty, new Binding(nameof(Control.Foreground)) { Source = _mic });
+        var animation = new DoubleAnimation(0, 360, new Duration(TimeSpan.FromMilliseconds(850)))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        _spinnerTransform.BeginAnimation(RotateTransform.AngleProperty, animation);
+        panel.Children.Add(spinner);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Finalizing…",
+            Margin = new Thickness(5, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        return panel;
+    }
+
+    private void StopSpinnerAnimation()
+    {
+        if (_spinnerTransform == null) return;
+        _spinnerTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+        _spinnerTransform = null;
+    }
+
+    private void DispatchUi(Action action)
+    {
+        if (_disposed) return;
+        if (Dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+        try
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, action);
+        }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+    }
+
+    private void QueueRepositionToolbar()
+    {
+        if (_disposed || !_toolbar.IsVisible) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
+        {
+            if (!_disposed && _toolbar.IsVisible)
+                PositionToolbar();
+        }));
+    }
+
+    private static SolidColorBrush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Geometry CreateFrozenGeometry(string data)
+    {
+        var geometry = Geometry.Parse(data);
+        geometry.Freeze();
+        return geometry;
     }
     private sealed class CardArtwork(Func<CanvasAnnotation> item) : FrameworkElement
     {

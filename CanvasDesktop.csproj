@@ -55,6 +55,7 @@
     <PackageReference Include="WPF-UI" Version="4.3.0" />
     <ProjectReference Include="Modules\CanvasView\CanvasDesktop.CanvasView.csproj" />
     <ProjectReference Include="Modules\Ai\CanvasDesktop.Ai.csproj" />
+    <ProjectReference Include="Modules\Dictation\CanvasDesktop.Dictation.csproj" />
     <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Velopack" Version="1.2.161" />
