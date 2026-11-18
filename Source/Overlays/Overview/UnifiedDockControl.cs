@@ -108,6 +108,7 @@ internal sealed class UnifiedDockControl : UserControl
     internal Border PropertiesShelf => _propertiesShelf;
     internal StackPanel ColorSwatchesPanel => _colorSwatchesPanel;
     internal Wpf.Ui.Controls.Button StrokeButton => _strokeButton;
+    internal Wpf.Ui.Controls.Button SizeButton => _sizeButton;
     internal Wpf.Ui.Controls.Button UndoButton => _undoButton;
     internal Wpf.Ui.Controls.Button RedoButton => _redoButton;
 
@@ -310,6 +311,7 @@ internal sealed class UnifiedDockControl : UserControl
                 Background = Brush(hex),
                 BorderBrush = Brush("#334155"),
                 BorderThickness = new Thickness(1),
+                Tag = hex,
                 Margin = new Thickness(3, 0, 3, 0),
                 Cursor = Cursors.Hand,
                 ToolTip = name
@@ -565,9 +567,22 @@ internal sealed class UnifiedDockControl : UserControl
 
         // Update Properties Shelf values
         _strokeButton.Content = $"{(state.Selected?.Stroke ?? state.Stroke):0.#} px";
-        _sizeButton.Content = $"Size {state.FontSize:0}";
+        double size = state.Selected?.FontSize ?? state.FontSize;
+        _sizeButton.Content = $"Size {size:0}";
+        UpdateActiveColorSwatch(state.Selected?.Color ?? state.Color);
 
         UpdatePropertiesVisibility();
+    }
+
+    private void UpdateActiveColorSwatch(string color)
+    {
+        foreach (var child in _colorSwatchesPanel.Children)
+        {
+            if (child is not Border swatch) continue;
+            bool active = string.Equals(swatch.Tag as string, color, StringComparison.OrdinalIgnoreCase);
+            swatch.BorderBrush = Brush(active ? "#F8FAFC" : "#334155");
+            swatch.BorderThickness = new Thickness(active ? 2 : 1);
+        }
     }
 
     private void UpdatePropertiesVisibility()

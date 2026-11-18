@@ -247,22 +247,47 @@ internal sealed partial class OverviewManager
         _unifiedDock.SetCanvasOwner(CanvasPanelOwner);
         _unifiedDock.Panel.SetInteractMode(_interactMode);
         _unifiedDock.Panel.SetAiTeamsActive(_isAiTeamsActive);
-        _unifiedDock.Panel.UpdateState(new CanvasDockState(
-            _annotationTool?.Mode ?? AnnotationMode.Select, _annotationError ?? _annotationStore?.Status, Selection.Ids.Count, _annotationTool?.Selected,
-            _annotationTool?.Color ?? "#FBBF24", _annotationTool?.Stroke ?? 3, _annotationTool?.FontSize ?? 18, _annotationTool?.TextAlign ?? AnnotationTextAlign.Left,
-            _annotationTool?.Emphasis ?? AnnotationTextEmphasis.Normal, _annotationTool?.CardFill ?? AnnotationCardFill.Solid,
-            CanUndo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), false) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(false) ?? 0) > 0,
-            CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
-            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
-            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode,
-            CanCopy: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
-            CanCut: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || _annotationTool?.Selected != null,
-            CanPaste: true));
+        _unifiedDock.Panel.UpdateState(BuildDockState());
         _unifiedDock.Present(true, new ScreenRect(toolbarArea.Left, toolbarArea.Top, toolbarArea.Width, toolbarArea.Height), _appConfig.ShowTaskbarInCanvas);
         RegisterCanvasLayers();
         _layerCoordinator.RaiseAbove(CanvasLayerTier.DockAndToolbars);
     }
 
+    /// <summary>Focused annotation whose live style the edit shelf must mirror.</summary>
+    private CanvasAnnotation? SelectedDockAnnotation()
+    {
+        var ids = Selection.Ids.Where(id => id.Kind == CanvasItemKind.Annotation).Select(id => id.Id).ToHashSet();
+        if (ids.Count > 0 && _annotationDocument != null)
+        {
+            var focused = _annotationDocument.Items.LastOrDefault(a => ids.Contains(a.Id) && a.DesktopId == _annotationDesktop()
+                && !a.InInventory && a.AgentTaskId.Length == 0);
+            if (focused != null) return focused;
+        }
+        return _annotationTool?.Selected;
+    }
+
+    internal CanvasDockState BuildDockState()
+    {
+        // The shelf must read the selected element's live style. Falling back to the
+        // tool's own style is only correct while nothing is selected (creation mode).
+        var selected = SelectedDockAnnotation();
+        return new CanvasDockState(
+            _annotationTool?.Mode ?? AnnotationMode.Select, _annotationError ?? _annotationStore?.Status, Selection.Ids.Count, selected,
+            selected?.Color ?? _annotationTool?.Color ?? "#FBBF24",
+            selected?.Stroke ?? _annotationTool?.Stroke ?? 3,
+            selected?.FontSize ?? _annotationTool?.FontSize ?? 18,
+            selected?.TextAlign ?? _annotationTool?.TextAlign ?? AnnotationTextAlign.Left,
+            selected?.Emphasis ?? _annotationTool?.Emphasis ?? AnnotationTextEmphasis.Normal,
+            selected?.CardFill ?? _annotationTool?.CardFill ?? AnnotationCardFill.Solid,
+            CanUndo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), false) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(false) ?? 0) > 0,
+            CanRedo: (_annotationDocument?.HistoryOrder(_annotationDesktop(), true) ?? 0) > 0 || (_placeholderWorkspace?.ZoneHistoryOrder(true) ?? 0) > 0,
+            HasSelectedAnnotations: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || selected != null,
+            AnimateFeedback: !_appConfig.ReduceStartupMotion && !_appConfig.LowQualityMode,
+            CanCopy: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || selected != null,
+            CanCut: Selection.Ids.Any(id => id.Kind == CanvasItemKind.Annotation) || selected != null,
+            CanPaste: true);
+    }
+
     private void ToggleControlsPopup(OverviewOverlay pass)
     {
         if (_disposed || CurrentMode != OverviewMode.Zooming || IsStartupIntroActive || _composerWaitingForBrowser)

@@ -531,6 +531,72 @@ public class UnifiedDockTests
         });
 
     [Fact]
+    public void PropertiesShelfShowsTheSelectedAnnotationsLiveStyle()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var dock = new UnifiedDockControl();
+            var note = new CanvasAnnotation(Guid.NewGuid(), Guid.NewGuid(), AnnotationKind.Text,
+                new(0, 0), new(200, 100), Color: "#60A5FA", Stroke: 12, FontSize: 32);
+
+            // The tool's own style is still the stale creation default.
+            dock.UpdateState(new CanvasDockState(AnnotationMode.Select, SelectedCount: 1, Selected: note,
+                Color: "#FBBF24", Stroke: 3, FontSize: 96));
+
+            Assert.Equal("12 px", dock.StrokeButton.Content);
+            Assert.Equal("Size 32", dock.SizeButton.Content);
+            Assert.Equal(2, Swatch(dock, "#60A5FA").BorderThickness.Left);
+            Assert.Equal(1, Swatch(dock, "#FBBF24").BorderThickness.Left);
+
+            static System.Windows.Controls.Border Swatch(UnifiedDockControl dock, string hex)
+                => dock.ColorSwatchesPanel.Children.OfType<System.Windows.Controls.Border>()
+                    .Single(border => string.Equals(border.Tag as string, hex, StringComparison.OrdinalIgnoreCase));
+        });
+
+    [Fact]
+    public void BuildDockStateUsesTheSelectionWhenTheToolHasNoFocusedAnnotation()
+        => WorkspaceViewTests.OnSta(() =>
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "dock-state-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var canvas = new Canvas();
+                var api = new FakeWindowApi();
+                var input = new FakeInputRouter();
+                var config = new FakeAppConfig { EnableStartupIntro = false };
+                using var wm = new WindowManager(canvas, api, config, input, new FakeClock());
+                using var overview = new OverviewManager(canvas, wm, api, input, config);
+                var desktops = new FakeVirtualDesktops();
+                overview.AttachAnnotations(desktops, Path.Combine(folder, "annotations.json"));
+                overview.TransitionTo(OverviewMode.Zooming);
+
+                var note = new CanvasAnnotation(Guid.NewGuid(), desktops.CurrentDesktopId, AnnotationKind.Text,
+                    new(10, 10), new(240, 120), Text: "Live style", Color: "#34D399", Stroke: 6, FontSize: 24,
+                    TextAlign: AnnotationTextAlign.Right, Emphasis: AnnotationTextEmphasis.Bold, CardFill: AnnotationCardFill.Tinted);
+                overview.Annotations!.Put(note);
+
+                // Marquee-style selection does not focus the annotation tool.
+                overview.AnnotationTool!.ClearSelection();
+                overview.Selection.Replace([new(CanvasItemKind.Annotation, note.Id)]);
+
+                var state = overview.BuildDockState();
+
+                Assert.Equal(note, state.Selected);
+                Assert.Equal("#34D399", state.Color);
+                Assert.Equal(6, state.Stroke);
+                Assert.Equal(24, state.FontSize);
+                Assert.Equal(AnnotationTextAlign.Right, state.TextAlign);
+                Assert.Equal(AnnotationTextEmphasis.Bold, state.Emphasis);
+                Assert.Equal(AnnotationCardFill.Tinted, state.CardFill);
+                Assert.True(state.CanCopy);
+                Assert.True(state.CanCut);
+            }
+            finally
+            {
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            }
+        });
+
+    [Fact]
     [Trait("Category", "NativeRendering")]
     public void DockContextualCommandsEditRealSelectedAnnotationsAndKeepHistoryWorking()
         => WorkspaceViewTests.OnSta(() =>
